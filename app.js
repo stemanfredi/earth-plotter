@@ -1,6 +1,7 @@
 import * as maplibregl from 'maplibre-gl';
 import mlcontour from 'maplibre-contour';
-import { GROUPS, ITEMS, GIBS, DEM_TILES, DEM_SEA_MAXZOOM, DEM_LAND_MAXZOOM, OPACITY_PROP, DEPTH_STOPS, PACK_STOPS, PACK_SHALLOW, buildStyle, defaultDate, gibsTiles } from './catalog.js';
+import { GROUPS, ITEMS, GIBS, DEM_TILES, DEM_SEA, DEM_LAND, OMT_TILEJSON, OPACITY_PROP, DEPTH_STOPS, PACK_STOPS, NO_DEPTH, buildStyle, defaultDate, gibsTiles } from './catalog.js';
+import { clipper } from './clip.js';
 import { colourAt, drawRamp, drawClasses, loadColormap, drawColormap } from './legend.js';
 import { Measure, MEASURE_LAYERS, summary, fmtDist } from './measure.js';
 
@@ -77,18 +78,28 @@ function writeHash() {
 const urlUnits = readHash();
 
 // ---- map --------------------------------------------------------------------
-const demOpts = { url: DEM_TILES, encoding: 'terrarium', worker: true, cacheSize: 200 };
-const seaDem = new mlcontour.DemSource({ ...demOpts, id: 'sea', maxzoom: DEM_SEA_MAXZOOM });
-const landDem = new mlcontour.DemSource({ ...demOpts, id: 'land', maxzoom: DEM_LAND_MAXZOOM });
-seaDem.setupMaplibre(maplibregl);
-landDem.setupMaplibre(maplibregl);
+// Elevation goes through clip.js (cut to the OSM coastline). worker: false keeps
+// maplibre-contour's tile manager on this thread, where its getTile/decodeImage can be
+// replaced; the shaded rasters (clip-* protocols) and the contours share one tile cache.
+const demOpts = { url: DEM_TILES, encoding: 'terrarium', worker: false, cacheSize: 200 };
+const seaDem = new mlcontour.DemSource({ ...demOpts, id: 'sea', maxzoom: DEM_SEA.max });
+const landDem = new mlcontour.DemSource({ ...demOpts, id: 'land', maxzoom: DEM_LAND.max });
+const seaClip = clipper({ template: DEM_TILES, native: DEM_SEA.native, mode: 'sea', omtTileJson: OMT_TILEJSON });
+const landClip = clipper({ template: DEM_TILES, native: DEM_LAND.native, mode: 'land', omtTileJson: OMT_TILEJSON });
+for (const [dem, clip] of [[seaDem, seaClip], [landDem, landClip]]) {
+  dem.manager.getTile = clip.getTile;
+  dem.manager.decodeImage = clip.decodeImage;
+  dem.setupMaplibre(maplibregl); // registers the contour protocol
+}
+maplibregl.addProtocol('clip-sea', seaClip.protocol);
+maplibregl.addProtocol('clip-land', landClip.protocol);
 const contourOpts = { contourLayer: 'contours', elevationKey: 'ele', levelKey: 'level', extent: 4096, buffer: 1 };
 const style = buildStyle({
-  seaDemUrl: seaDem.sharedDemProtocolUrl,
-  landDemUrl: landDem.sharedDemProtocolUrl,
+  seaDemUrl: 'clip-sea://{z}/{x}/{y}',
+  landDemUrl: 'clip-land://{z}/{x}/{y}',
   // zoom → [minor, major] interval in metres
   isobathUrl: seaDem.contourProtocolUrl({ ...contourOpts, thresholds: { 4: [1000, 2000], 6: [200, 1000], 8: [100, 500], 10: [20, 100] } }),
-  contourUrl: landDem.contourProtocolUrl({ ...contourOpts, thresholds: { 9: [100, 500], 11: [50, 250], 12: [20, 100], 14: [10, 50] } }),
+  contourUrl: landDem.contourProtocolUrl({ ...contourOpts, thresholds: { 9: [100, 500], 11: [50, 250], 12: [20, 100] } }),
   date: state.date,
 });
 style.layers.push(...MEASURE_LAYERS);
@@ -130,10 +141,17 @@ function setOn(id, on) {
   }
   on ? state.on.add(id) : state.on.delete(id);
   applyItem(id);
-  if (it.group === 'base') for (const k of baseDependent) applyItem(k);
+  if (it.group === 'base') { for (const k of baseDependent) applyItem(k); renderLegends(); }
   if (id === 'graticule') { updateGraticule(); drawLatScale(); }
+  if (id === 'depth') shoreFill();
   renderMenu();
   writeHash();
+}
+// Under depth shading the water fill takes the shallowest band's colour: the tint stops a
+// fraction of a pixel short of the shore (clip.js), and that sliver must not read as white.
+function shoreFill() {
+  const zmax = style.layers.find((l) => l.id === 'depth').maxzoom; // shading hides itself above this
+  map.setPaintProperty('water', 'fill-color', state.on.has('depth') ? ['step', ['zoom'], DEPTH_STOPS[0][1], zmax, '#ffffff'] : '#ffffff');
 }
 function setDate(date) {
   state.date = date;
@@ -271,7 +289,8 @@ async function loadPack(buf, url) {
     bytes = new Uint8Array(await new Response(new Blob([bytes]).stream().pipeThrough(new DecompressionStream('gzip'))).arrayBuffer());
   }
   const doc = JSON.parse(new TextDecoder().decode(bytes));
-  if (doc?.type !== 'FeatureCollection' || doc.pack?.version !== 1) throw new Error('not an area pack (version 1)');
+  if (doc?.type !== 'FeatureCollection' || !doc.pack) throw new Error('not an area pack');
+  if (doc.pack.version !== 2) throw new Error(`pack format ${doc.pack.version}; rebuild it with the current tools/build_pack.py`);
   const src = map.getSource('pack');
   src.attribution = doc.pack.credits || '';
   src.setData(doc);
@@ -389,19 +408,20 @@ function renderLegends() {
   const on = (id) => state.on.has(id);
   const want = [];
   if (on('legend')) {
-    if (pack.doc && on('pack-depth')) want.push('pack');
-    if (on('depth') && map.getZoom() < 13) want.push('depth');
+    if (pack.doc && on('pack-depth') && on('chart')) want.push('pack');
+    if (on('depth') && on('chart') && map.getZoom() < 13) want.push('depth');
     if (on('gibs') && GIBS[state.variant.gibs].legend) want.push('gibs');
   }
   for (const id of Object.keys(legendEls)) if (!want.includes(id)) legendEls[id].remove();
   for (const id of want) {
     const el = legendEl(id);
     if (id === 'depth') {
-      drawRamp(el, 'Depth shading', 'm · approximate (DEM)', DEPTH_STOPS);
+      drawRamp(el, 'Depth shading', 'm · approximate (DEM)', DEPTH_STOPS, { colour: NO_DEPTH, label: 'lakes: no depth · lagoons: shown as 0–5 m' });
       el.setAttribute('aria-label', `Depth shading legend: ${DEPTH_STOPS.map(([d]) => d).join(', ')} metres`);
     } else if (id === 'pack') {
       const p = pack.doc.pack, edges = [0, ...p.levels_m];
-      drawClasses(el, 'Pack depth', `m · ${p.depth.source.split(',')[0]}`, edges, [PACK_SHALLOW, ...p.levels_m.map((d) => colourAt(PACK_STOPS, d))], `${Math.round(p.depth.max_m)}`);
+      drawClasses(el, 'Pack depth', `m · ${p.depth.source.split(',')[0]}`, edges, edges.map((d) => colourAt(PACK_STOPS, d)), `${Math.round(p.depth.max_m)}`,
+        { colour: NO_DEPTH, label: 'water without depth data' });
       el.setAttribute('aria-label', `Pack depth legend: classes from ${edges.join(', ')} metres`);
     } else {
       const g = GIBS[state.variant.gibs], key = `${state.variant.gibs}|${state.date}`;
@@ -613,7 +633,12 @@ function wrap(text, n) {
 
 // ---- go ---------------------------------------------------------------------
 map.on('load', () => {
+  // Raster sources round the zoom when picking tiles; the vector basemap floors it. Floor
+  // here too, so the clipped elevation tiles are cut with the coastline the basemap draws
+  // (clip.js seaMask). roundZoom is a property of MapLibre's raster tile sources.
+  for (const id of ['dem-sea', 'dem']) map.getSource(id).roundZoom = false;
   for (const it of ITEMS) applyItem(it.id);
+  shoreFill();
   measure.load(measureState);
   updateGraticule();
   renderMenu();

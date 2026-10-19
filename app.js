@@ -1,6 +1,6 @@
 import * as maplibregl from 'maplibre-gl';
 import mlcontour from 'maplibre-contour';
-import { GROUPS, ITEMS, GIBS, DEM_TILES, DEM_SEA, DEM_LAND, OMT_TILEJSON, OPACITY_PROP, DEPTH_STOPS, PACK_STOPS, NO_DEPTH, buildStyle, defaultDate, gibsTiles } from './catalog.js';
+import { GROUPS, ITEMS, GIBS, DEM_TILES, DEM_SEA, DEM_LAND, OMT_TILEJSON, OPACITY_PROP, DEPTH_SCHEMES, depthRamp, packBands, NO_DEPTH, buildStyle, defaultDate, gibsTiles } from './catalog.js';
 import { clipper } from './clip.js';
 import { colourAt, drawRamp, drawClasses, loadColormap, drawColormap } from './legend.js';
 import { Measure, MEASURE_LAYERS, summary, fmtDist } from './measure.js';
@@ -98,7 +98,7 @@ const style = buildStyle({
   seaDemUrl: 'clip-sea://{z}/{x}/{y}',
   landDemUrl: 'clip-land://{z}/{x}/{y}',
   // zoom → [minor, major] interval in metres
-  isobathUrl: seaDem.contourProtocolUrl({ ...contourOpts, thresholds: { 4: [1000, 2000], 6: [200, 1000], 8: [100, 500], 10: [20, 100] } }),
+  isobathUrl: seaDem.contourProtocolUrl({ ...contourOpts, thresholds: { 4: [1000, 2000], 6: [200, 1000], 8: [100, 500], 10: [20, 100], 11: [5, 50] } }), // 5 m generated, drawn as 10 m + the 5 m line (catalog.js)
   contourUrl: landDem.contourProtocolUrl({ ...contourOpts, thresholds: { 9: [100, 500], 11: [50, 250], 12: [20, 100] } }),
   date: state.date,
 });
@@ -141,9 +141,9 @@ function setOn(id, on) {
   }
   on ? state.on.add(id) : state.on.delete(id);
   applyItem(id);
-  if (it.group === 'base') { for (const k of baseDependent) applyItem(k); renderLegends(); }
+  if (it.group === 'base') { for (const k of baseDependent) applyItem(k); renderLegends(); labelPaint(); }
   if (id === 'graticule') { updateGraticule(); drawLatScale(); }
-  if (id === 'depth') shoreFill();
+  if (id === 'depth') { shoreFill(); labelPaint(); }
   renderMenu();
   writeHash();
 }
@@ -151,8 +151,54 @@ function setOn(id, on) {
 // fraction of a pixel short of the shore (clip.js), and that sliver must not read as white.
 function shoreFill() {
   const zmax = style.layers.find((l) => l.id === 'depth').maxzoom; // shading hides itself above this
-  map.setPaintProperty('water', 'fill-color', state.on.has('depth') ? ['step', ['zoom'], DEPTH_STOPS[0][1], zmax, '#ffffff'] : '#ffffff');
+  map.setPaintProperty('water', 'fill-color', state.on.has('depth') ? ['step', ['zoom'], depthStops()[0][1], zmax, '#ffffff'] : '#ffffff');
 }
+// the depth colour scheme (Depth shading item's variant) also colours the pack depth areas
+const depthStops = () => DEPTH_SCHEMES[state.variant.depth];
+// isobaths under the atlas scheme: navy over its pale shallow blues, pale over its dark deep
+// blues (one colour can't read on both); the nautical scheme keeps the style's own blue
+const ATLAS_SPLIT_M = 200;
+const byDepth = (shallow, deep) => ['step', ['abs', ['get', 'ele']], shallow, ATLAS_SPLIT_M, deep];
+const ISOBATH_INK = {
+  atlas: { line: byDepth('#22436a', '#e3eef8'), text: byDepth('#22436a', '#ffffff'), halo: byDepth('rgba(255,255,255,0.9)', 'rgba(20,45,80,0.85)') },
+  nautical: null,
+};
+function depthColours() {
+  map.setPaintProperty('depth', 'color-relief-color', depthRamp(depthStops()));
+  labelPaint();
+  map.setPaintProperty('pack-bands', 'fill-color', packBands(depthStops()));
+  shoreFill();
+  renderLegends();
+}
+// Over satellite, labels flip to light text on a dark halo (dark-on-white reads badly on imagery).
+const SAT_LABELS = {
+  places: '#ffffff', islands: '#ffffff', 'graticule-labels': '#ffffff',
+  'sea-names': '#cfe6ff', 'sea-names-line': '#cfe6ff', 'pack-isobath-labels': '#cfe6ff',
+  ...Object.fromEntries(style.layers.filter((l) => l.id.startsWith('isobath-labels')).map((l) => [l.id, '#cfe6ff'])),
+};
+const chartLabelPaint = {};
+for (const l of style.layers) if (SAT_LABELS[l.id]) chartLabelPaint[l.id] = { ...l.paint };
+function labelPaint() {
+  const sat = state.on.has('sat');
+  for (const [id, colour] of Object.entries(SAT_LABELS)) {
+    const p = chartLabelPaint[id];
+    map.setPaintProperty(id, 'text-color', sat ? colour : p['text-color']);
+    map.setPaintProperty(id, 'text-halo-color', sat ? 'rgba(8,16,24,0.85)' : p['text-halo-color']);
+    map.setPaintProperty(id, 'text-halo-width', sat ? 1.4 : p['text-halo-width']);
+  }
+  const ink = state.on.has('depth') && state.on.has('chart') ? ISOBATH_INK[state.variant.depth] : null;
+  for (const id of LINE_IDS) {
+    const own = id.startsWith('pack') ? null : ink; // pack isobaths carry `d`, not `ele`
+    map.setPaintProperty(id, 'line-color', sat ? '#bfe0ff' : own ? own.line : chartLineColour[id]);
+  }
+  for (const id of Object.keys(SAT_LABELS).filter((k) => /^isobath-labels/.test(k))) {
+    if (sat || !ink) continue;
+    map.setPaintProperty(id, 'text-color', ink.text);
+    map.setPaintProperty(id, 'text-halo-color', ink.halo);
+  }
+}
+const LINE_IDS = style.layers.filter((l) => /^(pack-)?isobaths(-\d+)?$/.test(l.id) && l.type === 'line').map((l) => l.id);
+const chartLineColour = Object.fromEntries(LINE_IDS.map((id) => [id, style.layers.find((l) => l.id === id).paint['line-color']]));
 function setDate(date) {
   state.date = date;
   for (const k of Object.keys(GIBS)) map.getSource(`gibs-${k}`).setTiles(gibsTiles(k, date));
@@ -178,15 +224,23 @@ function updateGraticule() {
   const s = Math.max(-85, b.getSouth()), n = Math.min(85, b.getNorth());
   const w = b.getWest(), e = b.getEast();
   const k0 = (x) => Math.round(x * 3600) / 3600;
+  // edge labels: meridians along the bottom, parallels along the right (the left edge has the
+  // latitude scale); only when north-up, where a screen edge is a parallel or a meridian
+  const W = map.getContainer().clientWidth, H = map.getContainer().clientHeight;
+  const edges = Math.abs(map.getBearing()) < 0.5;
+  const latBottom = map.unproject([W / 2, H - 42]).lat, lonRight = map.unproject([W - 8, H / 2]).lng;
+  const label = (coord, text, anchor) => f.push({ type: 'Feature', properties: { label: text, anchor }, geometry: { type: 'Point', coordinates: coord } });
   for (let lon = Math.ceil(w / step) * step; lon <= e; lon += step) {
     const L = ((k0(lon) + 540) % 360) - 180;
-    f.push({ type: 'Feature', properties: { label: fmtAngle(L, 'E', 'W', step) }, geometry: { type: 'LineString', coordinates: [[lon, s], [lon, n]] } });
+    f.push({ type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: [[lon, s], [lon, n]] } });
+    if (edges) label([lon, latBottom], fmtAngle(L, 'E', 'W', step), 'center');
   }
   for (let lat = Math.ceil(s / step) * step; lat <= n; lat += step) {
     const coords = [];
     for (let x = w; x < e; x += (e - w) / 32) coords.push([x, lat]);
     coords.push([e, lat]);
-    f.push({ type: 'Feature', properties: { label: fmtAngle(k0(lat), 'N', 'S', step) }, geometry: { type: 'LineString', coordinates: coords } });
+    f.push({ type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: coords } });
+    if (edges) label([lonRight, lat], fmtAngle(k0(lat), 'N', 'S', step), 'right');
   }
   map.getSource('graticule').setData({ type: 'FeatureCollection', features: f });
 }
@@ -233,7 +287,7 @@ function itemRow(it) {
     it.info.url ? h('p', {}, h('a', { href: it.info.url, target: '_blank', rel: 'noopener noreferrer' }, it.info.url.replace(/^https:\/\/(www\.)?/, '').replace(/\/.*$/, ''))) : null);
   // variant and date are what the item shows, so they sit in the row; opacity and provenance are one click away
   const controls = h('div', { class: 'controls' },
-    it.variants ? h('select', { 'aria-label': `${it.label} variant`, onchange: (e) => { state.variant[it.id] = e.target.value; applyItem(it.id); writeHash(); renderStatus(); renderLegends(); } },
+    it.variants ? h('select', { 'aria-label': `${it.label} variant`, onchange: (e) => { state.variant[it.id] = e.target.value; applyItem(it.id); if (it.id === 'depth') depthColours(); writeHash(); renderStatus(); renderLegends(); } },
       Object.entries(it.variants).map(([k, label]) => h('option', { value: k }, label))) : null,
     it.date ? h('input', { type: 'date', 'aria-label': 'Imagery date', max: new Date().toISOString().slice(0, 10), min: '2012-01-01',
       onchange: (e) => e.target.value && setDate(e.target.value) }) : null);
@@ -416,11 +470,11 @@ function renderLegends() {
   for (const id of want) {
     const el = legendEl(id);
     if (id === 'depth') {
-      drawRamp(el, 'Depth shading', 'm · approximate (DEM)', DEPTH_STOPS, { colour: NO_DEPTH, label: 'lakes: no depth · lagoons: shown as 0–5 m' });
-      el.setAttribute('aria-label', `Depth shading legend: ${DEPTH_STOPS.map(([d]) => d).join(', ')} metres`);
+      drawRamp(el, 'Depth shading', 'm · approximate (DEM)', depthStops(), { colour: NO_DEPTH, label: 'lakes: no depth · lagoons: shown as 0–5 m' });
+      el.setAttribute('aria-label', `Depth shading legend: ${depthStops().map(([d]) => d).join(', ')} metres`);
     } else if (id === 'pack') {
       const p = pack.doc.pack, edges = [0, ...p.levels_m];
-      drawClasses(el, 'Pack depth', `m · ${p.depth.source.split(',')[0]}`, edges, edges.map((d) => colourAt(PACK_STOPS, d)), `${Math.round(p.depth.max_m)}`,
+      drawClasses(el, 'Pack depth', `m · ${p.depth.source.split(',')[0]}`, edges, edges.map((d) => colourAt(depthStops(), d)), `${Math.round(p.depth.max_m)}`,
         { colour: NO_DEPTH, label: 'water without depth data' });
       el.setAttribute('aria-label', `Pack depth legend: classes from ${edges.join(', ')} metres`);
     } else {
@@ -638,7 +692,8 @@ map.on('load', () => {
   // (clip.js seaMask). roundZoom is a property of MapLibre's raster tile sources.
   for (const id of ['dem-sea', 'dem']) map.getSource(id).roundZoom = false;
   for (const it of ITEMS) applyItem(it.id);
-  shoreFill();
+  depthColours();
+  labelPaint();
   measure.load(measureState);
   updateGraticule();
   renderMenu();
@@ -649,6 +704,8 @@ map.on('load', () => {
   loadPackParam();
 });
 map.on('moveend', () => { updateGraticule(); writeHash(); });
+let gratRaf = 0;
+map.on('move', () => { cancelAnimationFrame(gratRaf); gratRaf = requestAnimationFrame(updateGraticule); }); // edge labels follow the frame
 map.on('zoomend', renderMenu);
 map.on('dataloading', () => document.body.classList.add('loading'));
 map.on('idle', () => document.body.classList.remove('loading'));

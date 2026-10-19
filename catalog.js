@@ -74,9 +74,10 @@ export const ITEMS = [
     info: { src: 'Esri World Imagery (default), or EOX Sentinel-2 cloudless', lic: 'EOX 2016: CC BY 4.0 · EOX 2024: CC BY-NC-SA 4.0 · Esri: Esri terms of use', res: 'Sentinel-2: 10 m · Esri: up to ~0.5 m, varies', url: 'https://s2maps.eu' } },
 
   { id: 'depth', group: 'sea', label: 'Depth shading', on: true, opacity: 1, maxzoom: 12,
+    variants: { atlas: 'Darker = deeper (atlas)', nautical: 'Darker = shallower (nautical chart)' }, // also colours pack depths
     info: { src: 'AWS Terrain Tiles (Terrarium): ETOPO1 and GEBCO-class seabed, NOAA coastal DEMs', lic: 'Open data, attribution per source', res: 'Seabed ~1–2 km in open sea, finer in US and some European waters. Cut to the OSM coastline, so land below sea level is never tinted; sea the DEM calls dry is shown as the shallowest class. Inland water is classified once per water body from the DEM at its shore: at sea level (limans, lagoons, harbour basins) it is shown flat in the shallowest class, depth unknown; lakes above it are grey, no depth data. Caspian depths are measured from its surface (−28 m), not from sea level. Off above zoom 12: the data has no more detail', url: 'https://registry.opendata.aws/terrain-tiles/' } },
-  { id: 'isobaths', group: 'sea', label: 'Isobaths', on: true, opacity: 1, minzoom: 4, maxzoom: 12,
-    info: { src: 'Contoured in your browser from the Terrarium DEM (maplibre-contour)', lic: 'As DEM', res: 'Interval by zoom: 1000/200/100/20 m. As coarse as the DEM beneath: smoothed shapes, not surveyed soundings. Traced on the DEM cut to the OSM coastline, so they never cross land. Off above zoom 12', url: 'https://github.com/onthegomap/maplibre-contour' } },
+  { id: 'isobaths', group: 'sea', label: 'Isobaths', on: true, opacity: 1, minzoom: 4,
+    info: { src: 'Contoured in your browser from the Terrarium DEM (maplibre-contour)', lic: 'As DEM', res: 'Spacing widens with depth and tightens with zoom: 5 m, every 10 m to 50 m, 50 m to 200 m, then 500/200/100 m to 3000 m and 1000/500 m below ( indicative only, the seabed data is ~1–2 km in open sea). As coarse as the DEM beneath: smoothed shapes, not surveyed soundings. Traced on the DEM cut to the OSM coastline, so they never cross land. Above zoom 12 the same lines are shown magnified, with no added detail', url: 'https://github.com/onthegomap/maplibre-contour' } },
   { id: 'seamarks', group: 'sea', label: 'Seamarks', minzoom: 9, opacity: 1,
     info: { src: 'OpenSeaMap seamark overlay', lic: 'CC BY-SA 2.0 · OpenSeaMap contributors', res: 'Crowd-sourced; completeness varies. Not an official chart', url: 'https://openseamap.org' } },
 
@@ -104,7 +105,7 @@ export const ITEMS = [
   { id: 'legend', group: 'labels', label: 'Legends', on: true,
     info: { src: 'Drawn from the same colour stops as the map; SST from NASA GIBS’s published colour map', lic: '—', res: 'Depth shading: approximate DEM classes · pack: one class per contour · SST: 0.15 °C classes', url: 'https://nasa-gibs.github.io/gibs-api-docs/' } },
   { id: 'graticule', group: 'labels', label: 'Graticule', on: true,
-    info: { src: 'Computed in your browser (WGS 84)', lic: '—', res: 'Spacing adapts to zoom, down to 1′. With the map north-up, a latitude scale runs down the left edge: 1′ of latitude = 1 NM anywhere on the chart, unlike the scale bar, which is exact only at the centre', url: '' } },
+    info: { src: 'Computed in your browser (WGS 84)', lic: '—', res: 'Spacing adapts to zoom, down to 1′. Longitudes are labelled along the bottom edge, latitudes along the right. With the map north-up, a latitude scale runs down the left edge: 1′ of latitude = 1 NM anywhere on the chart, unlike the scale bar, which is exact only at the centre', url: '' } },
 ];
 
 // ---- sources ----------------------------------------------------------------
@@ -140,20 +141,37 @@ function sources({ seaDemUrl, landDemUrl, isobathUrl, contourUrl, date }) {
 const m = (item, variant) => ({ metadata: variant ? { item, variant } : { item } });
 const raster = (id, item, variant) => ({ id, type: 'raster', source: id, ...m(item, variant), paint: { 'raster-fade-duration': 150 } });
 
-// Terrarium depth bands: chart convention, shallow water darkest blue, deep water white.
-// Positive elevations stay transparent so land is never tinted from the DEM.
-// [depth m, colour] stops shared by the map and its legend.
-export const DEPTH_STOPS = [[0, '#97c1e2'], [5, '#a3c9e6'], [20, '#b6d5ec'], [50, '#c9e0f1'], [200, '#dbeaf5'], [2000, '#ecf4fa']];
-// clip.js sends land as +1 m (transparent) and water without a depth source (lakes above
-// sea level) as NO_DEPTH_M, painted in the no-depth grey
-const DEPTH_RAMP = ['interpolate', ['linear'], ['elevation'], -11000, '#ffffff',
-  ...[...DEPTH_STOPS].reverse().flatMap(([d, c]) => [-Math.max(d, 0.1), c]), 0, 'rgba(151,193,226,0)',
-  NO_DEPTH_M - 1, 'rgba(221,227,231,0)', NO_DEPTH_M, C.noDepth];
+// Depth colour schemes ([depth m, colour] stops, shared by the depth shading, the pack depth
+// areas and their legends). atlas: darker = deeper, as on atlases and ocean maps (default);
+// nautical: darker = shallower, as on nautical charts (IHO S-52), where shallow water is the hazard.
+export const DEPTH_SCHEMES = {
+  atlas: [[0, '#dceefa'], [5, '#cfe6f7'], [20, '#bcdbf2'], [50, '#a5cdec'], [200, '#86b9e2'], [2000, '#5189c4'], [6000, '#335f97']],
+  nautical: [[0, '#97c1e2'], [5, '#a3c9e6'], [20, '#b6d5ec'], [50, '#c9e0f1'], [200, '#dbeaf5'], [2000, '#ecf4fa']],
+};
+// Positive elevations stay transparent so land is never tinted from the DEM: clip.js sends land
+// as +1 m and water without a depth source (lakes above sea level) as NO_DEPTH_M (grey).
+export function depthRamp(stops) {
+  return ['interpolate', ['linear'], ['elevation'], -11000, stops[stops.length - 1][1],
+    ...[...stops].reverse().flatMap(([d, c]) => [-Math.max(d, 0.1), c]), 0, 'rgba(255,255,255,0)',
+    NO_DEPTH_M - 1, 'rgba(221,227,231,0)', NO_DEPTH_M, C.noDepth];
+}
+// Pack depth areas: band d covers water deeper than d m, coloured from the same stops.
+export const packBands = (stops) => ['interpolate', ['linear'], ['get', 'd'], ...stops.flat()];
 
-// Pack depth areas: band d covers water deeper than d m, each one step lighter; band 0 = any depth.
+// Isobaths are generated at a regular interval per zoom (app.js); drawn with nautical spacing
+// that widens with depth and tightens with zoom, so steep deep slopes don't fill with lines and
+// zoomed-in slopes aren't empty: 5 m, every 10 m to 50 m, every 50 m to 200 m, then per zoom
+// range (filters can't use zoom, so one layer per range): [minzoom, maxzoom, step to 3000 m, step below].
+const DEPTH = ['abs', ['get', 'ele']];
+const ISOBATH_RANGES = [[4, 10, 500, 1000], [10, 12, 200, 500], [12, 24, 100, 500]];
+const isobathFilter = (mid, deep) => ['all', ['<', ['get', 'ele'], 0], ['any',
+  ['==', DEPTH, 5],
+  ['all', ['<=', DEPTH, 50], ['==', ['%', DEPTH, 10], 0]],
+  ['all', ['<=', DEPTH, 200], ['==', ['%', DEPTH, 50], 0]],
+  ['all', ['<=', DEPTH, 3000], ['==', ['%', DEPTH, mid], 0]],
+  ['==', ['%', DEPTH, deep], 0]]];
+
 export const NO_DEPTH = C.noDepth;
-export const PACK_STOPS = [[0, '#97c1e2'], [2, '#a3c9e6'], [5, '#b0d1ea'], [10, '#bfdaef'], [20, '#cfe3f3'], [30, '#dbeaf5'], [50, '#e6f0f8'], [100, '#eef5fa'], [200, '#f6fafd'], [500, '#ffffff']];
-const PACK_BANDS = ['interpolate', ['linear'], ['get', 'd'], ...PACK_STOPS.flat()];
 
 function layers() {
   const L = [
@@ -187,18 +205,19 @@ function layers() {
       paint: { 'line-color': C.water, 'line-width': ['interpolate', ['linear'], ['zoom'], 8, 0.5, 14, 2] } },
 
     // colour fills are chart-only: over satellite the image shows the water; isobaths still draw
-    { id: 'depth', type: 'color-relief', source: 'dem-sea', maxzoom: 13, metadata: { item: 'depth', base: 'chart' }, paint: { 'color-relief-color': DEPTH_RAMP } },
+    { id: 'depth', type: 'color-relief', source: 'dem-sea', maxzoom: 13, metadata: { item: 'depth', base: 'chart' }, paint: { 'color-relief-color': depthRamp(DEPTH_SCHEMES.atlas) } },
     ...Object.keys(GIBS).map((k) => ({ ...raster(`gibs-${k}`, 'gibs', k), source: `gibs-${k}` })),
 
-    { id: 'isobaths', type: 'line', source: 'isobaths', 'source-layer': 'contours', minzoom: 4, maxzoom: 13, ...m('isobaths'),
-      filter: ['<', ['get', 'ele'], 0],
-      paint: { 'line-color': C.isobath, 'line-width': ['match', ['get', 'level'], 1, 0.9, 0.45] } },
+    // drawn at every zoom: above the DEM's zoom 12 the lines are magnified, not refined
+    ...ISOBATH_RANGES.map(([z0, z1, mid, deep], k) => ({ id: k ? `isobaths-${k}` : 'isobaths', type: 'line', source: 'isobaths', 'source-layer': 'contours',
+      minzoom: z0, maxzoom: z1, ...m('isobaths'), filter: isobathFilter(mid, deep),
+      paint: { 'line-color': C.isobath, 'line-width': ['match', ['get', 'level'], 1, 0.9, 0.45] } })),
 
     // area pack: above every global sea layer, below roads, buildings and labels
     { id: 'pack-sea', type: 'fill', source: 'pack', metadata: { item: 'pack-depth', base: 'chart' },
       filter: ['==', ['get', 'kind'], 'sea'], paint: { 'fill-color': C.noDepth } }, // water the grid has no depth for
     { id: 'pack-bands', type: 'fill', source: 'pack', metadata: { item: 'pack-depth', base: 'chart' },
-      filter: ['==', ['get', 'kind'], 'band'], paint: { 'fill-color': PACK_BANDS } },
+      filter: ['==', ['get', 'kind'], 'band'], paint: { 'fill-color': packBands(DEPTH_SCHEMES.atlas) } },
     { id: 'pack-land', type: 'fill', source: 'pack', metadata: { item: 'pack-land', base: 'chart' },
       filter: ['==', ['get', 'kind'], 'land'], paint: { 'fill-color': C.land } },
     { id: 'pack-isobaths', type: 'line', source: 'pack', ...m('pack-isobaths'),
@@ -243,14 +262,15 @@ function layers() {
 
     { ...raster('seamarks', 'seamarks'), minzoom: 9 },
 
-    { id: 'graticule', type: 'line', source: 'graticule', ...m('graticule'),
+    { id: 'graticule', type: 'line', source: 'graticule', ...m('graticule'), filter: ['==', ['geometry-type'], 'LineString'],
       paint: { 'line-color': C.grid, 'line-width': 0.5, 'line-opacity': 0.55 } },
 
-    { id: 'isobath-labels', type: 'symbol', source: 'isobaths', 'source-layer': 'contours', minzoom: 6, maxzoom: 13, ...m('isobaths'),
-      filter: ['all', ['<', ['get', 'ele'], 0], ['==', ['get', 'level'], 1]],
-      layout: { 'symbol-placement': 'line', 'text-field': ['concat', ['to-string', ['abs', ['get', 'ele']]], ' m'],
-        'text-font': FONT, 'text-size': 10, 'symbol-spacing': 320, 'text-max-angle': 30 },
-      paint: { 'text-color': C.isobath, ...HALO } },
+    ...ISOBATH_RANGES.map(([z0, z1, mid, deep], k) => ({ id: k ? `isobath-labels-${k}` : 'isobath-labels', type: 'symbol', source: 'isobaths', 'source-layer': 'contours',
+      minzoom: Math.max(6, z0), maxzoom: z1, ...m('isobaths'), filter: isobathFilter(mid, deep),
+      layout: { 'symbol-placement': 'line', 'text-field': ['concat', ['to-string', DEPTH], ' m'],
+        // coarse contours wiggle: allow more bend and place often, or long stretches go unlabelled
+        'text-font': FONT, 'text-size': 10, 'symbol-spacing': 220, 'text-max-angle': 55 },
+      paint: { 'text-color': C.isobath, ...HALO } })),
     { id: 'pack-isobath-labels', type: 'symbol', source: 'pack', ...m('pack-isobaths'),
       filter: ['all', ['==', ['get', 'kind'], 'isobath'], ['==', ['get', 'label'], 1]],
       layout: { 'symbol-placement': 'line', 'text-field': ['concat', ['to-string', ['get', 'd']], ' m'],
@@ -262,9 +282,12 @@ function layers() {
         'text-font': FONT, 'text-size': 10, 'symbol-spacing': 320 },
       paint: { 'text-color': C.contour, ...HALO } },
 
-    { id: 'sea-names-line', type: 'symbol', source: 'omt', 'source-layer': 'water_name', ...m('seanames'),
+    // a sea's name runs along a line across it: repeat it rarely, and not at harbour zooms,
+    // where the line spans many screens and the name would appear every few hundred pixels
+    { id: 'sea-names-line', type: 'symbol', source: 'omt', 'source-layer': 'water_name', maxzoom: 12, ...m('seanames'),
       filter: ['==', ['geometry-type'], 'LineString'],
-      layout: { 'symbol-placement': 'line', 'text-field': NAME, 'text-font': FONT_I, 'text-size': 13, 'text-letter-spacing': 0.15 },
+      layout: { 'symbol-placement': 'line', 'text-field': NAME, 'text-font': FONT_I, 'text-size': 13, 'text-letter-spacing': 0.15,
+        'symbol-spacing': 1200 },
       paint: { 'text-color': C.waterText, ...HALO } },
     { id: 'sea-names', type: 'symbol', source: 'omt', 'source-layer': 'water_name', ...m('seanames'),
       filter: ['==', ['geometry-type'], 'Point'],
@@ -285,9 +308,11 @@ function layers() {
         'text-letter-spacing': ['match', ['get', 'class'], ['country', 'state'], 0.12, 0] },
       paint: { 'text-color': ['match', ['get', 'class'], ['country', 'state'], C.inkSoft, C.ink], ...HALO } },
 
+    // one label per line, at the frame edge (points placed by app.js updateGraticule)
     { id: 'graticule-labels', type: 'symbol', source: 'graticule', ...m('graticule'),
-      layout: { 'symbol-placement': 'line', 'text-field': ['get', 'label'], 'text-font': FONT,
-        'text-size': 10, 'symbol-spacing': 420 },
+      filter: ['==', ['geometry-type'], 'Point'],
+      layout: { 'text-field': ['get', 'label'], 'text-font': FONT, 'text-size': 10,
+        'text-anchor': ['get', 'anchor'], 'text-allow-overlap': true, 'text-ignore-placement': true },
       paint: { 'text-color': C.grid, ...HALO } },
   ];
   // Every layer starts hidden; the app shows what the URL / defaults ask for.

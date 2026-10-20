@@ -1,248 +1,154 @@
 # Charts
 
-A lean world chart in one static page: coastline, buildings, satellite,
-depth shading, isobaths, seamarks and NASA daily ocean imagery, all from open
-sources that need no key. Geodesic ruler, area and range-ring tools.
-The link reproduces the exact view. PNG export.
+A world chart in a single static web page. It combines an OpenStreetMap base
+map with satellite imagery, depth shading and isobaths, seamarks, shipping
+density and NASA daily imagery, and adds geodesic measuring tools. Every source
+is public and needs no API key. There is no build step and no backend.
 
-No build step, no backend, no API keys. Serve the folder from anywhere static;
-on GitHub, CI publishes it to Pages (see *Development*).
+**Not for navigation.** Positions, coastlines and depths come from open
+datasets of varying accuracy. Depths come from a coarse elevation model, not
+from soundings.
 
-```
-index.html   page shell; the CDN block is generated (see Dependencies)
-style.css    all styling
-catalog.js   sources, style layers in draw order, menu items, provenance
-app.js       map, menu, URL state, graticule, source health, PNG export
-clip.js      elevation tiles cut to the OSM coastline (runs in clip-worker.js)
-legend.js    colour legends
-measure.js   geodesic measurements (GeographicLib, WGS 84)
-format.js    pure formatting helpers (angles, scale, wrap)
-tools/deps.mjs  pin / hash / check / upgrade the CDN libraries
-test/        unit tests (node --test) and a headless-Chrome smoke test
-```
+## Features
 
-Run locally: `python3 -m http.server` in this folder, open http://localhost:8000.
+Layers are grouped by task, each with an ⓘ for its source, licence and
+resolution. Depth shading and isobaths end at the OpenStreetMap coastline.
+Ruler, area and range ring are geodesic on WGS 84, in kilometres or nautical
+miles. Search takes place names or coordinates. The link reopens the exact
+view, and the PNG export carries the scale, legends and credits.
 
-## Layers
+## Data sources
 
-| Item | Source | Licence | Real resolution |
-|---|---|---|---|
-| Chart, coastline, roads, buildings, names, boundaries | OpenFreeMap (OpenStreetMap, OpenMapTiles schema) | ODbL | OSM; coastline generalised below zoom 7 |
-| Satellite | Esri World Imagery (default) / EOX Sentinel-2 cloudless 2016 / 2024 | Esri terms / CC BY 4.0 / **CC BY-NC-SA 4.0** | ≤ 0.5 m / 10 m / 10 m |
-| Depth shading, isobaths | AWS Terrain Tiles (Terrarium), cut to the OSM coastline, contoured in the browser | open data | seabed ~1–2 km in open sea; shading hidden above zoom 12, isobaths magnified |
-| Relief shading, land contours | same DEM, land part, under the sea fill | open data | SRTM 30 m |
-| Seamarks | OpenSeaMap | CC BY-SA 2.0 | crowd-sourced |
-| Vessel density (off by default) | EMODnet Human Activities (Cogea; AIS from CLS, ORBCOMM, vesseltracker.com), WMS | EMODnet open data, attribution | 1 km, annual averages 2017–2024 by ship type; EU and neighbouring seas; 2024 incomplete, so 2023 is the default |
-| Route density (off by default) | EMSA route density via EMODnet Human Activities, WMS | CC BY 4.0 | 1 km, monthly from Jan 2019, about 3 months behind; counts routes crossing each cell; EU and neighbouring seas |
-| NASA daily | GIBS: MODIS / VIIRS true colour, MUR SST, chlorophyll-a | NASA open data | 250 m / 1 km; date picker; default yesterday (UTC), or the newest day NASA has published for the layer (MUR SST runs about two days behind) |
+The map data and imagery are not part of this repository. The browser fetches
+them from each provider, and each layer stays under its provider's licence.
 
-Every row in the Layers panel has an ⓘ with the same provenance, and the
-credits list only the sources currently drawn.
+| Layer | Provider | Licence |
+|---|---|---|
+| Chart base, coastline, roads, buildings, names, boundaries | OpenStreetMap via OpenFreeMap (OpenMapTiles schema) | ODbL |
+| Satellite | Esri World Imagery, or EOX Sentinel-2 cloudless | Esri terms of use; EOX: CC BY 4.0 (2016) or CC BY-NC-SA 4.0 (2024, non-commercial) |
+| Depth shading, isobaths, relief shading, land contours | AWS Terrain Tiles (Terrarium) | Open data, with attribution per source |
+| Seamarks | OpenSeaMap | CC BY-SA 2.0 |
+| Vessel density | EMODnet Human Activities | EMODnet open data, attribution requested |
+| Route density | EMSA, via EMODnet Human Activities | CC BY 4.0 |
+| Daily imagery | NASA EOSDIS GIBS | NASA open data |
+| Place search | Photon (komoot), OpenStreetMap data | ODbL |
 
-Layout, by task. Top left, a search box: a place name (via Photon, see
-*Privacy*) or coordinates in any common form (`44.085, 9.85`, `44 05.1N 9 51E`,
-`44°05'06"N 009°51'E`). The right edge holds what you use: *Layers*, *Measure*,
-*Link* and *PNG* at the top, zoom lower down, and a compass only when the map is
-rotated. *Layers* and *Measure* switch one side panel, as tall as its
-content, that opens to the left of that column (open on Layers by default on
-screens 1200 px and wider; the button of the view shown closes it). *Link*
-copies a link to the view and *PNG* exports it, at once. The column never
-moves. On phones the panel is a sheet from the bottom, as tall as its content;
-drag its handle down to close it. The map's edges hold what you read: legends stacked bottom left, and a
-bottom row with the credits on the left and the cursor position and scale bar on the right (no bar: each item has its own light backing). The scale
-bar is double, as on OpenSeaMap: km above the line, nautical miles below (also
-in the PNG). While a measurement is drawn, a bar at the top shows its live
-value with Undo, Done and Cancel (under the search box). Keys: <kbd>/</kbd> search, <kbd>L</kbd> layers, <kbd>R</kbd>
-ruler, <kbd>A</kbd> area, <kbd>C</kbd> range ring, <kbd>Esc</kbd> closes or
-cancels. *About* (foot of the Layers panel) carries the not-for-navigation notice.
+Esri imagery is not open data: it is used under Esri's terms of use. The EOX
+2024 mosaic does not allow commercial use. Vessel and route density cover European and neighbouring
+seas only.
 
-Colour layers get a legend, stacked bottom left (the *Legends* switch in
-*Labels & grid* hides them; the PNG always includes them). Depth shading uses the same colour stops as the map, and sea surface temperature uses the colour map NASA GIBS publishes for
-the layer (0.15 °C classes), fetched once when first shown. Vessel and route density use
-the colour stops their WMS publishes. `npm run deps` (weekly in CI) reports when
-the WMS offers newer periods than `catalog.js` lists.
-
-## How loading works
-
-- Each menu item maps to style layers (`metadata.item` in `catalog.js`). A hidden
-  item's layers are `visibility: none`, and MapLibre requests no tiles for a
-  source with no visible layer. Hiding something stops its traffic and keeps
-  its settings.
-- Items have zoom limits. Outside them the row greys out and says why
-  ("zoom 13+", "zoom ≤ 12").
-- Tiles come through the normal browser HTTP cache. Nothing is prefetched or
-  bulk-downloaded (OSM and the other providers forbid that).
-- A failing source marks its row (⚠, with the error in the tooltip) instead of
-  leaving blank tiles that look like data.
-- Terrarium has bathymetry only up to zoom 10 (above that most seas read 0 m),
-  so the sea layers read zoom ≤ 10 tiles while land layers use zoom 12.
-
-## One coastline
-
-Every layer that comes from elevation data is made to agree with the OSM
-coastline the basemap draws:
-
-- `clip.js` masks each elevation tile with the OSM sea polygons from the same
-  OpenFreeMap tiles (already in the browser cache), before MapLibre or
-  maplibre-contour see it. For the sea layers, land becomes +1 m (no tint, no
-  isobath), and sea that the DEM calls dry becomes −1 m, the shallowest class.
-  For the land layers, sea becomes 0 m. Depth tiles are upsampled from zoom 10
-  to 12 and masked at 12, so the shore stays sharp.
-  Every tile is cut, at every zoom: each shortcut tried (deep ocean, low zooms)
-  left a hole somewhere, such as islands under the tint, an isobath through the
-  Jordan valley, or seabed relief over satellite imagery. Land below sea level
-  (the Caspian Depression, polders) is never tinted. The cut tiles go to MapLibre as
-  bitmaps and to maplibre-contour as numbers, with no PNG round trip.
-- Water bodies that OSM maps with a coastline but whose surface is not at sea
-  level are listed in `DATUMS` (clip.js). Today that's the
-  Caspian Sea, at about −28 m: its depths are measured from its surface, not
-  from sea level, or the shallow northern Caspian (~5 m) would show as 30 m.
-  Terrarium holds only the flat lake surface there in large blocks at zooms 3–4
-  and 7+, so Caspian depths are always read from zoom 5–6 tiles.
-- The shaded sea tiles mark land with a high value, so the GPU-interpolated tint
-  edge never covers the shore line. The thin gap it leaves shows the water
-  fill, which takes the shallowest band's colour while depth shading is drawn.
-- Elevation tiles are picked with floored zoom (like the vector basemap), and
-  each one is cut with the OpenMapTiles tile the basemap shows at that zoom. With
-  the default rounding they were cut with a more detailed coastline than the one
-  on screen.
-- Water is one surface: OSM splits it into polygons (the sea,
-  a harbour basin closed off by a straight line between pier heads, a lagoon
-  and its canals), but all of it is filled the same. The shore line is drawn
-  *under* that fill at twice its width: where two water polygons meet, both
-  fills cover it; where water meets land, the land-side half remains. Piers
-  are drawn on top as land at about their real width. Ponds (irrigation tanks,
-  cisterns) get no shore line, only the water fill: ringed, a 20 m pond read as a
-  dark dot on land.
-- Inland water is classified once per water body, from the DEM along its
-  shore (its polygon's vertices, relative to any `DATUMS` surface there), and
-  remembered by OSM id so all tiles agree. It is at sea level when the shore
-  both dips to within 8 m of sea level (lower quartile) and rises to within
-  8 m of it (upper quartile): raised lakes fail the first, the Dead Sea,
-  Galilee and the Salton Sea the second. At sea level (limans, lagoons, harbour
-  basins) it is shown flat in the shallowest class with no isobaths, because the
-  DEM inside it is not a depth; other lakes are grey (no depth data). A tile
-  that shows only the inside of a water body classifies it from the same water
-  body in a lower-zoom OpenMapTiles tile, where its shore is (ids are stable
-  across zooms); if even that fails, it is drawn as a lake and redrawn once
-  another tile has classified it. Over satellite no water colour is drawn at
-  all: the image shows the water, with isobaths on top.
-- The cutting runs in a Web Worker (`clip-worker.js`): on the main thread it
-  blocked the page for seconds while panning. A worker loaded from its own file
-  does not inherit the page's `<meta>` security policy (only HTTP headers would
-  apply, and GitHub Pages sets none); its requests are fixed in code, to the
-  elevation tiles and OpenFreeMap. It does not inherit the page's `no-referrer`
-  either, so each of its requests sets `referrerPolicy: 'no-referrer'` itself.
-- Relief shading and land contours are drawn under the vector sea fill, so the
-  fill cuts them exactly at the shore. The land DEM is not upsampled, because
-  the slopes of an upsampled surface shade in visible facets.
-- There are no EMODnet or GEBCO picture layers: their own land is baked into
-  the image and cannot be cut away (see *Parked* for using their values).
-
-## Rigour and limits
-
-- Distances, bearings (true), areas and rings are geodesic on WGS 84
-  (GeographicLib), and lines are drawn as densified geodesics.
-- The map is Web Mercator, so the scale bar is exact only at the centre
-  latitude. When the scale varies by more than 3% across the view (from the
-  lowest to the highest latitude in it), a note beside the scale bar says so, on
-  screen and in the PNG; below that the bar reads as exact. For exact distances use the ruler, which is geodesic.
-- Depth colours have two schemes (the Depth shading item's menu, also used by the
-  legend): *darker = deeper* (atlas and ocean maps, the default) and
-  *darker = shallower* (nautical charts, IHO S-52, where shallow water is the hazard).
-- Depth shading and isobaths come from a coarse DEM, not soundings. They end at
-  the OSM coastline, but their shapes near the shore are only as good as the
-  1–2 km data, and sea the DEM calls dry is shown as the shallowest class.
-  Lakes above sea level are grey: no depth source.
-- Two defects of the elevation tiles are corrected before the sea is shaded and
-  contoured (`seaDem` in clip.js), each tile with a 32-pixel margin from its
-  neighbours so tiles agree:
-  - *Closed isobaths smaller than the data.* False pits at the coast
-    (Marciana Marina, Elba: −485 m inside the harbour) and pockets in coves the
-    grid only half has drew stacks of tiny rings. As in contour generalisation,
-    for each drawn depth an enclosed patch deeper than it and smaller than 64
-    pixels (~0.8 km² at zoom 10) is raised just above it. Only depressions
-    change, so water only ever gets shallower; shoals and banks stay.
-  - *Bends at tile edges.* Terrarium resampled each tile on its own, so the
-    depth gradient jumps at tile edges, and magnified isobaths bent there. Sea
-    depths get a light blur (two 3 × 3 passes over ~110 m pixels; the seabed
-    data is ~1 km), using sea neighbours only, so land never lifts the coast.
-- **Not for navigation.**
+The app is the reference for coverage, resolution and available periods. It
+shows them behind each layer's ⓘ, and they are defined in `catalog.js`. The
+on-screen credits and the PNG list only the sources that are drawn.
 
 ## Privacy
 
-`no-referrer`, and a Content-Security-Policy that allows only the CDN and the
-tile hosts listed in `tools/deps.mjs`. Global tile requests still tell each
-provider which area you are viewing; a hidden layer makes no requests.
+- No request sends a `Referer` header, including requests from MapLibre's and
+  the clipping worker's threads.
+- A Content-Security-Policy limits the page to the pinned CDN packages and the
+  provider hosts listed in `tools/deps.mjs`.
+- Tile requests necessarily tell each provider which area is being viewed. A
+  hidden layer makes no requests.
+- Coordinates typed into the search box are parsed in the page and never sent.
+  Place names are sent to Photon as you type, along with the map centre rounded
+  to 0.1°. The results list says so.
 
-Search: coordinates typed into the box are read on the page and never sent.
-A place name goes to [Photon](https://photon.komoot.io) (komoot, OpenStreetMap
-data) as you type (after 3 characters, 300 ms pause), with the map's centre
-rounded to 0.1° so nearby results come first; the results list says so.
+## How it works
 
-## Dependencies
+- **One coastline.** Elevation tiles are masked with the OpenStreetMap water
+  polygons before the map sees them. This happens in a Web Worker
+  (`clip.js`). As a result, depth shading and isobaths end at the drawn shore,
+  and relief shading never spills into the sea. Inland water is classified once
+  per water body: water at sea level (lagoons, harbour basins), lakes without
+  depth data, or seas with their own surface level, such as the Caspian.
+- **Honest depths.** The elevation model is coarse offshore and has defects
+  where its land and sea sources meet: false pits at the coast (and false
+  peaks on the land side), and bends at tile edges. Before contouring, small
+  enclosed pits are raised, which only ever makes water shallower; the seam
+  blur touches only a few pixels along tile edges; coastal land spikes are
+  clamped. Everywhere else the data is drawn as it is. Isobath spacing widens with depth and tightens with zoom. EMODnet and GEBCO
+  image layers are not used: their own land is baked into the picture and
+  cannot be cut away.
+- **Geodesic measurement.** Distances, bearings, areas and rings use
+  GeographicLib on WGS 84. Lines are drawn as densified geodesics, so the line
+  on screen is the path the numbers describe. The map itself is Web Mercator,
+  so the scale bar is exact only at the centre latitude. A note appears when
+  the scale varies noticeably across the view.
+- **Visible failures.** A source that fails is marked in the Layers panel
+  instead of leaving blank tiles that could be read as data.
 
-Loaded from jsDelivr at **pinned** versions with Subresource Integrity, via an
-import map: MapLibre GL JS, maplibre-contour, geographiclib-geodesic.
+The reasons behind each rule are documented next to the code that applies it.
 
-```
-node tools/deps.mjs           # pinned vs latest on npm
-node tools/deps.mjs --write   # after changing a version in PINS: refetch, rehash, rewrite index.html
-```
+## Code layout
 
-The import map's own hash goes into the CSP, so edit that block only through
-the script.
+| Path | Responsibility |
+|---|---|
+| `index.html` | Page shell. The CDN block is generated; see *Dependencies*. |
+| `style.css` | All styling. |
+| `catalog.js` | Sources, style layers in draw order, menu items and their provenance. |
+| `app.js` | Map setup, panels, URL state, search, legends, graticule, PNG export. |
+| `clip.js`, `clip-worker.js` | Elevation tiles cut to the OSM coastline, in a Web Worker. |
+| `measure.js` | Geodesic ruler, area and range ring. |
+| `legend.js` | Legend drawing. |
+| `format.js` | Pure formatting and parsing helpers. |
+| `tools/deps.mjs` | Pins, hashes and checks the CDN dependencies. |
+| `test/` | Unit tests, browser tests, and the development server. |
 
 ## Development
 
-The site needs nothing; `package.json` exists for the checks only (Node ≥ 22).
+Requirements: the Node.js version in `.nvmrc`. The browser tests also need a
+local Chrome or Chromium.
 
+```sh
+npm ci              # development dependencies (test tooling only)
+npm run serve       # http://localhost:8000, browser caching off (--port, --host)
+npm test            # unit tests, offline
+npm run check       # index.html CDN block matches the pins, SRI hashes and CSP
+npm run smoke       # end-to-end in headless Chrome, against the live providers
+npm run ui          # layout at phone, tablet and desktop widths
+npm run deps        # newer library versions and newer density data periods
 ```
-npm ci
-npm test            # unit tests, offline: formatting, geodesics, URL round trip, catalog consistency
-npm run check       # index.html CDN block = pins + SRI hashes + CSP hash (fetches the CDN files)
-npm run smoke       # headless Chrome on the live providers; CHROME=/path/to/chrome if not /usr/bin/google-chrome
-npm run ui          # layout at 390 / 820 / 1280 px, panel open and closed: no overlapping overlays,
-                    # nothing off screen, every control ≥ 44 px (UI_SHOTS=dir saves screenshots)
-npm run deps        # newer versions of the pinned libraries
-```
 
-The catalog test also guards the CSP: a new source on a host missing from
-`TILE_HOSTS` fails it.
+The page itself needs no installation. Any static web server can host the
+repository root. The browser tests use `/usr/bin/google-chrome` by default; set
+`CHROME=/path/to/chrome` to use another binary.
 
-CI (`.github/workflows/ci.yml`) runs `test`, `check`, `smoke` and `ui` on every push
-and pull request, and deploys `main` to GitHub Pages when they pass. Only the
-site files are published: `index.html`, `*.js`, `*.css`. It also runs every
-Monday, so a tile provider that changes or goes down fails a run, and newer
-library versions appear as notices; updating stays a deliberate `--write`.
-One-time repository setting: *Settings → Pages → Source: GitHub Actions*.
+The smoke test depends on the network by design, because the page depends on
+the providers. A failure can therefore mean that a provider changed or went
+down, not only that the code broke.
 
-## Parked: more detail for a specific view
+### Continuous integration
 
-Global depths are ~1–2 km. Better depths for one area were built and then
-parked (2026-10-20) because a regular user could not obtain them. The last
-working version is the git tag **`parked/area-packs`**: `tools/build_pack.py`
-(Python) wrote an "area pack" GeoJSON that the page opened from a file, by
-drag and drop or as a `#pack=` link.
+`.github/workflows/ci.yml` runs the unit, check, smoke and layout tests on
+pushes to `main` and on pull requests. When they pass, it deploys `main` to
+GitHub Pages; only the site files are published. A scheduled run repeats the
+tests against the live providers and reports dependency and data updates as
+notices. Pages must be enabled once in the repository settings, with
+*Source: GitHub Actions*.
 
-Options when this comes back:
+## Dependencies
 
-1. In-page help, with packs prepared by someone running the tool.
-2. Curated packs published next to the page and linked (public repo = public areas).
-3. A "detailed depths for this view" button built in the browser: EMODnet's
-   ERDDAP allows browser requests (Europe and nearby seas); NOAA's GEBCO ERDDAP
-   does not, so elsewhere it would say "not available here". It can reuse
-   `clip.js` (coastline mask, inland water, DATUMS).
+MapLibre GL JS, maplibre-contour and GeographicLib load from jsDelivr at pinned
+versions with Subresource Integrity. MapLibre's worker script is pinned and
+verified too: the page checks its hash and gives MapLibre the verified copy. The pins are listed in `PINS` in `tools/deps.mjs`.
 
-Lessons from the pack tool, worth keeping:
+To upgrade, change a version in `PINS`, run `node tools/deps.mjs --write`, and
+test. The script refetches the files and rewrites the generated block in
+`index.html`, including the import map's hash in the CSP. Do not edit that
+block by hand: `npm run check` fails if it differs from what the script would
+produce.
 
-- Measure EMODnet coverage on the OSM open sea, not on GEBCO's coastline;
-  fill only open-sea gaps from GEBCO.
-- Never use GEBCO in lagoons or lakes: Venice Lagoon reads 10 m in GEBCO, ~1 m in EMODnet.
-- The OSMData land polygons put lagoons behind barrier islands on land: cut
-  OSM inland water out of the land.
-- Fill empty grid cells from neighbours before contouring and trace the
-  no-data area with marching squares, or edges come out cell-stepped.
-- Caspian depths are measured from its −28 m surface.
-- OpenFreeMap rejects Python's default User-Agent: send one.
+The density periods offered in the menu are listed in `catalog.js`. When
+`npm run deps` reports newer data, extend the list there.
 
+## Archived work
+
+Support for survey-grade depths in selected areas ("area packs") was built and
+then set aside, because regular users could not obtain the source data. The
+last working version, with notes on reviving it, is the tag
+`parked/area-packs`.
+
+## Licence
+
+The code is licensed under GPL-3.0-or-later; see `LICENSE`. Map data and
+imagery are under their providers' licences, listed in *Data sources*.

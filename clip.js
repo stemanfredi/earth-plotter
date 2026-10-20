@@ -13,6 +13,8 @@
 // Above the DEM's native zoom, tiles are upsampled bilinearly (in metres, not in
 // the encoded bytes) and masked at the higher zoom, so the coast stays sharp.
 
+import { NO_DEPTH_M, DEPTH_LEVELS, levelsFor } from './catalog.js';
+
 const OMT_MAXZOOM = 14;
 // Every tile is cut, at every zoom: each shortcut tried (deep ocean, low zooms) left a hole
 // somewhere (islands under the tint, isobaths across the Jordan valley, seabed relief over
@@ -28,9 +30,11 @@ export const DATUMS = [
   ['Caspian Sea', [46.5, 36.5, 55.2, 47.4], -28, [5, 6]],
 ];
 const DATUM_DOWNSAMPLE_MINZOOM = 3;
+// Web Mercator y (0 at the top of the world, 1 at the bottom) → latitude
+const latOf = (t) => (Math.atan(Math.sinh(Math.PI * (1 - 2 * t))) * 180) / Math.PI;
 const tileBounds = (z, x, y) => {
-  const n = 2 ** z, lat = (t) => (Math.atan(Math.sinh(Math.PI * (1 - (2 * t) / n))) * 180) / Math.PI;
-  return [(x / n) * 360 - 180, lat(y + 1), ((x + 1) / n) * 360 - 180, lat(y)];
+  const n = 2 ** z;
+  return [(x / n) * 360 - 180, latOf((y + 1) / n), ((x + 1) / n) * 360 - 180, latOf(y / n)];
 };
 const SEA_CLASSES = new Set(['ocean', 'dock']);
 // Inland water (OSM lagoons, limans, harbour basins, lakes) is classified once per water
@@ -41,10 +45,11 @@ const SEA_CLASSES = new Set(['ocean', 'dock']);
 // Salton Sea's do not). SRTM shore values are noisy by several metres and OSM splits one liman
 // into several polygons, so the margin sits above that noise (Odesa limans: 0–7 m).
 const SEA_LEVEL_WATER_M = 8;
-const waterLevel = new Map(); // OSM id → 'sea' (sea level), 'datum' (in a DATUMS water body), 'lake'
+// what a water body shows (also the values of the water mask, 0 being land): DEPTH real depths
+// (the sea, or a DATUMS water body), FLAT inland water at sea level, LAKE no depth source
+const DEPTH = 1, FLAT = 2, LAKE = 3;
+const waterLevel = new Map(); // OSM id → DEPTH, FLAT or LAKE
 const decidedListeners = new Set(); // notified with the id when a water body is classified
-// value the sea tiles carry for water without a depth source; DEPTH_RAMP paints it grey
-export const NO_DEPTH_M = 9000;
 // land value in the shaded sea tiles (contours still get +1 m): pulls the tint edge back to the
 // water pixels, so it never covers the shore line; the sliver it leaves shows the water fill,
 // which app.js colours like the shallowest band while depth shading is on
@@ -186,12 +191,12 @@ async function ancestorShore(ctx, id, oz, ox, oy) {
     let datum = 0;
     for (let i = 0; i < all.length; i += stride) {
       const X = (ax + all[i][0] / layer.extent) / 2 ** az, Y = (ay + all[i][1] / layer.extent) / 2 ** az; // 0..1 web mercator
-      const lon = X * 360 - 180, lat = (Math.atan(Math.sinh(Math.PI * (1 - 2 * Y))) * 180) / Math.PI;
+      const lon = X * 360 - 180, lat = latOf(Y);
       const tx = Math.min(n - 1, Math.floor(X * n)), ty = Math.min(n - 1, Math.floor(Y * n));
       const t = await demMetres(ctx.template.replace('{z}', dz).replace('{x}', tx).replace('{y}', ty));
       const px = Math.min(SIZE - 1, Math.floor((X * n - tx) * SIZE)), py = Math.min(SIZE - 1, Math.floor((Y * n - ty) * SIZE));
       const h0 = datumAt(lon, lat);
-      vals.push(t.e[py * SIZE + px] - h0);
+      vals.push(t[py * SIZE + px] - h0);
       if (h0) datum++;
     }
     return { vals, datum };
@@ -199,7 +204,7 @@ async function ancestorShore(ctx, id, oz, ox, oy) {
   return null;
 }
 
-// Water mask for DEM tile z/x/y: 0 land, 1 OSM sea, 2 inland water at sea level, 3 lake.
+// Water mask for DEM tile z/x/y: 0 land, else DEPTH, FLAT or LAKE.
 // It must use the OpenMapTiles tile the basemap shows at the same map zoom, or the two
 // coastlines differ where OSM is generalised: 256 px raster-dem tiles at z show at map
 // zoom z−1 (with roundZoom off, see app.js) → OMT z−1 (omtOffset 1); 512 px contour tiles
@@ -229,26 +234,23 @@ async function seaMask(ctx, z, x, y, levelAt, inDatum, omtOffset, signal) {
     }
     if (vals.length < 10) { // still undecided: provisional, redrawn once decided
       if (f.id) pending.push(f.id);
-      return 'lake';
+      return LAKE;
     }
     vals.sort((a, b) => a - b);
     const atSea = vals[vals.length >> 2] <= SEA_LEVEL_WATER_M && vals[(3 * vals.length) >> 2] >= -SEA_LEVEL_WATER_M;
     // inland water at a DATUMS surface is that water body (OSM tiles carry the Caspian as
     // `lake` at some zooms): real depths from its surface, not the flat lagoon class
-    const v = !atSea ? 'lake' : datum * 2 > vals.length ? 'datum' : 'sea';
+    const v = !atSea ? LAKE : datum * 2 > vals.length ? DEPTH : FLAT;
     if (f.id) { waterLevel.set(f.id, v); for (const fn of decidedListeners) fn(f.id); }
     return v;
   };
-  // lakes in blue, sea-level inland water in green, sea in red over both
+  // painted as colour channels: LAKE blue, FLAT green, DEPTH red, each over the ones before
   const classes = new Map();
-  for (const f of layer.features) if (f.cls !== 'swimming_pool') classes.set(f, SEA_CLASSES.has(f.cls) ? 'datum' : await classify(f));
-  for (const kind of [3, 2, 1]) {
-    g.fillStyle = ['', '#f00', '#0f0', '#00f'][kind];
-    for (const f of layer.features) {
-      if (f.cls === 'swimming_pool') continue;
-      const c = classes.get(f);
-      const fk = c === 'datum' ? 1 : c === 'sea' ? 2 : 3;
-      if (fk !== kind) continue;
+  for (const f of layer.features) if (f.cls !== 'swimming_pool') classes.set(f, SEA_CLASSES.has(f.cls) ? DEPTH : await classify(f));
+  for (const kind of [LAKE, FLAT, DEPTH]) {
+    g.fillStyle = { [DEPTH]: '#f00', [FLAT]: '#0f0', [LAKE]: '#00f' }[kind];
+    for (const [f, c] of classes) {
+      if (c !== kind) continue;
       g.beginPath(); // one path per feature, so overlapping water features add up instead of cancelling
       for (const r of f.rings) {
         g.moveTo(r[0] * k - sx, r[1] * k - sy);
@@ -259,21 +261,20 @@ async function seaMask(ctx, z, x, y, levelAt, inDatum, omtOffset, signal) {
     }
   }
   const px = g.getImageData(0, 0, SIZE, SIZE).data, mask = new Uint8Array(SIZE * SIZE);
-  for (let i = 0; i < mask.length; i++) mask[i] = px[i * 4] > 127 ? 1 : px[i * 4 + 1] > 127 ? 2 : px[i * 4 + 2] > 127 ? 3 : 0;
+  for (let i = 0; i < mask.length; i++) mask[i] = px[i * 4] > 127 ? DEPTH : px[i * 4 + 1] > 127 ? FLAT : px[i * 4 + 2] > 127 ? LAKE : 0;
   return { mask, pending };
 }
 
-// Terrarium tile at zoom ≤ native, decoded to metres
+// Terrarium tile at zoom ≤ native, decoded to metres (row-major SIZE × SIZE)
 function demMetres(url, signal) {
   return demCache(url, async () => {
     const img = await createImageBitmap(await (await fetchOk(url, signal)).blob());
-    const c = new OffscreenCanvas(img.width, img.height), g = c.getContext('2d', { willReadFrequently: true });
+    if (img.width !== SIZE || img.height !== SIZE) throw new Error(`expected ${SIZE} px DEM tiles`);
+    const g = new OffscreenCanvas(SIZE, SIZE).getContext('2d', { willReadFrequently: true });
     g.drawImage(img, 0, 0);
-    const px = g.getImageData(0, 0, img.width, img.height).data, e = new Float32Array(img.width * img.height);
-    let max = -Infinity;
-    for (let i = 0; i < e.length; i++) { e[i] = px[i * 4] * 256 + px[i * 4 + 1] + px[i * 4 + 2] / 256 - 32768; if (e[i] > max) max = e[i]; }
-    if (img.width !== SIZE) throw new Error(`expected ${SIZE} px DEM tiles`);
-    return { w: img.width, e, max };
+    const px = g.getImageData(0, 0, SIZE, SIZE).data, e = new Float32Array(SIZE * SIZE);
+    for (let i = 0; i < e.length; i++) e[i] = px[i * 4] * 256 + px[i * 4 + 1] + px[i * 4 + 2] / 256 - 32768;
+    return e;
   });
 }
 
@@ -287,17 +288,6 @@ function demMetres(url, signal) {
 // shallower: shoals and banks (the hazards) are never removed. Each tile is filtered with a
 // MARGIN from its neighbours, and a patch reaching the edge of that area counts as large, so
 // neighbouring tiles agree.
-const range = (a, b, step) => Array.from({ length: Math.floor((b - a) / step) + 1 }, (_, k) => a + k * step);
-export const DEPTH_LEVELS = [5, 10, 20, 30, 40, 50, 100, 150, 200, ...range(300, 3000, 100), ...range(3500, 11000, 500)];
-// The depths isobaths are drawn at from DEM zoom z: zoom 10 serves map zooms 10 and up (all of
-// DEPTH_LEVELS); below, the contour step (app.js thresholds) meets the drawn spacing (catalog.js
-// isobathFilter): 100 m at zooms 8–9, 200 m at 6–7, 1000 m below. Filtering only these keeps the
-// work to a few levels where the sea is deep.
-export function levelsFor(z) {
-  if (z >= 10) return DEPTH_LEVELS;
-  const step = z >= 8 ? 100 : z >= 6 ? 200 : 1000;
-  return [100, 200, ...range(500, 3000, 500), ...range(4000, 11000, 1000)].filter((l) => l % step === 0);
-}
 const MIN_PX = 64; // about 0.8 km² at zoom 10, where the seabed data is ~1 km or coarser
 const MARGIN = 32;
 export function fillSmallDepressions(e, w, h, levels = DEPTH_LEVELS, minPx = MIN_PX) {
@@ -335,17 +325,21 @@ export function fillSmallDepressions(e, w, h, levels = DEPTH_LEVELS, minPx = MIN
 
 // Terrarium resampled each tile on its own, so the depth gradient jumps at tile edges; magnified
 // several times (zoom-10 data at map zoom 12–13) every isobath crossing an edge bends there
-// (9.84375°E, Canale di Corsica). The seabed data is ~1 km offshore, so two passes of a 3 × 3
-// [1 2 1] blur over 110 m pixels lose nothing real. Only sea pixels change, averaged only with
-// sea neighbours, so land never pulls coastal depths up; the tile margin makes edges vanish.
-export function smoothSea(e, w, h, passes = 2) {
+// (9.84375°E, Canale di Corsica). Two passes of a 3 × 3 [1 2 1] blur straighten it, applied only
+// within `band` pixels of the edges (`seams`: the first pixel after each edge, along both axes):
+// everywhere else, shoals included, the data stays exactly as it is. A blur that never deepens
+// would fix only the bends where the slope flattens, not where it steepens. Only sea pixels
+// change, averaged only with sea neighbours, so land never pulls coastal depths up.
+export function smoothSea(e, w, h, seams, passes = 2, band = 4) {
   const K = [1, 2, 1];
+  const near = (v) => seams.some((s) => v >= s - band && v < s + band);
   for (let pass = 0; pass < passes; pass++) {
     const src = e.slice();
     for (let y = 1; y < h - 1; y++) {
+      const nearY = near(y);
       for (let x = 1; x < w - 1; x++) {
         const p = y * w + x;
-        if (src[p] >= 0) continue;
+        if (src[p] >= 0 || !(nearY || near(x))) continue;
         let sum = 0, wt = 0;
         for (let dy = -1; dy <= 1; dy++) {
           for (let dx = -1; dx <= 1; dx++) {
@@ -360,25 +354,88 @@ export function smoothSea(e, w, h, passes = 2) {
   return e;
 }
 
-// sea DEM tile z/x/y with small depressions filled and seams smoothed, looked at with a margin
-// from its neighbours
+// The same seam that makes the sea's pits makes false peaks on the land side: at Elba, zoom 10 has
+// a dozen pixels up to 211 m above every neighbour, all within 3 px of the sea (none at zooms 11–12).
+// A land pixel that near the OSM sea, standing more than SPIKE_M beyond all its land neighbours,
+// takes the nearest of their values. Only land neighbours count, so an islet is never flattened
+// against the sea, and inland terrain (summits included) is never touched.
+const SPIKE_MAXZOOM = 10, SPIKE_M = 40, SPIKE_REACH = 3;
+export function clampCoastalSpikes(e, sea, w, h) {
+  const src = e.slice();
+  for (let y = 1; y < h - 1; y++) {
+    for (let x = 1; x < w - 1; x++) {
+      const p = y * w + x;
+      if (sea[p]) continue;
+      let lo = Infinity, hi = -Infinity, n = 0;
+      for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          const q = p + dy * w + dx;
+          if ((dx || dy) && !sea[q]) { lo = Math.min(lo, src[q]); hi = Math.max(hi, src[q]); n++; }
+        }
+      }
+      if (n < 3 || (src[p] <= hi + SPIKE_M && src[p] >= lo - SPIKE_M)) continue;
+      let coastal = false;
+      for (let dy = -SPIKE_REACH; dy <= SPIKE_REACH && !coastal; dy++) {
+        for (let dx = -SPIKE_REACH; dx <= SPIKE_REACH; dx++) {
+          const yy = y + dy, xx = x + dx;
+          if (yy >= 0 && xx >= 0 && yy < h && xx < w && sea[yy * w + xx]) { coastal = true; break; }
+        }
+      }
+      if (coastal) e[p] = src[p] > hi ? hi : lo;
+    }
+  }
+  return e;
+}
+
+// Terrarium has blocks of sea filled with exactly 0 m at some zooms, while the zooms around them
+// have real depths (Gulf of Taranto: 70 % of a zoom-9 tile; off Bari: 89 % at zoom 9, 63 % at 10;
+// elsewhere at most a thin strip along the shore). A sea depth of exactly 0 is such a hole: it
+// takes the parent tile's value there (bilinear), where the parent has water. quadrant: [x & 1,
+// y & 1] of the tile within its parent. Returns e itself when it has no holes.
+export function fillZeroHoles(e, parent, [qx, qy]) {
+  if (!e.includes(0)) return e;
+  const out = e.slice(), half = SIZE / 2;
+  const at = (i, j) => parent[Math.min(SIZE - 1, Math.max(0, j)) * SIZE + Math.min(SIZE - 1, Math.max(0, i))];
+  for (let j = 0; j < SIZE; j++) {
+    const v = qy * half + (j + 0.5) / 2 - 0.5, j0 = Math.floor(v), fj = v - j0;
+    for (let i = 0; i < SIZE; i++) {
+      if (out[j * SIZE + i] !== 0) continue;
+      const u = qx * half + (i + 0.5) / 2 - 0.5, i0 = Math.floor(u), fi = u - i0;
+      const h = (at(i0, j0) * (1 - fi) + at(i0 + 1, j0) * fi) * (1 - fj) + (at(i0, j0 + 1) * (1 - fi) + at(i0 + 1, j0 + 1) * fi) * fj;
+      if (h < 0) out[j * SIZE + i] = h;
+    }
+  }
+  return out;
+}
+// Terrarium tile in metres for the sea: zero holes filled from the parent, itself filled first
+const seaRawCache = lru(64);
+function seaMetres(template, z, x, y) {
+  return seaRawCache(`${z}/${x}/${y}`, async () => {
+    const e = await demMetres(template.replace('{z}', z).replace('{x}', x).replace('{y}', y));
+    if (!z || !e.includes(0)) return e;
+    return fillZeroHoles(e, await seaMetres(template, z - 1, x >> 1, y >> 1), [x & 1, y & 1]);
+  });
+}
+
+// sea DEM tile z/x/y with zero holes, small depressions and seams corrected, looked at with a
+// margin from its neighbours
 const seaDemCache = lru(64);
 function seaDem(template, z, x, y) {
   return seaDemCache(`${z}/${x}/${y}`, async () => {
-    const n = 2 ** z, url = (tx, ty) => template.replace('{z}', z).replace('{x}', ((tx % n) + n) % n).replace('{y}', Math.min(n - 1, Math.max(0, ty)));
-    const tiles = await Promise.all([-1, 0, 1].flatMap((dy) => [-1, 0, 1].map((dx) => demMetres(url(x + dx, y + dy)))));
+    const n = 2 ** z;
+    const tiles = await Promise.all([-1, 0, 1].flatMap((dy) => [-1, 0, 1].map((dx) => seaMetres(template, z, (((x + dx) % n) + n) % n, Math.min(n - 1, Math.max(0, y + dy))))));
     const W = SIZE + 2 * MARGIN, area = new Float32Array(W * W);
     for (let j = 0; j < W; j++) {
       for (let i = 0; i < W; i++) {
         const gi = i - MARGIN, gj = j - MARGIN, ti = Math.floor(gi / SIZE), tj = Math.floor(gj / SIZE);
-        area[j * W + i] = tiles[(tj + 1) * 3 + ti + 1].e[(gj - tj * SIZE) * SIZE + gi - ti * SIZE];
+        area[j * W + i] = tiles[(tj + 1) * 3 + ti + 1][(gj - tj * SIZE) * SIZE + gi - ti * SIZE];
       }
     }
     fillSmallDepressions(area, W, W, levelsFor(z));
-    smoothSea(area, W, W);
+    smoothSea(area, W, W, [MARGIN, MARGIN + SIZE]);
     const e = new Float32Array(SIZE * SIZE);
     for (let j = 0; j < SIZE; j++) e.set(area.subarray((j + MARGIN) * W + MARGIN, (j + MARGIN) * W + MARGIN + SIZE), j * SIZE);
-    return { w: SIZE, e, max: tiles[4].max }; // filling only raises water, so the maximum stands
+    return e;
   });
 }
 
@@ -429,14 +486,14 @@ export function clipper({ template, native, mode, omtTileJson, onStale }) {
     // the source tiles as one flat buffer (sw × sh), so sampling is plain indexing
     const sw = (tx1 - tx0 + 1) * w, sh = (ty1 - ty0 + 1) * w, src = new Float32Array(sw * sh);
     want.forEach(([tx, ty], k) => {
-      const e = tiles[k].e, ox = (tx - tx0) * w, oy = (ty - ty0) * w;
+      const e = tiles[k], ox = (tx - tx0) * w, oy = (ty - ty0) * w;
       for (let r = 0; r < w; r++) src.set(e.subarray(r * w, r * w + w), (oy + r) * sw + ox);
     });
     const bx = tx0 * w, by = ty0 * w; // global pixel of src[0]
     const at = (X, Y) => src[(Math.min(sh - 1, Math.max(0, Y - by))) * sw + Math.min(sw - 1, Math.max(0, X - bx))];
     // surface per tile pixel: 0, or a DATUMS surface for pixels inside its box
     const lonAt = (i) => tw + ((i + 0.5) / SIZE) * (te - tw);
-    const latAt = (j) => { const t = y + (j + 0.5) / SIZE, m = 2 ** z; return (Math.atan(Math.sinh(Math.PI * (1 - (2 * t) / m))) * 180) / Math.PI; };
+    const latAt = (j) => latOf((y + (j + 0.5) / SIZE) / 2 ** z);
     const surface = (i, j) => {
       if (!datums.length) return 0;
       for (const [, b, h0] of datums) { const lo = lonAt(i), la = latAt(j); if (lo >= b[0] && lo <= b[2] && la >= b[1] && la <= b[3]) return h0; }
@@ -457,11 +514,12 @@ export function clipper({ template, native, mode, omtTileJson, onStale }) {
           h = (at(i0, j0) * (1 - fi) + at(i0 + 1, j0) * fi) * (1 - fj) + (at(i0, j0 + 1) * (1 - fi) + at(i0 + 1, j0 + 1) * fi) * fj;
         }
         const m = mask[j * SIZE + i];
-        if (mode === 'sea') h = m === 0 ? 1 : m === 1 ? Math.min(h - surface(i, j), -1) : m === 2 ? -1 : NO_DEPTH_M;
-        else if (m === 1) h = 0;
+        if (mode === 'sea') h = m === 0 ? 1 : m === DEPTH ? Math.min(h - surface(i, j), -1) : m === FLAT ? -1 : NO_DEPTH_M;
+        else if (m === DEPTH) h = 0;
         out[j * SIZE + i] = h;
       }
     }
+    if (mode === 'land' && nz <= SPIKE_MAXZOOM) clampCoastalSpikes(out, mask.map((m) => m === DEPTH), SIZE, SIZE);
     return out;
     });
   };

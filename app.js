@@ -1,6 +1,6 @@
 import * as maplibregl from 'maplibre-gl';
 import mlcontour from 'maplibre-contour';
-import { GROUPS, ITEMS, GIBS, DEM_TILES, DEM_SEA, DEM_LAND, OMT_TILEJSON, OPACITY_PROP, DEPTH_SCHEMES, depthRamp, NO_DEPTH, DENSITY, ESRI_META, esriAttribution, buildStyle, defaultDate, gibsTiles, gibsDomainUrl, domainEnd, densityTiles } from './catalog.js';
+import { GROUPS, ITEMS, GIBS, DEM_TILES, DEM_SEA, DEM_LAND, OMT_TILEJSON, ISOBATH_ZOOMS, OPACITY_PROP, DEPTH_SCHEMES, depthRamp, NO_DEPTH, DENSITY, ESRI_META, esriAttribution, buildStyle, defaultDate, gibsTiles, gibsDomainUrl, domainEnd, densityTiles } from './catalog.js';
 import { workerClipper } from './clip.js';
 import { drawRamp, loadColormap, drawColormap } from './legend.js';
 import { fmtAngle, dm, mercatorVariation, niceLen, wrap, parseLatLon } from './format.js';
@@ -66,25 +66,23 @@ function writeHash() {
 function writeHashNow() {
   clearTimeout(hashTimer);
   if (!ready) return;
-  {
-    const c = map.getCenter();
-    const q = new URLSearchParams();
-    q.set('v', [map.getZoom().toFixed(2), c.lat.toFixed(5), c.lng.toFixed(5), Math.round(map.getBearing())].join('/'));
-    q.set('on', [...state.on].join(','));
-    const variants = Object.entries(state.variant).filter(([k, v]) => v !== Object.keys(byId[k].variants)[0]);
-    if (variants.length) q.set('var', variants.map((kv) => kv.join(':')).join(','));
-    const ops = Object.entries(state.opacity).filter(([k, v]) => v !== byId[k].opacity);
-    if (ops.length) q.set('op', ops.map(([k, v]) => `${k}:${v}`).join(','));
-    if (state.on.has('gibs')) q.set('d', state.date);
-    const per = Object.entries(state.period).filter(([id, v]) => state.on.has(id) && v !== DENSITY[id].defaultPeriod);
-    if (per.length) q.set('per', per.map((kv) => kv.join(':')).join(','));
-    if (measure.units !== 'km') q.set('u', measure.units);
-    const m = measure.serialize();
-    if (m) q.set('m', m);
-    q.set('g', [...state.open].join(','));
-    q.set('menu', state.panel === 'measure' ? 'measure' : state.panel ? '1' : '0');
-    history.replaceState(null, '', `#${q.toString().replace(/%2C/g, ',').replace(/%2F/g, '/').replace(/%3A/g, ':').replace(/%3B/g, ';').replace(/%7E/g, '~')}`);
-  }
+  const c = map.getCenter();
+  const q = new URLSearchParams();
+  q.set('v', [map.getZoom().toFixed(2), c.lat.toFixed(5), c.lng.toFixed(5), Math.round(map.getBearing())].join('/'));
+  q.set('on', [...state.on].join(','));
+  const variants = Object.entries(state.variant).filter(([k, v]) => v !== Object.keys(byId[k].variants)[0]);
+  if (variants.length) q.set('var', variants.map((kv) => kv.join(':')).join(','));
+  const ops = Object.entries(state.opacity).filter(([k, v]) => v !== byId[k].opacity);
+  if (ops.length) q.set('op', ops.map(([k, v]) => `${k}:${v}`).join(','));
+  if (state.on.has('gibs')) q.set('d', state.date);
+  const per = Object.entries(state.period).filter(([id, v]) => state.on.has(id) && v !== DENSITY[id].defaultPeriod);
+  if (per.length) q.set('per', per.map((kv) => kv.join(':')).join(','));
+  if (measure.units !== 'km') q.set('u', measure.units);
+  const m = measure.serialize();
+  if (m) q.set('m', m);
+  q.set('g', [...state.open].join(','));
+  q.set('menu', state.panel === 'measure' ? 'measure' : state.panel ? '1' : '0');
+  history.replaceState(null, '', `#${q.toString().replace(/%2C/g, ',').replace(/%2F/g, '/').replace(/%3A/g, ':').replace(/%3B/g, ';').replace(/%7E/g, '~')}`);
 }
 
 const urlUnits = readHash();
@@ -112,12 +110,29 @@ const style = buildStyle({
   seaDemUrl: 'clip-sea://{z}/{x}/{y}',
   landDemUrl: 'clip-land://{z}/{x}/{y}',
   // zoom → [minor, major] interval in metres
-  isobathUrl: seaDem.contourProtocolUrl({ ...contourOpts, thresholds: { 4: [1000, 2000], 6: [200, 1000], 8: [100, 500], 10: [10, 50], 11: [5, 50] } }), // generated finer than drawn: catalog.js keeps 5 m, 10s to 50, then 50s
+  isobathUrl: seaDem.contourProtocolUrl({ ...contourOpts, thresholds: Object.fromEntries(ISOBATH_ZOOMS.map(([z, step, major]) => [z, [step, major]])) }),
   contourUrl: landDem.contourProtocolUrl({ ...contourOpts, thresholds: { 9: [100, 500], 11: [50, 250], 12: [20, 100] } }),
   date: state.date,
   density: Object.fromEntries(Object.keys(DENSITY).map((id) => [id, [state.variant[id], state.period[id]]])),
 });
 style.layers.push(...MEASURE_LAYERS);
+
+// MapLibre's worker from the pinned, hashed URL in index.html (tools/deps.mjs): a copy the browser
+// has checked against the hash, instead of MapLibre's own unchecked import from the CDN. The hash
+// is checked here, not by fetch(): Firefox does not hand a fetch with `integrity` the preloaded
+// copy (it downloads the worker twice), and Chrome warns about integrity on a fetch preload.
+async function verifiedWorker({ href, dataset: { integrity } }) {
+  const opts = { referrerPolicy: 'no-referrer' };
+  // plain http (a phone on the LAN, npm run serve) has no SubtleCrypto: fetch checks, downloading twice
+  if (!crypto.subtle) return (await fetch(href, { ...opts, integrity })).blob();
+  const r = await fetch(href, opts);
+  if (!r.ok) throw new Error(`MapLibre worker: HTTP ${r.status}`);
+  const code = await r.arrayBuffer();
+  const digest = new Uint8Array(await crypto.subtle.digest('SHA-384', code));
+  if (`sha384-${btoa(String.fromCharCode(...digest))}` !== integrity) throw new Error(`MapLibre worker: hash mismatch (${href})`);
+  return new Blob([code], { type: 'text/javascript' });
+}
+maplibregl.setWorkerUrl(URL.createObjectURL(await verifiedWorker($('#maplibre-gl-worker'))));
 
 const map = new maplibregl.Map({
   container: 'map', style, ...view,
@@ -131,16 +146,14 @@ map.touchZoomRotate.disableRotation();
 const small = () => window.innerWidth < 720;
 
 // ---- bottom row: credits, scale note, cursor position, double scale ------------------------
-// The scale is double, as on OpenSeaMap: km above the line, nautical miles below. Credits stay
-// written out on desktop (Esri: data attribution "always visible"; OSM likewise); phones get
-// MapLibre's collapsible (i), which Esri allows on small screens.
+// The scale is double, as on OpenSeaMap: km above the line, nautical miles below. Credits are
+// always written out, at every width (Esri: data attribution "always visible"; OSM likewise).
 const statusEl = $('#status');
 const posEl = h('div', { class: 'pos', id: 'pos', 'aria-live': 'off' });
-const scaleOpts = { maxWidth: small() ? 90 : 120 };
-const scales = [new maplibregl.ScaleControl({ ...scaleOpts, unit: 'metric' }), new maplibregl.ScaleControl({ ...scaleOpts, unit: 'nautical' })];
+const scales = ['metric', 'nautical'].map((unit) => new maplibregl.ScaleControl({ maxWidth: 100, unit }));
 const scalesEl = h('div', { class: 'scales', id: 'scales' }, scales.map((s) => s.onAdd(map)));
 const scaleNoteEl = h('div', { class: 'scalenote', id: 'scalenote' });
-const attribution = new maplibregl.AttributionControl({ compact: small() });
+const attribution = new maplibregl.AttributionControl({ compact: false });
 // credits on the left; the scale note, cursor position and scale grouped on the right
 statusEl.append(attribution.onAdd(map), h('div', { class: 'readout' }, scaleNoteEl, posEl, scalesEl));
 // the panel, zoom buttons and legends sit above the bottom row, whose height follows its credits
@@ -347,19 +360,32 @@ function itemStatus(id) {
 
 // ---- small builders ---------------------------------------------------------
 const SVG_NS = 'http://www.w3.org/2000/svg';
-// a 20 px line icon from SVG path data (same look as the icons in index.html)
+// a 20 px line icon from SVG path data; a path given as [d, colour] is filled in that colour
 function icon(...paths) {
   const s = document.createElementNS(SVG_NS, 'svg');
   for (const [k, v] of Object.entries({ viewBox: '0 0 24 24', width: 20, height: 20, 'aria-hidden': 'true', fill: 'none', stroke: 'currentColor', 'stroke-width': 1.8, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' })) s.setAttribute(k, v);
-  for (const d of paths) { const p = document.createElementNS(SVG_NS, 'path'); p.setAttribute('d', d); s.append(p); }
+  for (const d of paths) {
+    const p = document.createElementNS(SVG_NS, 'path');
+    if (Array.isArray(d)) { p.setAttribute('d', d[0]); p.setAttribute('fill', d[1]); p.setAttribute('stroke', d[1]); } else p.setAttribute('d', d);
+    s.append(p);
+  }
   return s;
 }
 const ICON = {
+  search: ['M11 18a7 7 0 1 0 0-14 7 7 0 0 0 0 14z', 'm20 20-4-4'],
+  layers: ['M12 3 3 8l9 5 9-5-9-5z', 'm3 13 9 5 9-5'],
+  link: ['M10 14a4 4 0 0 0 6 0l3-3a4 4 0 0 0-6-6l-1 1', 'M14 10a4 4 0 0 0-6 0l-3 3a4 4 0 0 0 6 6l1-1'],
+  png: ['M12 3v12M7 10l5 5 5-5', 'M4 19h16'],
+  plus: ['M12 5v14M5 12h14'],
+  minus: ['M5 12h14'],
+  compass: [['m12 3 4 9h-8z', '#b42318'], 'm12 21-4-9h8z'],
   info: ['M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18z', 'M12 11v5', 'M12 8h.01'],
   ruler: ['M3 17 17 3l4 4L7 21z', 'm7 13 2 2M10 10l2 2M13 7l2 2'],
   area: ['m12 3 8 6-3 11H7L4 9z'],
   ring: ['M12 20a8 8 0 1 0 0-16 8 8 0 0 0 0 16z', 'M12 12h.01'],
 };
+// the page's own buttons name their icon: <i data-icon="…">
+for (const el of document.querySelectorAll('[data-icon]')) el.replaceWith(icon(...ICON[el.dataset.icon]));
 // two or three mutually exclusive buttons (a segmented control)
 function seg(label, options, get, set) {
   const el = h('div', { class: 'seg', role: 'group', 'aria-label': label },
@@ -622,12 +648,13 @@ for (const b of document.querySelectorAll('[data-about]')) b.addEventListener('c
 about.querySelector('[data-close]').addEventListener('click', () => about.close());
 
 // keys: / search, L layers, R / A / C measuring tools (measure.js handles Esc while drawing)
+const TOOL_KEY = { r: 'ruler', a: 'area', c: 'ring' };
 window.addEventListener('keydown', (e) => {
   if (e.ctrlKey || e.metaKey || e.altKey || about.open || e.target.closest('input, select, textarea')) return;
   const k = e.key.toLowerCase();
   if (k === '/') { e.preventDefault(); q.focus(); }
   else if (k === 'l') setPanel(state.panel === 'layers' ? null : 'layers');
-  else if ({ r: 'ruler', a: 'area', c: 'ring' }[k]) { if (small()) setPanel(null); measure.start({ r: 'ruler', a: 'area', c: 'ring' }[k]); }
+  else if (TOOL_KEY[k]) { if (small()) setPanel(null); measure.start(TOOL_KEY[k]); }
 });
 
 // phones: the panel is a sheet as tall as its content; drag its handle down to close it
@@ -728,8 +755,7 @@ q.addEventListener('blur', () => setTimeout(hideResults, 150));
 qClear.addEventListener('click', () => { q.value = ''; qClear.hidden = true; hideResults(); pin?.remove(); pin = null; q.focus(); });
 
 // cursor position readout
-const pos = posEl;
-map.on('mousemove', (e) => { pos.textContent = `${dm(e.lngLat.lat, 'N', 'S')}  ${dm(((e.lngLat.lng + 540) % 360) - 180, 'E', 'W')}`; });
+map.on('mousemove', (e) => { posEl.textContent = `${dm(e.lngLat.lat, 'N', 'S')}  ${dm(((e.lngLat.lng + 540) % 360) - 180, 'E', 'W')}`; });
 
 // ---- scale note: the Mercator scale bar is exact only at the centre latitude ------------
 // relative change of the Mercator scale (∝ 1/cos lat) across the view: from the lowest to the
@@ -743,16 +769,14 @@ function scaleNote() {
   const v = scaleVariation();
   scaleNoteEl.textContent = v > NOTE_AT ? `scale varies ${(v * 100).toFixed(0)}% across the view` : '';
 }
-let noteRaf = 0;
-map.on('move', () => { cancelAnimationFrame(noteRaf); noteRaf = requestAnimationFrame(scaleNote); });
 
 // ---- PNG export: the map canvas plus scale, north arrow and a credit strip ---
 function attributionText() {
   const srcs = new Set();
   for (const l of map.getStyle().layers) if (l.source && map.getLayoutProperty(l.id, 'visibility') !== 'none') srcs.add(l.source);
   const parts = [...srcs].map((s) => map.getSource(s)?.attribution).filter(Boolean);
-  const tmp = document.createElement('div');
-  return [...new Set(parts)].map((p) => { tmp.innerHTML = p; return tmp.textContent; }).join(' · ');
+  // parsed in an inert document: no image loads, no handlers run, whatever the text holds
+  return [...new Set(parts)].map((p) => new DOMParser().parseFromString(p, 'text/html').body.textContent).join(' · ');
 }
 // waits for pending tiles, so a layer switched on a moment ago is in the picture
 let exporting = false; // one export at a time, however often PNG is clicked
@@ -854,11 +878,11 @@ map.on('load', () => {
   scaleNote();
   renderCompass();
 });
-map.on('moveend', () => { updateGraticule(); writeHash(); });
-let gratRaf = 0;
-map.on('move', () => { cancelAnimationFrame(gratRaf); gratRaf = requestAnimationFrame(updateGraticule); }); // edge labels follow the frame
+map.on('moveend', writeHash);
+let moveRaf = 0; // once per frame while moving: the graticule's edge labels follow the frame, the scale note the view
+map.on('move', () => { cancelAnimationFrame(moveRaf); moveRaf = requestAnimationFrame(() => { updateGraticule(); scaleNote(); }); });
 map.on('zoomend', renderMenu);
 map.on('dataloading', () => document.body.classList.add('loading'));
 map.on('idle', () => document.body.classList.remove('loading'));
 window.addEventListener('hashchange', () => location.reload());
-window.map = map; // handy from the console
+window.map = map; // the browser tests drive the map through it; handy from the console too

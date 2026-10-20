@@ -23,7 +23,7 @@ async function open(hash) {
   page.on('pageerror', (e) => page.errors.push(e.message));
   page.on('console', (m) => m.type() === 'error' && page.errors.push(m.text().slice(0, 200)));
   await page.goto(base + hash);
-  await page.waitForFunction(() => window.map?.loaded() && map.areTilesLoaded(), null, { timeout: 90000 });
+  await page.waitForFunction(() => window.map?.loaded?.() && map.areTilesLoaded(), null, { timeout: 90000 });
   await page.waitForTimeout(1000);
   return page;
 }
@@ -34,7 +34,7 @@ try {
   let p = await open('');
   check(p.errors.length === 0, `default view loads without errors ${p.errors.join(' | ')}`);
   check(await p.evaluate(() => map.getStyle().layers.length > 30), 'style has its layers');
-  const broken = await p.evaluate(() => [...document.querySelectorAll('.item.error')].map((r) => r.querySelector('label').textContent));
+  const broken = await p.evaluate(() => [...document.querySelectorAll('.item.error')].map((r) => `${r.querySelector('label').textContent} (${r.title})`));
   check(broken.length === 0, `no source marked failing ${broken.join(', ')}`);
   check(referred.size === 0, `no request to a tile host carries a Referer ${[...referred].join(', ')}`);
 
@@ -48,17 +48,17 @@ try {
   const live = await p.evaluate(async () => (await (await fetch('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer?f=json')).json()).copyrightText);
   check(credits.includes('Powered by Esri') && credits.includes(live), `Esri credits: "Powered by Esri" and the service's own text (${live})`);
   await p.mouse.move(640, 400); await p.mouse.down(); await p.mouse.move(500, 300, { steps: 5 }); await p.mouse.up(); await p.waitForTimeout(500);
-  check(await p.evaluate(() => !document.querySelector('.maplibregl-ctrl-attrib').classList.contains('maplibregl-compact')), 'credits stay written out on desktop after a drag');
+  check(await p.evaluate(() => !document.querySelector('.maplibregl-ctrl-attrib').classList.contains('maplibregl-compact')), 'credits stay written out after a drag');
   await p.close();
 
   // URL state: view, layers and measurements survive a reload; Link copies the current view
-  p = await open('#v=9/43.4/9.9/0&on=chart,coastline,depth,isobaths&u=nm&m=r:9.5,43.6;10.1,43.2~c:10,43.5;15000&menu=1&g=measure');
+  p = await open('#v=9/35.9/14.4/0&on=chart,coastline,depth,isobaths&u=nm&m=r:14,36.1;14.6,35.7~c:14.5,36;15000&menu=1&g=measure');
   const kinds = (await p.evaluate(() => [...document.querySelectorAll('.mlist label.name')].map((l) => l.textContent.split(' ')[0]))).join();
   check(kinds === 'Ruler,Ring', `measurements load from the URL as ruler and ring (${kinds})`);
   await p.evaluate(() => map.jumpTo({ center: [12, 41], zoom: 6 }));
   await p.click('#link');
   const link = await p.evaluate(() => navigator.clipboard.readText());
-  check(link.includes('v=6.00/41.00000/12.00000') && link.includes('c:10,43.5;15000'), 'Link copies the current view with its measurements');
+  check(link.includes('v=6.00/41.00000/12.00000') && link.includes('c:14.5,36;15000'), 'Link copies the current view with its measurements');
   const again = await open(new URL(link).hash);
   check((await again.evaluate(() => map.getZoom().toFixed(2))) === '6.00' && (await visible(again, 'isobaths')) === 'visible', 'the copied link reopens the same view and layers');
   check(again.errors.length === 0, `reloaded view without errors ${again.errors.join(' | ')}`);
@@ -85,15 +85,15 @@ try {
   const near = (lat, lon, tol) => sp.evaluate(({ lat, lon, tol }) => { const c = map.getCenter(); return Math.abs(c.lat - lat) < tol && Math.abs(c.lng - lon) < tol; }, { lat, lon, tol });
   let photonCalls = 0;
   sp.on('request', (r) => { if (r.url().includes('photon.komoot.io')) photonCalls++; });
-  await sp.fill('#q', '44 05N 9 51E');
+  await sp.fill('#q', '35 54N 14 31E');
   await sp.keyboard.press('Enter');
   await sp.waitForTimeout(2500);
-  check((await near(44 + 5 / 60, 9.85, 0.01)) && photonCalls === 0, 'coordinates in the search box go there, without a request');
-  await sp.fill('#q', 'Porto Venere');
+  check((await near(35.9, 14 + 31 / 60, 0.01)) && photonCalls === 0, 'coordinates in the search box go there, without a request');
+  await sp.fill('#q', 'Valletta');
   await sp.waitForSelector('#results li[role=option]', { timeout: 15000 }).catch(() => {});
   await sp.keyboard.press('Enter');
   await sp.waitForTimeout(2500);
-  check((await near(44.05, 9.83, 0.05)) && photonCalls > 0, 'a place name is found (Photon) and the map goes there');
+  check((await near(35.9, 14.51, 0.05)) && photonCalls > 0, 'a place name is found (Photon) and the map goes there');
   check(sp.errors.length === 0, `search without errors ${sp.errors.join(' | ')}`);
   await sp.close();
 

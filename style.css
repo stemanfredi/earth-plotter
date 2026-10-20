@@ -20,8 +20,8 @@ button { cursor: pointer; }
 svg { flex: none; }
 
 /* Layout: the map's edges hold what you read (legends, credits and the scale at the bottom);
-   the right edge holds what you use (Layers, Measure, Share; zoom and compass lower down).
-   The panel and the popovers open to the left of that column, so its buttons never move. */
+   the right edge holds what you use (Layers, Measure, Link, PNG; zoom and compass lower down).
+   The panel opens to the left of that column, so its buttons never move. */
 .rail, .zoom, .panel, .mbar { position: absolute; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; box-shadow: var(--shadow); }
 
 /* ---- right column ---- */
@@ -171,16 +171,14 @@ body.loading .spin { visibility: visible; animation: spin .8s linear infinite; }
   font-size: 11px; color: var(--soft);
 }
 .status > *, .readout > * { pointer-events: auto; }
-.pos, .scalenote, .status .maplibregl-ctrl-attrib:not(.maplibregl-compact) { background: rgba(255,255,255,.85); border-radius: 4px; padding: 1px 6px; }
+.pos, .scalenote { background: rgba(255,255,255,.85); border-radius: 4px; padding: 1px 6px; }
 .pos { font: 11.5px var(--mono); color: var(--ink); white-space: nowrap; }
 .pos:empty { display: none; }
 .scalenote { color: var(--warn); }
 .scalenote:empty { display: none; }
-.status .maplibregl-ctrl-attrib { margin: 0; text-align: left; flex: 0 1 auto; max-width: 62%; }
+/* credits: always written out (no (i) toggle), wrapping within the left of the row */
+.status .maplibregl-ctrl-attrib { margin: 0; padding: 1px 6px; border-radius: 4px; background: rgba(255,255,255,.85); text-align: left; flex: 0 1 auto; max-width: 62%; }
 .readout { display: flex; align-items: flex-end; gap: 8px; margin-left: auto; }
-.status .maplibregl-ctrl-attrib.maplibregl-compact { flex: 0 0 auto; background: #fff; }
-/* phones: MapLibre shows the credits in full until the first drag, then folds them into (i) */
-.status .maplibregl-ctrl-attrib.maplibregl-compact-show { flex: 1 1 100%; max-width: none; text-align: left; padding-right: 28px; } /* clear of the (i) */
 .status .maplibregl-ctrl-attrib-inner { white-space: normal; }
 .maplibregl-ctrl-scale { border-color: var(--ink); color: var(--ink); background: rgba(255, 255, 255, .85); font: 11px var(--font); }
 /* double scale (as on OpenSeaMap): km bar open at the top, NM bar hanging below the same line */
@@ -199,7 +197,6 @@ dialog .action { justify-content: center; border: 1px solid var(--line); margin-
 
 /* ---- phones: sheets from the bottom, pinch instead of zoom buttons ---- */
 @media (max-width: 720px) {
-  .rail { top: 10px; }
   .zoom { background: none; border: 0; box-shadow: none; }
   #zoom-in, #zoom-out { display: none; }
   #compass { background: var(--bg); border: 1px solid var(--line); box-shadow: var(--shadow); }
@@ -210,7 +207,7 @@ dialog .action { justify-content: center; border: 1px solid var(--line); margin-
   .handle::after { content: ""; position: absolute; left: 28px; right: 28px; top: 8px; height: 5px; border-radius: 3px; background: #c3ccd3; }
   .panel header { padding-top: 10px; }
   body.menu-open .legends { display: none; }
-  .mbar { left: 10px; right: calc(var(--rail) + 20px); transform: none; flex-wrap: wrap; }
+  .mbar { right: calc(var(--rail) + 20px); flex-wrap: wrap; }
   .mbar .tip { display: none; }
   .pos { display: none; }
 }

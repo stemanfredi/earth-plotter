@@ -1,6 +1,7 @@
 {
   "name": "charts",
   "private": true,
+  "license": "GPL-3.0-or-later",
   "type": "module",
   "description": "Static world chart. No build: these scripts are for development only.",
   "scripts": {
@@ -8,9 +9,10 @@
     "check": "node tools/deps.mjs --check",
     "smoke": "node test/smoke.mjs",
     "ui": "node test/ui.mjs",
-    "deps": "node tools/deps.mjs"
+    "deps": "node tools/deps.mjs",
+    "serve": "node test/serve.mjs"
   },
-  "engines": { "node": ">=22" },
+  "engines": { "node": ">=24" },
   "devDependencies": {
     "geographiclib-geodesic": "2.2.0",
     "playwright-core": "1.64.1"

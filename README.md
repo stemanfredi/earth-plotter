@@ -5,8 +5,8 @@ depth shading, isobaths, seamarks and NASA daily ocean imagery, all from open
 sources that need no key. Geodesic ruler, area and range-ring tools.
 The link reproduces the exact view. PNG export.
 
-No build step, no backend, no API keys. Serve the folder from anywhere static
-(GitHub Pages: *Settings → Pages → Deploy from branch → `main` / root*).
+No build step, no backend, no API keys. Serve the folder from anywhere static;
+on GitHub, CI publishes it to Pages (see *Development*).
 
 ```
 index.html   page shell; the CDN block is generated (see Dependencies)
@@ -16,8 +16,9 @@ app.js       map, menu, URL state, graticule, source health, PNG export
 clip.js      elevation tiles cut to the OSM coastline
 legend.js    colour legends
 measure.js   geodesic measurements (GeographicLib, WGS 84)
-tools/deps.mjs  pin / hash / upgrade the CDN libraries
-tools/build_pack.py  build an area pack (Python, optional)
+format.js    pure formatting helpers (angles, scale, wrap)
+tools/deps.mjs  pin / hash / check / upgrade the CDN libraries
+test/        unit tests (node --test) and a headless-Chrome smoke test
 ```
 
 Run locally: `python3 -m http.server` in this folder, open http://localhost:8000.
@@ -28,7 +29,7 @@ Run locally: `python3 -m http.server` in this folder, open http://localhost:8000
 |---|---|---|---|
 | Chart, coastline, roads, buildings, names, boundaries | OpenFreeMap (OpenStreetMap, OpenMapTiles schema) | ODbL | OSM; coastline generalised below zoom 7 |
 | Satellite | Esri World Imagery (default) / EOX Sentinel-2 cloudless 2016 / 2024 | Esri terms / CC BY 4.0 / **CC BY-NC-SA 4.0** | ≤ 0.5 m / 10 m / 10 m |
-| Depth shading, isobaths | AWS Terrain Tiles (Terrarium), cut to the OSM coastline, contoured in the browser | open data | seabed ~1–2 km in open sea; hidden above zoom 12 |
+| Depth shading, isobaths | AWS Terrain Tiles (Terrarium), cut to the OSM coastline, contoured in the browser | open data | seabed ~1–2 km in open sea; shading hidden above zoom 12, isobaths magnified |
 | Relief shading, land contours | same DEM, land part, under the sea fill | open data | SRTM 30 m |
 | Seamarks | OpenSeaMap | CC BY-SA 2.0 | crowd-sourced |
 | NASA daily | GIBS: MODIS / VIIRS true colour, MUR SST, chlorophyll-a | NASA open data | 250 m / 1 km; date picker, default yesterday UTC |
@@ -36,50 +37,13 @@ Run locally: `python3 -m http.server` in this folder, open http://localhost:8000
 Every row in the menu has a ⋯ panel with the same provenance, and the
 attribution line lists only the sources currently drawn.
 
+Layout follows Google Maps: *Layers* top left (the panel opens down the left
+edge, a bottom sheet on phones), tools top right (ruler, area, ring; copy link,
+PNG), zoom, compass, cursor position and scale bar bottom right.
+
 Colour layers get a legend (bottom left, also in the PNG; *Legends* in the
-menu hides them): depth shading and pack depths use the same colour stops as
-the map, and sea surface temperature uses the colour map NASA GIBS publishes for
+menu hides them): depth shading uses the same colour stops as the map, and sea surface temperature uses the colour map NASA GIBS publishes for
 the layer (0.15 °C classes), fetched once when first shown.
-
-## Area packs
-
-Global layers are good for context, but their depths come from a coarse
-elevation model and their land/sea edges don't quite agree. For an area you
-care about, build an **area pack**: one GeoJSON file with
-
-- depths from gridded bathymetry: EMODnet DTM 2024 (~115 m) where it covers
-  the open sea, with open-sea gaps filled from GEBCO; GEBCO 2020 (~450 m)
-  elsewhere, or your own GEBCO GeoTIFF via `--gebco`. GEBCO is never used in
-  lagoons or lakes: in the Venice Lagoon it reads 10 m where EMODnet (and
-  reality) has about 1 m;
-- inland water (lagoons, lakes, rivers, docks) taken from the same OpenFreeMap
-  water polygons the page draws and cut out of the OSMData land, which puts a
-  lagoon behind its barrier islands on land;
-- water without depth data shown as such, grey and never white (white reads as
-  deep). Water within one grid cell of real data counts as covered, so shores
-  don't get a grey halo;
-- depth areas and isobaths at nautical levels (2, 5, 10, 20, 30, 50, 100 … m),
-  traced on the grid and then **clipped to the OSMData coastline**, so they
-  meet the shore exactly and never spill onto land;
-- that coastline as land polygons, and the frame outline.
-
-```
-python3 -m venv .venv && .venv/bin/pip install -r tools/requirements.txt   # once
-.venv/bin/python tools/build_pack.py spezia --center=44.075,9.86 --half-w-km 8
-```
-
-The menu's *Build command* button copies this line for the current view. The
-first run downloads the OSMData land polygons (~900 MB) into `.cache/`, or you
-can point `--land` at a copy you already have. Grids are cached there too. A
-16 × 11 km harbour pack is about 0.4 MB; the 32 × 21 km Venice Lagoon is 0.65 MB gzipped.
-
-Open a pack with *Open pack…* or by dropping it on the map; `.geojson.gz` works
-too. **It is read in the browser and never uploaded**, so tile providers don't
-learn about the area from the pack. Inside the pack frame (dashed magenta) its
-layers sit above every global sea layer, and the menu shows its sources,
-resolution and build date. A pack placed next to the page can be linked as
-`#pack=packs/name.geojson` (same site only). `packs/` is git-ignored on
-purpose, because a public repo would publish your areas of interest.
 
 ## How loading works
 
@@ -107,15 +71,17 @@ coastline the basemap draws:
   isobath), and sea that the DEM calls dry becomes −1 m, the shallowest class.
   For the land layers, sea becomes 0 m. Depth tiles are upsampled from zoom 10
   to 12 and masked at 12, so the shore stays sharp.
-  Sea tiles are cut at every zoom, so land below sea level (the Caspian
-  Depression, polders) is never tinted. The cut tiles go to MapLibre as
+  Every tile is cut, at every zoom: each shortcut tried (deep ocean, low zooms)
+  left a hole somewhere, such as islands under the tint, an isobath through the
+  Jordan valley, or seabed relief over satellite imagery. Land below sea level
+  (the Caspian Depression, polders) is never tinted. The cut tiles go to MapLibre as
   bitmaps and to maplibre-contour as numbers, with no PNG round trip.
 - Water bodies that OSM maps with a coastline but whose surface is not at sea
-  level are listed in `DATUMS` (clip.js, and in the pack tool). Today that's the
+  level are listed in `DATUMS` (clip.js). Today that's the
   Caspian Sea, at about −28 m: its depths are measured from its surface, not
-  from sea level, or the shallow northern Caspian (~5 m) would show as 30 m. Above zoom 6
-  one of Terrarium's sources holds only the flat lake surface there, in large
-  rectangles, so Caspian depths are read from zoom 6 tiles.
+  from sea level, or the shallow northern Caspian (~5 m) would show as 30 m.
+  Terrarium holds only the flat lake surface there in large blocks at zooms 3–4
+  and 7+, so Caspian depths are always read from zoom 5–6 tiles.
 - The shaded sea tiles mark land with a high value, so the GPU-interpolated tint
   edge never covers the shore line. The thin gap it leaves shows the water
   fill, which takes the shallowest band's colour while depth shading is drawn.
@@ -123,52 +89,51 @@ coastline the basemap draws:
   each one is cut with the OpenMapTiles tile the basemap shows at that zoom. With
   the default rounding they were cut with a more detailed coastline than the one
   on screen.
-- Water is one surface, as in area packs: OSM splits it into polygons (the sea,
+- Water is one surface: OSM splits it into polygons (the sea,
   a harbour basin closed off by a straight line between pier heads, a lagoon
   and its canals), but all of it is filled the same. The shore line is drawn
   *under* that fill at twice its width: where two water polygons meet, both
   fills cover it; where water meets land, the land-side half remains. Piers
   are drawn on top as land at about their real width.
 - Inland water is classified once per water body, from the DEM along its
-  shore (lower quartile over its polygon's vertices, remembered by OSM id so all
-  tiles agree; the 8 m threshold sits above SRTM's noise, so the several OSM
-  polygons of one liman agree). At sea level (≤ 8 m: limans, lagoons, harbour basins) it is shown flat
-  in the shallowest class with no isobaths, because the DEM inside it is not a
-  depth. Lakes above that are grey (no depth data). Over satellite no water colour is drawn at all: the image shows the water, with isobaths on top.
+  shore (its polygon's vertices, relative to any `DATUMS` surface there), and
+  remembered by OSM id so all tiles agree. It is at sea level when the shore
+  both dips to within 8 m of sea level (lower quartile) and rises to within
+  8 m of it (upper quartile): raised lakes fail the first, the Dead Sea,
+  Galilee and the Salton Sea the second. At sea level (limans, lagoons, harbour
+  basins) it is shown flat in the shallowest class with no isobaths, because the
+  DEM inside it is not a depth; other lakes are grey (no depth data). A tile
+  that shows only the inside of a water body draws it provisionally as a lake
+  and is redrawn once a tile with shore has classified it. Over satellite no
+  water colour is drawn at all: the image shows the water, with isobaths on top.
 - Relief shading and land contours are drawn under the vector sea fill, so the
   fill cuts them exactly at the shore. The land DEM is not upsampled, because
   the slopes of an upsampled surface shade in visible facets.
 - There are no EMODnet or GEBCO picture layers: their own land is baked into
-  the image and cannot be cut away. Their depth *values* reach the page through
-  area packs instead.
+  the image and cannot be cut away (see *Parked* for using their values).
 
 ## Rigour and limits
 
 - Distances, bearings (true), areas and rings are geodesic on WGS 84
   (GeographicLib), and lines are drawn as densified geodesics.
 - The map is Web Mercator, so the scale bar is exact only at the centre
-  latitude. As on a paper Mercator chart, the **latitude scale** down the left
-  edge (shown with the graticule, north-up) is the distance scale that is valid
-  everywhere: 1′ of latitude = 1 NM. When the scale varies by more than 1%
-  across the view, a note says so on screen and in the PNG.
-- Depth colours have two schemes (the Depth shading item's menu, also used for pack
-  depths and legends): *darker = deeper* (atlas and ocean maps, the default) and
+  latitude. When the scale varies by more than 1% across the view (from the
+  lowest to the highest latitude in it), a note under the scale bar says so, on
+  screen and in the PNG. For exact distances use the ruler, which is geodesic.
+- Depth colours have two schemes (the Depth shading item's menu, also used by the
+  legend): *darker = deeper* (atlas and ocean maps, the default) and
   *darker = shallower* (nautical charts, IHO S-52, where shallow water is the hazard).
-- Outside packs, depth shading covers the open sea only; lagoons, lakes and
-  rivers are grey, with no depth source. Depth shading and isobaths come from a coarse DEM, not
-  soundings. They end at the OSM coastline, but their shapes near the shore are
-  only as good as the 1–2 km data, and sea the DEM calls dry is shown as the
-  shallowest class. Packs carry 115–450 m gridded depths inside their frame.
-- Packs are gridded bathymetry, not soundings. Their resolution is listed in the menu.
+- Depth shading and isobaths come from a coarse DEM, not soundings. They end at
+  the OSM coastline, but their shapes near the shore are only as good as the
+  1–2 km data, and sea the DEM calls dry is shown as the shallowest class.
+  Lakes above sea level are grey: no depth source.
 - **Not for navigation.**
 
 ## Privacy
 
 `no-referrer`, and a Content-Security-Policy that allows only the CDN and the
 tile hosts listed in `tools/deps.mjs`. Global tile requests still tell each
-provider which area you are viewing. For sensitive areas, build the pack on a
-machine where its one-off fetch is acceptable, then view it with the global
-layers you don't need switched off: a hidden layer makes no requests.
+provider which area you are viewing; a hidden layer makes no requests.
 
 ## Dependencies
 
@@ -182,3 +147,57 @@ node tools/deps.mjs --write   # after changing a version in PINS: refetch, rehas
 
 The import map's own hash goes into the CSP, so edit that block only through
 the script.
+
+## Development
+
+The site needs nothing; `package.json` exists for the checks only (Node ≥ 22).
+
+```
+npm ci
+npm test            # unit tests, offline: formatting, geodesics, URL round trip, catalog consistency
+npm run check       # index.html CDN block = pins + SRI hashes + CSP hash (fetches the CDN files)
+npm run smoke       # headless Chrome on the live providers; CHROME=/path/to/chrome if not /usr/bin/google-chrome
+npm run ui          # layout at 390 / 820 / 1280 px, panel open and closed: no overlapping overlays,
+                    # nothing off screen, every control ≥ 44 px (UI_SHOTS=dir saves screenshots)
+npm run deps        # newer versions of the pinned libraries
+```
+
+The catalog test also guards the CSP: a new source on a host missing from
+`TILE_HOSTS` fails it.
+
+CI (`.github/workflows/ci.yml`) runs `test`, `check`, `smoke` and `ui` on every push
+and pull request, and deploys `main` to GitHub Pages when they pass. Only the
+site files are published: `index.html`, `*.js`, `*.css`. It also runs every
+Monday, so a tile provider that changes or goes down fails a run, and newer
+library versions appear as notices; updating stays a deliberate `--write`.
+One-time repository setting: *Settings → Pages → Source: GitHub Actions*.
+
+## Parked: more detail for a specific view
+
+Global depths are ~1–2 km. Better depths for one area were built and then
+parked (2026-10-20) because a regular user could not obtain them. The last
+working version is the git tag **`parked/area-packs`**: `tools/build_pack.py`
+(Python) wrote an "area pack" GeoJSON that the page opened from a file, by
+drag and drop or as a `#pack=` link.
+
+Options when this comes back:
+
+1. In-page help, with packs prepared by someone running the tool.
+2. Curated packs published next to the page and linked (public repo = public areas).
+3. A "detailed depths for this view" button built in the browser: EMODnet's
+   ERDDAP allows browser requests (Europe and nearby seas); NOAA's GEBCO ERDDAP
+   does not, so elsewhere it would say "not available here". It can reuse
+   `clip.js` (coastline mask, inland water, DATUMS).
+
+Lessons from the pack tool, worth keeping:
+
+- Measure EMODnet coverage on the OSM open sea, not on GEBCO's coastline;
+  fill only open-sea gaps from GEBCO.
+- Never use GEBCO in lagoons or lakes: Venice Lagoon reads 10 m in GEBCO, ~1 m in EMODnet.
+- The OSMData land polygons put lagoons behind barrier islands on land: cut
+  OSM inland water out of the land.
+- Fill empty grid cells from neighbours before contouring and trace the
+  no-data area with marching squares, or edges come out cell-stepped.
+- Caspian depths are measured from its −28 m surface.
+- OpenFreeMap rejects Python's default User-Agent: send one.
+

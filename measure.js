@@ -2,8 +2,9 @@
 // ruler (polyline), area (polygon) and range ring (circle). Lines are drawn as
 // densified geodesics, so what you see is the path the numbers describe.
 
-const G = window.geodesic.Geodesic.WGS84;
-const { STANDARD, DISTANCE_IN, LONG_UNROLL } = window.geodesic.Geodesic;
+// GeographicLib is a classic script on the page (window.geodesic); tests set globalThis.geodesic
+const G = globalThis.geodesic.Geodesic.WGS84;
+const { STANDARD, DISTANCE_IN, LONG_UNROLL } = globalThis.geodesic.Geodesic;
 const MASK = STANDARD | DISTANCE_IN | LONG_UNROLL; // DISTANCE_IN: positions along a line by distance
 const NM = 1852;
 
@@ -129,7 +130,8 @@ export class Measure {
     map.on('mousemove', (e) => { if (this.tool) { this.hover = [e.lngLat.lng, e.lngLat.lat]; this.render(); } });
     map.on('dblclick', (e) => { if (this.tool) { e.preventDefault(); this.finish(); } });
     window.addEventListener('keydown', (e) => {
-      if (!this.tool || e.target.closest('input,select,textarea')) return;
+      // not while typing, nor on a focused button (its own Enter click would restart the tool)
+      if (!this.tool || e.target.closest('input,select,textarea,button')) return;
       if (e.key === 'Escape') this.cancel();
       else if (e.key === 'Enter') this.finish();
       else if (e.key === 'Backspace' && this.draft?.pts.length) { this.draft.pts.pop(); this.render(); }
@@ -198,8 +200,9 @@ export class Measure {
 
   // compact text for the URL: r:lon,lat;lon,lat  a:…  c:lon,lat;radius  (! = hidden)
   serialize() {
+    const CODE = { ruler: 'r', area: 'a', ring: 'c' }; // 'c' (circle): 'r' is the ruler
     const xy = (p) => `${+p[0].toFixed(5)},${+p[1].toFixed(5)}`;
-    return this.list.map((x) => `${x.hidden ? '!' : ''}${x.kind[0]}:${x.pts.map(xy).join(';')}${x.kind === 'ring' ? `;${Math.round(x.r)}` : ''}`).join('~');
+    return this.list.map((x) => `${x.hidden ? '!' : ''}${CODE[x.kind]}:${x.pts.map(xy).join(';')}${x.kind === 'ring' ? `;${Math.round(x.r)}` : ''}`).join('~');
   }
   load(s) {
     const kinds = { r: 'ruler', a: 'area', c: 'ring' };
@@ -209,7 +212,7 @@ export class Measure {
       const bits = mm[3].split(';');
       const kind = kinds[mm[2]];
       const x = { id: this.seq++, kind, hidden: !!mm[1], pts: [] };
-      if (kind === 'ring') x.r = +bits.pop();
+      if (kind === 'ring') { x.r = +bits.pop(); if (!(x.r > 0)) continue; } // no rings without a radius
       x.pts = bits.map((b) => b.split(',').map(Number)).filter((p) => p.length === 2 && p.every(Number.isFinite));
       if (x.pts.length) this.list.push(x);
     }

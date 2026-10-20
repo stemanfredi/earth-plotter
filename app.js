@@ -1,8 +1,9 @@
 import * as maplibregl from 'maplibre-gl';
 import mlcontour from 'maplibre-contour';
-import { GROUPS, ITEMS, GIBS, DEM_TILES, DEM_SEA, DEM_LAND, OMT_TILEJSON, OPACITY_PROP, DEPTH_SCHEMES, depthRamp, packBands, NO_DEPTH, buildStyle, defaultDate, gibsTiles } from './catalog.js';
+import { GROUPS, ITEMS, GIBS, DEM_TILES, DEM_SEA, DEM_LAND, OMT_TILEJSON, OPACITY_PROP, DEPTH_SCHEMES, depthRamp, NO_DEPTH, buildStyle, defaultDate, gibsTiles } from './catalog.js';
 import { clipper } from './clip.js';
-import { colourAt, drawRamp, drawClasses, loadColormap, drawColormap } from './legend.js';
+import { drawRamp, loadColormap, drawColormap } from './legend.js';
+import { fmtAngle, dm, mercatorVariation, niceLen, wrap } from './format.js';
 import { Measure, MEASURE_LAYERS, summary, fmtDist } from './measure.js';
 
 const $ = (sel, el = document) => el.querySelector(sel);
@@ -24,12 +25,11 @@ const state = {
   variant: Object.fromEntries(ITEMS.filter((it) => it.variants).map((it) => [it.id, Object.keys(it.variants)[0]])),
   opacity: Object.fromEntries(ITEMS.filter((it) => it.opacity != null).map((it) => [it.id, it.opacity])),
   date: defaultDate(),
-  open: new Set(['pack', 'base', 'sea']),
+  open: new Set(['base', 'sea']),
   menu: window.innerWidth >= 720,
 };
 let view = { zoom: 4, center: [12, 41], bearing: 0 };
 let measureState = '';
-let packParam = '';
 
 function readHash() {
   const q = new URLSearchParams(location.hash.slice(1));
@@ -45,17 +45,22 @@ function readHash() {
     if (k in state.opacity && Number.isFinite(+val)) state.opacity[k] = Math.min(1, Math.max(0, +val));
   }
   if (/^\d{4}-\d{2}-\d{2}$/.test(q.get('d') || '')) state.date = q.get('d');
-  if (q.has('g')) state.open = new Set(q.get('g').split(','));
+  if (q.has('g')) state.open = new Set(q.get('g').split(',').filter((g) => g === 'measure' || GROUPS.some((x) => x.id === g)));
   if (q.has('menu')) state.menu = q.get('menu') === '1';
   measureState = q.get('m') || '';
-  packParam = q.get('pack') || '';
   return q.get('u');
 }
 
 let hashTimer = 0;
+let ready = false; // until map load, the URL still holds state not yet applied (m=): leave it alone
 function writeHash() {
   clearTimeout(hashTimer);
-  hashTimer = setTimeout(() => {
+  if (ready) hashTimer = setTimeout(writeHashNow, 250);
+}
+function writeHashNow() {
+  clearTimeout(hashTimer);
+  if (!ready) return;
+  {
     const c = map.getCenter();
     const q = new URLSearchParams();
     q.set('v', [map.getZoom().toFixed(2), c.lat.toFixed(5), c.lng.toFixed(5), Math.round(map.getBearing())].join('/'));
@@ -68,11 +73,10 @@ function writeHash() {
     if (measure.units !== 'km') q.set('u', measure.units);
     const m = measure.serialize();
     if (m) q.set('m', m);
-    if (pack.url) q.set('pack', pack.url);
     q.set('g', [...state.open].join(','));
     q.set('menu', state.menu ? '1' : '0');
     history.replaceState(null, '', `#${q.toString().replace(/%2C/g, ',').replace(/%2F/g, '/').replace(/%3A/g, ':').replace(/%3B/g, ';').replace(/%7E/g, '~')}`);
-  }, 250);
+  }
 }
 
 const urlUnits = readHash();
@@ -84,7 +88,9 @@ const urlUnits = readHash();
 const demOpts = { url: DEM_TILES, encoding: 'terrarium', worker: false, cacheSize: 200 };
 const seaDem = new mlcontour.DemSource({ ...demOpts, id: 'sea', maxzoom: DEM_SEA.max });
 const landDem = new mlcontour.DemSource({ ...demOpts, id: 'land', maxzoom: DEM_LAND.max });
-const seaClip = clipper({ template: DEM_TILES, native: DEM_SEA.native, mode: 'sea', omtTileJson: OMT_TILEJSON });
+// a water body classified after some of its tiles were drawn: redraw the depth shading
+const reloadDepth = () => map.getSource('dem-sea')?.setTiles(['clip-sea://{z}/{x}/{y}']);
+const seaClip = clipper({ template: DEM_TILES, native: DEM_SEA.native, mode: 'sea', omtTileJson: OMT_TILEJSON, onStale: reloadDepth });
 const landClip = clipper({ template: DEM_TILES, native: DEM_LAND.native, mode: 'land', omtTileJson: OMT_TILEJSON });
 for (const [dem, clip] of [[seaDem, seaClip], [landDem, landClip]]) {
   dem.manager.getTile = clip.getTile;
@@ -98,7 +104,7 @@ const style = buildStyle({
   seaDemUrl: 'clip-sea://{z}/{x}/{y}',
   landDemUrl: 'clip-land://{z}/{x}/{y}',
   // zoom → [minor, major] interval in metres
-  isobathUrl: seaDem.contourProtocolUrl({ ...contourOpts, thresholds: { 4: [1000, 2000], 6: [200, 1000], 8: [100, 500], 10: [20, 100], 11: [5, 50] } }), // 5 m generated, drawn as 10 m + the 5 m line (catalog.js)
+  isobathUrl: seaDem.contourProtocolUrl({ ...contourOpts, thresholds: { 4: [1000, 2000], 6: [200, 1000], 8: [100, 500], 10: [10, 50], 11: [5, 50] } }), // generated finer than drawn: catalog.js keeps 5 m, 10s to 50, then 50s
   contourUrl: landDem.contourProtocolUrl({ ...contourOpts, thresholds: { 9: [100, 500], 11: [50, 250], 12: [20, 100] } }),
   date: state.date,
 });
@@ -110,10 +116,17 @@ const map = new maplibregl.Map({
   attributionControl: false, fadeDuration: 150,
 });
 map.touchZoomRotate.disableRotation();
-map.addControl(new maplibregl.NavigationControl({ showCompass: true, visualizePitch: false }), 'top-left');
-const scale = new maplibregl.ScaleControl({ maxWidth: 140, unit: 'metric' });
-map.addControl(scale, 'bottom-left');
-map.addControl(new maplibregl.AttributionControl({ compact: true }), 'bottom-right');
+// bottom-right, as in Google Maps; MapLibre stacks later bottom controls above earlier ones:
+// attribution at the bottom, then the scale note, the scale bar, the cursor readout, and zoom + compass on top
+const attribution = new maplibregl.AttributionControl({ compact: true });
+map.addControl(attribution, 'bottom-right');
+const scaleNoteEl = h('div', { class: 'maplibregl-ctrl scalenote', id: 'scalenote' });
+map.addControl({ onAdd: () => scaleNoteEl, onRemove: () => scaleNoteEl.remove() }, 'bottom-right');
+const scale = new maplibregl.ScaleControl({ maxWidth: window.innerWidth < 720 ? 90 : 140, unit: 'metric' }); // narrow on phones: clears the legend
+map.addControl(scale, 'bottom-right');
+const posEl = h('div', { class: 'maplibregl-ctrl pos', id: 'pos', 'aria-live': 'off' });
+map.addControl({ onAdd: () => posEl, onRemove: () => posEl.remove() }, 'bottom-right');
+map.addControl(new maplibregl.NavigationControl({ showCompass: true, visualizePitch: false }), 'bottom-right');
 
 const measure = new Measure(map, (what) => { if (what === 'list') { renderMeasures(); writeHash(); } renderTools(); });
 if (urlUnits === 'nm') measure.units = 'nm';
@@ -128,7 +141,7 @@ function applyItem(id) {
   const on = state.on.has(id);
   for (const l of layersOf[id] || []) {
     const vis = on && (!l.metadata.variant || l.metadata.variant === state.variant[id])
-      && (!l.metadata.base || state.on.has(l.metadata.base)); // e.g. pack fills only over the chart base
+      && (!l.metadata.base || state.on.has(l.metadata.base)); // e.g. depth shading only over the chart base
     map.setLayoutProperty(l.id, 'visibility', vis ? 'visible' : 'none');
     const prop = OPACITY_PROP[l.type];
     if (it.opacity != null && prop) map.setPaintProperty(l.id, prop, state.opacity[id]);
@@ -142,7 +155,7 @@ function setOn(id, on) {
   on ? state.on.add(id) : state.on.delete(id);
   applyItem(id);
   if (it.group === 'base') { for (const k of baseDependent) applyItem(k); renderLegends(); labelPaint(); }
-  if (id === 'graticule') { updateGraticule(); drawLatScale(); }
+  if (id === 'graticule') updateGraticule();
   if (id === 'depth') { shoreFill(); labelPaint(); }
   renderMenu();
   writeHash();
@@ -153,7 +166,7 @@ function shoreFill() {
   const zmax = style.layers.find((l) => l.id === 'depth').maxzoom; // shading hides itself above this
   map.setPaintProperty('water', 'fill-color', state.on.has('depth') ? ['step', ['zoom'], depthStops()[0][1], zmax, '#ffffff'] : '#ffffff');
 }
-// the depth colour scheme (Depth shading item's variant) also colours the pack depth areas
+// the depth colour scheme is the Depth shading item's variant
 const depthStops = () => DEPTH_SCHEMES[state.variant.depth];
 // isobaths under the atlas scheme: navy over its pale shallow blues, pale over its dark deep
 // blues (one colour can't read on both); the nautical scheme keeps the style's own blue
@@ -166,14 +179,13 @@ const ISOBATH_INK = {
 function depthColours() {
   map.setPaintProperty('depth', 'color-relief-color', depthRamp(depthStops()));
   labelPaint();
-  map.setPaintProperty('pack-bands', 'fill-color', packBands(depthStops()));
   shoreFill();
   renderLegends();
 }
 // Over satellite, labels flip to light text on a dark halo (dark-on-white reads badly on imagery).
 const SAT_LABELS = {
   places: '#ffffff', islands: '#ffffff', 'graticule-labels': '#ffffff',
-  'sea-names': '#cfe6ff', 'sea-names-line': '#cfe6ff', 'pack-isobath-labels': '#cfe6ff',
+  'sea-names': '#cfe6ff', 'sea-names-line': '#cfe6ff',
   ...Object.fromEntries(style.layers.filter((l) => l.id.startsWith('isobath-labels')).map((l) => [l.id, '#cfe6ff'])),
 };
 const chartLabelPaint = {};
@@ -187,17 +199,14 @@ function labelPaint() {
     map.setPaintProperty(id, 'text-halo-width', sat ? 1.4 : p['text-halo-width']);
   }
   const ink = state.on.has('depth') && state.on.has('chart') ? ISOBATH_INK[state.variant.depth] : null;
-  for (const id of LINE_IDS) {
-    const own = id.startsWith('pack') ? null : ink; // pack isobaths carry `d`, not `ele`
-    map.setPaintProperty(id, 'line-color', sat ? '#bfe0ff' : own ? own.line : chartLineColour[id]);
-  }
+  for (const id of LINE_IDS) map.setPaintProperty(id, 'line-color', sat ? '#bfe0ff' : ink ? ink.line : chartLineColour[id]);
   for (const id of Object.keys(SAT_LABELS).filter((k) => /^isobath-labels/.test(k))) {
     if (sat || !ink) continue;
     map.setPaintProperty(id, 'text-color', ink.text);
     map.setPaintProperty(id, 'text-halo-color', ink.halo);
   }
 }
-const LINE_IDS = style.layers.filter((l) => /^(pack-)?isobaths(-\d+)?$/.test(l.id) && l.type === 'line').map((l) => l.id);
+const LINE_IDS = style.layers.filter((l) => /^isobaths(-\d+)?$/.test(l.id) && l.type === 'line').map((l) => l.id);
 const chartLineColour = Object.fromEntries(LINE_IDS.map((id) => [id, style.layers.find((l) => l.id === id).paint['line-color']]));
 function setDate(date) {
   state.date = date;
@@ -208,13 +217,6 @@ function setDate(date) {
 
 // ---- graticule (WGS 84 lat/lon grid; spacing adapts to the view) -------------
 const STEPS = [30, 20, 10, 5, 2, 1, 30 / 60, 20 / 60, 10 / 60, 5 / 60, 2 / 60, 1 / 60];
-function fmtAngle(v, pos, neg, step) {
-  const hemi = v >= 0 ? pos : neg;
-  const a = Math.abs(v);
-  let d = Math.floor(a + 1e-9), mnt = Math.round((a - d) * 60);
-  if (mnt === 60) { d += 1; mnt = 0; }
-  return step >= 1 || mnt === 0 ? `${d}°${hemi}` : `${d}°${String(mnt).padStart(2, '0')}′${hemi}`;
-}
 function updateGraticule() {
   if (!state.on.has('graticule')) return;
   const b = map.getBounds();
@@ -224,23 +226,25 @@ function updateGraticule() {
   const s = Math.max(-85, b.getSouth()), n = Math.min(85, b.getNorth());
   const w = b.getWest(), e = b.getEast();
   const k0 = (x) => Math.round(x * 3600) / 3600;
-  // edge labels: meridians along the bottom, parallels along the right (the left edge has the
-  // latitude scale); only when north-up, where a screen edge is a parallel or a meridian
+  // edge labels: meridians along the top (under the top controls), parallels along the left
+  // (right of the panel when it is open beside the map); only when north-up, where a screen
+  // edge is a parallel or a meridian. The bottom edge is busy with legend, scale and credits.
   const W = map.getContainer().clientWidth, H = map.getContainer().clientHeight;
   const edges = Math.abs(map.getBearing()) < 0.5;
-  const latBottom = map.unproject([W / 2, H - 42]).lat, lonRight = map.unproject([W - 8, H / 2]).lng;
+  const left = state.menu && W >= 720 ? panel.getBoundingClientRect().right + 8 : 8;
+  const latTop = map.unproject([W / 2, 64]).lat, lonLeft = map.unproject([left, H / 2]).lng;
   const label = (coord, text, anchor) => f.push({ type: 'Feature', properties: { label: text, anchor }, geometry: { type: 'Point', coordinates: coord } });
   for (let lon = Math.ceil(w / step) * step; lon <= e; lon += step) {
     const L = ((k0(lon) + 540) % 360) - 180;
     f.push({ type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: [[lon, s], [lon, n]] } });
-    if (edges) label([lon, latBottom], fmtAngle(L, 'E', 'W', step), 'center');
+    if (edges) label([lon, latTop], fmtAngle(L, 'E', 'W', step), 'top');
   }
   for (let lat = Math.ceil(s / step) * step; lat <= n; lat += step) {
     const coords = [];
     for (let x = w; x < e; x += (e - w) / 32) coords.push([x, lat]);
     coords.push([e, lat]);
     f.push({ type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: coords } });
-    if (edges) label([lonRight, lat], fmtAngle(k0(lat), 'N', 'S', step), 'right');
+    if (edges) label([lonLeft, lat], fmtAngle(k0(lat), 'N', 'S', step), 'left');
   }
   map.getSource('graticule').setData({ type: 'FeatureCollection', features: f });
 }
@@ -260,7 +264,7 @@ map.on('error', (e) => {
 map.on('data', (e) => {
   if (e.dataType === 'source' && e.tile && health[e.sourceId]) { health[e.sourceId].ok++; renderStatus(); }
 });
-map.on('movestart', () => { for (const k in health) delete health[k]; });
+map.on('movestart', () => { for (const k in health) delete health[k]; renderStatus(); });
 function itemStatus(id) {
   for (const l of layersOf[id] || []) {
     if (l.metadata.variant && l.metadata.variant !== state.variant[id]) continue;
@@ -304,6 +308,9 @@ function itemRow(it) {
   return row;
 }
 
+// a header checkbox inside a 44 px label: tapping near it ticks it instead of folding the group
+const hit = (input) => (input ? h('label', { class: 'hit', onclick: (e) => e.stopPropagation() }, input) : null);
+
 function groupBlock(g) {
   const items = ITEMS.filter((it) => it.group === g.id);
   const all = g.exclusive ? null : h('input', { type: 'checkbox', 'aria-label': `All of ${g.label}`,
@@ -312,102 +319,11 @@ function groupBlock(g) {
   const list = h('ul', {}, items.map(itemRow));
   const det = h('details', { 'data-group': g.id, open: state.open.has(g.id),
     ontoggle: (e) => { e.target.open ? state.open.add(g.id) : state.open.delete(g.id); writeHash(); } },
-    h('summary', {}, all, h('span', { class: 'gname' }, g.label), h('span', { class: 'count' })),
-    g.pack ? packBox : null, list);
-  if (g.pack) det._list = list;
+    h('summary', {}, hit(all), h('span', { class: 'gname' }, g.label), h('span', { class: 'count' })),
+    list);
   det._all = all;
   det._items = items;
   return det;
-}
-
-// ---- area pack: one GeoJSON file, read in the browser, never uploaded ---------
-const pack = { doc: null, url: '' };
-const packFile = h('input', { type: 'file', accept: '.geojson,.json,.gz,application/geo+json', hidden: true,
-  onchange: (e) => { const f = e.target.files[0]; if (f) openPackFile(f); e.target.value = ''; } });
-const packMeta = h('div', { class: 'packmeta' });
-const packMsg = h('p', { class: 'note' });
-const packBox = h('div', { class: 'packbox' }, packFile, packMeta, packMsg,
-  h('div', { class: 'btns' },
-    h('button', { type: 'button', id: 'pack-open', onclick: () => packFile.click() }, 'Open pack…'),
-    h('button', { type: 'button', id: 'pack-fit', onclick: () => fitPack() }, 'Zoom to pack'),
-    h('button', { type: 'button', id: 'pack-close', onclick: () => closePack() }, 'Close'),
-    h('button', { type: 'button', id: 'pack-cmd', title: 'Copy the command that builds a pack for the current view',
-      onclick: (e) => copyBuildCommand(e.currentTarget) }, 'Build command')));
-
-async function openPackFile(file) {
-  try { await loadPack(await file.arrayBuffer(), ''); } catch (err) { packMsg.textContent = `Could not open ${file.name}: ${err.message}`; }
-}
-async function loadPack(buf, url) {
-  let bytes = new Uint8Array(buf);
-  if (bytes[0] === 0x1f && bytes[1] === 0x8b) {
-    bytes = new Uint8Array(await new Response(new Blob([bytes]).stream().pipeThrough(new DecompressionStream('gzip'))).arrayBuffer());
-  }
-  const doc = JSON.parse(new TextDecoder().decode(bytes));
-  if (doc?.type !== 'FeatureCollection' || !doc.pack) throw new Error('not an area pack');
-  if (doc.pack.version !== 2) throw new Error(`pack format ${doc.pack.version}; rebuild it with the current tools/build_pack.py`);
-  const src = map.getSource('pack');
-  src.attribution = doc.pack.credits || '';
-  src.setData(doc);
-  pack.doc = doc;
-  pack.url = url;
-  packMsg.textContent = '';
-  renderPack();
-  fitPack();
-  writeHash();
-}
-function closePack() {
-  pack.doc = null;
-  pack.url = '';
-  const src = map.getSource('pack');
-  src.attribution = '';
-  src.setData({ type: 'FeatureCollection', features: [] });
-  renderPack();
-  writeHash();
-}
-function fitPack() {
-  if (pack.doc) map.fitBounds(pack.doc.pack.bbox, { padding: 40, bearing: map.getBearing() });
-}
-function renderPack() {
-  const p = pack.doc?.pack;
-  packMeta.replaceChildren(...(p ? [
-    h('p', {}, h('b', {}, p.name), ` · built ${p.built}`),
-    h('p', {}, `Depths: ${p.depth.source}, ${p.depth.resolution}; to ${p.depth.max_m} m`),
-    h('p', {}, `Coastline: ${p.land}`),
-    h('p', {}, `Contours: ${p.levels_m.join(', ')} m`),
-  ] : [h('p', {}, 'A pack replaces the global depth layers inside its frame with gridded bathymetry and the exact coastline. Open one, or drop it on the map: it is read here and never uploaded.')]));
-  $('#pack-fit', packBox).hidden = $('#pack-close', packBox).hidden = !p;
-  $('#pack-open', packBox).hidden = !!p;
-  const det = groupEls.find((g) => g._list);
-  det._list.hidden = !p;
-  det.querySelector('.gname').textContent = p ? `Area pack · ${p.name}` : 'Area pack';
-  renderLegends();
-}
-async function copyBuildCommand(b) {
-  const W = map.getContainer().clientWidth, H = map.getContainer().clientHeight;
-  const L = map.unproject([0, H / 2]), R = map.unproject([W, H / 2]), c = map.getCenter();
-  const halfKm = window.geodesic.Geodesic.WGS84.Inverse(L.lat, L.lng, R.lat, R.lng).s12 / 2000;
-  const cmd = `.venv/bin/python tools/build_pack.py area --center=${c.lat.toFixed(5)},${c.lng.toFixed(5)} --half-w-km ${halfKm.toFixed(2)} --aspect ${(H / W).toFixed(3)}`;
-  try { await navigator.clipboard.writeText(cmd); flash(b, 'Copied'); } catch { prompt('Build command', cmd); }
-}
-// drag and drop anywhere on the page
-window.addEventListener('dragover', (e) => { if (e.dataTransfer?.types.includes('Files')) { e.preventDefault(); document.body.classList.add('drop'); } });
-window.addEventListener('dragleave', (e) => { if (!e.relatedTarget) document.body.classList.remove('drop'); });
-window.addEventListener('drop', (e) => {
-  e.preventDefault();
-  document.body.classList.remove('drop');
-  const f = e.dataTransfer?.files[0];
-  if (f) openPackFile(f);
-});
-// a pack hosted next to the page: #pack=packs/name.geojson (same origin only)
-async function loadPackParam() {
-  if (!packParam) return;
-  try {
-    const u = new URL(packParam, location.href);
-    if (u.origin !== location.origin) throw new Error('only packs on this site can be linked');
-    const r = await fetch(u);
-    if (!r.ok) throw new Error(`HTTP ${r.status}`);
-    await loadPack(await r.arrayBuffer(), packParam);
-  } catch (err) { packMsg.textContent = `Could not load ${packParam}: ${err.message}`; }
 }
 
 const groupEls = GROUPS.map(groupBlock);
@@ -418,7 +334,7 @@ const measureAll = h('input', { type: 'checkbox', 'aria-label': 'Show all measur
   onchange: (e) => measure.setHidden(null, !e.target.checked) });
 const measureGroup = h('details', { 'data-group': 'measure', open: state.open.has('measure'),
   ontoggle: (e) => { e.target.open ? state.open.add('measure') : state.open.delete('measure'); writeHash(); } },
-  h('summary', {}, measureAll, h('span', { class: 'gname' }, 'Measurements'), h('span', { class: 'count' })),
+  h('summary', {}, hit(measureAll), h('span', { class: 'gname' }, 'Measurements'), h('span', { class: 'count' })),
   h('div', { class: 'mhead' }, h('label', {}, 'Units ', unitSel)),
   measureList,
   h('p', { class: 'note' }, 'Geodesic on WGS 84. Click to add points; double-click or Enter finishes; Backspace undoes; Esc cancels.'));
@@ -462,7 +378,6 @@ function renderLegends() {
   const on = (id) => state.on.has(id);
   const want = [];
   if (on('legend')) {
-    if (pack.doc && on('pack-depth') && on('chart')) want.push('pack');
     if (on('depth') && on('chart') && map.getZoom() < 13) want.push('depth');
     if (on('gibs') && GIBS[state.variant.gibs].legend) want.push('gibs');
   }
@@ -472,11 +387,6 @@ function renderLegends() {
     if (id === 'depth') {
       drawRamp(el, 'Depth shading', 'm · approximate (DEM)', depthStops(), { colour: NO_DEPTH, label: 'lakes: no depth · lagoons: shown as 0–5 m' });
       el.setAttribute('aria-label', `Depth shading legend: ${depthStops().map(([d]) => d).join(', ')} metres`);
-    } else if (id === 'pack') {
-      const p = pack.doc.pack, edges = [0, ...p.levels_m];
-      drawClasses(el, 'Pack depth', `m · ${p.depth.source.split(',')[0]}`, edges, edges.map((d) => colourAt(depthStops(), d)), `${Math.round(p.depth.max_m)}`,
-        { colour: NO_DEPTH, label: 'water without depth data' });
-      el.setAttribute('aria-label', `Pack depth legend: classes from ${edges.join(', ')} metres`);
     } else {
       const g = GIBS[state.variant.gibs], key = `${state.variant.gibs}|${state.date}`;
       if (el.dataset.key !== key) {
@@ -526,6 +436,9 @@ const toggle = $('#toggle');
 function setMenu(open) {
   state.menu = open;
   panel.hidden = !open;
+  toggle.hidden = open; // the panel has its own close button, where the toggle was
+  document.body.classList.toggle('menu-open', open); // legends move aside / hide (style.css)
+  if (ready) updateGraticule(); // latitude labels move right of the panel
   toggle.setAttribute('aria-expanded', String(open));
   writeHash();
 }
@@ -539,71 +452,37 @@ function renderTools() {
 tools.addEventListener('click', (e) => {
   const b = e.target.closest('button');
   if (!b) return;
-  if (b.dataset.tool) measure.tool === b.dataset.tool ? measure.cancel() : measure.start(b.dataset.tool);
+  // clicking the active tool again means "done" (also the way to finish on touch screens)
+  if (b.dataset.tool) measure.tool === b.dataset.tool ? measure.finish() : measure.start(b.dataset.tool);
   else if (b.id === 'png') exportPng();
   else if (b.id === 'link') copyLink(b);
 });
 async function copyLink(b) {
-  clearTimeout(hashTimer);
+  writeHashNow(); // the link must be the view as it is now
   try { await navigator.clipboard.writeText(location.href); flash(b, 'Copied'); } catch { prompt('Copy this link', location.href); }
 }
-function flash(b, text) {
-  const t = b.textContent;
-  b.textContent = text;
-  setTimeout(() => { b.textContent = t; }, 1200);
+function flash(b, text) { // a short bubble under the button; its icon stays
+  b.dataset.flash = text;
+  setTimeout(() => delete b.dataset.flash, 1200);
 }
 
 // cursor position readout
-const pos = $('#pos');
-const dm = (v, p, n) => { const a = Math.abs(v), d = Math.floor(a); return `${d}°${((a - d) * 60).toFixed(3).padStart(6, '0')}′${v >= 0 ? p : n}`; };
+const pos = posEl;
 map.on('mousemove', (e) => { pos.textContent = `${dm(e.lngLat.lat, 'N', 'S')}  ${dm(((e.lngLat.lng + 540) % 360) - 180, 'E', 'W')}`; });
 
-// ---- latitude scale: on a Mercator chart, 1′ of latitude = 1 NM wherever you read it ----
-const latCanvas = $('#latscale');
-const MIN_STEPS = [0.1, 0.2, 0.5, 1, 2, 5, 10, 20, 30, 60, 120, 300, 600, 1200];
-// relative change of the map scale between the top and bottom of the view
+// ---- scale note: the Mercator scale bar is exact only at the centre latitude ------------
+// relative change of the Mercator scale (∝ 1/cos lat) across the view: from the lowest to the
+// highest |lat| in view, the lowest being 0 when the view crosses the equator
 function scaleVariation() {
-  const H = map.getContainer().clientHeight;
-  const a = Math.cos((map.unproject([0, 0]).lat * Math.PI) / 180), b = Math.cos((map.unproject([0, H]).lat * Math.PI) / 180);
-  return Math.abs(a - b) / Math.min(a, b);
+  const b = map.getBounds();
+  return mercatorVariation(b.getSouth(), b.getNorth());
 }
-function drawLatScale() {
-  const show = state.on.has('graticule') && Math.abs(map.getBearing()) < 0.5;
-  latCanvas.hidden = !show;
-  if (!show) return;
-  const top = latCanvas.offsetTop, H = latCanvas.clientHeight, W = latCanvas.clientWidth, dpr = window.devicePixelRatio || 1;
-  latCanvas.width = W * dpr;
-  latCanvas.height = H * dpr;
-  const g = latCanvas.getContext('2d');
-  g.scale(dpr, dpr);
-  const yOf = (lat) => map.project([map.getCenter().lng, lat]).y - top;
-  const lat0 = map.unproject([0, top + H]).lat, lat1 = map.unproject([0, top]).lat;
-  const perMin = H / ((lat1 - lat0) * 60);
-  const step = MIN_STEPS.find((s) => s * perMin >= 7) || 1200;
-  const lstep = MIN_STEPS.find((s) => s >= step && s * perMin >= 46 && (s / step) % 1 === 0) || step * 10;
-  g.font = '10px system-ui, sans-serif';
-  g.textBaseline = 'middle';
-  for (let k = Math.floor((lat0 * 60) / step); k * step <= lat1 * 60; k++) {
-    const m0 = k * step, y0 = yOf(m0 / 60), y1 = yOf((m0 + step) / 60);
-    g.fillStyle = k % 2 ? '#2b3a46' : '#ffffff';
-    g.fillRect(4, Math.min(y0, y1), 5, Math.abs(y1 - y0));
-    const lm = Math.round(m0 * 10) / 10;
-    if (Math.abs((lm / lstep) - Math.round(lm / lstep)) < 1e-6) {
-      const d = Math.floor(Math.abs(lm) / 60 + 1e-9), mm = Math.abs(lm) - d * 60;
-      const t = `${d}°${mm.toFixed(step < 1 ? 1 : 0).padStart(step < 1 ? 4 : 2, '0')}′${lm >= 0 ? 'N' : 'S'}`;
-      g.lineWidth = 3; g.strokeStyle = 'rgba(255,255,255,.9)'; g.strokeText(t, 12, y0);
-      g.fillStyle = '#2b3a46'; g.fillText(t, 12, y0);
-      g.fillRect(3, y0 - 0.5, 8, 1);
-    }
-  }
-  g.strokeStyle = '#2b3a46'; g.lineWidth = 1; g.strokeRect(3.5, 0, 6, H);
-  latCanvas.title = `Latitude scale: 1′ of latitude = 1 nautical mile, valid anywhere on this chart (ticks every ${step}′)`;
+function scaleNote() {
   const v = scaleVariation();
-  $('#scalenote').textContent = v > 0.01 ? `scale varies ${(v * 100).toFixed(0)}% top to bottom · use the latitude scale (1′ = 1 NM)` : '';
+  scaleNoteEl.textContent = v > 0.01 ? `scale varies ${(v * 100).toFixed(0)}% across the view` : '';
 }
-let latRaf = 0;
-map.on('move', () => { cancelAnimationFrame(latRaf); latRaf = requestAnimationFrame(drawLatScale); });
-window.addEventListener('resize', drawLatScale);
+let noteRaf = 0;
+map.on('move', () => { cancelAnimationFrame(noteRaf); noteRaf = requestAnimationFrame(scaleNote); });
 
 // ---- PNG export: the map canvas plus scale, north arrow and a credit strip ---
 function attributionText() {
@@ -613,13 +492,12 @@ function attributionText() {
   const tmp = document.createElement('div');
   return [...new Set(parts)].map((p) => { tmp.innerHTML = p; return tmp.textContent; }).join(' · ');
 }
-function niceLen(m) {
-  const p = 10 ** Math.floor(Math.log10(m));
-  return [5, 2, 1].map((k) => k * p).find((v) => v <= m) || p;
-}
 // waits for pending tiles, so a layer switched on a moment ago is in the picture
+let exporting = false; // one export at a time, however often PNG is clicked
 function exportPng() {
-  if (!(map.loaded() && map.areTilesLoaded())) { map.once('idle', exportPng); return; }
+  if (exporting) return;
+  exporting = true;
+  if (!(map.loaded() && map.areTilesLoaded())) { map.once('idle', () => { exporting = false; exportPng(); }); return; }
   map.once('render', () => {
     const src = map.getCanvas();
     const dpr = src.width / src.clientWidth;
@@ -637,16 +515,21 @@ function exportPng() {
     const unitM = units === 'nm' ? 1852 : 1;
     const len = niceLen((120 * mpp) / unitM) * unitM;
     const px = len / mpp;
-    g.fillStyle = 'rgba(255,255,255,0.85)';
-    g.fillRect(10, H - 40, px + 20, 30);
-    g.strokeStyle = '#2b3a46';
-    g.lineWidth = 2;
-    g.beginPath(); g.moveTo(20, H - 24); g.lineTo(20, H - 18); g.lineTo(20 + px, H - 18); g.lineTo(20 + px, H - 24); g.stroke();
-    g.fillStyle = '#2b3a46';
+    // bottom-right, where the scale bar is on screen
     g.font = '11px system-ui, sans-serif';
     const v = scaleVariation();
-    g.fillText(`${fmtDist(len, units)} at ${Math.abs(lat).toFixed(1)}°${lat >= 0 ? 'N' : 'S'}${v > 0.01 ? ` (varies ${(v * 100).toFixed(0)}% top–bottom; 1′ lat = 1 NM)` : ''}`, 20, H - 26);
-    if (!latCanvas.hidden) g.drawImage(latCanvas, latCanvas.offsetLeft, latCanvas.offsetTop, latCanvas.clientWidth, latCanvas.clientHeight);
+    const text = `${fmtDist(len, units)} at ${Math.abs(lat).toFixed(1)}°${lat >= 0 ? 'N' : 'S'}${v > 0.01 ? ` · scale varies ${(v * 100).toFixed(0)}% across the view` : ''}`;
+    const bw = Math.max(px, g.measureText(text).width) + 20, x0 = W - 10 - bw;
+    g.fillStyle = 'rgba(255,255,255,0.85)';
+    g.fillRect(x0, H - 40, bw, 30);
+    g.strokeStyle = '#2b3a46';
+    g.lineWidth = 2;
+    const bx = W - 20 - px;
+    g.beginPath(); g.moveTo(bx, H - 24); g.lineTo(bx, H - 18); g.lineTo(bx + px, H - 18); g.lineTo(bx + px, H - 24); g.stroke();
+    g.fillStyle = '#2b3a46';
+    g.textAlign = 'right';
+    g.fillText(text, W - 20, H - 26);
+    g.textAlign = 'left';
     const box = map.getContainer().getBoundingClientRect();
     for (const el of legends.querySelectorAll('canvas')) {
       const r = el.getBoundingClientRect();
@@ -668,6 +551,8 @@ function exportPng() {
     g.fillStyle = '#5d6d79';
     lines.forEach((t, i) => g.fillText(t, 8, H + 30 + i * 14));
     out.toBlob((blob) => {
+      exporting = false;
+      if (!blob) { console.error('PNG export failed: the browser returned no image'); return; }
       const a = h('a', { href: URL.createObjectURL(blob), download: `chart-${new Date().toISOString().slice(0, 16).replace(/[:T]/g, '')}.png` });
       a.click();
       setTimeout(() => URL.revokeObjectURL(a.href), 1000);
@@ -675,22 +560,18 @@ function exportPng() {
   });
   map.triggerRepaint();
 }
-function wrap(text, n) {
-  const out = [];
-  let line = '';
-  for (const w of text.split(' ')) {
-    if ((line + ' ' + w).length > n && line) { out.push(line); line = w; } else line = line ? `${line} ${w}` : w;
-  }
-  if (line) out.push(line);
-  return out;
-}
 
 // ---- go ---------------------------------------------------------------------
 map.on('load', () => {
   // Raster sources round the zoom when picking tiles; the vector basemap floors it. Floor
   // here too, so the clipped elevation tiles are cut with the coastline the basemap draws
   // (clip.js seaMask). roundZoom is a property of MapLibre's raster tile sources.
-  for (const id of ['dem-sea', 'dem']) map.getSource(id).roundZoom = false;
+  for (const id of ['dem-sea', 'dem']) {
+    const src = map.getSource(id);
+    // private MapLibre property: if an upgrade renames it, say so (the smoke test fails on this)
+    if (typeof src.roundZoom !== 'boolean') console.error(`MapLibre: ${id}.roundZoom missing; elevation tiles may not match the coastline`);
+    src.roundZoom = false;
+  }
   for (const it of ITEMS) applyItem(it.id);
   depthColours();
   labelPaint();
@@ -698,10 +579,9 @@ map.on('load', () => {
   updateGraticule();
   renderMenu();
   renderMeasures();
-  renderPack();
-  setMenu(state.menu);
-  drawLatScale();
-  loadPackParam();
+  ready = true;
+  setMenu(state.menu); // also writes the URL, now with everything applied
+  scaleNote();
 });
 map.on('moveend', () => { updateGraticule(); writeHash(); });
 let gratRaf = 0;

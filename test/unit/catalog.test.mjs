@@ -30,7 +30,7 @@ test('layer ids unique, sources defined, item layers start hidden', () => {
 });
 
 test('variants: each choice has a layer, except colour schemes', () => {
-  for (const it of ITEMS.filter((i) => i.variants && i.id !== 'depth')) {
+  for (const it of ITEMS.filter((i) => i.variants && i.id !== 'depth' && i.variantsBy !== 'tiles')) { // tiles: one layer, URL per choice
     for (const v of Object.keys(it.variants)) {
       assert.ok(style.layers.some((l) => l.metadata?.item === it.id && l.metadata.variant === v), `${it.id}/${v}: no layer`);
     }
@@ -64,4 +64,20 @@ test('depth schemes: ascending depths; atlas darkens with depth, nautical lighte
 test('test-only GeographicLib matches the version the page loads', async () => {
   const pkg = JSON.parse(await readFile(new URL('../../package.json', import.meta.url)));
   assert.equal(pkg.devDependencies['geographiclib-geodesic'], PINS.find((p) => p.name === 'geographiclib-geodesic').version);
+});
+
+test('density datasets: "all types" first, codes map to WMS layers and times, sensible defaults', async () => {
+  const { DENSITY, densityTiles } = await import('../../catalog.js');
+  for (const id of Object.keys(DENSITY)) {
+    const it = ITEMS.find((i) => i.id === id);
+    assert.equal(Object.keys(it.variants)[0], 'all', `${id}: the app's default variant is the first key`);
+    assert.equal(it.on, undefined, `${id}: off by default`);
+    assert.ok(DENSITY[id].periods.includes(DENSITY[id].defaultPeriod), `${id}: default period listed`);
+  }
+  assert.match(densityTiles('traffic', 't10', '2021')[0], /layers=vesseldensity_10avg&.*time=2021-01-01T/);
+  assert.equal(DENSITY.traffic.defaultPeriod, '2023'); // 2024 is incomplete
+  assert.match(densityTiles('routes', 't04', '2026-07')[0], /layers=routedensity_04&.*time=2026-07-01T/);
+  assert.equal(DENSITY.routes.defaultPeriod, DENSITY.routes.periods[0], 'routes: newest month by default');
+  assert.equal(DENSITY.routes.periods.length, 91); // Jan 2019 … Jul 2026, no gaps
+  assert.equal(DENSITY.routes.periodLabel('2026-07'), 'Jul 2026');
 });

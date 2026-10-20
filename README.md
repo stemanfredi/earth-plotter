@@ -13,7 +13,7 @@ index.html   page shell; the CDN block is generated (see Dependencies)
 style.css    all styling
 catalog.js   sources, style layers in draw order, menu items, provenance
 app.js       map, menu, URL state, graticule, source health, PNG export
-clip.js      elevation tiles cut to the OSM coastline
+clip.js      elevation tiles cut to the OSM coastline (runs in clip-worker.js)
 legend.js    colour legends
 measure.js   geodesic measurements (GeographicLib, WGS 84)
 format.js    pure formatting helpers (angles, scale, wrap)
@@ -32,6 +32,8 @@ Run locally: `python3 -m http.server` in this folder, open http://localhost:8000
 | Depth shading, isobaths | AWS Terrain Tiles (Terrarium), cut to the OSM coastline, contoured in the browser | open data | seabed ~1–2 km in open sea; shading hidden above zoom 12, isobaths magnified |
 | Relief shading, land contours | same DEM, land part, under the sea fill | open data | SRTM 30 m |
 | Seamarks | OpenSeaMap | CC BY-SA 2.0 | crowd-sourced |
+| Vessel density (off by default) | EMODnet Human Activities (Cogea; AIS from CLS, ORBCOMM, vesseltracker.com), WMS | EMODnet open data, attribution | 1 km, annual averages 2017–2024 by ship type; EU and neighbouring seas; 2024 incomplete, so 2023 is the default |
+| Route density (off by default) | EMSA route density via EMODnet Human Activities, WMS | CC BY 4.0 | 1 km, monthly from Jan 2019, about 3 months behind; counts routes crossing each cell; EU and neighbouring seas |
 | NASA daily | GIBS: MODIS / VIIRS true colour, MUR SST, chlorophyll-a | NASA open data | 250 m / 1 km; date picker, default yesterday UTC |
 
 Every row in the menu has a ⋯ panel with the same provenance, and the
@@ -39,11 +41,14 @@ attribution line lists only the sources currently drawn.
 
 Layout follows Google Maps: *Layers* top left (the panel opens down the left
 edge, a bottom sheet on phones), tools top right (ruler, area, ring; copy link,
-PNG), zoom, compass, cursor position and scale bar bottom right.
+PNG), zoom, compass, cursor position and scale bar bottom right. The scale bar
+is double, as on OpenSeaMap: km above the line, nautical miles below (also in the PNG).
 
 Colour layers get a legend (bottom left, also in the PNG; *Legends* in the
 menu hides them): depth shading uses the same colour stops as the map, and sea surface temperature uses the colour map NASA GIBS publishes for
-the layer (0.15 °C classes), fetched once when first shown.
+the layer (0.15 °C classes), fetched once when first shown. Vessel and route density use
+the colour stops their WMS publishes. `npm run deps` (weekly in CI) reports when
+the WMS offers newer periods than `catalog.js` lists.
 
 ## How loading works
 
@@ -103,9 +108,17 @@ coastline the basemap draws:
   Galilee and the Salton Sea the second. At sea level (limans, lagoons, harbour
   basins) it is shown flat in the shallowest class with no isobaths, because the
   DEM inside it is not a depth; other lakes are grey (no depth data). A tile
-  that shows only the inside of a water body draws it provisionally as a lake
-  and is redrawn once a tile with shore has classified it. Over satellite no
-  water colour is drawn at all: the image shows the water, with isobaths on top.
+  that shows only the inside of a water body classifies it from the same water
+  body in a lower-zoom OpenMapTiles tile, where its shore is (ids are stable
+  across zooms); if even that fails, it is drawn as a lake and redrawn once
+  another tile has classified it. Over satellite no water colour is drawn at
+  all: the image shows the water, with isobaths on top.
+- The cutting runs in a Web Worker (`clip-worker.js`): on the main thread it
+  blocked the page for seconds while panning. A worker loaded from its own file
+  does not inherit the page's `<meta>` security policy (only HTTP headers would
+  apply, and GitHub Pages sets none); its requests are fixed in code, to the
+  elevation tiles and OpenFreeMap. It does not inherit the page's `no-referrer`
+  either, so each of its requests sets `referrerPolicy: 'no-referrer'` itself.
 - Relief shading and land contours are drawn under the vector sea fill, so the
   fill cuts them exactly at the shore. The land DEM is not upsampled, because
   the slopes of an upsampled surface shade in visible facets.

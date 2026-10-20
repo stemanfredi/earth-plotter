@@ -1,10 +1,10 @@
 import * as maplibregl from 'maplibre-gl';
 import mlcontour from 'maplibre-contour';
-import { GROUPS, ITEMS, GIBS, DEM_TILES, DEM_SEA, DEM_LAND, OMT_TILEJSON, OPACITY_PROP, DEPTH_SCHEMES, depthRamp, NO_DEPTH, buildStyle, defaultDate, gibsTiles } from './catalog.js';
-import { clipper } from './clip.js';
+import { GROUPS, ITEMS, GIBS, DEM_TILES, DEM_SEA, DEM_LAND, OMT_TILEJSON, OPACITY_PROP, DEPTH_SCHEMES, depthRamp, NO_DEPTH, DENSITY, ESRI_META, esriAttribution, buildStyle, defaultDate, gibsTiles, densityTiles } from './catalog.js';
+import { workerClipper } from './clip.js';
 import { drawRamp, loadColormap, drawColormap } from './legend.js';
 import { fmtAngle, dm, mercatorVariation, niceLen, wrap } from './format.js';
-import { Measure, MEASURE_LAYERS, summary, fmtDist } from './measure.js';
+import { Measure, MEASURE_LAYERS, summary } from './measure.js';
 
 const $ = (sel, el = document) => el.querySelector(sel);
 const h = (tag, attrs = {}, ...kids) => {
@@ -25,6 +25,7 @@ const state = {
   variant: Object.fromEntries(ITEMS.filter((it) => it.variants).map((it) => [it.id, Object.keys(it.variants)[0]])),
   opacity: Object.fromEntries(ITEMS.filter((it) => it.opacity != null).map((it) => [it.id, it.opacity])),
   date: defaultDate(),
+  period: Object.fromEntries(Object.entries(DENSITY).map(([id, d]) => [id, d.defaultPeriod])), // density datasets
   open: new Set(['base', 'sea']),
   menu: window.innerWidth >= 720,
 };
@@ -45,6 +46,11 @@ function readHash() {
     if (k in state.opacity && Number.isFinite(+val)) state.opacity[k] = Math.min(1, Math.max(0, +val));
   }
   if (/^\d{4}-\d{2}-\d{2}$/.test(q.get('d') || '')) state.date = q.get('d');
+  if (DENSITY.traffic.periods.includes(q.get('y'))) state.period.traffic = q.get('y'); // links from before per=
+  for (const kv of (q.get('per') || '').split(',')) {
+    const [k, val] = kv.split(':');
+    if (DENSITY[k]?.periods.includes(val)) state.period[k] = val;
+  }
   if (q.has('g')) state.open = new Set(q.get('g').split(',').filter((g) => g === 'measure' || GROUPS.some((x) => x.id === g)));
   if (q.has('menu')) state.menu = q.get('menu') === '1';
   measureState = q.get('m') || '';
@@ -70,6 +76,8 @@ function writeHashNow() {
     const ops = Object.entries(state.opacity).filter(([k, v]) => v !== byId[k].opacity);
     if (ops.length) q.set('op', ops.map(([k, v]) => `${k}:${v}`).join(','));
     if (state.on.has('gibs')) q.set('d', state.date);
+    const per = Object.entries(state.period).filter(([id, v]) => state.on.has(id) && v !== DENSITY[id].defaultPeriod);
+    if (per.length) q.set('per', per.map((kv) => kv.join(':')).join(','));
     if (measure.units !== 'km') q.set('u', measure.units);
     const m = measure.serialize();
     if (m) q.set('m', m);
@@ -90,8 +98,8 @@ const seaDem = new mlcontour.DemSource({ ...demOpts, id: 'sea', maxzoom: DEM_SEA
 const landDem = new mlcontour.DemSource({ ...demOpts, id: 'land', maxzoom: DEM_LAND.max });
 // a water body classified after some of its tiles were drawn: redraw the depth shading
 const reloadDepth = () => map.getSource('dem-sea')?.setTiles(['clip-sea://{z}/{x}/{y}']);
-const seaClip = clipper({ template: DEM_TILES, native: DEM_SEA.native, mode: 'sea', omtTileJson: OMT_TILEJSON, onStale: reloadDepth });
-const landClip = clipper({ template: DEM_TILES, native: DEM_LAND.native, mode: 'land', omtTileJson: OMT_TILEJSON });
+const seaClip = workerClipper({ template: DEM_TILES, native: DEM_SEA.native, mode: 'sea', omtTileJson: OMT_TILEJSON, onStale: reloadDepth });
+const landClip = workerClipper({ template: DEM_TILES, native: DEM_LAND.native, mode: 'land', omtTileJson: OMT_TILEJSON });
 for (const [dem, clip] of [[seaDem, seaClip], [landDem, landClip]]) {
   dem.manager.getTile = clip.getTile;
   dem.manager.decodeImage = clip.decodeImage;
@@ -107,6 +115,7 @@ const style = buildStyle({
   isobathUrl: seaDem.contourProtocolUrl({ ...contourOpts, thresholds: { 4: [1000, 2000], 6: [200, 1000], 8: [100, 500], 10: [10, 50], 11: [5, 50] } }), // generated finer than drawn: catalog.js keeps 5 m, 10s to 50, then 50s
   contourUrl: landDem.contourProtocolUrl({ ...contourOpts, thresholds: { 9: [100, 500], 11: [50, 250], 12: [20, 100] } }),
   date: state.date,
+  density: Object.fromEntries(Object.keys(DENSITY).map((id) => [id, [state.variant[id], state.period[id]]])),
 });
 style.layers.push(...MEASURE_LAYERS);
 
@@ -114,16 +123,27 @@ const map = new maplibregl.Map({
   container: 'map', style, ...view,
   maxPitch: 0, pitchWithRotate: false, dragRotate: true, touchPitch: false,
   attributionControl: false, fadeDuration: 150,
+  // MapLibre's workers set the page address as the referrer explicitly, past the page's
+  // no-referrer meta tag: ask for none on every request it makes
+  transformRequest: (url) => ({ url, referrerPolicy: 'no-referrer' }),
 });
 map.touchZoomRotate.disableRotation();
 // bottom-right, as in Google Maps; MapLibre stacks later bottom controls above earlier ones:
 // attribution at the bottom, then the scale note, the scale bar, the cursor readout, and zoom + compass on top
-const attribution = new maplibregl.AttributionControl({ compact: true });
+// credits stay written out on desktop (Esri: data attribution "always visible"; OSM likewise);
+// phones get MapLibre's collapsible (i), which Esri allows on small screens
+const attribution = new maplibregl.AttributionControl({ compact: window.innerWidth < 720 });
 map.addControl(attribution, 'bottom-right');
 const scaleNoteEl = h('div', { class: 'maplibregl-ctrl scalenote', id: 'scalenote' });
 map.addControl({ onAdd: () => scaleNoteEl, onRemove: () => scaleNoteEl.remove() }, 'bottom-right');
-const scale = new maplibregl.ScaleControl({ maxWidth: window.innerWidth < 720 ? 90 : 140, unit: 'metric' }); // narrow on phones: clears the legend
-map.addControl(scale, 'bottom-right');
+// km above nautical miles as one double scale bar, as on OpenSeaMap (narrow on phones: clears the legend)
+const scaleOpts = { maxWidth: window.innerWidth < 720 ? 90 : 140 };
+const scales = [new maplibregl.ScaleControl({ ...scaleOpts, unit: 'metric' }), new maplibregl.ScaleControl({ ...scaleOpts, unit: 'nautical' })];
+const scalesEl = h('div', { class: 'maplibregl-ctrl scales', id: 'scales' });
+map.addControl({
+  onAdd: (m) => { scalesEl.append(...scales.map((s) => s.onAdd(m))); return scalesEl; },
+  onRemove: () => { for (const s of scales) s.onRemove(); scalesEl.remove(); },
+}, 'bottom-right');
 const posEl = h('div', { class: 'maplibregl-ctrl pos', id: 'pos', 'aria-live': 'off' });
 map.addControl({ onAdd: () => posEl, onRemove: () => posEl.remove() }, 'bottom-right');
 map.addControl(new maplibregl.NavigationControl({ showCompass: true, visualizePitch: false }), 'bottom-right');
@@ -154,7 +174,7 @@ function setOn(id, on) {
   }
   on ? state.on.add(id) : state.on.delete(id);
   applyItem(id);
-  if (it.group === 'base') { for (const k of baseDependent) applyItem(k); renderLegends(); labelPaint(); }
+  if (it.group === 'base') { for (const k of baseDependent) applyItem(k); renderLegends(); labelPaint(); creditEsri(); }
   if (id === 'graticule') updateGraticule();
   if (id === 'depth') { shoreFill(); labelPaint(); }
   renderMenu();
@@ -208,6 +228,25 @@ function labelPaint() {
 }
 const LINE_IDS = style.layers.filter((l) => /^isobaths(-\d+)?$/.test(l.id) && l.type === 'line').map((l) => l.id);
 const chartLineColour = Object.fromEntries(LINE_IDS.map((id) => [id, style.layers.find((l) => l.id === id).paint['line-color']]));
+function setDensity(id) {
+  map.getSource(id).setTiles(densityTiles(id, state.variant[id], state.period[id]));
+  writeHash();
+  renderLegends();
+}
+// Esri imagery credits: the service's current copyrightText (providers get renamed: Maxar → Vantor)
+let esriCredited = false;
+async function creditEsri() {
+  if (esriCredited || !(state.on.has('sat') && state.variant.sat === 'esri')) return;
+  esriCredited = true;
+  try {
+    const r = await fetch(ESRI_META, { credentials: 'omit' });
+    const text = r.ok && (await r.json()).copyrightText;
+    if (!text) return;
+    const src = map.getSource('esri');
+    src.attribution = esriAttribution(text);
+    src.setTiles(src.tiles); // a source event makes the attribution control redraw
+  } catch { esriCredited = false; } // keep the built-in text; retry on the next switch
+}
 function setDate(date) {
   state.date = date;
   for (const k of Object.keys(GIBS)) map.getSource(`gibs-${k}`).setTiles(gibsTiles(k, date));
@@ -291,8 +330,16 @@ function itemRow(it) {
     it.info.url ? h('p', {}, h('a', { href: it.info.url, target: '_blank', rel: 'noopener noreferrer' }, it.info.url.replace(/^https:\/\/(www\.)?/, '').replace(/\/.*$/, ''))) : null);
   // variant and date are what the item shows, so they sit in the row; opacity and provenance are one click away
   const controls = h('div', { class: 'controls' },
-    it.variants ? h('select', { 'aria-label': `${it.label} variant`, onchange: (e) => { state.variant[it.id] = e.target.value; applyItem(it.id); if (it.id === 'depth') depthColours(); writeHash(); renderStatus(); renderLegends(); } },
-      Object.entries(it.variants).map(([k, label]) => h('option', { value: k }, label))) : null,
+    it.variants ? h('select', { class: 'variant', 'aria-label': `${it.label} variant`, onchange: (e) => {
+      state.variant[it.id] = e.target.value;
+      applyItem(it.id);
+      if (it.id === 'depth') depthColours();
+      if (DENSITY[it.id]) setDensity(it.id);
+      if (it.id === 'sat') creditEsri();
+      writeHash(); renderStatus(); renderLegends();
+    } }, Object.entries(it.variants).map(([k, label]) => h('option', { value: k }, label))) : null,
+    it.density ? h('select', { class: 'period', 'aria-label': `${it.label} period`, onchange: (e) => { state.period[it.id] = e.target.value; setDensity(it.id); } },
+      DENSITY[it.id].periods.map((p) => h('option', { value: p }, DENSITY[it.id].periodLabel(p)))) : null,
     it.date ? h('input', { type: 'date', 'aria-label': 'Imagery date', max: new Date().toISOString().slice(0, 10), min: '2012-01-01',
       onchange: (e) => e.target.value && setDate(e.target.value) }) : null);
   const row = h('li', { class: 'item' },
@@ -348,12 +395,14 @@ function renderMenu() {
     const r = rows[it.id];
     const on = state.on.has(it.id);
     r.input.checked = on;
-    r.controls.hidden = !on || !(it.variants || it.date);
+    r.controls.hidden = !on || !(it.variants || it.date || it.density);
     const low = it.minzoom && z < it.minzoom, high = it.maxzoom && z >= it.maxzoom + 1;
     r.row.classList.toggle('dim', !!(on && (low || high)));
     r.row.querySelector('.hint').textContent = !on ? '' : low ? `zoom ${it.minzoom}+` : high ? `zoom ≤ ${it.maxzoom}` : '';
-    const sel = r.controls.querySelector('select');
+    const sel = r.controls.querySelector('select.variant');
     if (sel) sel.value = state.variant[it.id];
+    const per = r.controls.querySelector('select.period');
+    if (per) per.value = state.period[it.id];
     const rng = r.row.querySelector('input[type=range]');
     if (rng) rng.value = state.opacity[it.id];
     const dt = r.controls.querySelector('input[type=date]');
@@ -379,6 +428,7 @@ function renderLegends() {
   const want = [];
   if (on('legend')) {
     if (on('depth') && on('chart') && map.getZoom() < 13) want.push('depth');
+    for (const id of Object.keys(DENSITY)) if (on(id)) want.push(id);
     if (on('gibs') && GIBS[state.variant.gibs].legend) want.push('gibs');
   }
   for (const id of Object.keys(legendEls)) if (!want.includes(id)) legendEls[id].remove();
@@ -387,6 +437,10 @@ function renderLegends() {
     if (id === 'depth') {
       drawRamp(el, 'Depth shading', 'm · approximate (DEM)', depthStops(), { colour: NO_DEPTH, label: 'lakes: no depth · lagoons: shown as 0–5 m' });
       el.setAttribute('aria-label', `Depth shading legend: ${depthStops().map(([d]) => d).join(', ')} metres`);
+    } else if (DENSITY[id]) {
+      const d = DENSITY[id];
+      drawRamp(el, d.title, `${d.unit} · ${d.types[state.variant[id]]} · ${d.periodLabel(state.period[id])}`, d.stops);
+      el.setAttribute('aria-label', `${d.title} legend: ${d.stops.map(([v]) => v).join(', ')} ${d.unit}`);
     } else {
       const g = GIBS[state.variant.gibs], key = `${state.variant.gibs}|${state.date}`;
       if (el.dataset.key !== key) {
@@ -427,7 +481,6 @@ function renderMeasures() {
   measureAll.disabled = !measure.list.length;
   measureGroup.querySelector('.count').textContent = measure.list.length ? `${shown}/${measure.list.length}` : '';
   unitSel.value = measure.units;
-  scale.setUnit(measure.units === 'nm' ? 'nautical' : 'metric');
 }
 
 // ---- panel + toolbar --------------------------------------------------------
@@ -508,27 +561,29 @@ function exportPng() {
     g.drawImage(src, 0, 0);
     g.scale(dpr, dpr);
     const W = src.clientWidth, H = src.clientHeight;
-    // scale bar at the centre latitude (Web Mercator scale varies with latitude)
+    // double scale bar at the centre latitude (Web Mercator scale varies with latitude), bottom
+    // right as on screen: km above a shared line, nautical miles below it
     const lat = map.getCenter().lat;
     const mpp = (40075016.686 * Math.cos((lat * Math.PI) / 180)) / (512 * 2 ** map.getZoom());
-    const units = measure.units;
-    const unitM = units === 'nm' ? 1852 : 1;
-    const len = niceLen((120 * mpp) / unitM) * unitM;
-    const px = len / mpp;
-    // bottom-right, where the scale bar is on screen
-    g.font = '11px system-ui, sans-serif';
+    const bar = (unitM) => { const len = niceLen((120 * mpp) / unitM) * unitM; return { len, px: len / mpp }; };
+    const km = bar(1), nm = bar(1852);
     const v = scaleVariation();
-    const text = `${fmtDist(len, units)} at ${Math.abs(lat).toFixed(1)}°${lat >= 0 ? 'N' : 'S'}${v > 0.01 ? ` · scale varies ${(v * 100).toFixed(0)}% across the view` : ''}`;
-    const bw = Math.max(px, g.measureText(text).width) + 20, x0 = W - 10 - bw;
+    const kmText = `${km.len < 1000 ? `${+km.len.toPrecision(6)} m` : `${+(km.len / 1000).toPrecision(6)} km`} at ${Math.abs(lat).toFixed(1)}°${lat >= 0 ? 'N' : 'S'}${v > 0.01 ? ` · scale varies ${(v * 100).toFixed(0)}% across the view` : ''}`;
+    const nmText = `${+(nm.len / 1852).toPrecision(6)} NM`;
+    g.font = '11px system-ui, sans-serif';
+    const bw = Math.max(km.px, nm.px, g.measureText(kmText).width) + 20, line = H - 34;
     g.fillStyle = 'rgba(255,255,255,0.85)';
-    g.fillRect(x0, H - 40, bw, 30);
+    g.fillRect(W - 10 - bw, H - 58, bw, 48);
     g.strokeStyle = '#2b3a46';
     g.lineWidth = 2;
-    const bx = W - 20 - px;
-    g.beginPath(); g.moveTo(bx, H - 24); g.lineTo(bx, H - 18); g.lineTo(bx + px, H - 18); g.lineTo(bx + px, H - 24); g.stroke();
+    for (const [b, tick] of [[km, -6], [nm, 6]]) {
+      const bx = W - 20 - b.px;
+      g.beginPath(); g.moveTo(bx, line + tick); g.lineTo(bx, line); g.lineTo(bx + b.px, line); g.lineTo(bx + b.px, line + tick); g.stroke();
+    }
     g.fillStyle = '#2b3a46';
     g.textAlign = 'right';
-    g.fillText(text, W - 20, H - 26);
+    g.fillText(kmText, W - 20, H - 44);
+    g.fillText(nmText, W - 20, H - 16);
     g.textAlign = 'left';
     const box = map.getContainer().getBoundingClientRect();
     for (const el of legends.querySelectorAll('canvas')) {
@@ -575,6 +630,7 @@ map.on('load', () => {
   for (const it of ITEMS) applyItem(it.id);
   depthColours();
   labelPaint();
+  creditEsri();
   measure.load(measureState);
   updateGraticule();
   renderMenu();

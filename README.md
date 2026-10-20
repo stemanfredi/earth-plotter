@@ -15,7 +15,22 @@ Layers are grouped by task, each with an ⓘ for its source, licence and
 resolution. Depth shading and isobaths end at the OpenStreetMap coastline.
 Ruler, area and range ring are geodesic on WGS 84, in kilometres or nautical
 miles. Search takes place names or coordinates. The link reopens the exact
-view, and the PNG export carries the scale, legends and credits.
+view, and the PNG export carries the scale, legends and credits. The GIS export
+is a zip: the map as a georeferenced PNG (world file, Web
+Mercator), the PNG export, one GeoJSON file per vector layer drawn (`vector/`:
+clipped to the view, pieces from neighbouring tiles joined) plus the
+measurements, the depth and land elevation in metres as GeoTIFF (`raster/`, when
+depth shading or relief and contours are drawn: the elevation tiles the map
+draws, at their resolution, over the view's bounding box; imagery and density
+layers are in the pictures only), and a [STAC](https://stacspec.org) Item (`item.json`) with the
+view's footprint, the layers drawn, their sources, licences and files. QGIS
+opens every file straight from the zip.
+
+One limit of the GeoJSON: OpenMapTiles merges neighbouring buildings into one
+feature whose parts touch, which is not valid geometry to begin with. The export
+unions those parts, but now and then a building feature comes out still touching
+itself (3 of 49 in central Taranto at zoom 14.5). GIS tools open these files;
+QGIS's *Fix geometries* repairs them.
 
 ## Data sources
 
@@ -86,7 +101,11 @@ The reasons behind each rule are documented next to the code that applies it.
 | `index.html` | Page shell. The CDN block is generated; see *Dependencies*. |
 | `style.css` | All styling. |
 | `catalog.js` | Sources, style layers in draw order, menu items and their provenance. |
-| `app.js` | Map setup, panels, URL state, search, legends, graticule, PNG export. |
+| `app.js` | Map setup, panels, URL state, search, legends, graticule, PNG and GIS export. |
+| `export.js` | GIS export contents: georeferencing and the STAC Item. |
+| `vector.js` | Vector layers of the view as GeoJSON: tile pieces joined, clipped to the view. |
+| `geotiff.js` | Elevation grids of the view as GeoTIFF. |
+| `zip.js` | Zip writer (the browser's own deflate). |
 | `clip.js`, `clip-worker.js` | Elevation tiles cut to the OSM coastline, in a Web Worker. |
 | `measure.js` | Geodesic ruler, area and range ring. |
 | `legend.js` | Legend drawing. |
@@ -128,9 +147,11 @@ notices. Pages must be enabled once in the repository settings, with
 
 ## Dependencies
 
-MapLibre GL JS, maplibre-contour and GeographicLib load from jsDelivr at pinned
+MapLibre GL JS, maplibre-contour, GeographicLib and polygon-clipping load from jsDelivr at pinned
 versions with Subresource Integrity. MapLibre's worker script is pinned and
-verified too: the page checks its hash and gives MapLibre the verified copy. The pins are listed in `PINS` in `tools/deps.mjs`.
+verified too: the page checks its hash and gives MapLibre the verified copy.
+polygon-clipping loads only on the first GIS export, from its pinned URL with
+its hash. The pins are listed in `PINS` in `tools/deps.mjs`.
 
 To upgrade, change a version in `PINS`, run `node tools/deps.mjs --write`, and
 test. The script refetches the files and rewrites the generated block in

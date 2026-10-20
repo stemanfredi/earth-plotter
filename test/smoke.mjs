@@ -38,10 +38,10 @@ try {
   check(broken.length === 0, `no source marked failing ${broken.join(', ')}`);
   check(referred.size === 0, `no request to a tile host carries a Referer ${[...referred].join(', ')}`);
 
-  // menu: a group checkbox switches all its items; base radio swaps chart and satellite
-  await p.click('details[data-group=sea] summary input');
-  check((await visible(p, 'seamarks')) === 'visible', 'group checkbox turns on all its items');
-  await p.click('label[for=i-sat]');
+  // menu: a row's switch turns its layer on; the base cards swap chart and satellite
+  await p.click('label[for=i-seamarks]');
+  check((await visible(p, 'seamarks')) === 'visible', 'a layer row turns its layer on');
+  await p.click('.basecard[data-base=sat]');
   check((await visible(p, 'esri')) === 'visible' && (await visible(p, 'water')) === 'none', 'satellite replaces the chart base');
   await p.waitForTimeout(1500);
   const credits = await p.evaluate(() => document.querySelector('.maplibregl-ctrl-attrib-inner')?.textContent || '');
@@ -53,7 +53,7 @@ try {
 
   // URL state: view, layers and measurements survive a reload; Link copies the current view
   p = await open('#v=9/43.4/9.9/0&on=chart,coastline,depth,isobaths&u=nm&m=r:9.5,43.6;10.1,43.2~c:10,43.5;15000&menu=1&g=measure');
-  const kinds = (await p.evaluate(() => [...document.querySelectorAll('.mlist .item .line label')].map((l) => l.textContent.split(' ')[0]))).join();
+  const kinds = (await p.evaluate(() => [...document.querySelectorAll('.mlist label.name')].map((l) => l.textContent.split(' ')[0]))).join();
   check(kinds === 'Ruler,Ring', `measurements load from the URL as ruler and ring (${kinds})`);
   await p.evaluate(() => map.jumpTo({ center: [12, 41], zoom: 6 }));
   await p.click('#link');
@@ -63,8 +63,42 @@ try {
   check((await again.evaluate(() => map.getZoom().toFixed(2))) === '6.00' && (await visible(again, 'isobaths')) === 'visible', 'the copied link reopens the same view and layers');
   check(again.errors.length === 0, `reloaded view without errors ${again.errors.join(' | ')}`);
 
+  // one side panel: Measure replaces Layers in place, the link keeps the view, its button closes it
+  const pv = await open('#v=6/41/12/0&menu=1');
+  await pv.click('#b-measure');
+  await pv.waitForTimeout(400);
+  const views = await pv.evaluate(() => [!document.querySelector('#panel').hidden, document.querySelector('#menu').hidden, !document.querySelector('#mview').hidden, document.querySelector('#panel-title').textContent, location.hash.includes('menu=measure')]);
+  check(views.join() === 'true,true,true,Measure,true', `Measure switches the panel in place and the link keeps it (${views.join()})`);
+  await pv.click('#b-measure');
+  check(await pv.evaluate(() => document.querySelector('#panel').hidden), "the shown view's button closes the panel");
+  await pv.close();
+
+  // NASA SST is published about two days late: the date steps back to the newest one GIBS has
+  const sst = await open('#v=5/40/10/0&menu=1&g=imagery&on=chart,coastline,gibs&var=gibs:sst');
+  await sst.waitForFunction(() => document.querySelector('.latest')?.textContent, null, { timeout: 20000 }).catch(() => {});
+  const [shown, note] = await sst.evaluate(() => [document.querySelector('.datestep input').value, document.querySelector('.latest').textContent]);
+  check(/^Newest published: \d{4}-\d{2}-\d{2}$/.test(note) && note.endsWith(shown), `SST date is the newest published one (${shown}; ${note})`);
+  await sst.close();
+
+  // search: coordinates are read on the page (no request); a place comes from Photon
+  const sp = await open('#v=6/41/12/0&menu=0');
+  const near = (lat, lon, tol) => sp.evaluate(({ lat, lon, tol }) => { const c = map.getCenter(); return Math.abs(c.lat - lat) < tol && Math.abs(c.lng - lon) < tol; }, { lat, lon, tol });
+  let photonCalls = 0;
+  sp.on('request', (r) => { if (r.url().includes('photon.komoot.io')) photonCalls++; });
+  await sp.fill('#q', '44 05N 9 51E');
+  await sp.keyboard.press('Enter');
+  await sp.waitForTimeout(2500);
+  check((await near(44 + 5 / 60, 9.85, 0.01)) && photonCalls === 0, 'coordinates in the search box go there, without a request');
+  await sp.fill('#q', 'Porto Venere');
+  await sp.waitForSelector('#results li[role=option]', { timeout: 15000 }).catch(() => {});
+  await sp.keyboard.press('Enter');
+  await sp.waitForTimeout(2500);
+  check((await near(44.05, 9.83, 0.05)) && photonCalls > 0, 'a place name is found (Photon) and the map goes there');
+  check(sp.errors.length === 0, `search without errors ${sp.errors.join(' | ')}`);
+  await sp.close();
+
   // vessel density (EMODnet, off by default): loads, has a legend, type and year change the tiles
-  const tr = await open('#v=7/37.5/14/0&on=chart,coastline,traffic,legend&menu=1&g=sea');
+  const tr = await open('#v=7/37.5/14/0&on=chart,coastline,traffic,legend&menu=1&g=shipping');
   check(tr.errors.length === 0 && !(await tr.evaluate(() => document.querySelector('#i-traffic').closest('.item').classList.contains('error'))), `vessel density loads ${tr.errors.join(' | ')}`);
   check(await tr.evaluate(() => !!document.querySelector('#legends canvas[data-legend=traffic]')), 'vessel density legend shown');
   await tr.selectOption('.item:has(#i-traffic) select.variant', 't10');
@@ -77,7 +111,7 @@ try {
   await tr.close();
 
   // route density (EMSA, monthly): newest month by default, month and type change the tiles
-  const rt = await open('#v=7/37.5/14/0&on=chart,coastline,routes,legend&menu=1&g=sea');
+  const rt = await open('#v=7/37.5/14/0&on=chart,coastline,routes,legend&menu=1&g=shipping');
   check(rt.errors.length === 0 && !(await rt.evaluate(() => document.querySelector('#i-routes').closest('.item').classList.contains('error'))), `route density loads ${rt.errors.join(' | ')}`);
   await rt.selectOption('.item:has(#i-routes) select.variant', 't04');
   await rt.selectOption('.item:has(#i-routes) select.period', '2025-11');

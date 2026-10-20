@@ -88,6 +88,17 @@ export function gibsTiles(key, date) {
   const g = GIBS[key];
   return [`https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/${g.layer}/default/${date}/GoogleMapsCompatible_Level${g.level}/{z}/{y}/{x}.${g.ext}`];
 }
+// NASA publishes each layer after its own delay (true colour within a day, MUR SST about two days):
+// GIBS DescribeDomains lists the dates a layer has between from and to (YYYY-MM-DD)
+export function gibsDomainUrl(key, from, to) {
+  const g = GIBS[key];
+  return `https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/1.0.0/${g.layer}/default/GoogleMapsCompatible_Level${g.level}/all/${from}--${to}.xml`;
+}
+// the newest date in a DescribeDomains reply: <Domain>start/end/P1D[,start/end/P1D…]</Domain>
+export function domainEnd(xml) {
+  const ends = [...(/<Domain>([^<]*)<\/Domain>/.exec(xml)?.[1] || '').matchAll(/\d{4}-\d{2}-\d{2}\/(\d{4}-\d{2}-\d{2})/g)].map((m) => m[1]);
+  return ends.length ? ends.sort().at(-1) : null;
+}
 
 // ---- menu -------------------------------------------------------------------
 // exclusive: items in the group behave as radio buttons.
@@ -97,6 +108,7 @@ export function gibsTiles(key, date) {
 export const GROUPS = [
   { id: 'base', label: 'Base', exclusive: true },
   { id: 'sea', label: 'Sea' },
+  { id: 'shipping', label: 'Shipping' },
   { id: 'land', label: 'Land' },
   { id: 'imagery', label: 'Daily imagery' },
   { id: 'labels', label: 'Labels & grid' },
@@ -114,10 +126,10 @@ export const ITEMS = [
     info: { src: 'AWS Terrain Tiles (Terrarium): ETOPO1 and GEBCO-class seabed, NOAA coastal DEMs', lic: 'Open data, attribution per source', res: 'Seabed ~1–2 km in open sea, finer in US and some European waters. Cut to the OSM coastline, so land below sea level is never tinted; sea the DEM calls dry is shown as the shallowest class. Inland water is classified once per water body from the DEM at its shore: at sea level (limans, lagoons, harbour basins) it is shown flat in the shallowest class, depth unknown; lakes above it are grey, no depth data. Caspian depths are measured from its surface (−28 m), not from sea level. Off above zoom 12: the data has no more detail', url: 'https://registry.opendata.aws/terrain-tiles/' } },
   { id: 'isobaths', group: 'sea', label: 'Isobaths', on: true, opacity: 1, minzoom: 4,
     info: { src: 'Contoured in your browser from the Terrarium DEM (maplibre-contour)', lic: 'As DEM', res: 'Spacing widens with depth and tightens with zoom: 5 m, every 10 m to 50 m, 50 m to 200 m, then 500/200/100 m to 3000 m and 1000/500 m below ( indicative only, the seabed data is ~1–2 km in open sea). As coarse as the DEM beneath: smoothed shapes, not surveyed soundings. Traced on the DEM cut to the OSM coastline (to zoom 12, about 38 m per pixel). Above zoom 12 the same lines are magnified: they can stop short of the coast or cross it by a few pixels', url: 'https://github.com/onthegomap/maplibre-contour' } },
-  { id: 'traffic', group: 'sea', label: 'Vessel density', opacity: 0.85, density: true, variantsBy: 'tiles',
+  { id: 'traffic', group: 'shipping', label: 'Vessel density', opacity: 0.85, density: true, variantsBy: 'tiles',
     variants: DENSITY.traffic.types,
     info: { src: 'EMODnet Human Activities vessel density (Cogea), from AIS bought from CLS, ORBCOMM and vesseltracker.com', lic: 'EMODnet open data, no access constraints; attribution requested', res: '1 km grid, annual averages of hours per km² per month, 2017–2024. EU and neighbouring seas only. 2024 is incomplete (satellite AIS lost from June). Not real time', url: 'https://emodnet.ec.europa.eu/en/human-activities' } },
-  { id: 'routes', group: 'sea', label: 'Route density', opacity: 0.85, density: true, variantsBy: 'tiles',
+  { id: 'routes', group: 'shipping', label: 'Route density', opacity: 0.85, density: true, variantsBy: 'tiles',
     variants: DENSITY.routes.types,
     info: { src: 'EMSA route density, via EMODnet Human Activities: ship tracks rebuilt from terrestrial and satellite AIS, counting the routes that cross each cell', lic: 'CC BY 4.0 · European Maritime Safety Agency (EMSA)', res: '1 km grid, monthly totals since January 2019, about 3 months behind. EU and neighbouring seas only. Counts passages, not time spent (see Vessel density for hours)', url: 'https://www.emsa.europa.eu/related-operational-projects/traffic-density-maps.html' } },
   { id: 'seamarks', group: 'sea', label: 'Seamarks', minzoom: 9, opacity: 1,
@@ -138,16 +150,16 @@ export const ITEMS = [
     variants: Object.fromEntries(Object.entries(GIBS).map(([k, g]) => [k, g.label])),
     info: { src: 'NASA EOSDIS GIBS (WMTS)', lic: 'NASA open data; attribution requested', res: 'True colour 250 m, to zoom 9 · SST and chlorophyll 1 km, to zoom 7. Clouds and swath gaps are real', url: 'https://www.earthdata.nasa.gov/engage/open-data-services-software/earthdata-developer-portal/gibs-api' } },
 
+  { id: 'legend', group: 'labels', label: 'Legends', on: true,
+    info: { src: 'Drawn from the same colour stops as the map; SST from NASA GIBS’s published colour map; vessel and route density from the stops their WMS publishes', lic: '—', res: 'Shown bottom left for every colour layer that is drawn; the PNG always includes them', url: 'https://nasa-gibs.github.io/gibs-api-docs/' } },
   { id: 'places', group: 'labels', label: 'Place names', on: true,
     info: { src: 'OpenStreetMap via OpenFreeMap', lic: 'ODbL · © OpenStreetMap contributors', res: 'English name where tagged, else local name', url: 'https://openfreemap.org' } },
   { id: 'seanames', group: 'labels', label: 'Sea names', on: true,
     info: { src: 'OpenStreetMap via OpenFreeMap', lic: 'ODbL · © OpenStreetMap contributors', res: 'Oceans, seas, bays, straits as tagged in OSM', url: 'https://openfreemap.org' } },
   { id: 'boundaries', group: 'labels', label: 'Boundaries', on: true,
     info: { src: 'OpenStreetMap via OpenFreeMap', lic: 'ODbL · © OpenStreetMap contributors', res: 'Land boundaries only; maritime claims are not drawn', url: 'https://openfreemap.org' } },
-  { id: 'legend', group: 'labels', label: 'Legends', on: true,
-    info: { src: 'Drawn from the same colour stops as the map; SST from NASA GIBS’s published colour map', lic: '—', res: 'Depth shading: approximate DEM classes · SST: 0.15 °C classes', url: 'https://nasa-gibs.github.io/gibs-api-docs/' } },
   { id: 'graticule', group: 'labels', label: 'Graticule', on: true,
-    info: { src: 'Computed in your browser (WGS 84)', lic: '—', res: 'Spacing adapts to zoom, down to 1′. With the map north-up, longitudes are labelled along the bottom edge and latitudes along the left', url: '' } },
+    info: { src: 'Computed in your browser (WGS 84)', lic: '—', res: 'Spacing adapts to zoom, down to 1′. With the map north-up, longitudes are labelled along the top edge and latitudes along the left', url: '' } },
 ];
 
 // ---- sources ----------------------------------------------------------------
@@ -234,8 +246,10 @@ function layers() {
     // Shore line drawn UNDER the water fill at twice its width: where two water polygons meet
     // (sea and a harbour basin, a lagoon and its canals; OSM draws a straight line between pier
     // heads) both fills cover it; where water meets land, the land-side half stays as the shore.
+    // Ponds (irrigation tanks, cisterns, small reservoirs) get no shore line: a 20 m pond inside a
+    // 2 px ring reads as a dark dot on land; they show as water fill alone, as on most maps.
     { id: 'coastline', type: 'line', source: 'omt', 'source-layer': 'water', ...m('coastline'),
-      filter: ['!=', ['get', 'class'], 'swimming_pool'],
+      filter: ['in', ['get', 'class'], ['literal', ['ocean', 'dock', 'lake', 'river']]],
       layout: { 'line-join': 'round' },
       paint: {
         'line-color': C.ink,

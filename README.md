@@ -34,18 +34,30 @@ Run locally: `python3 -m http.server` in this folder, open http://localhost:8000
 | Seamarks | OpenSeaMap | CC BY-SA 2.0 | crowd-sourced |
 | Vessel density (off by default) | EMODnet Human Activities (Cogea; AIS from CLS, ORBCOMM, vesseltracker.com), WMS | EMODnet open data, attribution | 1 km, annual averages 2017–2024 by ship type; EU and neighbouring seas; 2024 incomplete, so 2023 is the default |
 | Route density (off by default) | EMSA route density via EMODnet Human Activities, WMS | CC BY 4.0 | 1 km, monthly from Jan 2019, about 3 months behind; counts routes crossing each cell; EU and neighbouring seas |
-| NASA daily | GIBS: MODIS / VIIRS true colour, MUR SST, chlorophyll-a | NASA open data | 250 m / 1 km; date picker, default yesterday UTC |
+| NASA daily | GIBS: MODIS / VIIRS true colour, MUR SST, chlorophyll-a | NASA open data | 250 m / 1 km; date picker; default yesterday (UTC), or the newest day NASA has published for the layer (MUR SST runs about two days behind) |
 
-Every row in the menu has a ⋯ panel with the same provenance, and the
-attribution line lists only the sources currently drawn.
+Every row in the Layers panel has an ⓘ with the same provenance, and the
+credits list only the sources currently drawn.
 
-Layout follows Google Maps: *Layers* top left (the panel opens down the left
-edge, a bottom sheet on phones), tools top right (ruler, area, ring; copy link,
-PNG), zoom, compass, cursor position and scale bar bottom right. The scale bar
-is double, as on OpenSeaMap: km above the line, nautical miles below (also in the PNG).
+Layout, by task. Top left, a search box: a place name (via Photon, see
+*Privacy*) or coordinates in any common form (`44.085, 9.85`, `44 05.1N 9 51E`,
+`44°05'06"N 009°51'E`). The right edge holds what you use: *Layers*, *Measure*,
+*Link* and *PNG* at the top, zoom lower down, and a compass only when the map is
+rotated. *Layers* and *Measure* switch one side panel, as tall as its
+content, that opens to the left of that column (open on Layers by default on
+screens 1200 px and wider; the button of the view shown closes it). *Link*
+copies a link to the view and *PNG* exports it, at once. The column never
+moves. On phones the panel is a sheet from the bottom, as tall as its content;
+drag its handle down to close it. The map's edges hold what you read: legends stacked bottom left, and a
+bottom row with the credits on the left and the cursor position and scale bar on the right (no bar: each item has its own light backing). The scale
+bar is double, as on OpenSeaMap: km above the line, nautical miles below (also
+in the PNG). While a measurement is drawn, a bar at the top shows its live
+value with Undo, Done and Cancel (under the search box). Keys: <kbd>/</kbd> search, <kbd>L</kbd> layers, <kbd>R</kbd>
+ruler, <kbd>A</kbd> area, <kbd>C</kbd> range ring, <kbd>Esc</kbd> closes or
+cancels. *About* (foot of the Layers panel) carries the not-for-navigation notice.
 
-Colour layers get a legend (bottom left, also in the PNG; *Legends* in the
-menu hides them): depth shading uses the same colour stops as the map, and sea surface temperature uses the colour map NASA GIBS publishes for
+Colour layers get a legend, stacked bottom left (the *Legends* switch in
+*Labels & grid* hides them; the PNG always includes them). Depth shading uses the same colour stops as the map, and sea surface temperature uses the colour map NASA GIBS publishes for
 the layer (0.15 °C classes), fetched once when first shown. Vessel and route density use
 the colour stops their WMS publishes. `npm run deps` (weekly in CI) reports when
 the WMS offers newer periods than `catalog.js` lists.
@@ -99,7 +111,9 @@ coastline the basemap draws:
   and its canals), but all of it is filled the same. The shore line is drawn
   *under* that fill at twice its width: where two water polygons meet, both
   fills cover it; where water meets land, the land-side half remains. Piers
-  are drawn on top as land at about their real width.
+  are drawn on top as land at about their real width. Ponds (irrigation tanks,
+  cisterns) get no shore line, only the water fill: ringed, a 20 m pond read as a
+  dark dot on land.
 - Inland water is classified once per water body, from the DEM along its
   shore (its polygon's vertices, relative to any `DATUMS` surface there), and
   remembered by OSM id so all tiles agree. It is at sea level when the shore
@@ -130,9 +144,9 @@ coastline the basemap draws:
 - Distances, bearings (true), areas and rings are geodesic on WGS 84
   (GeographicLib), and lines are drawn as densified geodesics.
 - The map is Web Mercator, so the scale bar is exact only at the centre
-  latitude. When the scale varies by more than 1% across the view (from the
-  lowest to the highest latitude in it), a note under the scale bar says so, on
-  screen and in the PNG. For exact distances use the ruler, which is geodesic.
+  latitude. When the scale varies by more than 3% across the view (from the
+  lowest to the highest latitude in it), a note beside the scale bar says so, on
+  screen and in the PNG; below that the bar reads as exact. For exact distances use the ruler, which is geodesic.
 - Depth colours have two schemes (the Depth shading item's menu, also used by the
   legend): *darker = deeper* (atlas and ocean maps, the default) and
   *darker = shallower* (nautical charts, IHO S-52, where shallow water is the hazard).
@@ -140,6 +154,19 @@ coastline the basemap draws:
   the OSM coastline, but their shapes near the shore are only as good as the
   1–2 km data, and sea the DEM calls dry is shown as the shallowest class.
   Lakes above sea level are grey: no depth source.
+- Two defects of the elevation tiles are corrected before the sea is shaded and
+  contoured (`seaDem` in clip.js), each tile with a 32-pixel margin from its
+  neighbours so tiles agree:
+  - *Closed isobaths smaller than the data.* False pits at the coast
+    (Marciana Marina, Elba: −485 m inside the harbour) and pockets in coves the
+    grid only half has drew stacks of tiny rings. As in contour generalisation,
+    for each drawn depth an enclosed patch deeper than it and smaller than 64
+    pixels (~0.8 km² at zoom 10) is raised just above it. Only depressions
+    change, so water only ever gets shallower; shoals and banks stay.
+  - *Bends at tile edges.* Terrarium resampled each tile on its own, so the
+    depth gradient jumps at tile edges, and magnified isobaths bent there. Sea
+    depths get a light blur (two 3 × 3 passes over ~110 m pixels; the seabed
+    data is ~1 km), using sea neighbours only, so land never lifts the coast.
 - **Not for navigation.**
 
 ## Privacy
@@ -147,6 +174,11 @@ coastline the basemap draws:
 `no-referrer`, and a Content-Security-Policy that allows only the CDN and the
 tile hosts listed in `tools/deps.mjs`. Global tile requests still tell each
 provider which area you are viewing; a hidden layer makes no requests.
+
+Search: coordinates typed into the box are read on the page and never sent.
+A place name goes to [Photon](https://photon.komoot.io) (komoot, OpenStreetMap
+data) as you type (after 3 characters, 300 ms pause), with the map's centre
+rounded to 0.1° so nearby results come first; the results list says so.
 
 ## Dependencies
 

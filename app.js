@@ -1,9 +1,9 @@
 import * as maplibregl from 'maplibre-gl';
 import mlcontour from 'maplibre-contour';
-import { GROUPS, ITEMS, GIBS, DEM_TILES, DEM_SEA, DEM_LAND, OMT_TILEJSON, OPACITY_PROP, DEPTH_SCHEMES, depthRamp, NO_DEPTH, DENSITY, ESRI_META, esriAttribution, buildStyle, defaultDate, gibsTiles, densityTiles } from './catalog.js';
+import { GROUPS, ITEMS, GIBS, DEM_TILES, DEM_SEA, DEM_LAND, OMT_TILEJSON, OPACITY_PROP, DEPTH_SCHEMES, depthRamp, NO_DEPTH, DENSITY, ESRI_META, esriAttribution, buildStyle, defaultDate, gibsTiles, gibsDomainUrl, domainEnd, densityTiles } from './catalog.js';
 import { workerClipper } from './clip.js';
 import { drawRamp, loadColormap, drawColormap } from './legend.js';
-import { fmtAngle, dm, mercatorVariation, niceLen, wrap } from './format.js';
+import { fmtAngle, dm, mercatorVariation, niceLen, wrap, parseLatLon } from './format.js';
 import { Measure, MEASURE_LAYERS, summary } from './measure.js';
 
 const $ = (sel, el = document) => el.querySelector(sel);
@@ -27,7 +27,7 @@ const state = {
   date: defaultDate(),
   period: Object.fromEntries(Object.entries(DENSITY).map(([id, d]) => [id, d.defaultPeriod])), // density datasets
   open: new Set(['base', 'sea']),
-  menu: window.innerWidth >= 720,
+  panel: window.innerWidth >= 1200 ? 'layers' : null, // the side panel's view; open beside the map where it leaves room
 };
 let view = { zoom: 4, center: [12, 41], bearing: 0 };
 let measureState = '';
@@ -52,7 +52,7 @@ function readHash() {
     if (DENSITY[k]?.periods.includes(val)) state.period[k] = val;
   }
   if (q.has('g')) state.open = new Set(q.get('g').split(',').filter((g) => g === 'measure' || GROUPS.some((x) => x.id === g)));
-  if (q.has('menu')) state.menu = q.get('menu') === '1';
+  if (q.has('menu')) state.panel = { 1: 'layers', measure: 'measure' }[q.get('menu')] || null; // menu=1 from older links: Layers
   measureState = q.get('m') || '';
   return q.get('u');
 }
@@ -82,7 +82,7 @@ function writeHashNow() {
     const m = measure.serialize();
     if (m) q.set('m', m);
     q.set('g', [...state.open].join(','));
-    q.set('menu', state.menu ? '1' : '0');
+    q.set('menu', state.panel === 'measure' ? 'measure' : state.panel ? '1' : '0');
     history.replaceState(null, '', `#${q.toString().replace(/%2C/g, ',').replace(/%2F/g, '/').replace(/%3A/g, ':').replace(/%3B/g, ';').replace(/%7E/g, '~')}`);
   }
 }
@@ -128,25 +128,35 @@ const map = new maplibregl.Map({
   transformRequest: (url) => ({ url, referrerPolicy: 'no-referrer' }),
 });
 map.touchZoomRotate.disableRotation();
-// bottom-right, as in Google Maps; MapLibre stacks later bottom controls above earlier ones:
-// attribution at the bottom, then the scale note, the scale bar, the cursor readout, and zoom + compass on top
-// credits stay written out on desktop (Esri: data attribution "always visible"; OSM likewise);
-// phones get MapLibre's collapsible (i), which Esri allows on small screens
-const attribution = new maplibregl.AttributionControl({ compact: window.innerWidth < 720 });
-map.addControl(attribution, 'bottom-right');
-const scaleNoteEl = h('div', { class: 'maplibregl-ctrl scalenote', id: 'scalenote' });
-map.addControl({ onAdd: () => scaleNoteEl, onRemove: () => scaleNoteEl.remove() }, 'bottom-right');
-// km above nautical miles as one double scale bar, as on OpenSeaMap (narrow on phones: clears the legend)
-const scaleOpts = { maxWidth: window.innerWidth < 720 ? 90 : 140 };
+const small = () => window.innerWidth < 720;
+
+// ---- bottom row: credits, scale note, cursor position, double scale ------------------------
+// The scale is double, as on OpenSeaMap: km above the line, nautical miles below. Credits stay
+// written out on desktop (Esri: data attribution "always visible"; OSM likewise); phones get
+// MapLibre's collapsible (i), which Esri allows on small screens.
+const statusEl = $('#status');
+const posEl = h('div', { class: 'pos', id: 'pos', 'aria-live': 'off' });
+const scaleOpts = { maxWidth: small() ? 90 : 120 };
 const scales = [new maplibregl.ScaleControl({ ...scaleOpts, unit: 'metric' }), new maplibregl.ScaleControl({ ...scaleOpts, unit: 'nautical' })];
-const scalesEl = h('div', { class: 'maplibregl-ctrl scales', id: 'scales' });
-map.addControl({
-  onAdd: (m) => { scalesEl.append(...scales.map((s) => s.onAdd(m))); return scalesEl; },
-  onRemove: () => { for (const s of scales) s.onRemove(); scalesEl.remove(); },
-}, 'bottom-right');
-const posEl = h('div', { class: 'maplibregl-ctrl pos', id: 'pos', 'aria-live': 'off' });
-map.addControl({ onAdd: () => posEl, onRemove: () => posEl.remove() }, 'bottom-right');
-map.addControl(new maplibregl.NavigationControl({ showCompass: true, visualizePitch: false }), 'bottom-right');
+const scalesEl = h('div', { class: 'scales', id: 'scales' }, scales.map((s) => s.onAdd(map)));
+const scaleNoteEl = h('div', { class: 'scalenote', id: 'scalenote' });
+const attribution = new maplibregl.AttributionControl({ compact: small() });
+// credits on the left; the scale note, cursor position and scale grouped on the right
+statusEl.append(attribution.onAdd(map), h('div', { class: 'readout' }, scaleNoteEl, posEl, scalesEl));
+// the panel, zoom buttons and legends sit above the bottom row, whose height follows its credits
+new ResizeObserver(() => document.documentElement.style.setProperty('--status-h', `${statusEl.offsetHeight}px`)).observe(statusEl);
+
+// ---- zoom and compass (the compass only appears when the map is rotated) -------------------
+$('#zoom-in').addEventListener('click', () => map.zoomIn());
+$('#zoom-out').addEventListener('click', () => map.zoomOut());
+const compass = $('#compass');
+compass.addEventListener('click', () => map.resetNorth());
+function renderCompass() {
+  const b = map.getBearing();
+  compass.hidden = Math.abs(b) < 0.5;
+  compass.firstElementChild.style.transform = `rotate(${-b}deg)`;
+}
+map.on('rotate', renderCompass);
 
 const measure = new Measure(map, (what) => { if (what === 'list') { renderMeasures(); writeHash(); } renderTools(); });
 if (urlUnits === 'nm') measure.units = 'nm';
@@ -173,7 +183,7 @@ function setOn(id, on) {
     for (const other of ITEMS) if (other.group === it.group && other.id !== id && state.on.delete(other.id)) applyItem(other.id);
   }
   on ? state.on.add(id) : state.on.delete(id);
-  applyItem(id);
+  id === 'gibs' && on ? showGibs() : applyItem(id);
   if (it.group === 'base') { for (const k of baseDependent) applyItem(k); renderLegends(); labelPaint(); creditEsri(); }
   if (id === 'graticule') updateGraticule();
   if (id === 'depth') { shoreFill(); labelPaint(); }
@@ -251,7 +261,30 @@ function setDate(date) {
   state.date = date;
   for (const k of Object.keys(GIBS)) map.getSource(`gibs-${k}`).setTiles(gibsTiles(k, date));
   writeHash();
-  renderLegends();
+  renderMenu(); // the date field and the next-day button follow; also redraws the legends
+}
+// NASA publishes each layer after its own delay (true colour within a day, MUR SST about two):
+// ask GIBS for the newest date of the layer shown, and step back to it rather than show nothing
+const gibsEnd = {}; // GIBS key → promise of its newest date, or null if unknown
+let gibsLast = null; // newest date of the layer shown, once known
+function latestGibs(key) {
+  return (gibsEnd[key] ||= fetch(gibsDomainUrl(key, shiftDay(today(), -60), today()), { credentials: 'omit' })
+    .then((r) => (r.ok ? r.text() : null))
+    .then((t) => (t ? domainEnd(t) : null))
+    .catch(() => { delete gibsEnd[key]; return null; }));
+}
+// the NASA layer is drawn only once its date is known, so it never asks for a day not published yet
+async function showGibs() {
+  await checkGibsDate();
+  applyItem('gibs');
+}
+async function checkGibsDate() {
+  if (!state.on.has('gibs')) return;
+  const key = state.variant.gibs, end = await latestGibs(key);
+  if (key !== state.variant.gibs) return; // switched meanwhile
+  gibsLast = end;
+  if (end && state.date > end) setDate(end);
+  else renderMenu();
 }
 
 // ---- graticule (WGS 84 lat/lon grid; spacing adapts to the view) -------------
@@ -265,13 +298,12 @@ function updateGraticule() {
   const s = Math.max(-85, b.getSouth()), n = Math.min(85, b.getNorth());
   const w = b.getWest(), e = b.getEast();
   const k0 = (x) => Math.round(x * 3600) / 3600;
-  // edge labels: meridians along the top (under the top controls), parallels along the left
-  // (right of the panel when it is open beside the map); only when north-up, where a screen
-  // edge is a parallel or a meridian. The bottom edge is busy with legend, scale and credits.
+  // edge labels: meridians along the top, parallels along the left (the controls and the panel
+  // are on the right); only when north-up, where a screen edge is a parallel or a meridian.
+  // The bottom edge is busy with legends, credits and the scale.
   const W = map.getContainer().clientWidth, H = map.getContainer().clientHeight;
   const edges = Math.abs(map.getBearing()) < 0.5;
-  const left = state.menu && W >= 720 ? panel.getBoundingClientRect().right + 8 : 8;
-  const latTop = map.unproject([W / 2, 64]).lat, lonLeft = map.unproject([left, H / 2]).lng;
+  const latTop = map.unproject([W / 2, 64]).lat, lonLeft = map.unproject([8, H / 2]).lng;
   const label = (coord, text, anchor) => f.push({ type: 'Feature', properties: { label: text, anchor }, geometry: { type: 'Point', coordinates: coord } });
   for (let lon = Math.ceil(w / step) * step; lon <= e; lon += step) {
     const L = ((k0(lon) + 540) % 360) - 180;
@@ -313,125 +345,172 @@ function itemStatus(id) {
   return null;
 }
 
-// ---- menu -------------------------------------------------------------------
+// ---- small builders ---------------------------------------------------------
+const SVG_NS = 'http://www.w3.org/2000/svg';
+// a 20 px line icon from SVG path data (same look as the icons in index.html)
+function icon(...paths) {
+  const s = document.createElementNS(SVG_NS, 'svg');
+  for (const [k, v] of Object.entries({ viewBox: '0 0 24 24', width: 20, height: 20, 'aria-hidden': 'true', fill: 'none', stroke: 'currentColor', 'stroke-width': 1.8, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' })) s.setAttribute(k, v);
+  for (const d of paths) { const p = document.createElementNS(SVG_NS, 'path'); p.setAttribute('d', d); s.append(p); }
+  return s;
+}
+const ICON = {
+  info: ['M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18z', 'M12 11v5', 'M12 8h.01'],
+  ruler: ['M3 17 17 3l4 4L7 21z', 'm7 13 2 2M10 10l2 2M13 7l2 2'],
+  area: ['m12 3 8 6-3 11H7L4 9z'],
+  ring: ['M12 20a8 8 0 1 0 0-16 8 8 0 0 0 0 16z', 'M12 12h.01'],
+};
+// two or three mutually exclusive buttons (a segmented control)
+function seg(label, options, get, set) {
+  const el = h('div', { class: 'seg', role: 'group', 'aria-label': label },
+    Object.entries(options).map(([v, [text, title]]) => h('button', { type: 'button', 'data-v': v, title, onclick: () => set(v) }, text)));
+  el.render = () => { for (const b of el.children) b.setAttribute('aria-pressed', String(b.dataset.v === get())); };
+  return el;
+}
+
+// ---- layers panel -----------------------------------------------------------
 const menu = $('#menu');
 const rows = {};
+const segs = [];
+function setVariant(id, v) {
+  state.variant[id] = v;
+  id === 'gibs' ? showGibs() : applyItem(id);
+  if (id === 'depth') depthColours();
+  if (DENSITY[id]) setDensity(id);
+  if (id === 'sat') creditEsri();
+  writeHash();
+  renderMenu();
+}
+const shiftDay = (d, n) => new Date(Date.parse(`${d}T00:00:00Z`) + n * 864e5).toISOString().slice(0, 10);
+const today = () => new Date().toISOString().slice(0, 10);
 
-function itemRow(it) {
-  const group = GROUPS.find((g) => g.id === it.group);
-  const input = h('input', { type: group.exclusive ? 'radio' : 'checkbox', name: group.exclusive ? `g-${group.id}` : null, id: `i-${it.id}`,
-    onchange: (e) => setOn(it.id, e.target.checked) });
+// provenance (and the opacity slider) behind an item's ⓘ
+function infoBlock(it) {
   const opacity = it.opacity != null ? h('label', { class: 'opacity' }, h('span', {}, it.id === 'relief' ? 'Strength' : 'Opacity'),
     h('input', { type: 'range', min: 0, max: 1, step: 0.05, oninput: (e) => { state.opacity[it.id] = +e.target.value; applyItem(it.id); writeHash(); } })) : null;
-  const info = h('div', { class: 'info', hidden: true }, opacity,
+  return h('div', { class: 'info', hidden: true }, opacity,
     h('p', {}, h('b', {}, 'Source '), it.info.src),
     h('p', {}, h('b', {}, 'Licence '), it.info.lic),
     h('p', {}, h('b', {}, 'Resolution '), it.info.res),
     it.info.url ? h('p', {}, h('a', { href: it.info.url, target: '_blank', rel: 'noopener noreferrer' }, it.info.url.replace(/^https:\/\/(www\.)?/, '').replace(/\/.*$/, ''))) : null);
-  // variant and date are what the item shows, so they sit in the row; opacity and provenance are one click away
-  const controls = h('div', { class: 'controls' },
-    it.variants ? h('select', { class: 'variant', 'aria-label': `${it.label} variant`, onchange: (e) => {
-      state.variant[it.id] = e.target.value;
-      applyItem(it.id);
-      if (it.id === 'depth') depthColours();
-      if (DENSITY[it.id]) setDensity(it.id);
-      if (it.id === 'sat') creditEsri();
-      writeHash(); renderStatus(); renderLegends();
-    } }, Object.entries(it.variants).map(([k, label]) => h('option', { value: k }, label))) : null,
-    it.density ? h('select', { class: 'period', 'aria-label': `${it.label} period`, onchange: (e) => { state.period[it.id] = e.target.value; setDensity(it.id); } },
-      DENSITY[it.id].periods.map((p) => h('option', { value: p }, DENSITY[it.id].periodLabel(p)))) : null,
-    it.date ? h('input', { type: 'date', 'aria-label': 'Imagery date', max: new Date().toISOString().slice(0, 10), min: '2012-01-01',
-      onchange: (e) => e.target.value && setDate(e.target.value) }) : null);
+}
+function moreButton(label, info) {
+  return h('button', { class: 'more', type: 'button', title: 'Source, licence, resolution', 'aria-label': `About ${label}`, 'aria-expanded': 'false',
+    onclick: (e) => { info.hidden = !info.hidden; e.currentTarget.setAttribute('aria-expanded', String(!info.hidden)); } }, icon(...ICON.info));
+}
+// what the item shows (scheme, source, period, date) sits under its row while it is on
+function controlsOf(it) {
+  let variant = null;
+  if (it.id === 'depth') {
+    variant = seg('Depth colours', { atlas: ['Darker = deeper', it.variants.atlas], nautical: ['Darker = shallower', it.variants.nautical] }, () => state.variant.depth, (v) => setVariant('depth', v));
+    segs.push(variant);
+  } else if (it.variants) {
+    variant = h('select', { class: 'variant', 'aria-label': `${it.label} variant`, onchange: (e) => setVariant(it.id, e.target.value) },
+      Object.entries(it.variants).map(([k, label]) => h('option', { value: k }, label)));
+  }
+  const period = it.density ? h('select', { class: 'period', 'aria-label': `${it.label} period`, onchange: (e) => { state.period[it.id] = e.target.value; setDensity(it.id); } },
+    DENSITY[it.id].periods.map((p) => h('option', { value: p }, DENSITY[it.id].periodLabel(p)))) : null;
+  const date = it.date ? h('div', { class: 'datestep' },
+    h('button', { type: 'button', class: 'prev', 'aria-label': 'Previous day', title: 'Previous day', onclick: () => setDate(shiftDay(state.date, -1)) }, '‹'),
+    h('input', { type: 'date', 'aria-label': 'Imagery date', max: today(), min: '2012-01-01', onchange: (e) => e.target.value && setDate(e.target.value) }),
+    h('button', { type: 'button', class: 'next', 'aria-label': 'Next day', title: 'Next day', onclick: () => setDate(shiftDay(state.date, 1)) }, '›')) : null;
+  const latest = it.date ? h('p', { class: 'note latest' }) : null; // the newest day NASA has published for this layer
+  return h('div', { class: 'controls' }, variant, period, date, latest);
+}
+function itemRow(it) {
+  const input = h('input', { type: 'checkbox', role: 'switch', class: 'switch', id: `i-${it.id}`, onchange: (e) => setOn(it.id, e.target.checked) });
+  const info = infoBlock(it), controls = controlsOf(it);
   const row = h('li', { class: 'item' },
-    h('div', { class: 'line' },
-      input,
-      h('label', { for: input.id }, it.label),
-      h('span', { class: 'hint' }),
-      h('button', { class: 'more', type: 'button', title: opacity ? 'Opacity, source, licence' : 'Source, licence, resolution',
-        'aria-label': `Details for ${it.label}`, 'aria-expanded': 'false',
-        onclick: (e) => { info.hidden = !info.hidden; e.currentTarget.setAttribute('aria-expanded', String(!info.hidden)); } }, '⋯')),
+    h('div', { class: 'line' }, h('label', { class: 'name', for: input.id }, it.label, h('span', { class: 'hint' })), moreButton(it.label, info), input),
     controls, info);
   rows[it.id] = { row, input, controls };
   return row;
 }
-
-// a header checkbox inside a 44 px label: tapping near it ticks it instead of folding the group
-const hit = (input) => (input ? h('label', { class: 'hit', onclick: (e) => e.stopPropagation() }, input) : null);
-
+// Base: two cards (a radio group); the satellite source and the provenance below them
+function baseBlock(items) {
+  const infos = Object.fromEntries(items.map((it) => [it.id, infoBlock(it)]));
+  const more = moreButton('this base', h('div')); // toggles the info of whichever base is shown
+  more.onclick = (e) => {
+    const open = e.currentTarget.getAttribute('aria-expanded') !== 'true';
+    e.currentTarget.setAttribute('aria-expanded', String(open));
+    for (const [id, el] of Object.entries(infos)) el.hidden = !(open && state.on.has(id));
+  };
+  const cards = items.map((it) => {
+    const card = h('button', { type: 'button', role: 'radio', class: 'basecard', 'data-base': it.id, id: `i-${it.id}`, 'aria-checked': 'false', onclick: () => setOn(it.id, true) },
+      h('div', { class: 'thumb' }), h('span', {}, it.label));
+    rows[it.id] = { row: card, input: card, controls: controlsOf(it), infos, more };
+    return card;
+  });
+  return h('div', { class: 'base' },
+    h('div', { class: 'bases', role: 'radiogroup', 'aria-label': 'Base map' }, cards),
+    h('ul', {}, h('li', { class: 'item' }, ...items.map((it) => rows[it.id].controls),
+      h('div', { class: 'line' }, h('span', { class: 'name' }, 'Source and licence'), more), ...Object.values(infos))));
+}
 function groupBlock(g) {
   const items = ITEMS.filter((it) => it.group === g.id);
-  const all = g.exclusive ? null : h('input', { type: 'checkbox', 'aria-label': `All of ${g.label}`,
-    onclick: (e) => e.stopPropagation(),
-    onchange: (e) => { const want = e.target.checked; for (const it of items) if (state.on.has(it.id) !== want) setOn(it.id, want); } });
-  const list = h('ul', {}, items.map(itemRow));
   const det = h('details', { 'data-group': g.id, open: state.open.has(g.id),
     ontoggle: (e) => { e.target.open ? state.open.add(g.id) : state.open.delete(g.id); writeHash(); } },
-    h('summary', {}, hit(all), h('span', { class: 'gname' }, g.label), h('span', { class: 'count' })),
-    list);
-  det._all = all;
+    h('summary', {}, h('span', { class: 'gname' }, g.label), h('span', { class: 'count', title: 'Layers on' })),
+    g.exclusive ? baseBlock(items) : h('ul', {}, items.map(itemRow)));
   det._items = items;
+  det._exclusive = g.exclusive;
   return det;
 }
-
 const groupEls = GROUPS.map(groupBlock);
-const measureList = h('ul', { class: 'mlist' });
-const unitSel = h('select', { 'aria-label': 'Distance units', onchange: (e) => measure.setUnits(e.target.value) },
-  h('option', { value: 'km' }, 'km · m'), h('option', { value: 'nm' }, 'nautical miles'));
-const measureAll = h('input', { type: 'checkbox', 'aria-label': 'Show all measurements', onclick: (e) => e.stopPropagation(),
-  onchange: (e) => measure.setHidden(null, !e.target.checked) });
-const measureGroup = h('details', { 'data-group': 'measure', open: state.open.has('measure'),
-  ontoggle: (e) => { e.target.open ? state.open.add('measure') : state.open.delete('measure'); writeHash(); } },
-  h('summary', {}, hit(measureAll), h('span', { class: 'gname' }, 'Measurements'), h('span', { class: 'count' })),
-  h('div', { class: 'mhead' }, h('label', {}, 'Units ', unitSel)),
-  measureList,
-  h('p', { class: 'note' }, 'Geodesic on WGS 84. Click to add points; double-click or Enter finishes; Backspace undoes; Esc cancels.'));
-
-menu.append(...groupEls, measureGroup,
-  h('p', { class: 'note warn' }, 'Not for navigation. Positions, depths and coastlines are from open datasets of varying accuracy.'));
+menu.append(...groupEls);
 
 function renderMenu() {
   const z = map.getZoom();
   for (const it of ITEMS) {
     const r = rows[it.id];
     const on = state.on.has(it.id);
-    r.input.checked = on;
+    if (it.group === 'base') r.input.setAttribute('aria-checked', String(on));
+    else r.input.checked = on;
     r.controls.hidden = !on || !(it.variants || it.date || it.density);
+    if (r.infos && r.more.getAttribute('aria-expanded') === 'true') r.infos[it.id].hidden = !on;
     const low = it.minzoom && z < it.minzoom, high = it.maxzoom && z >= it.maxzoom + 1;
     r.row.classList.toggle('dim', !!(on && (low || high)));
-    r.row.querySelector('.hint').textContent = !on ? '' : low ? `zoom ${it.minzoom}+` : high ? `zoom ≤ ${it.maxzoom}` : '';
+    const hint = r.row.querySelector('.hint');
+    if (hint) hint.textContent = !on ? '' : low ? `zoom ${it.minzoom}+` : high ? `zoom ≤ ${it.maxzoom}` : '';
     const sel = r.controls.querySelector('select.variant');
     if (sel) sel.value = state.variant[it.id];
     const per = r.controls.querySelector('select.period');
     if (per) per.value = state.period[it.id];
-    const rng = r.row.querySelector('input[type=range]');
+    const rng = (r.infos?.[it.id] || r.row).querySelector('input[type=range]');
     if (rng) rng.value = state.opacity[it.id];
     const dt = r.controls.querySelector('input[type=date]');
-    if (dt) dt.value = state.date;
+    if (dt) {
+      const last = gibsLast || today();
+      dt.value = state.date;
+      dt.max = last;
+      r.controls.querySelector('.next').disabled = state.date >= last;
+      r.controls.querySelector('.latest').textContent = gibsLast ? `Newest published: ${gibsLast}` : '';
+    }
   }
+  for (const s of segs) s.render();
   for (const g of groupEls) {
     const n = g._items.filter((it) => state.on.has(it.id)).length;
-    g.querySelector('.count').textContent = g._all ? `${n}/${g._items.length}` : '';
-    if (g._all) { g._all.checked = n === g._items.length; g._all.indeterminate = n > 0 && n < g._items.length; }
+    g.querySelector('.count').textContent = g._exclusive || !n ? '' : String(n);
   }
   renderStatus();
   renderLegends();
 }
 
-// ---- legends: one canvas per drawn colour layer (copied as-is into the PNG) ----
+// ---- legends: stacked bottom left, one per drawn colour layer (the Legends switch shows them) ----
+// The canvases are drawn whenever their layer is (the PNG copies them, switch or not).
 const legends = $('#legends');
 const legendEls = {};
+let legendWant = [];
 function legendEl(id) {
   return (legendEls[id] ||= h('canvas', { role: 'img', 'data-legend': id }));
 }
 function renderLegends() {
   const on = (id) => state.on.has(id);
   const want = [];
-  if (on('legend')) {
-    if (on('depth') && on('chart') && map.getZoom() < 13) want.push('depth');
-    for (const id of Object.keys(DENSITY)) if (on(id)) want.push(id);
-    if (on('gibs') && GIBS[state.variant.gibs].legend) want.push('gibs');
-  }
-  for (const id of Object.keys(legendEls)) if (!want.includes(id)) legendEls[id].remove();
+  if (on('depth') && on('chart') && map.getZoom() < 13) want.push('depth');
+  for (const id of Object.keys(DENSITY)) if (on(id)) want.push(id);
+  if (on('gibs') && GIBS[state.variant.gibs].legend) want.push('gibs');
+  legendWant = want;
   for (const id of want) {
     const el = legendEl(id);
     if (id === 'depth') {
@@ -450,11 +529,11 @@ function renderLegends() {
             drawColormap(el, g.legend.title, `${g.legend.units} · ${state.date}`, cm);
             el.setAttribute('aria-label', `${g.legend.title} legend, ${g.legend.units}`);
           })
-          .catch((err) => { el.dataset.key = ''; el.remove(); console.warn('legend colour map:', err.message); });
+          .catch((err) => { el.dataset.key = ''; console.warn('legend colour map:', err.message); });
       }
     }
-    legends.append(el); // keeps the wanted order
   }
+  legends.replaceChildren(...(on('legend') ? want.map((id) => legendEls[id]) : []));
 }
 function renderStatus() {
   for (const it of ITEMS) {
@@ -465,59 +544,188 @@ function renderStatus() {
     r.title = st ? st.msg : '';
   }
 }
+
+// ---- measure view (in the side panel): tools, units, saved measurements -----------------
+const TOOL = { ruler: ['Ruler', 'Distance and bearing (R)'], area: ['Area', 'Area and perimeter (A)'], ring: ['Ring', 'Range ring: centre, then radius (C)'] };
+const TIP = { ruler: 'Click to add points', area: 'Click to add corners', ring: 'Click the centre, then the edge' };
+const measureView = $('#mview');
+const toolBtns = Object.entries(TOOL).map(([k, [label, title]]) => h('button', { type: 'button', 'data-tool': k, 'aria-pressed': 'false', title,
+  onclick: () => { if (small()) setPanel(null); measure.tool === k ? measure.finish() : measure.start(k); } }, icon(...ICON[k]), label)); // phones: the sheet makes way for the map
+const unitSeg = seg('Distance units', { km: ['km · m', 'Kilometres and metres'], nm: ['Nautical miles', 'Nautical miles'] }, () => measure.units, (u) => measure.setUnits(u));
+const measureList = h('ul', { class: 'mlist' });
+measureView.append(h('div', { class: 'tools3' }, toolBtns), h('h2', {}, 'Units'), unitSeg, h('h2', {}, 'Measurements'), measureList,
+  h('p', { class: 'note' }, 'Geodesic on WGS 84. Bearings are true (°T). Double-click or Enter finishes; Backspace undoes; Esc cancels.'));
 function renderMeasures() {
+  const u = measure.units === 'nm' ? ['NM', 1852] : ['km', 1000];
   measureList.replaceChildren(...measure.list.map((x) => h('li', { class: 'item' },
     h('div', { class: 'line' },
-      h('input', { type: 'checkbox', checked: !x.hidden, id: `m-${x.id}`, onchange: (e) => measure.setHidden(x.id, !e.target.checked) }),
-      h('label', { for: `m-${x.id}` }, summary(x, measure.units)),
+      h('input', { type: 'checkbox', checked: !x.hidden, id: `m-${x.id}`, 'aria-label': 'Show on the map', onchange: (e) => measure.setHidden(x.id, !e.target.checked) }),
+      h('label', { class: 'name', for: `m-${x.id}` }, summary(x, measure.units)),
       h('button', { class: 'x', type: 'button', 'aria-label': 'Delete measurement', title: 'Delete', onclick: () => measure.remove(x.id) }, '×')),
-    x.kind === 'ring' ? h('div', { class: 'controls' }, h('label', { class: 'opacity' }, h('span', {}, `Radius (${measure.units === 'nm' ? 'NM' : 'km'})`),
-      h('input', { type: 'number', min: 0, step: 'any', value: +(x.r / (measure.units === 'nm' ? 1852 : 1000)).toFixed(3),
-        onchange: (e) => measure.setRadius(x.id, +e.target.value * (measure.units === 'nm' ? 1852 : 1000)) }))) : null)));
-  if (!measure.list.length) measureList.append(h('li', { class: 'empty' }, 'None yet. Use the ruler, area or ring tools on the map.'));
-  const shown = measure.list.filter((x) => !x.hidden).length;
-  measureAll.checked = measure.list.length > 0 && shown === measure.list.length;
-  measureAll.indeterminate = shown > 0 && shown < measure.list.length;
-  measureAll.disabled = !measure.list.length;
-  measureGroup.querySelector('.count').textContent = measure.list.length ? `${shown}/${measure.list.length}` : '';
-  unitSel.value = measure.units;
+    x.kind === 'ring' ? h('div', { class: 'controls' }, h('label', { class: 'opacity' }, h('span', {}, `Radius (${u[0]})`),
+      h('input', { type: 'number', min: 0, step: 'any', value: +(x.r / u[1]).toFixed(3), onchange: (e) => measure.setRadius(x.id, +e.target.value * u[1]) }))) : null)));
+  if (!measure.list.length) measureList.append(h('li', { class: 'empty' }, 'None yet: pick a tool above.'));
+  unitSeg.render();
 }
 
-// ---- panel + toolbar --------------------------------------------------------
-const panel = $('#panel');
-const toggle = $('#toggle');
-function setMenu(open) {
-  state.menu = open;
-  panel.hidden = !open;
-  toggle.hidden = open; // the panel has its own close button, where the toggle was
-  document.body.classList.toggle('menu-open', open); // legends move aside / hide (style.css)
-  if (ready) updateGraticule(); // latitude labels move right of the panel
-  toggle.setAttribute('aria-expanded', String(open));
+// ---- measuring bar: what is being drawn, the live value, Undo / Done / Cancel ------------------
+const mbar = $('#mbar');
+const mbarWhat = h('span', { class: 'what' }), mbarVal = h('span', { class: 'val' }), mbarTip = h('span', { class: 'tip' });
+mbar.append(mbarWhat, mbarVal, mbarTip,
+  h('button', { type: 'button', onclick: () => measure.undo(), title: 'Remove the last point (Backspace)' }, 'Undo'),
+  h('button', { type: 'button', class: 'done', onclick: () => measure.finish(), title: 'Finish (Enter, or double-click)' }, 'Done'),
+  h('button', { type: 'button', onclick: () => measure.cancel(), title: 'Discard (Esc)' }, 'Cancel'));
+function renderTools() {
+  for (const b of toolBtns) b.setAttribute('aria-pressed', String(measure.tool === b.dataset.tool));
+  $('#b-measure').classList.toggle('active', !!measure.tool);
+  mbar.hidden = !measure.tool;
+  if (!measure.tool) return;
+  const p = measure.preview();
+  mbarWhat.textContent = TOOL[measure.tool][0];
+  mbarVal.textContent = p.pts.length ? summary(p, measure.units).replace(/^\S+ /, '') : '';
+  mbarTip.textContent = TIP[measure.tool];
+}
+
+// ---- side panel, link and PNG, about -----------------------------------------------------
+// One side panel; the Layers and Measure buttons switch what it shows, and the button of the
+// view already shown closes it. It keeps its place and size, so nothing overlaps.
+const panel = $('#panel'), panelTitle = $('#panel-title');
+const VIEWS = { layers: [$('#b-layers'), menu, 'Layers'], measure: [$('#b-measure'), measureView, 'Measure'] };
+function setPanel(view) {
+  state.panel = view;
+  panel.hidden = !view;
+  for (const [v, [btn, el, title]] of Object.entries(VIEWS)) {
+    btn.setAttribute('aria-expanded', String(v === view));
+    el.hidden = v !== view;
+    if (v === view) panelTitle.textContent = title;
+  }
+  document.body.classList.toggle('menu-open', !!view); // phones: the legend makes way for the sheet
   writeHash();
 }
-toggle.addEventListener('click', () => setMenu(!state.menu));
-$('#close').addEventListener('click', () => setMenu(false));
+for (const [v, [btn]] of Object.entries(VIEWS)) btn.addEventListener('click', () => setPanel(state.panel === v ? null : v));
+$('#close').addEventListener('click', () => setPanel(null));
 
-const tools = $('#tools');
-function renderTools() {
-  for (const b of tools.querySelectorAll('[data-tool]')) b.setAttribute('aria-pressed', String(measure.tool === b.dataset.tool));
-}
-tools.addEventListener('click', (e) => {
-  const b = e.target.closest('button');
-  if (!b) return;
-  // clicking the active tool again means "done" (also the way to finish on touch screens)
-  if (b.dataset.tool) measure.tool === b.dataset.tool ? measure.finish() : measure.start(b.dataset.tool);
-  else if (b.id === 'png') exportPng();
-  else if (b.id === 'link') copyLink(b);
-});
+// Link and PNG act at once (no menu): the link button says "Copied" for a moment
+$('#link').addEventListener('click', (e) => copyLink(e.currentTarget));
+$('#png').addEventListener('click', () => exportPng());
 async function copyLink(b) {
   writeHashNow(); // the link must be the view as it is now
   try { await navigator.clipboard.writeText(location.href); flash(b, 'Copied'); } catch { prompt('Copy this link', location.href); }
 }
-function flash(b, text) { // a short bubble under the button; its icon stays
-  b.dataset.flash = text;
-  setTimeout(() => delete b.dataset.flash, 1200);
+function flash(b, text) { // the button's own text says it, for a moment
+  const label = b.querySelector('span'), was = label.textContent;
+  label.textContent = text;
+  setTimeout(() => { label.textContent = was; }, 1200);
 }
+const about = $('#about');
+for (const b of document.querySelectorAll('[data-about]')) b.addEventListener('click', () => about.showModal());
+about.querySelector('[data-close]').addEventListener('click', () => about.close());
+
+// keys: / search, L layers, R / A / C measuring tools (measure.js handles Esc while drawing)
+window.addEventListener('keydown', (e) => {
+  if (e.ctrlKey || e.metaKey || e.altKey || about.open || e.target.closest('input, select, textarea')) return;
+  const k = e.key.toLowerCase();
+  if (k === '/') { e.preventDefault(); q.focus(); }
+  else if (k === 'l') setPanel(state.panel === 'layers' ? null : 'layers');
+  else if ({ r: 'ruler', a: 'area', c: 'ring' }[k]) { if (small()) setPanel(null); measure.start({ r: 'ruler', a: 'area', c: 'ring' }[k]); }
+});
+
+// phones: the panel is a sheet as tall as its content; drag its handle down to close it
+const handle = h('div', { class: 'handle', 'aria-hidden': 'true' });
+panel.prepend(handle);
+handle.addEventListener('pointerdown', (e) => {
+  const y0 = e.clientY;
+  handle.setPointerCapture(e.pointerId);
+  panel.classList.add('dragging');
+  const move = (ev) => { panel.style.transform = `translateY(${Math.max(0, ev.clientY - y0)}px)`; };
+  const up = (ev) => {
+    handle.removeEventListener('pointermove', move);
+    panel.classList.remove('dragging');
+    panel.style.transform = '';
+    if (ev.clientY - y0 > 80) setPanel(null);
+  };
+  handle.addEventListener('pointermove', move);
+  handle.addEventListener('pointerup', up, { once: true });
+});
+
+// ---- search: coordinates are read here; place names go to Photon (OpenStreetMap data) ---------
+const PHOTON = 'https://photon.komoot.io/api/';
+const q = $('#q'), qClear = $('#q-clear'), results = $('#results'), resultList = results.querySelector('ul');
+let hits = [], active = -1, searchCtl = null, searchTimer = 0, pin = null;
+const ZOOM_OF = { city: 11, town: 12, village: 13, hamlet: 14, island: 11, sea: 6, ocean: 4, bay: 10, strait: 9 };
+function showResults(list) {
+  hits = list;
+  active = list.length && list[0].go ? 0 : -1;
+  resultList.replaceChildren(...(list.length ? list.map((r, i) => h('li', { role: 'option', id: `r-${i}`, 'aria-selected': String(i === active),
+    onpointerdown: (e) => e.preventDefault(), // keep the focus in the box
+    onclick: () => choose(i) }, r.name, r.where ? h('small', {}, r.where) : null))
+    : [h('li', { class: 'none' }, 'No places found')]));
+  results.hidden = false;
+  q.setAttribute('aria-expanded', 'true');
+  q.setAttribute('aria-activedescendant', active >= 0 ? `r-${active}` : '');
+}
+function hideResults() {
+  results.hidden = true;
+  q.setAttribute('aria-expanded', 'false');
+  q.removeAttribute('aria-activedescendant');
+}
+function setActive(i) {
+  if (!hits.length) return;
+  active = (i + hits.length) % hits.length;
+  for (const [k, li] of [...resultList.children].entries()) li.setAttribute('aria-selected', String(k === active));
+  q.setAttribute('aria-activedescendant', `r-${active}`);
+  resultList.children[active]?.scrollIntoView({ block: 'nearest' });
+}
+function choose(i) {
+  const r = hits[i];
+  if (!r) return;
+  hideResults();
+  pin?.remove();
+  pin = new maplibregl.Marker({ element: h('div', { class: 'pin', title: r.name }) }).setLngLat(r.at).addTo(map);
+  if (r.bounds) map.fitBounds(r.bounds, { padding: 60, maxZoom: 15, bearing: map.getBearing() });
+  else map.flyTo({ center: r.at, zoom: Math.max(map.getZoom(), r.zoom) });
+  q.blur();
+}
+async function searchPlaces(text) {
+  searchCtl?.abort();
+  searchCtl = new AbortController();
+  const c = map.getCenter(); // results near the view come first; rounded, the view is not sent exactly
+  const url = `${PHOTON}?${new URLSearchParams({ q: text, limit: 7, lang: 'en', lat: c.lat.toFixed(1), lon: c.lng.toFixed(1) })}`;
+  try {
+    const r = await fetch(url, { signal: searchCtl.signal, credentials: 'omit', referrerPolicy: 'no-referrer' });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const { features } = await r.json();
+    showResults(features.map((f) => {
+      const p = f.properties, e = p.extent; // [west, north, east, south]
+      return { go: true, name: p.name || p.street || text, at: f.geometry.coordinates,
+        where: [p.osm_value?.replace(/_/g, ' '), p.city !== p.name ? p.city : null, p.state, p.country].filter(Boolean).join(' · '),
+        bounds: e ? [[e[0], e[3]], [e[2], e[1]]] : null, zoom: ZOOM_OF[p.osm_value] || 14 };
+    }));
+  } catch (err) {
+    if (err.name !== 'AbortError') showResults([{ name: 'Place search is not available right now', where: err.message }]);
+  }
+}
+q.addEventListener('input', () => {
+  const text = q.value.trim();
+  qClear.hidden = !text;
+  clearTimeout(searchTimer);
+  if (!text) { searchCtl?.abort(); hideResults(); return; }
+  const ll = parseLatLon(text);
+  if (ll) { // coordinates: nothing leaves the page
+    searchCtl?.abort();
+    showResults([{ go: true, name: `${dm(ll.lat, 'N', 'S')}  ${dm(ll.lon, 'E', 'W')}`, where: 'coordinates', at: [ll.lon, ll.lat], zoom: 11 }]);
+  } else if (text.length >= 3) searchTimer = setTimeout(() => searchPlaces(text), 300);
+  else hideResults();
+});
+q.addEventListener('keydown', (e) => {
+  if (e.key === 'ArrowDown') { e.preventDefault(); setActive(active + 1); }
+  else if (e.key === 'ArrowUp') { e.preventDefault(); setActive(active - 1); }
+  else if (e.key === 'Enter') { e.preventDefault(); if (hits[active]?.go) choose(active); }
+  else if (e.key === 'Escape') { if (!results.hidden) hideResults(); else { q.value = ''; qClear.hidden = true; pin?.remove(); pin = null; q.blur(); } }
+});
+q.addEventListener('focus', () => { if (q.value.trim() && hits.length) showResults(hits); });
+q.addEventListener('blur', () => setTimeout(hideResults, 150));
+qClear.addEventListener('click', () => { q.value = ''; qClear.hidden = true; hideResults(); pin?.remove(); pin = null; q.focus(); });
 
 // cursor position readout
 const pos = posEl;
@@ -530,9 +738,10 @@ function scaleVariation() {
   const b = map.getBounds();
   return mercatorVariation(b.getSouth(), b.getNorth());
 }
+const NOTE_AT = 0.03; // below this the bar is as good as exact for reading a chart; a note would be noise
 function scaleNote() {
   const v = scaleVariation();
-  scaleNoteEl.textContent = v > 0.01 ? `scale varies ${(v * 100).toFixed(0)}% across the view` : '';
+  scaleNoteEl.textContent = v > NOTE_AT ? `scale varies ${(v * 100).toFixed(0)}% across the view` : '';
 }
 let noteRaf = 0;
 map.on('move', () => { cancelAnimationFrame(noteRaf); noteRaf = requestAnimationFrame(scaleNote); });
@@ -568,7 +777,7 @@ function exportPng() {
     const bar = (unitM) => { const len = niceLen((120 * mpp) / unitM) * unitM; return { len, px: len / mpp }; };
     const km = bar(1), nm = bar(1852);
     const v = scaleVariation();
-    const kmText = `${km.len < 1000 ? `${+km.len.toPrecision(6)} m` : `${+(km.len / 1000).toPrecision(6)} km`} at ${Math.abs(lat).toFixed(1)}°${lat >= 0 ? 'N' : 'S'}${v > 0.01 ? ` · scale varies ${(v * 100).toFixed(0)}% across the view` : ''}`;
+    const kmText = `${km.len < 1000 ? `${+km.len.toPrecision(6)} m` : `${+(km.len / 1000).toPrecision(6)} km`} at ${Math.abs(lat).toFixed(1)}°${lat >= 0 ? 'N' : 'S'}${v > NOTE_AT ? ` · scale varies ${(v * 100).toFixed(0)}% across the view` : ''}`;
     const nmText = `${+(nm.len / 1852).toPrecision(6)} NM`;
     g.font = '11px system-ui, sans-serif';
     const bw = Math.max(km.px, nm.px, g.measureText(kmText).width) + 20, line = H - 34;
@@ -585,10 +794,14 @@ function exportPng() {
     g.fillText(kmText, W - 20, H - 44);
     g.fillText(nmText, W - 20, H - 16);
     g.textAlign = 'left';
-    const box = map.getContainer().getBoundingClientRect();
-    for (const el of legends.querySelectorAll('canvas')) {
-      const r = el.getBoundingClientRect();
-      g.drawImage(el, r.left - box.left, r.top - box.top, r.width, r.height);
+    // every legend of the drawn layers, stacked bottom left (as on screen, even with the switch off)
+    let ly = H - 10;
+    for (const id of [...legendWant].reverse()) {
+      const el = legendEls[id], lw = parseFloat(el.style.width), lh = parseFloat(el.style.height);
+      if (!lw || !lh) continue; // not drawn yet (the SST colour map still loading)
+      ly -= lh;
+      g.drawImage(el, 10, ly, lw, lh);
+      ly -= 6;
     }
     // north arrow
     g.save();
@@ -627,17 +840,19 @@ map.on('load', () => {
     if (typeof src.roundZoom !== 'boolean') console.error(`MapLibre: ${id}.roundZoom missing; elevation tiles may not match the coastline`);
     src.roundZoom = false;
   }
-  for (const it of ITEMS) applyItem(it.id);
+  for (const it of ITEMS) if (it.id !== 'gibs') applyItem(it.id);
   depthColours();
   labelPaint();
   creditEsri();
+  showGibs();
   measure.load(measureState);
   updateGraticule();
   renderMenu();
   renderMeasures();
   ready = true;
-  setMenu(state.menu); // also writes the URL, now with everything applied
+  setPanel(state.panel); // also writes the URL, now with everything applied
   scaleNote();
+  renderCompass();
 });
 map.on('moveend', () => { updateGraticule(); writeHash(); });
 let gratRaf = 0;

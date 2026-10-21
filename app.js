@@ -48,7 +48,7 @@ const state = {
   panel: window.innerWidth >= 1200 ? 'layers' : null, // the side panel's view; open beside the map where it leaves room
 };
 let view = { zoom: 4, center: [12, 41], bearing: 0 };
-let measureState = '';
+let measureState = '', measureBearings = false;
 
 function readHash() {
   const q = new URLSearchParams(location.hash.slice(1));
@@ -78,6 +78,7 @@ function readHash() {
   if (q.has('g')) state.open = new Set(q.get('g').split(',').filter((g) => g === 'measure' || GROUPS.some((x) => x.id === g)));
   if (q.has('menu')) state.panel = { 1: 'layers', measure: 'measure' }[q.get('menu')] || null; // menu=1 from older links: Layers
   measureState = q.get('m') || '';
+  measureBearings = q.get('brg') === '1';
   return q.get('u');
 }
 
@@ -114,6 +115,7 @@ function writeHashNow() {
   const per = Object.entries(state.period).filter(([id, v]) => state.on.has(id) && v !== DENSITY[id].defaultPeriod);
   if (per.length) q.set('per', per.map((kv) => kv.join(':')).join(','));
   if (measure.units !== 'km') q.set('u', measure.units);
+  if (measure.bearings) q.set('brg', '1');
   const m = measure.serialize();
   if (m) q.set('m', m);
   q.set('g', [...state.open].join(','));
@@ -191,6 +193,8 @@ const posEl = h('div', { class: 'pos', id: 'pos', 'aria-live': 'off' });
 const shownEl = h('div', { class: 'pos shown', id: 'shown', hidden: true }); // the time (and depth) the layers show
 const scales = ['metric', 'nautical'].map((unit) => new maplibregl.ScaleControl({ maxWidth: 100, unit }));
 const scalesEl = h('div', { class: 'scales', id: 'scales' }, scales.map((s) => s.onAdd(map)));
+// MapLibre writes nautical miles "nm" (the nanometre's symbol): NM, as on charts and in Measure
+const scaleUnits = () => { for (const el of scalesEl.children) el.textContent = el.textContent.replace(/\snm$/, '\u00a0NM'); };
 const scaleNoteEl = h('div', { class: 'scalenote', id: 'scalenote' });
 const nfnEl = h('div', { class: 'scalenote nfn' }, 'Not for navigation'); // on every screen (About says why)
 const attribution = new maplibregl.AttributionControl({ compact: false });
@@ -226,6 +230,7 @@ map.on('rotate', renderCompass);
 
 const measure = new Measure(map, (what) => { if (what === 'list') { renderMeasures(); writeHash(); } renderTools(); });
 if (urlUnits === 'nm') measure.units = 'nm';
+measure.bearings = measureBearings;
 
 // ---- applying the state to the map ------------------------------------------
 const layersOf = {};
@@ -791,8 +796,12 @@ const toolBtns = Object.entries(TOOL).map(([k, [label, title]]) => h('button', {
   onclick: () => { if (small()) setPanel(null); measure.tool === k ? measure.finish() : measure.start(k); } }, icon(...ICON[k]), label)); // phones: the sheet makes way for the map
 const unitSeg = seg('Distance units', { km: ['km · m', 'Kilometres and metres'], nm: ['Nautical miles', 'Nautical miles'] }, () => measure.units, (u) => measure.setUnits(u));
 const measureList = h('ul', { class: 'mlist' });
-measureView.append(h('div', { class: 'tools3' }, toolBtns), h('h2', {}, 'Units'), unitSeg, h('h2', {}, 'Measurements'), measureList,
-  h('p', { class: 'note' }, 'Geodesic on WGS 84. Bearings are true (°T). Double-click or Enter finishes; Backspace undoes; Esc cancels.'));
+// bearings beside each leg's length: off unless asked for (most measuring is distance)
+const brgSwitch = h('input', { type: 'checkbox', role: 'switch', class: 'switch', id: 'm-bearings', onchange: (e) => measure.setBearings(e.target.checked) });
+measureView.append(h('div', { class: 'tools3' }, toolBtns), h('h2', {}, 'Units'), unitSeg,
+  h('div', { class: 'item' }, h('div', { class: 'line' }, h('label', { class: 'name', for: 'm-bearings' }, 'Bearings (°T)'), brgSwitch)),
+  h('h2', {}, 'Measurements'), measureList,
+  h('p', { class: 'note' }, 'Geodesic on WGS 84; bearings true (°T).', h('span', { class: 'keys-hint' }, ' Double-click or Enter finishes; Backspace undoes; Esc cancels.')));
 function renderMeasures() {
   const u = measure.units === 'nm' ? ['NM', 1852] : ['km', 1000];
   measureList.replaceChildren(...measure.list.map((x) => h('li', { class: 'item' },
@@ -804,6 +813,7 @@ function renderMeasures() {
       h('input', { type: 'number', min: 0, step: 'any', value: +(x.r / u[1]).toFixed(3), onchange: (e) => measure.setRadius(x.id, +e.target.value * u[1]) }))) : null)));
   if (!measure.list.length) measureList.append(h('li', { class: 'empty' }, 'None yet: pick a tool above.'));
   unitSeg.render();
+  brgSwitch.checked = measure.bearings;
 }
 
 // ---- measuring bar: what is being drawn, the live value, Undo / Done / Cancel ------------------
@@ -890,6 +900,14 @@ handle.addEventListener('pointerdown', (e) => {
 
 // ---- search: coordinates are read here; place names go to Photon (OpenStreetMap data) ---------
 const PHOTON = 'https://photon.komoot.io/api/';
+// what a sea chart is mostly searched for comes first: places, the coast and the sea (capes, bays,
+// straits, beaches, harbours), marinas, ferry terminals, lighthouses, piers; then the rest (streets,
+// hotels, cafés…), in Photon's order. Nothing is left out.
+const SEA_TAGS = ['place', 'natural', 'water', 'waterway', 'leisure:marina', 'leisure:slipway', 'amenity:ferry_terminal',
+  'man_made:lighthouse', 'man_made:pier', 'man_made:breakwater', 'landuse:harbour', 'landuse:port'];
+// what a result is, in a word: a road of any class is a street; "yes" (a building, an office) says its key
+const resultKind = (p) => (p.osm_key === 'highway' ? 'street' : (p.osm_value === 'yes' ? p.osm_key : p.osm_value || '').replace(/_/g, ' '));
+const seaFirst = ({ properties: p }) => (SEA_TAGS.some((t) => t === p.osm_key || t === `${p.osm_key}:${p.osm_value}`) ? 0 : 1);
 const q = $('#q'), qClear = $('#q-clear'), results = $('#results'), resultList = results.querySelector('ul');
 let hits = [], active = -1, searchCtl = null, searchTimer = 0, pin = null;
 const ZOOM_OF = { city: 11, town: 12, village: 13, hamlet: 14, island: 11, sea: 6, ocean: 4, bay: 10, strait: 9 };
@@ -930,15 +948,19 @@ async function searchPlaces(text) {
   searchCtl?.abort();
   searchCtl = new AbortController();
   const c = map.getCenter(); // results near the view come first; rounded, the view is not sent exactly
-  const url = `${PHOTON}?${new URLSearchParams({ q: text, limit: 7, lang: 'en', lat: c.lat.toFixed(1), lon: c.lng.toFixed(1) })}`;
+  const url = `${PHOTON}?${new URLSearchParams({ q: text, limit: 12, lang: 'en', lat: c.lat.toFixed(1), lon: c.lng.toFixed(1) })}`;
   try {
     const r = await fetch(url, { signal: searchCtl.signal, credentials: 'omit', referrerPolicy: 'no-referrer' });
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
-    const { features } = await r.json();
+    // the same name, kind and town once (a port's ferry terminals); the sea's first, seven shown
+    const seen = new Set();
+    const features = (await r.json()).features
+      .filter(({ properties: p }) => { const k = `${(p.name || '').toLowerCase()}|${resultKind(p)}|${p.city}`; return !seen.has(k) && seen.add(k); })
+      .sort((a, b) => seaFirst(a) - seaFirst(b)).slice(0, 7);
     showResults(features.map((f) => {
       const p = f.properties, e = p.extent; // [west, north, east, south]
       return { go: true, name: p.name || p.street || text, at: f.geometry.coordinates,
-        where: [p.osm_value?.replace(/_/g, ' '), p.city !== p.name ? p.city : null, p.state, p.country].filter(Boolean).join(' · '),
+        where: [resultKind(p), p.city !== p.name ? p.city : null, p.state, p.country].filter(Boolean).join(' · '),
         bounds: e ? [[e[0], e[3]], [e[2], e[1]]] : null, zoom: ZOOM_OF[p.osm_value] || 14 };
     }));
   } catch (err) {
@@ -1250,11 +1272,12 @@ map.on('load', () => {
   ready = true;
   setPanel(state.panel); // also writes the URL, now with everything applied
   scaleNote();
+  scaleUnits();
   renderCompass();
 });
 map.on('moveend', writeHash);
-let moveRaf = 0; // once per frame while moving: the graticule's edge labels follow the frame, the scale note the view
-map.on('move', () => { cancelAnimationFrame(moveRaf); moveRaf = requestAnimationFrame(() => { updateGraticule(); scaleNote(); }); });
+let moveRaf = 0; // once per frame while moving: the graticule's edge labels follow the frame, the scale note and units the view
+map.on('move', () => { cancelAnimationFrame(moveRaf); moveRaf = requestAnimationFrame(() => { updateGraticule(); scaleNote(); scaleUnits(); }); });
 map.on('zoomend', renderMenu);
 map.on('dataloading', () => document.body.classList.add('loading'));
 map.on('idle', () => document.body.classList.remove('loading'));

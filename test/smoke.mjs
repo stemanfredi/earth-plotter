@@ -142,15 +142,14 @@ try {
   await rt.close();
 
 
-  // Copernicus sea state from a link of before the Ocean data menus (on=waves,currents): read as
-  // waves in colour, currents in arrows; tiles load, the legends show
-  const cm = await open('#v=6/40/14/0&on=chart,coastline,waves,currents,legend&menu=1&g=data');
+  // Copernicus sea state, waves in colour and currents in arrows: tiles load, the legends show
+  const cm = await open('#v=6/40/14/0&col=waves:height&arr=currents:surface&on=chart,coastline,legend&menu=1&g=data');
   await cm.waitForFunction(() => document.querySelectorAll('#legends canvas[data-legend=waves], #legends canvas[data-legend=currents]').length === 2, null, { timeout: 30000 }).catch(() => {});
   const cmBroken = await cm.evaluate(() => [...document.querySelectorAll('.item.error, .item.partial')].map((r) => `${r.querySelector('.name').textContent} (${r.title})`));
   check(cmBroken.length === 0 && cm.errors.length === 0, `Copernicus waves and currents load ${cmBroken.join(', ')} ${cm.errors.join(' | ')}`);
   const [cmPicks, cmLink] = await cm.evaluate(() => [[...document.querySelectorAll('.pick select')].map((s) => s.value).join(' '), location.hash]);
   check(cmPicks === 'waves:height currents:surface' && /col=waves:height/.test(cmLink) && /arr=currents:surface/.test(cmLink) && !/on=[^&]*waves/.test(cmLink),
-    `an old link's layers go to the menus: colours, arrows ${cmPicks}`);
+    `the link's entries are in the menus and stay in the link: colours, arrows ${cmPicks}`);
   check(await cm.evaluate(() => document.querySelectorAll('#legends canvas[data-legend=waves], #legends canvas[data-legend=currents]').length === 2), 'Copernicus legends shown');
   // the time line at the panel's foot: a time picked there (local time) is drawn, read above the
   // legends and kept in the link; › steps an hour; Now goes back to now
@@ -236,6 +235,13 @@ try {
   // GIS export: a zip whose STAC item lists the georeferenced map and the files beside it;
   // polygon-clipping loads on this first export, not with the page
   check(await again.evaluate(() => !('polygonClipping' in window) && !document.querySelector('script[src*=polygon-clipping]')), 'polygon-clipping not loaded with the page');
+  // an export that fails says so on its button, and the next click tries again
+  await again.route('**/polygon-clipping*', (r) => r.abort());
+  await again.click('#zip');
+  await again.waitForFunction(() => document.querySelector('#zip span').textContent === 'Failed', null, { timeout: 15000 }).catch(() => {});
+  const [zipLabel, zipTitle] = await again.evaluate(() => [document.querySelector('#zip span').textContent, document.querySelector('#zip').title]);
+  check(zipLabel === 'Failed' && /polygon-clipping/.test(zipTitle), `a failed GIS export says so on its button (${zipLabel}: ${zipTitle})`);
+  await again.unroute('**/polygon-clipping*');
   const [dz] = await Promise.all([again.waitForEvent('download', { timeout: 60000 }), again.click('#zip')]);
   const z = await readFile(await dz.path());
   const names = ['item.json', 'map.png', 'map.pgw', 'map.png.aux.xml', 'chart.png', 'vector/coastline.geojson', 'vector/isobaths.geojson', 'raster/depth.tif'];

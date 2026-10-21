@@ -1,7 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { GROUPS, ITEMS, DEPTH_SCHEMES, buildStyle, domainEnd, gibsDomainUrl, CMEMS, cmemsStyle, drawsOf, durationMs, timeDomain, snapTime, depthLevels, nearestLevel } from '../../catalog.js';
+import { GROUPS, ITEMS, DEPTH_SCHEMES, DEM_TILES, OVERLAYS, CLASS_LEGENDS, EMODNET_DEPTH_STOPS, domainEnd, gibsDomainUrl, CMEMS, cmemsStyle, drawsOf } from '../../site/catalog.js';
+import { buildStyle } from '../../site/style.js';
+import { durationMs, timeDomain, snapTime, depthLevels, nearestLevel } from '../../site/cmems.js';
 import { PINS, TILE_HOSTS } from '../../tools/deps.mjs';
 
 const style = buildStyle({ seaDemUrl: 'clip-sea://{z}/{x}/{y}', landDemUrl: 'clip-land://{z}/{x}/{y}', isobathUrl: 'c://a', contourUrl: 'c://b', date: '2026-10-19' });
@@ -39,13 +41,13 @@ test('variants: each choice has a layer, except colour schemes', () => {
 });
 
 test('every remote source host is allowed by the CSP', () => {
-  const allowed = new Set([...TILE_HOSTS, 'https://cdn.jsdelivr.net']);
+  // a host, or a host and path (CSP: a source ending in / allows what is under it)
+  const ok = (u) => TILE_HOSTS.some((h) => (h.endsWith('/') ? u.startsWith(h) : new URL(u).origin === h));
   for (const [id, src] of Object.entries(style.sources)) {
-    for (const u of [src.url, ...(src.tiles || [])].filter((x) => x && /^https?:/.test(x))) {
-      assert.ok(allowed.has(new URL(u).origin), `${id}: ${new URL(u).origin} not in TILE_HOSTS`);
-    }
+    for (const u of [src.url, ...(src.tiles || [])].filter((x) => x && /^https?:/.test(x))) assert.ok(ok(u), `${id}: ${u} not in TILE_HOSTS`);
   }
-  assert.ok(allowed.has(new URL(style.glyphs).origin), 'glyph host not allowed');
+  assert.ok(ok(DEM_TILES), 'the DEM (clip.js) not allowed');
+  assert.ok(ok(style.glyphs), 'glyph host not allowed');
 });
 
 const luminance = (hex) => {
@@ -61,13 +63,15 @@ test('depth schemes: ascending depths; atlas darkens with depth, nautical lighte
   assert.ok(L('nautical').every((v, i, a) => i === 0 || v > a[i - 1]), 'nautical must get lighter with depth');
 });
 
-test('test-only GeographicLib matches the version the page loads', async () => {
-  const pkg = JSON.parse(await readFile(new URL('../../package.json', import.meta.url)));
-  assert.equal(pkg.devDependencies['geographiclib-geodesic'], PINS.find((p) => p.name === 'geographiclib-geodesic').version);
+test('libraries the unit tests take from npm are the versions the page loads', async () => {
+  const { devDependencies: dev } = JSON.parse(await readFile(new URL('../../package.json', import.meta.url)));
+  const pinned = PINS.filter((p) => p.name in dev);
+  assert.deepEqual(pinned.map((p) => p.name).sort(), ['geographiclib-geodesic', 'polygon-clipping']);
+  for (const p of pinned) assert.equal(dev[p.name], p.version, `${p.name}: package.json and tools/deps.mjs PINS`);
 });
 
 test('density datasets: "all types" first, codes map to WMS layers and times, sensible defaults', async () => {
-  const { DENSITY, densityTiles } = await import('../../catalog.js');
+  const { DENSITY, densityTiles } = await import('../../site/catalog.js');
   for (const id of Object.keys(DENSITY)) {
     const it = ITEMS.find((i) => i.id === id);
     assert.equal(Object.keys(it.variants)[0], 'all', `${id}: the app's default variant is the first key`);
@@ -145,4 +149,15 @@ test('Copernicus depth: levels from capabilities, the nearest one to the depth c
   assert.equal(nearestLevel(levels, 1000), '-110.0', 'below the deepest: the deepest');
   assert.equal(nearestLevel([], 100), null, 'a variable without depth');
   assert.deepEqual(depthLevels(xml.replace('elevation', 'x'), 'thetao'), []);
+});
+
+test('every overlay drawn in colours or symbols has a legend, and Europe-only layers say so', () => {
+  for (const id of Object.keys(OVERLAYS)) {
+    const it = ITEMS.find((i) => i.id === id);
+    const legend = it.kind === 'classes' ? CLASS_LEGENDS[id] : it.kind === 'emodnet' ? EMODNET_DEPTH_STOPS : null;
+    assert.ok(legend, `${id}: no legend`);
+    if (it.kind === 'classes') for (const v of Object.keys(it.variants || { all: 1 })) assert.ok(CLASS_LEGENDS[id](v), `${id} ${v}: no legend`);
+  }
+  // EMODnet's and EMSA's data cover European seas, but for the UKHO's wrecks (worldwide)
+  for (const it of ITEMS) if (it.group !== 'labels' && /EMODnet|EMSA/.test(it.info.src) && !/worldwide/.test(it.info.res)) assert.match(it.label, /\(Europe\)$/, `${it.id}: Europe only, not in its name`);
 });

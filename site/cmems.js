@@ -1,9 +1,9 @@
 // Copernicus Marine layers on the map (catalog.js CMEMS): a tile handler that draws an item's
 // datasets into one tile, each at its own time step for the hour asked, the global first and the
 // regional one over it; the datasets' time ranges, read from their own capabilities; legends.
-import { CMEMS, cmemsStyle, cmemsTileUrl, cmemsLegendUrl, cmemsCapsUrl, timeDomain, snapTime, depthLevels, nearestLevel } from './catalog.js';
-
-const FETCH = { credentials: 'omit', referrerPolicy: 'no-referrer' };
+import { CMEMS, cmemsStyle, cmemsTileUrl, cmemsLegendUrl, cmemsCapsUrl } from './catalog.js';
+import { mercator, tileBounds, CIRC } from './geo.js';
+import { FETCH, memo } from './net.js';
 // regional datasets (by product name: MEDSEA_…, SST_MED_…, OCEANCOLOUR_MED_…): drawn only within
 // their area, a union of boxes [west, south, east, north], and not asked for a tile outside it. The
 // Mediterranean products' own box (18°W–36°E, 30–46°N) also holds part of the Atlantic, the Bay of
@@ -18,17 +18,57 @@ async function ok(r) {
   return r;
 }
 
+// ---- what a dataset's own capabilities say: its time steps, its depth levels ------------------
+// ISO 8601 duration (P1D, PT1H, PT900S, PT10800S, PT15M) → milliseconds
+export function durationMs(d) {
+  const m = /^P(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?)?$/.exec(d);
+  if (!m) return NaN;
+  return (((+(m[1] || 0) * 24 + +(m[2] || 0)) * 60 + +(m[3] || 0)) * 60 + +(m[4] || 0)) * 1000;
+}
+// The time dimension of `variable` in a WMTS capabilities document: its <Value>s, each
+// start/end/step or one instant → [{ start, end, step }] in ms (step 0 for an instant)
+export function timeDomain(xml, variable) {
+  const id = xml.indexOf(`/${variable}</ows:Identifier>`);
+  if (id < 0) return [];
+  const layer = xml.slice(id, xml.indexOf('</Layer>', id));
+  const dim = /<ows:Identifier>time<\/ows:Identifier>([\s\S]*?)<\/Dimension>/.exec(layer)?.[1] || '';
+  return [...dim.matchAll(/<Value>([^<]*)<\/Value>/g)].flatMap(([, v]) => v.split(',')).map((v) => {
+    const [a, b, step] = v.trim().split('/');
+    return b ? { start: Date.parse(a), end: Date.parse(b), step: durationMs(step) } : { start: Date.parse(a), end: Date.parse(a), step: 0 };
+  }).filter((r) => Number.isFinite(r.start) && Number.isFinite(r.end));
+}
+// the dataset's time to draw for the time t (ms): the last step at or before t, or null if t is
+// outside every range
+export function snapTime(domain, t) {
+  let best = null;
+  for (const r of domain) {
+    if (t < r.start || t > r.end + (r.step || 0)) continue;
+    const s = r.step ? Math.min(r.end, r.start + Math.floor((t - r.start) / r.step) * r.step) : r.start;
+    if (s <= t && (best === null || s > best)) best = s;
+  }
+  return best;
+}
+// the depth levels of `variable` in a WMTS capabilities document, as listed (elevation, m, ≤ 0)
+export function depthLevels(xml, variable) {
+  const id = xml.indexOf(`/${variable}</ows:Identifier>`);
+  if (id < 0) return [];
+  const layer = xml.slice(id, xml.indexOf('</Layer>', id));
+  const dim = /<ows:Identifier>elevation<\/ows:Identifier>([\s\S]*?)<\/Dimension>/.exec(layer)?.[1] || '';
+  return [...dim.matchAll(/<Value>([^<]*)<\/Value>/g)].map((m) => m[1]).filter((v) => Number.isFinite(+v));
+}
+// the level nearest to depth (m below the surface): one of levels, or null if there are none
+export const nearestLevel = (levels, depth) => (levels.length ? levels.reduce((a, b) => (Math.abs(-b - depth) < Math.abs(-a - depth) ? b : a)) : null);
+
 // part (product/dataset/variable) → promise of { time: its time domain, levels: its depth levels }
-// (catalog.js timeDomain, depthLevels)
+// (timeDomain, depthLevels)
 const domains = {};
 export function domainOf(part) {
-  return (domains[part] ||= fetch(cmemsCapsUrl(part), FETCH).then(ok).then((r) => r.text())
+  return memo(domains, part, () => fetch(cmemsCapsUrl(part), FETCH).then(ok).then((r) => r.text())
     .then((xml) => {
       const variable = part.split('/')[2], time = timeDomain(xml, variable);
       if (!time.length) throw new Error(`no time steps for ${part}`);
       return { time, levels: depthLevels(xml, variable) };
-    })
-    .catch((e) => { delete domains[part]; throw e; }));
+    }));
 }
 
 // for each part of item/variant: the time it draws for t (ms), its step holding t; null outside its
@@ -43,11 +83,9 @@ export function partLevels(item, variant, depth) {
   return Promise.all(v.parts.map((p) => (v.depth ? domainOf(p).then(({ levels }) => nearestLevel(levels, depth), () => null) : null)));
 }
 
-const lon = (x, z) => (x / 2 ** z) * 360 - 180;
-const lat = (y, z) => (Math.atan(Math.sinh(Math.PI * (1 - (2 * y) / 2 ** z))) * 180) / Math.PI;
 function inArea(part, z, x, y) {
-  const area = regionOf(part)?.area;
-  return !area || area.some((a) => lon(x + 1, z) > a[0] && lon(x, z) < a[2] && lat(y + 1, z) < a[3] && lat(y, z) > a[1]);
+  const area = regionOf(part)?.area, [w, s, e, n] = tileBounds(z, x, y);
+  return !area || area.some((a) => e > a[0] && w < a[2] && s < a[3] && n > a[1]);
 }
 
 // MapLibre protocol handler for cmems://item/variant/look/t/depth/z/x/y (look: what it draws,
@@ -69,8 +107,8 @@ export async function cmemsTile({ url }, abortController) {
     const area = regionOf(v.parts[i])?.area;
     if (!area) { g.drawImage(im, 0, 0); return; }
     // the area in tile pixels (Web Mercator: x linear in longitude, y in the Mercator ordinate)
-    const px = (L) => ((L + 180) / 360 * 2 ** z - x) * 512;
-    const py = (B) => ((1 - Math.log(Math.tan(Math.PI / 4 + (B * Math.PI) / 360)) / Math.PI) / 2 * 2 ** z - y) * 512;
+    const px = (L) => ((mercator([L, 0])[0] / CIRC + 0.5) * 2 ** z - x) * 512;
+    const py = (B) => ((0.5 - mercator([0, B])[1] / CIRC) * 2 ** z - y) * 512;
     g.save();
     g.beginPath(); // one path: the boxes add up
     for (const a of area) g.rect(px(a[0]), py(a[3]), px(a[2]) - px(a[0]), py(a[1]) - py(a[3]));
@@ -86,11 +124,10 @@ export async function cmemsTile({ url }, abortController) {
 const legends = {};
 export function cmemsLegend(item, variant) {
   const v = CMEMS[item][variant], url = cmemsLegendUrl(v.parts[0], cmemsStyle(v));
-  return (legends[url] ||= fetch(url, FETCH).then(ok).then((r) => r.json())
+  return memo(legends, url, () => fetch(url, FETCH).then(ok).then((r) => r.json())
     .then(({ continuous: c }) => {
       const f = (x) => (v.log ? Math.log10(x) : x + (v.offset || 0));
       const cols = c.cmap.colorMap, lo = f(c.valueMin), step = (f(c.valueMax) - lo) / cols.length;
       return cols.map((rgb, i) => ({ lo: lo + i * step, hi: lo + (i + 1) * step, rgb: `rgb(${rgb.join(',')})` }));
-    })
-    .catch((e) => { delete legends[url]; throw e; }));
+    }));
 }

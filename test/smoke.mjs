@@ -68,21 +68,21 @@ try {
   const pv = await open('#v=6/41/12/0&menu=1');
   await pv.click('#b-measure');
   await pv.waitForTimeout(400);
-  const views = await pv.evaluate(() => [!document.querySelector('#panel').hidden, document.querySelector('#menu').hidden, !document.querySelector('#mview').hidden, document.querySelector('#panel-title').textContent, location.hash.includes('menu=measure')]);
+  const views = await pv.evaluate(() => [!document.querySelector('#panel').hidden, document.querySelector('#lview').hidden, !document.querySelector('#mview').hidden, document.querySelector('#panel-title').textContent, location.hash.includes('menu=measure')]);
   check(views.join() === 'true,true,true,Measure,true', `Measure switches the panel in place and the link keeps it (${views.join()})`);
   await pv.click('#b-measure');
   check(await pv.evaluate(() => document.querySelector('#panel').hidden), "the shown view's button closes the panel");
   await pv.close();
 
-  // NASA true colour at the current hour: today's tiles if NASA has today, else its newest day,
-  // said so under its row
-  const tc = await open('#v=5/40/10/0&menu=1&g=observed&on=chart,coastline,gibs');
-  await tc.waitForFunction(() => map.getLayoutProperty('gibs-terra', 'visibility') === 'visible', null, { timeout: 20000 }).catch(() => {});
-  const [tcNote, tcHidden, tcTiles, rowsOn] = await tc.evaluate(() => [document.querySelector('.item:has(#i-gibs) .latest').textContent, document.querySelector('.item:has(#i-gibs) .latest').hidden,
-    map.getSource('gibs-terra').tiles[0], document.querySelector('#when').hidden ? 'hidden' : 'shown']);
-  const tcDay = /\/(\d{4}-\d{2}-\d{2})\//.exec(tcTiles)?.[1] || '', todayUtc = new Date().toISOString().slice(0, 10);
-  const said = `latest: ${new Date(`${tcDay}T00:00:00Z`).toUTCString().slice(0, 11)}`;
-  check(rowsOn === 'shown' && (tcDay === todayUtc ? tcHidden : !tcHidden && tcNote === said), `NASA true colour: today or its newest day, said so; the time line shown (${tcDay}; ${tcHidden ? 'no note' : tcNote})`);
+  // NASA true colour opened at now: the time goes no later than NASA's newest day, and the tiles
+  // are of the day shown (no older day passed off as it)
+  const tc = await open('#v=5/40/10/0&menu=1&g=data&col=gibs:terra&on=chart,coastline');
+  await tc.waitForFunction(() => map.getLayoutProperty('gibs-terra', 'visibility') === 'visible' && /t=/.test(location.hash), null, { timeout: 20000 }).catch(() => {});
+  await tc.waitForTimeout(500);
+  const [tcTiles, tcHash, rowsOn, tcNotes] = await tc.evaluate(() => [map.getSource('gibs-terra').tiles[0], location.hash, document.querySelector('#when').hidden ? 'hidden' : 'shown',
+    document.querySelectorAll('.item .note:not([hidden])').length]);
+  const tcDay = /\/(\d{4}-\d{2}-\d{2})\//.exec(tcTiles)?.[1] || '', tcT = /t=([\d-]+T\d\d)/.exec(tcHash)?.[1] || '';
+  check(rowsOn === 'shown' && tcDay && tcT.startsWith(tcDay) && tcDay <= new Date().toISOString().slice(0, 10) && !tcNotes, `NASA true colour: the tiles are of the day shown, no later than today, no note (${tcDay}, t=${tcT})`);
   await tc.close();
 
   // search: coordinates are read on the page (no request); a place comes from Photon
@@ -128,11 +128,15 @@ try {
   await rt.close();
 
 
-  // Copernicus sea state: tiles load, the hour steps and is kept in the link, the legend shows
-  const cm = await open('#v=6/40/14/0&on=chart,coastline,waves,currents,legend&menu=1&g=seastate');
+  // Copernicus sea state from a link of before the Ocean data menus (on=waves,currents): read as
+  // waves in colour, currents in arrows; tiles load, the legends show
+  const cm = await open('#v=6/40/14/0&on=chart,coastline,waves,currents,legend&menu=1&g=data');
   await cm.waitForFunction(() => document.querySelectorAll('#legends canvas[data-legend=waves], #legends canvas[data-legend=currents]').length === 2, null, { timeout: 30000 }).catch(() => {});
-  const cmBroken = await cm.evaluate(() => [...document.querySelectorAll('.item.error, .item.partial')].map((r) => `${r.querySelector('label').textContent} (${r.title})`));
+  const cmBroken = await cm.evaluate(() => [...document.querySelectorAll('.item.error, .item.partial')].map((r) => `${r.querySelector('.name').textContent} (${r.title})`));
   check(cmBroken.length === 0 && cm.errors.length === 0, `Copernicus waves and currents load ${cmBroken.join(', ')} ${cm.errors.join(' | ')}`);
+  const [cmPicks, cmLink] = await cm.evaluate(() => [[...document.querySelectorAll('.pick select')].map((s) => s.value).join(' '), location.hash]);
+  check(cmPicks === 'waves:height currents:surface' && /col=waves:height/.test(cmLink) && /arr=currents:surface/.test(cmLink) && !/on=[^&]*waves/.test(cmLink),
+    `an old link's layers go to the menus: colours, arrows ${cmPicks}`);
   check(await cm.evaluate(() => document.querySelectorAll('#legends canvas[data-legend=waves], #legends canvas[data-legend=currents]').length === 2), 'Copernicus legends shown');
   // the time line at the panel's foot: a time picked there (local time) is drawn, read above the
   // legends and kept in the link; › steps an hour; Now goes back to now
@@ -143,7 +147,7 @@ try {
   await cm.fill('#when input', aLocal);
   await cm.waitForTimeout(1500);
   const [shownText, cmHash] = await cm.evaluate(() => [document.querySelector('#shown').textContent, location.hash]);
-  check(!shownText.startsWith('Today') && cmHash.includes(`t=${new Date(ahead).toISOString().slice(0, 13)}`), `a time picked on the time line is drawn, shown on the map and kept in the link (${shownText})`);
+  check(!shownText.startsWith('Today') && cmHash.includes(`t=${new Date(ahead).toISOString().slice(0, 13)}`), `a time picked on the time line is drawn, shown beside the coordinates and kept in the link (${shownText})`);
   const cmAgain = await open(cmHash);
   check((await cmAgain.evaluate(() => document.querySelector('#when input').value)) === aLocal, 'the link reopens at that time');
   await cm.click('#when [data-step="1"]');
@@ -157,28 +161,62 @@ try {
   await cm.click('#when [data-now]');
   await cm.waitForTimeout(500);
   check((await cm.evaluate(() => document.querySelector('#shown').textContent)).startsWith('Today'), 'Now goes back to now');
-  await cm.click('#close');
-  await cm.click('#shown');
-  check(await cm.evaluate(() => !document.querySelector('#panel').hidden), 'the time on the map opens Layers');
+  // About, in the right-hand column
+  await cm.click('#b-about');
+  check(await cm.evaluate(() => document.querySelector('#about').open), 'the About button opens About');
+  await cm.click('#about [data-close]');
   await cm.close(); await cmAgain.close();
-  // water properties at a depth from the link: each model at its nearest level, said so
-  const wp = await open('#v=5/40/10/0&on=chart,coastline,temperature,legend&menu=1&g=water&dz=100');
-  await wp.waitForFunction(() => /at \d+ m/.test(document.querySelector('.item:has(#i-temperature) .cmems-note')?.textContent || ''), null, { timeout: 30000 }).catch(() => {});
-  const [wpNote, wpDepth, wpBroken] = await wp.evaluate(() => [document.querySelector('.item:has(#i-temperature) .cmems-note').textContent, document.querySelector('#when .depthsel select').value + ' ' + document.querySelector('#shown').textContent,
-    [...document.querySelectorAll('.item.error, .item.partial')].map((r) => r.title)]);
-  check(/^100 .* · 100 m$/.test(wpDepth) && /global: at \d+ m · Mediterranean: at \d+ m/.test(wpNote) && !wpBroken.length && !wp.errors.length, `temperature at 100 m, set and shown on the time line: ${wpDepth}; ${wpNote} ${wpBroken.join(' ')} ${wp.errors.join(' | ')}`);
+  // the Ocean data menus: waves in colours, currents in arrows; wind in arrows; currents in both
+  // draw speed and direction; none
+  const sl = await open('#v=6/40/14/0&col=waves:height&arr=currents:surface&on=chart,coastline&menu=1&g=data');
+  const looks = () => sl.evaluate(() => ['waves', 'currents', 'wind'].map((id) => (map.getLayoutProperty(`cmems-${id}`, 'visibility') === 'visible' ? `${id}:${/cmems:\/\/\w+\/\w+\/(\w+)/.exec(map.getSource(`cmems-${id}`).tiles[0] || '')?.[1]}` : '')).filter(Boolean).join(' '));
+  await sl.waitForTimeout(1000);
+  const l1 = await looks();
+  await sl.selectOption('select[aria-label=Arrows]', 'wind:observed');
+  await sl.waitForTimeout(500);
+  const l2 = await looks();
+  await sl.selectOption('select[aria-label=Colours]', 'currents:surface');
+  await sl.selectOption('select[aria-label=Arrows]', 'currents:surface');
+  await sl.waitForTimeout(500);
+  const [l3, l3hash] = [await looks(), await sl.evaluate(() => location.hash)];
+  await sl.selectOption('select[aria-label=Colours]', '');
+  await sl.selectOption('select[aria-label=Arrows]', '');
+  await sl.waitForTimeout(500);
+  const [l4, whenHidden] = [await looks(), await sl.evaluate(() => document.querySelector('#when').hidden)];
+  check(l1 === 'waves:colour currents:arrows' && l2 === 'waves:colour wind:arrows' && l3 === 'currents:both' && /col=currents:surface&arr=currents:surface/.test(l3hash) && !l4 && whenHidden,
+    `Ocean data menus: ${l1} → arrows wind: ${l2} → currents in both: ${l3} → none: ${l4 || 'nothing drawn, no time line'}`);
+  await sl.close();
+  // water properties at a depth from the link: "≈ 100 m" beside the time, each model at its own
+  // level (the export records it), no note under the row
+  const wp = await open('#v=5/40/10/0&col=temperature:depth&on=chart,coastline,legend&menu=1&g=data&dz=100');
+  await wp.waitForFunction(() => !!document.querySelector('#legends canvas[data-legend=temperature]')?.style.width, null, { timeout: 30000 }).catch(() => {});
+  const [wpDepth, wpNotes, wpBroken] = await wp.evaluate(() => [document.querySelector('#when .depthsel select').value + ' ' + document.querySelector('#shown').textContent,
+    document.querySelectorAll('.item .note:not([hidden])').length, [...document.querySelectorAll('.item.error, .item.partial')].map((r) => r.title)]);
+  check(/^100 .* · ≈ 100 m$/.test(wpDepth) && !wpNotes && !wpBroken.length && !wp.errors.length, `temperature at 100 m, set on the time line and shown as "≈ 100 m": ${wpDepth} ${wpBroken.join(' ')} ${wp.errors.join(' | ')}`);
   await wp.close();
-  // a satellite observation at the current hour: its latest day, said so
-  const ob = await open('#v=5/40/10/0&on=chart,coastline,sst,legend&menu=1&g=observed');
-  await ob.waitForFunction(() => /latest:/.test(document.querySelector('.item:has(#i-sst) .cmems-note')?.textContent || ''), null, { timeout: 30000 }).catch(() => {});
-  const [obNote, obBroken] = await ob.evaluate(() => [document.querySelector('.item:has(#i-sst) .cmems-note').textContent, [...document.querySelectorAll('.item.error, .item.partial')].map((r) => r.title)]);
-  check(/Mediterranean: latest: /.test(obNote) && !obBroken.length && !ob.errors.length, `sea surface temperature shows its latest day: ${obNote} ${obBroken.join(' ')} ${ob.errors.join(' | ')}`);
+  // a satellite observation opened at now: the time goes no later than its latest day, and the
+  // day shown is the day drawn
+  const ob = await open('#v=5/40/10/0&col=sst:measured&on=chart,coastline,legend&menu=1&g=data');
+  await ob.waitForFunction(() => /t=/.test(location.hash) && !!document.querySelector('#legends canvas[data-legend=sst]')?.style.width, null, { timeout: 30000 }).catch(() => {});
+  await ob.waitForTimeout(1500);
+  const [obT, obWithin, obShown, obDay, obBroken] = await ob.evaluate(() => {
+    const t = /t=([\d-]+T\d\d)/.exec(location.hash)?.[1] || '', ms = Date.parse(`${t}:00:00Z`);
+    return [t, ms <= new Date(document.querySelector('#when input').max).getTime(), document.querySelector('#shown').textContent,
+      `${new Date(ms).toLocaleDateString([], { weekday: 'short', timeZone: 'UTC' })} ${new Date(ms).getUTCDate()}`, [...document.querySelectorAll('.item.error, .item.partial')].map((r) => r.title)];
+  });
+  check(obT && obWithin && (obShown === 'Today' || obShown === obDay) && !obBroken.length && !ob.errors.length,
+    `sea surface temperature: the time within its days, its day shown (t=${obT}, ${obShown}) ${obBroken.join(' ')} ${ob.errors.join(' | ')}`);
   await ob.close();
 
   // PNG export
   const [dl] = await Promise.all([again.waitForEvent('download', { timeout: 60000 }), again.click('#png')]);
   const png = await readFile(await dl.path());
   check(png.length > 50_000 && png.subarray(1, 4).toString() === 'PNG', `PNG export (${Math.round(png.length / 1024)} KB)`);
+  // the map's size (no strip under it), its details in text fields
+  const [cw, chh] = await again.evaluate(() => [map.getCanvas().width, map.getCanvas().height]);
+  const text = png.toString('latin1');
+  check(png.readUInt32BE(16) === cw && png.readUInt32BE(20) === chh && /iTXtCopyright\0[^]*OpenStreetMap/.test(text) && /iTXtDisclaimer\0\0\0\0\0Not for navigation/.test(text),
+    `PNG export: the map's size (${png.readUInt32BE(16)}×${png.readUInt32BE(20)}), credits and disclaimer in its text fields`);
   // GIS export: a zip whose STAC item lists the georeferenced map and the files beside it;
   // polygon-clipping loads on this first export, not with the page
   check(await again.evaluate(() => !('polygonClipping' in window) && !document.querySelector('script[src*=polygon-clipping]')), 'polygon-clipping not loaded with the page');

@@ -129,8 +129,8 @@ const MED_BIO = 'MEDSEA_ANALYSISFORECAST_BGC_006_014/cmems_mod_med_bgc-bio_anfc_
 const MED_CAR = 'MEDSEA_ANALYSISFORECAST_BGC_006_014/cmems_mod_med_bgc-car_anfc_4.2km_P1D-m_202511';
 const MED_NUT = 'MEDSEA_ANALYSISFORECAST_BGC_006_014/cmems_mod_med_bgc-nut_anfc_4.2km_P1D-m_202511';
 // item → variant → { label, unit, range, cmap, vector (arrows drawn by the service: 'solidAndVector' over the colours,
-//   'vector' alone, coloured by speed), parts: [dataset/variable],
-//   observed (an observation, published late: after its last step it shows that step, said so),
+//   'vector' alone, coloured by speed; what the variant can draw: colours, arrows or both, see drawsOf),
+//   parts: [dataset/variable],
 //   daily (daily means), depth (drawn at the depth chosen, each dataset at its nearest level),
 //   log (logarithmic colours), offset (added to the data's values for the legend: Kelvin → °C) }
 // Ranges serve the global and the regional model alike, so a colour means the same everywhere.
@@ -144,11 +144,11 @@ export const CMEMS = {
   },
   currents: { surface: { label: 'Surface current', unit: 'm/s', range: [0, 1.5], cmap: 'speed', vector: 'solidAndVector', parts: [`${GLO_CUR}/sea_water_velocity`, `${MED_CUR}/sea_water_velocity`] } },
   sst: {
-    measured: { label: 'Sea surface temperature', unit: '°C', range: [273.15, 303.15], offset: -273.15, cmap: 'thermal', daily: true, observed: true, parts: [`${GLO_SST}/analysed_sst`, `${MED_SST}/analysed_sst`] },
-    anomaly: { label: 'Sea surface temperature anomaly', unit: '°C', range: [-3, 3], cmap: 'balance', daily: true, observed: true, parts: [`${MED_SSTA}/sst_anomaly`] },
+    measured: { label: 'Sea surface temperature', unit: '°C', range: [273.15, 303.15], offset: -273.15, cmap: 'thermal', daily: true, parts: [`${GLO_SST}/analysed_sst`, `${MED_SST}/analysed_sst`] },
+    anomaly: { label: 'Sea surface temperature anomaly', unit: '°C', range: [-3, 3], cmap: 'balance', daily: true, parts: [`${MED_SSTA}/sst_anomaly`] },
   },
-  chl: { observed: { label: 'Chlorophyll', unit: 'mg/m³', range: [0.01, 10], log: true, cmap: 'algae', daily: true, observed: true, parts: [`${GLO_CHL}/CHL`, `${MED_CHL}/CHL`] } },
-  sla: { observed: { label: 'Sea level anomaly', unit: 'm', range: [-0.3, 0.3], cmap: 'balance', daily: true, observed: true, parts: [`${SLA}/sla`] } },
+  chl: { observed: { label: 'Chlorophyll', unit: 'mg/m³', range: [0.01, 10], log: true, cmap: 'algae', daily: true, parts: [`${GLO_CHL}/CHL`, `${MED_CHL}/CHL`] } },
+  sla: { observed: { label: 'Sea level anomaly', unit: 'm', range: [-0.3, 0.3], cmap: 'balance', daily: true, parts: [`${SLA}/sla`] } },
   bgc: {
     o2: { label: 'Dissolved oxygen', unit: 'mmol/m³', range: [0, 350], cmap: 'matter', daily: true, depth: true, parts: [`${GLO_BIO}/o2`, `${MED_BIO}/o2`] },
     ph: { label: 'pH', unit: '', range: [7.6, 8.2], cmap: 'viridis', daily: true, depth: true, parts: [`${GLO_CAR}/ph`, `${MED_CAR}/ph`] },
@@ -162,9 +162,15 @@ export const CMEMS = {
   },
   salinity: { depth: { label: 'Salinity', unit: 'PSU', range: [32, 40], cmap: 'haline', daily: true, depth: true, parts: [`${GLO_SAL}/so`, `${MED_SAL}/so`] } },
   mld: { depth: { label: 'Mixed layer depth', unit: 'm', range: [0, 200], cmap: 'plasma', daily: true, parts: [`${GLO_2D}/mlotst`, `${MED_MLD}/mlotst`] } },
-  wind: { observed: { label: 'Wind (satellite)', unit: 'm/s', range: [0, 25], cmap: 'thermal', vector: 'vector', observed: true, parts: [`${WIND}/wind`] } },
+  wind: { observed: { label: 'Wind (satellite)', unit: 'm/s', range: [0, 25], cmap: 'thermal', vector: 'vector', parts: [`${WIND}/wind`] } },
 };
-export const cmemsStyle = (v) => `cmap:${v.cmap},range:${v.range.join('/')}${v.log ? ',logScale' : ''}${v.vector ? `,vectorStyle:${v.vector}` : ''}`;
+// what a variant can draw: ['colour'], ['arrows'] or both (its colours, its arrows coloured by speed)
+export const drawsOf = (v) => ({ solidAndVector: ['colour', 'arrows'], vector: ['arrows'] })[v.vector] || ['colour'];
+// the service's style for a variant drawing `look` ('colour', 'arrows', or 'both': all it can)
+export function cmemsStyle(v, look = 'both') {
+  const vector = look === 'colour' ? null : look === 'arrows' ? 'vector' : v.vector;
+  return `cmap:${v.cmap},range:${v.range.join('/')}${v.log ? ',logScale' : ''}${vector ? `,vectorStyle:${vector}` : ''}`;
+}
 // 512 px tiles (the @2x matrix set): arrows at a readable spacing, and sharp on high-density screens
 export function cmemsTileUrl(part, style, time, z, x, y, level = null) {
   return `${CMEMS_WMTS}?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=${encodeURIComponent(part)}&STYLE=${encodeURIComponent(style)}`
@@ -173,6 +179,8 @@ export function cmemsTileUrl(part, style, time, z, x, y, level = null) {
 export const cmemsLegendUrl = (part, style) => `${CMEMS_WMTS}?SERVICE=WMTS&REQUEST=GetLegend&LAYER=${encodeURIComponent(part)}&STYLE=${encodeURIComponent(style)}&FORMAT=application/json`;
 // one dataset's own capabilities (~100 kB, not the 67 MB of the whole service): its time steps
 export const cmemsCapsUrl = (part) => `${CMEMS_WMTS}/${part.split('/').slice(0, 2).join('/')}?SERVICE=WMTS&REQUEST=GetCapabilities`;
+
+const ARROWS_LAST = (id) => ({ solidAndVector: 1, vector: 2 })[Object.values(CMEMS[id])[0].vector] || 0;
 
 // ISO 8601 duration (P1D, PT1H, PT900S, PT10800S, PT15M) → milliseconds
 export function durationMs(d) {
@@ -222,14 +230,15 @@ export const nearestLevel = (levels, depth) => (levels.length ? levels.reduce((a
 // minzoom / maxzoom: outside them the item is greyed out with a hint and draws nothing.
 // opacity: default value of the item's slider (absent = no slider).
 // variants: alternatives inside one item; only the chosen variant's layers draw.
+// section: in the Ocean data group, the heading its entries go under in the menus.
 export const GROUPS = [
   { id: 'base', label: 'Base', exclusive: true },
+  // the layers that change with time, chosen in two menus: one for colours, one for arrows
+  // (app.js); their sections head the menus' entries
+  { id: 'data', label: 'Ocean data', sections: ['Sea state', 'Water column', 'Satellite'] },
   { id: 'sea', label: 'Sea' },
   { id: 'shipping', label: 'Shipping' },
   { id: 'land', label: 'Land' },
-  { id: 'seastate', label: 'Sea state' },
-  { id: 'water', label: 'Water column' }, // model fields, daily, at one depth
-  { id: 'observed', label: 'Satellite' }, // observations, published late
   { id: 'labels', label: 'Labels & grid' },
 ];
 
@@ -245,10 +254,10 @@ export const ITEMS = [
     info: { src: 'AWS Terrain Tiles (Terrarium): ETOPO1 and GEBCO-class seabed, NOAA coastal DEMs', lic: 'Open data, attribution per source', res: 'Seabed ~1–2 km in open sea, finer in US and some European waters. Cut to the OSM coastline, so land below sea level is never tinted; sea the DEM calls dry is shown as the shallowest class. Inland water is classified once per water body from the DEM at its shore: at sea level (limans, lagoons, harbour basins) it is shown flat in the shallowest class, depth unknown; lakes above it are grey, no depth data. Caspian depths are measured from its surface (−28 m), not from sea level. Off above zoom 12: the data has no more detail', url: 'https://registry.opendata.aws/terrain-tiles/' } },
   { id: 'isobaths', group: 'sea', label: 'Isobaths', on: true, opacity: 1, minzoom: 4,
     info: { src: 'Contoured in your browser from the Terrarium DEM (maplibre-contour)', lic: 'As DEM', res: 'Spacing widens with depth and tightens with zoom: 5 m, every 10 m to 50 m, 50 m to 200 m, then 500/200/100 m to 3000 m and 1000/500 m below ( indicative only, the seabed data is ~1–2 km in open sea). As coarse as the DEM beneath: smoothed shapes, not surveyed soundings. Traced on the DEM cut to the OSM coastline (to zoom 12, about 38 m per pixel). Above zoom 12 the same lines are magnified: they can stop short of the coast or cross it by a few pixels', url: 'https://github.com/onthegomap/maplibre-contour' } },
-  { id: 'traffic', group: 'shipping', label: 'Vessel density', opacity: 0.85, density: true,
+  { id: 'traffic', group: 'shipping', label: 'Vessel density', opacity: 0.85, kind: 'density',
     variants: DENSITY.traffic.types,
     info: { src: 'EMODnet Human Activities vessel density (Cogea), from AIS bought from CLS, ORBCOMM and vesseltracker.com', lic: 'EMODnet open data, no access constraints; attribution requested', res: '1 km grid, annual averages of hours per km² per month, 2017–2024. EU and neighbouring seas only. 2024 is incomplete (satellite AIS lost from June). Not real time', url: 'https://emodnet.ec.europa.eu/en/human-activities' } },
-  { id: 'routes', group: 'shipping', label: 'Route density', opacity: 0.85, density: true,
+  { id: 'routes', group: 'shipping', label: 'Route density', opacity: 0.85, kind: 'density',
     variants: DENSITY.routes.types,
     info: { src: 'EMSA route density, via EMODnet Human Activities: ship tracks rebuilt from terrestrial and satellite AIS, counting the routes that cross each cell', lic: 'CC BY 4.0 · European Maritime Safety Agency (EMSA)', res: '1 km grid, monthly totals since January 2019, about 3 months behind. EU and neighbouring seas only. Counts passages, not time spent (see Vessel density for hours)', url: 'https://www.emsa.europa.eu/related-operational-projects/traffic-density-maps.html' } },
   { id: 'seamarks', group: 'sea', label: 'Seamarks', minzoom: 9, opacity: 1,
@@ -266,36 +275,36 @@ export const ITEMS = [
     info: { src: 'OpenStreetMap via OpenFreeMap', lic: 'ODbL · © OpenStreetMap contributors', res: 'Footprints as mapped in OSM; coverage varies by country', url: 'https://openfreemap.org' } },
 
   // Copernicus Marine: one hour for all, forecasts about 9 days ahead (cmems.js)
-  { id: 'waves', group: 'seastate', label: 'Waves', opacity: 0.85, cmems: true,
+  { id: 'waves', group: 'data', section: 'Sea state', label: 'Waves', opacity: 0.85, kind: 'cmems',
     variants: Object.fromEntries(Object.entries(CMEMS.waves).map(([k, v]) => [k, v.label])),
     info: { src: 'Copernicus Marine Service: Mediterranean wave forecast (MEDSEA_ANALYSISFORECAST_WAV_006_017) over the global one (GLOBAL_ANALYSISFORECAST_WAV_001_027)', lic: 'Copernicus Marine Service licence: free, attribution required', res: 'Mediterranean 4.2 km, hourly; elsewhere 1/12° (~9 km), every 3 hours. Model analysis and forecast, about 9 days ahead. Not for navigation', url: 'https://marine.copernicus.eu' } },
-  { id: 'currents', group: 'seastate', label: 'Currents', opacity: 0.85, cmems: true,
+  { id: 'currents', group: 'data', section: 'Sea state', label: 'Currents', opacity: 0.85, kind: 'cmems',
     info: { src: 'Copernicus Marine Service: Mediterranean physics forecast (MEDSEA_ANALYSISFORECAST_PHY_006_013) over the global surface currents (GLOBAL_ANALYSISFORECAST_PHY_001_024, with tides and wave drift)', lic: 'Copernicus Marine Service licence: free, attribution required', res: 'Surface, hourly. Mediterranean 4.2 km (with tides); elsewhere 1/12° (~9 km). Arrows show the direction the water flows. Model forecast, about 9 days ahead', url: 'https://marine.copernicus.eu' } },
-  { id: 'wind', group: 'seastate', label: 'Wind', opacity: 0.85, cmems: true,
-    info: { src: 'Copernicus Marine Service: global ocean wind from satellite scatterometers, blended with a weather model (WIND_GLO_PHY_L4_NRT_012_004)', lic: 'Copernicus Marine Service licence: free, attribution required', res: '0.125° (~14 km), hourly, 10 m above the sea. An observation, not a forecast: published about a day late. At hours after the latest observation it shows the latest, and says so. Arrows show where the wind blows to', url: 'https://marine.copernicus.eu' } },
+  { id: 'wind', group: 'data', section: 'Sea state', label: 'Wind', opacity: 0.85, kind: 'cmems',
+    info: { src: 'Copernicus Marine Service: global ocean wind from satellite scatterometers, blended with a weather model (WIND_GLO_PHY_L4_NRT_012_004)', lic: 'Copernicus Marine Service licence: free, attribution required', res: '0.125° (~14 km), hourly, 10 m above the sea. An observation, not a forecast: published about a day late. The time shown goes no later than its latest observation. Arrows show where the wind blows to', url: 'https://marine.copernicus.eu' } },
 
-  { id: 'temperature', group: 'water', label: 'Temperature', opacity: 0.85, cmems: true,
+  { id: 'temperature', group: 'data', section: 'Water column', label: 'Temperature', opacity: 0.85, kind: 'cmems',
     variants: Object.fromEntries(Object.entries(CMEMS.temperature).map(([k, v]) => [k, v.label === 'Temperature' ? 'At the depth chosen' : 'At the seabed'])),
     info: { src: 'Copernicus Marine Service: Mediterranean physics forecast (MEDSEA_ANALYSISFORECAST_PHY_006_013) over the global one (GLOBAL_ANALYSISFORECAST_PHY_001_024)', lic: 'Copernicus Marine Service licence: free, attribution required', res: 'Potential temperature, daily means. Mediterranean 4.2 km, 141 levels; elsewhere 1/12° (~9 km), 50 levels: each at its level nearest the depth chosen. Model analysis and forecast, about 9 days ahead', url: 'https://marine.copernicus.eu' } },
-  { id: 'salinity', group: 'water', label: 'Salinity', opacity: 0.85, cmems: true,
+  { id: 'salinity', group: 'data', section: 'Water column', label: 'Salinity', opacity: 0.85, kind: 'cmems',
     info: { src: 'Copernicus Marine Service: Mediterranean physics forecast (MEDSEA_ANALYSISFORECAST_PHY_006_013) over the global one (GLOBAL_ANALYSISFORECAST_PHY_001_024)', lic: 'Copernicus Marine Service licence: free, attribution required', res: 'Practical salinity (PSU), daily means, at the level nearest the depth chosen. Mediterranean 4.2 km; elsewhere 1/12° (~9 km). Model analysis and forecast', url: 'https://marine.copernicus.eu' } },
-  { id: 'mld', group: 'water', label: 'Mixed layer depth', opacity: 0.85, cmems: true,
+  { id: 'mld', group: 'data', section: 'Water column', label: 'Mixed layer depth', opacity: 0.85, kind: 'cmems',
     info: { src: 'Copernicus Marine Service: Mediterranean physics forecast (MEDSEA_ANALYSISFORECAST_PHY_006_013) over the global one (GLOBAL_ANALYSISFORECAST_PHY_001_024)', lic: 'Copernicus Marine Service licence: free, attribution required', res: 'Depth of the well-mixed surface layer (density criterion), daily means. Shallow in summer, deep in winter. Mediterranean 4.2 km; elsewhere 1/12°. Model analysis and forecast', url: 'https://marine.copernicus.eu' } },
 
-  { id: 'sst', group: 'observed', label: 'Sea surface temperature', opacity: 0.85, cmems: true,
+  { id: 'sst', group: 'data', section: 'Satellite', label: 'Sea surface temperature', opacity: 0.85, kind: 'cmems',
     variants: { measured: 'Measured', anomaly: 'Anomaly (Mediterranean)' },
-    info: { src: 'Copernicus Marine Service: satellite sea surface temperature, Mediterranean (SST_MED_SST_L4_NRT_OBSERVATIONS_010_004) over the global OSTIA analysis (SST_GLO_SST_L4_NRT_OBSERVATIONS_010_001)', lic: 'Copernicus Marine Service licence: free, attribution required', res: 'Daily, gap-filled from several satellites. Mediterranean 1/16° (~4 km); elsewhere 0.05° (~5 km). Anomaly: against the 1991–2020 climatology of the day, Mediterranean only (marine heatwaves show in red). Shows the latest day after its last one', url: 'https://marine.copernicus.eu' } },
-  { id: 'chl', group: 'observed', label: 'Chlorophyll', opacity: 0.85, cmems: true,
-    info: { src: 'Copernicus Marine Service: ocean colour, gap-free, Mediterranean (OCEANCOLOUR_MED_BGC_L4_NRT_009_142) over the global one (OCEANCOLOUR_GLO_BGC_L4_NRT_009_102)', lic: 'Copernicus Marine Service licence: free, attribution required', res: 'Chlorophyll-a, daily, cloud gaps filled. Mediterranean 1 km; elsewhere 4 km. Logarithmic colours. Only the last two weeks or so are kept. Shows the latest day after its last one', url: 'https://marine.copernicus.eu' } },
-  { id: 'sla', group: 'observed', label: 'Sea level anomaly', opacity: 0.85, cmems: true,
-    info: { src: 'Copernicus Marine Service: satellite altimetry, all missions merged (SEALEVEL_GLO_PHY_L4_NRT_008_046)', lic: 'Copernicus Marine Service licence: free, attribution required', res: 'Sea surface height above its 1993–2012 mean, daily, 0.125° (~14 km). Eddies and large-scale highs and lows; tides and storm surge removed. Shows the latest day after its last one', url: 'https://marine.copernicus.eu' } },
-  { id: 'bgc', group: 'water', label: 'Water quality', opacity: 0.85, cmems: true,
+    info: { src: 'Copernicus Marine Service: satellite sea surface temperature, Mediterranean (SST_MED_SST_L4_NRT_OBSERVATIONS_010_004) over the global OSTIA analysis (SST_GLO_SST_L4_NRT_OBSERVATIONS_010_001)', lic: 'Copernicus Marine Service licence: free, attribution required', res: 'Daily, gap-filled from several satellites. Mediterranean 1/16° (~4 km); elsewhere 0.05° (~5 km). Anomaly: against the 1991–2020 climatology of the day, Mediterranean only (marine heatwaves show in red). The time shown goes no later than its latest day', url: 'https://marine.copernicus.eu' } },
+  { id: 'chl', group: 'data', section: 'Satellite', label: 'Chlorophyll', opacity: 0.85, kind: 'cmems',
+    info: { src: 'Copernicus Marine Service: ocean colour, gap-free, Mediterranean (OCEANCOLOUR_MED_BGC_L4_NRT_009_142) over the global one (OCEANCOLOUR_GLO_BGC_L4_NRT_009_102)', lic: 'Copernicus Marine Service licence: free, attribution required', res: 'Chlorophyll-a, daily, cloud gaps filled. Mediterranean 1 km; elsewhere 4 km. Logarithmic colours. Only the last two weeks or so are kept. The time shown goes no later than its latest day', url: 'https://marine.copernicus.eu' } },
+  { id: 'sla', group: 'data', section: 'Satellite', label: 'Sea level anomaly', opacity: 0.85, kind: 'cmems',
+    info: { src: 'Copernicus Marine Service: satellite altimetry, all missions merged (SEALEVEL_GLO_PHY_L4_NRT_008_046)', lic: 'Copernicus Marine Service licence: free, attribution required', res: 'Sea surface height above its 1993–2012 mean, daily, 0.125° (~14 km). Eddies and large-scale highs and lows; tides and storm surge removed. The time shown goes no later than its latest day', url: 'https://marine.copernicus.eu' } },
+  { id: 'bgc', group: 'data', section: 'Water column', label: 'Water quality', opacity: 0.85, kind: 'cmems',
     variants: Object.fromEntries(Object.entries(CMEMS.bgc).map(([k, v]) => [k, v.label])),
     info: { src: 'Copernicus Marine Service: Mediterranean biogeochemistry forecast (MEDSEA_ANALYSISFORECAST_BGC_006_014) over the global one (GLOBAL_ANALYSISFORECAST_BGC_001_028)', lic: 'Copernicus Marine Service licence: free, attribution required', res: 'Daily means at the level nearest the depth chosen. Mediterranean 4.2 km; elsewhere 0.25° (~28 km). Nitrate in logarithmic colours. Model analysis and forecast, about 9 days ahead', url: 'https://marine.copernicus.eu' } },
 
-  { id: 'gibs', group: 'observed', label: 'NASA daily', opacity: 0.9, date: true,
+  { id: 'gibs', group: 'data', section: 'Satellite', label: 'NASA daily', opacity: 0.9, kind: 'gibs',
     variants: Object.fromEntries(Object.entries(GIBS).map(([k, g]) => [k, g.label])),
-    info: { src: 'NASA EOSDIS GIBS (WMTS)', lic: 'NASA open data; attribution requested', res: 'True colour, 250 m, to zoom 9. A picture of the day as the satellite saw it: clouds and swath gaps are real. Shows the newest published day after it', url: 'https://www.earthdata.nasa.gov/engage/open-data-services-software/earthdata-developer-portal/gibs-api' } },
+    info: { src: 'NASA EOSDIS GIBS (WMTS)', lic: 'NASA open data; attribution requested', res: 'True colour, 250 m, to zoom 9. A picture of the day as the satellite saw it: clouds and swath gaps are real. The time shown goes no later than its newest published day', url: 'https://www.earthdata.nasa.gov/engage/open-data-services-software/earthdata-developer-portal/gibs-api' } },
 
   { id: 'legend', group: 'labels', label: 'Legends', on: true,
     info: { src: 'Drawn from the same colour stops as the map; Copernicus from the colour maps its service publishes; vessel and route density from the stops their WMS publishes', lic: '—', res: 'Shown bottom left for every colour layer that is drawn; the PNG always includes them', url: '' } },
@@ -311,8 +320,10 @@ export const ITEMS = [
 
 // ---- sources ----------------------------------------------------------------
 function sources({ seaDemUrl, landDemUrl, isobathUrl, contourUrl, date, density = {} }) {
-  const ATTR_OSM = '<a href="https://openfreemap.org">OpenFreeMap</a> © <a href="https://www.openmaptiles.org/">OpenMapTiles</a> © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>';
-  const ATTR_DEM = 'Terrain: <a href="https://registry.opendata.aws/terrain-tiles/">Mapzen/AWS Terrain Tiles</a>';
+  // credits: the names each provider asks for, short enough for one line; what each layer is
+  // made from is behind its ⓘ
+  const ATTR_OSM = '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> · <a href="https://www.openmaptiles.org/">OpenMapTiles</a> · <a href="https://openfreemap.org">OpenFreeMap</a>';
+  const ATTR_DEM = '<a href="https://registry.opendata.aws/terrain-tiles/">Mapzen Terrain Tiles</a>';
   const s = {
     omt: { type: 'vector', url: OMT_TILEJSON, attribution: ATTR_OSM },
     'dem-sea': { type: 'raster-dem', tiles: [seaDemUrl], encoding: 'terrarium', tileSize: 256, maxzoom: DEM_SEA.max, attribution: ATTR_DEM },
@@ -329,21 +340,21 @@ function sources({ seaDemUrl, landDemUrl, isobathUrl, contourUrl, date, density 
       tiles: ['https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'] },
     // the grid is 1 km: beyond zoom 10 the map overzooms instead of asking for more tiles
     traffic: { type: 'raster', tileSize: 256, maxzoom: 10, tiles: densityTiles('traffic', ...(density.traffic || ['all', DENSITY.traffic.defaultPeriod])),
-      attribution: 'Vessel density: <a href="https://emodnet.ec.europa.eu/en/human-activities">EMODnet Human Activities</a> (Cogea; AIS: CLS, ORBCOMM, vesseltracker.com)' },
+      attribution: '<a href="https://emodnet.ec.europa.eu/en/human-activities">EMODnet Human Activities</a>' },
     routes: { type: 'raster', tileSize: 256, maxzoom: 10, tiles: densityTiles('routes', ...(density.routes || ['all', DENSITY.routes.defaultPeriod])),
-      attribution: 'Route density: <a href="https://www.emsa.europa.eu/">EMSA</a> via <a href="https://emodnet.ec.europa.eu/en/human-activities">EMODnet Human Activities</a>, CC BY 4.0' },
-    seamarks: { type: 'raster', tileSize: 256, minzoom: 6, maxzoom: 18, attribution: 'Seamarks: <a href="https://openseamap.org">OpenSeaMap</a>',
+      attribution: '<a href="https://www.emsa.europa.eu/">EMSA</a> (CC BY 4.0) via <a href="https://emodnet.ec.europa.eu/en/human-activities">EMODnet Human Activities</a>' },
+    seamarks: { type: 'raster', tileSize: 256, minzoom: 6, maxzoom: 18, attribution: '<a href="https://openseamap.org">OpenSeaMap</a>',
       tiles: ['https://tiles.openseamap.org/seamark/{z}/{x}/{y}.png'] },
     graticule: { type: 'geojson', data: { type: 'FeatureCollection', features: [] } },
     measure: { type: 'geojson', data: { type: 'FeatureCollection', features: [] } },
   };
   // tiles set by app.js once the hour is known (cmems:// is cmems.js's tile handler)
   for (const id of Object.keys(CMEMS)) {
-    s[`cmems-${id}`] = { type: 'raster', tileSize: 512, maxzoom: 10, tiles: [], attribution: 'Ocean data: <a href="https://marine.copernicus.eu">Copernicus Marine Service</a>' };
+    s[`cmems-${id}`] = { type: 'raster', tileSize: 512, maxzoom: 10, tiles: [], attribution: '<a href="https://marine.copernicus.eu">Copernicus Marine Service</a>' };
   }
   for (const [k, g] of Object.entries(GIBS)) {
     s[`gibs-${k}`] = { type: 'raster', tileSize: 256, maxzoom: g.level, tiles: gibsTiles(k, date),
-      attribution: 'Imagery: <a href="https://earthdata.nasa.gov/gibs">NASA EOSDIS GIBS</a>' };
+      attribution: '<a href="https://earthdata.nasa.gov/gibs">NASA GIBS</a>' };
   }
   return s;
 }
@@ -443,7 +454,8 @@ function layers() {
     // colour fills are chart-only: over satellite the image shows the water; isobaths still draw
     { id: 'depth', type: 'color-relief', source: 'dem-sea', maxzoom: 13, metadata: { item: 'depth', base: 'chart' }, paint: { 'color-relief-color': depthRamp(DEPTH_SCHEMES.atlas) } },
     ...Object.keys(GIBS).map((k) => ({ ...raster(`gibs-${k}`, 'gibs', k), source: `gibs-${k}` })),
-    ...Object.keys(CMEMS).map((id) => raster(`cmems-${id}`, id)),
+    // colours, then the layers that can draw arrows (currents, then wind), whose arrows go over them
+    ...Object.keys(CMEMS).sort((a, b) => ARROWS_LAST(a) - ARROWS_LAST(b)).map((id) => raster(`cmems-${id}`, id)),
 
     // drawn at every zoom: above the DEM's zoom 12 the lines are magnified, not refined
     ...ISOBATH_RANGES.map(([z0, z1, mid, deep], k) => ({ id: k ? `isobaths-${k}` : 'isobaths', type: 'line', source: 'isobaths', 'source-layer': 'contours',

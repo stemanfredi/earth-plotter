@@ -16,7 +16,7 @@ Layers are grouped by task, each with an ⓘ for its source, licence and
 resolution. Depth shading and isobaths end at the OpenStreetMap coastline.
 Ruler, area and range ring are geodesic on WGS 84, in kilometres or nautical
 miles. Search takes place names or coordinates. The link reopens the exact
-view, and the PNG export carries the scale, legends and credits. The GIS export
+view, and the PNG export is the map as on screen, without the controls: legends and credits bottom left, its centre, zoom, projection and the data's time beside the scale bottom right; the same details, the credits and a not-for-navigation disclaimer are also in the PNG's text fields. The GIS export
 is a zip: the map as a georeferenced PNG (world file, Web
 Mercator), the PNG export, one GeoJSON file per vector layer drawn (`vector/`:
 clipped to the view, pieces from neighbouring tiles joined) plus the
@@ -51,18 +51,23 @@ them from each provider, and each layer stays under its provider's licence.
 | Place search | Photon (komoot), OpenStreetMap data | ODbL |
 
 Layers that change with time (Copernicus and NASA daily) share one time, now by
-default. While one is on, the foot of the Layers panel holds one line to set
+default. While one is on, the top of the Layers panel holds one line to set
 it, in local time: the browser's own date and time field, limited to the dates
 those layers have, a step of an hour (a day, for daily layers) either way, and
-Now. The time shown is also written above the legends; tapping it opens Layers. Forecasts reach about nine days ahead. Copernicus layers: waves, currents and wind;
+Now. The time shown is also written beside the cursor's coordinates. Forecasts reach about nine days ahead. Copernicus layers: waves, currents and wind;
 temperature, salinity, mixed layer depth and water quality (dissolved oxygen, pH,
 nitrate, primary production); satellite sea surface temperature (and its anomaly),
 chlorophyll and sea level anomaly. Daily products show the day of that hour, and
 variables with depth are drawn at one depth, chosen on the same line. NASA daily
 is true colour: the day as the satellite saw it. In the Mediterranean they come from
-the regional products, elsewhere from the global ones. Observations (wind and
-the satellite layers, NASA daily too) are published late: after their latest day
-or hour they show it, and say so.
+the regional products, elsewhere from the global ones. Everything is drawn at
+the time shown, each dataset at its own time resolution (an hour, the global
+waves' three hours, a day), and the time can only be one every layer that is on
+has: observations (wind and the satellite layers, NASA daily too) are published
+late, so while one is on the time goes no later than its latest day or hour. They
+are chosen in the Ocean data group, in two menus, one for colours and one for
+arrows, since two colour layers cannot be read together, nor two sets of arrows:
+currents are in both (speed in colour, direction in arrows), wind is arrows.
 
 Esri imagery is not open data: it is used under Esri's terms of use. The EOX
 2024 mosaic does not allow commercial use. Vessel and route density cover European and neighbouring

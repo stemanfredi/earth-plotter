@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { GROUPS, ITEMS, DEPTH_SCHEMES, buildStyle, domainEnd, gibsDomainUrl, CMEMS, cmemsStyle, durationMs, timeDomain, snapTime, depthLevels, nearestLevel } from '../../catalog.js';
+import { GROUPS, ITEMS, DEPTH_SCHEMES, buildStyle, domainEnd, gibsDomainUrl, CMEMS, cmemsStyle, drawsOf, durationMs, timeDomain, snapTime, depthLevels, nearestLevel } from '../../catalog.js';
 import { PINS, TILE_HOSTS } from '../../tools/deps.mjs';
 
 const style = buildStyle({ seaDemUrl: 'clip-sea://{z}/{x}/{y}', landDemUrl: 'clip-land://{z}/{x}/{y}', isobathUrl: 'c://a', contourUrl: 'c://b', date: '2026-10-19' });
@@ -30,7 +30,7 @@ test('layer ids unique, sources defined, item layers start hidden', () => {
 });
 
 test('variants: each choice has a layer, except colour schemes', () => {
-  for (const it of ITEMS.filter((i) => i.variants && i.id !== 'depth' && !i.density && !i.cmems)) { // density, Copernicus: one layer, a tile URL per choice
+  for (const it of ITEMS.filter((i) => i.variants && i.id !== 'depth' && !i.kind)) { // density, Copernicus: one layer, a tile URL per choice
     for (const v of Object.keys(it.variants)) {
       assert.ok(style.layers.some((l) => l.metadata?.item === it.id && l.metadata.variant === v), `${it.id}/${v}: no layer`);
     }
@@ -90,7 +90,7 @@ test('GIBS: the newest date a layer has, from DescribeDomains', () => {
 });
 
 test('Copernicus: items, variants and parts agree; styles fix the range', () => {
-  for (const it of ITEMS.filter((i) => i.cmems)) {
+  for (const it of ITEMS.filter((i) => i.kind === 'cmems')) {
     assert.ok(CMEMS[it.id], `${it.id} has datasets`);
     if (it.variants) assert.deepEqual(Object.keys(it.variants), Object.keys(CMEMS[it.id]));
     else assert.equal(Object.keys(CMEMS[it.id]).length, 1, `${it.id}: one choice, or variants in the menu`);
@@ -101,6 +101,17 @@ test('Copernicus: items, variants and parts agree; styles fix the range', () => 
     assert.ok(v.range[0] < v.range[1]);
   }
   assert.equal(cmemsStyle(CMEMS.currents.surface), 'cmap:speed,range:0/1.5,vectorStyle:solidAndVector');
+});
+
+test('Copernicus colours and arrows: what each draws, styles, arrows drawn over colours', () => {
+  assert.deepEqual(drawsOf(CMEMS.currents.surface), ['colour', 'arrows']);
+  assert.deepEqual(drawsOf(CMEMS.wind.observed), ['arrows']);
+  assert.deepEqual(drawsOf(CMEMS.waves.height), ['colour']);
+  assert.equal(cmemsStyle(CMEMS.currents.surface, 'arrows'), 'cmap:speed,range:0/1.5,vectorStyle:vector');
+  assert.equal(cmemsStyle(CMEMS.currents.surface, 'colour'), 'cmap:speed,range:0/1.5');
+  assert.equal(cmemsStyle(CMEMS.wind.observed, 'arrows'), 'cmap:thermal,range:0/25,vectorStyle:vector');
+  const order = buildStyle({ seaDemUrl: 'x', landDemUrl: 'x', isobathUrl: 'x', contourUrl: 'x', date: '2026-10-21' }).layers.map((l) => l.id).filter((id) => id.startsWith('cmems-'));
+  assert.deepEqual(order.slice(-2), ['cmems-currents', 'cmems-wind'], `layers that draw arrows come last: ${order.join(' ')}`);
 });
 
 test('Copernicus time: durations, a dataset\'s domain from its capabilities, snapping', () => {

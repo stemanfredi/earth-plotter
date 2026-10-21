@@ -170,9 +170,9 @@ body.loading .spin { visibility: visible; animation: spin .8s linear infinite; }
 .mbar button.done { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
 
 /* ---- legends, stacked bottom left above the credits ---- */
-.legends { position: absolute; z-index: 3; left: 10px; bottom: calc(var(--status-h) + 8px); display: flex; flex-direction: column; align-items: flex-start; gap: 6px; pointer-events: none; }
+.legends { position: absolute; z-index: 3; left: 10px; bottom: calc(var(--status-h) + 8px); display: flex; flex-direction: column; align-items: flex-start; gap: var(--legend-gap, 6px); pointer-events: none; }
 .legends:empty { display: none; }
-.legends canvas { display: block; box-sizing: content-box; border: 1px solid var(--line); border-radius: 6px; box-shadow: var(--shadow); } /* the border outside its size: not squeezed (blurred) */
+.legends canvas { display: block; outline: 1px solid var(--line); border-radius: 6px; box-shadow: var(--shadow); } /* an outline, not a border: it moves no pixel of the canvas */
 
 /* ---- bottom row: credits left; scale note, position and scale right. No bar: the row is
    transparent (clicks reach the map) and each item carries its own light backing. ---- */
@@ -188,15 +188,14 @@ body.loading .spin { visibility: visible; animation: spin .8s linear infinite; }
 .scalenote { color: var(--warn); }
 .nfn { font-weight: 600; white-space: nowrap; }
 .scalenote:empty { display: none; }
-/* credits: always on screen (no (i) toggle) */
-.status .maplibregl-ctrl-attrib { margin: 0; background: none; text-align: left; }
 .readout { display: flex; align-items: flex-end; gap: 8px; margin-left: auto; flex: none; }
-/* one line of credits (MapLibre's <details>), ending in "…" where they do not fit; a tap shows them all */
+/* credits: always on screen, on one line ending in "…" where they do not fit; a tap shows them all */
 .credits { display: flex; flex: 0 1 auto; min-width: 0; padding: 1px 6px; border-radius: 4px; background: rgba(255,255,255,.85); }
 .credits.foldable { cursor: pointer; }
-.credits .maplibregl-ctrl-attrib { min-width: 0; padding: 0; }
-.credits .maplibregl-ctrl-attrib-inner { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.credits.open .maplibregl-ctrl-attrib-inner { white-space: normal; }
+.credits-text { display: block; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.credits.open .credits-text { white-space: normal; }
+.credits a { color: var(--ink); text-decoration: none; }
+.credits a:hover { text-decoration: underline; }
 .maplibregl-ctrl-scale { border-color: var(--ink); color: var(--ink); background: rgba(255, 255, 255, .85); font: 11px var(--font); }
 /* double scale (as on OpenSeaMap): km bar open at the top, NM bar hanging below the same line */
 .scales { display: flex; flex-direction: column; align-items: flex-start; }
@@ -227,7 +226,12 @@ dialog .action { justify-content: center; border: 1px solid var(--line); margin-
   .mbar { right: calc(var(--rail) + 20px); flex-wrap: wrap; }
   .mbar .tip, .mbar .what { display: none; } /* the tool is lit in the column: room for the buttons on one line */
   .pos:not(.shown) { display: none; } /* no cursor on a phone; the time shown stays */
-  .status { flex-wrap: wrap; } /* the credits' line above the readout */
-  .credits { flex-basis: 100%; }
-  .readout { flex: 0 1 auto; flex-wrap: wrap; justify-content: flex-end; }
+  /* two lines: the credits and the scale; not for navigation, the scale note and the time */
+  .status { flex-wrap: wrap; }
+  .readout { display: contents; }
+  .credits { order: 1; flex: 1 1 0; }
+  .scales { order: 2; }
+  .status::after { content: ""; order: 3; flex-basis: 100%; }
+  .nfn, .scalenote, .shown { order: 4; }
+  .nfn { margin-left: auto; }
 }

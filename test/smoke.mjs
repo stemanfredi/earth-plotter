@@ -45,11 +45,14 @@ try {
   await p.click('.basecard[data-base=sat]');
   check((await visible(p, 'esri')) === 'visible' && (await visible(p, 'water')) === 'none', 'satellite replaces the chart base');
   await p.waitForTimeout(1500);
-  const credits = await p.evaluate(() => document.querySelector('.maplibregl-ctrl-attrib-inner')?.textContent || '');
+  const credits = await p.evaluate(() => document.querySelector('.credits-text')?.textContent || '');
   const live = await p.evaluate(async () => (await (await fetch('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer?f=json')).json()).copyrightText);
   check(credits.includes('Powered by Esri') && credits.includes(live), `Esri credits: "Powered by Esri" and the service's own text (${live})`);
-  await p.mouse.move(640, 400); await p.mouse.down(); await p.mouse.move(500, 300, { steps: 5 }); await p.mouse.up(); await p.waitForTimeout(500);
-  check(await p.evaluate(() => !document.querySelector('.maplibregl-ctrl-attrib').classList.contains('maplibregl-compact')), 'credits stay written out after a drag');
+  // the base map's credit first, so a line cut at its end ("…") never cuts it
+  await p.click('.basecard[data-base=chart]');
+  await p.waitForTimeout(500);
+  const chartCredits = await p.evaluate(() => document.querySelector('.credits-text').textContent);
+  check(credits.startsWith('Powered by Esri') && chartCredits.startsWith('© OpenStreetMap'), `the base map's credit first (${credits.slice(0, 30)}… / ${chartCredits.slice(0, 30)}…)`);
   await p.close();
 
   // URL state: view, layers and measurements survive a reload; Link copies the current view
@@ -84,6 +87,17 @@ try {
   const tcDay = /\/(\d{4}-\d{2}-\d{2})\//.exec(tcTiles)?.[1] || '', tcT = /t=([\d-]+T\d\d)/.exec(tcHash)?.[1] || '';
   check(rowsOn === 'shown' && tcDay && tcT.startsWith(tcDay) && tcDay <= new Date().toISOString().slice(0, 10) && !tcNotes, `NASA true colour: the tiles are of the day shown, no later than today, no note (${tcDay}, t=${tcT})`);
   await tc.close();
+
+  // a zoom alone updates what depends on it: a layer out of its range greyed out with its hint,
+  // the depth shading's legend gone above zoom 12
+  const zm = await open('#v=8/43.6/13.6/0&on=chart,coastline,depth,seamarks,legend&menu=1&g=sea');
+  const zoomed = () => zm.evaluate(() => [document.querySelector('.item:has(#i-seamarks) .hint').textContent, document.querySelector('.item:has(#i-seamarks)').classList.contains('dim'), !!document.querySelector('#legends canvas[data-legend=depth]')]);
+  const z8 = await zoomed();
+  await zm.evaluate(() => map.jumpTo({ zoom: 13.5 }));
+  await zm.waitForTimeout(500);
+  const z13 = await zoomed();
+  check(z8.join() === 'zoom 9+,true,true' && z13.join() === ',false,false', `a zoom updates the hints and legends (zoom 8: ${z8}; 13.5: ${z13})`);
+  await zm.close();
 
   // search: coordinates are read on the page (no request); a place comes from Photon
   const sp = await open('#v=6/41/12/0&menu=0');
@@ -227,14 +241,89 @@ try {
   const names = ['item.json', 'map.png', 'map.pgw', 'map.png.aux.xml', 'chart.png', 'vector/coastline.geojson', 'vector/isobaths.geojson', 'raster/depth.tif'];
   check(z.readUInt32LE(0) === 0x04034b50 && names.every((n) => z.includes(n)) && dz.suggestedFilename().endsWith('.zip'), `GIS export holds ${names.join(', ')} (${Math.round(z.length / 1024)} KB)`);
   // item.json lists every file in the zip, once (central directory: name and local header offset)
-  const entries = [];
-  for (let p = z.readUInt32LE(z.length - 6); z.readUInt32LE(p) === 0x02014b50; p += 46 + z.readUInt16LE(p + 28)) {
-    entries.push({ name: z.toString('utf8', p + 46, p + 46 + z.readUInt16LE(p + 28)), at: z.readUInt32LE(p + 42), method: z.readUInt16LE(p + 10), size: z.readUInt32LE(p + 20) });
-  }
-  const ij = entries.find((e) => e.name === 'item.json'), body = z.subarray(ij.at + 30 + z.readUInt16LE(ij.at + 26), ij.at + 30 + z.readUInt16LE(ij.at + 26) + ij.size);
-  const item = JSON.parse((ij.method ? inflateRawSync(body) : body).toString());
+  const unzip = (zz) => {
+    const entries = [];
+    for (let p = zz.readUInt32LE(zz.length - 6); zz.readUInt32LE(p) === 0x02014b50; p += 46 + zz.readUInt16LE(p + 28)) {
+      entries.push({ name: zz.toString('utf8', p + 46, p + 46 + zz.readUInt16LE(p + 28)), at: zz.readUInt32LE(p + 42), method: zz.readUInt16LE(p + 10), size: zz.readUInt32LE(p + 20) });
+    }
+    const ij = entries.find((e) => e.name === 'item.json'), body = zz.subarray(ij.at + 30 + zz.readUInt16LE(ij.at + 26), ij.at + 30 + zz.readUInt16LE(ij.at + 26) + ij.size);
+    return { entries, item: JSON.parse((ij.method ? inflateRawSync(body) : body).toString()) };
+  };
+  const { entries, item } = unzip(z);
   const listed = Object.values(item.assets).map((a) => a.href.replace(/^\.\//, '')).sort().join();
   check(listed === entries.map((e) => e.name).filter((n) => n !== 'item.json').sort().join(), `item.json lists every file in the zip (${Object.keys(item.assets).length} assets)`);
+  // the values of a Copernicus layer, from its datasets' Zarr stores: global and Mediterranean waves
+  const cv = await open('#v=7/39.5/14/0&col=waves:height&on=chart,coastline&menu=0');
+  await cv.waitForTimeout(3000);
+  const [dv] = await Promise.all([cv.waitForEvent('download', { timeout: 120000 }), cv.click('#zip')]);
+  const { entries: ve, item: vi } = unzip(await readFile(await dv.path()));
+  const wave = (k) => vi.assets[k]?.bands?.[0];
+  check(['raster/waves-global.tif', 'raster/waves-mediterranean.tif'].every((n) => ve.some((e) => e.name === n)) && wave('raster/waves-mediterranean')?.name === 'VHM0' && wave('raster/waves-mediterranean')?.unit === 'm'
+    && vi.assets['raster/waves-mediterranean']['proj:code'] === 'EPSG:4326' && cv.errors.length === 0,
+    `GIS export: the waves' values as GeoTIFF, global and Mediterranean (${ve.filter((e) => e.name.startsWith('raster/')).map((e) => e.name).join(', ')}) ${cv.errors.join(' | ')}`);
+  await cv.close();
+
+  // ---- the export says what the map shows (parity) ----
+  // one view per kind of layer; each exported, and the zip compared with the map as it was
+  const files = (zz) => { // name → bytes, every entry of a zip
+    const out = {};
+    for (let p = zz.readUInt32LE(zz.length - 6); zz.readUInt32LE(p) === 0x02014b50; p += 46 + zz.readUInt16LE(p + 28)) {
+      const name = zz.toString('utf8', p + 46, p + 46 + zz.readUInt16LE(p + 28)), at = zz.readUInt32LE(p + 42), size = zz.readUInt32LE(p + 20);
+      const body = zz.subarray(at + 30 + zz.readUInt16LE(at + 26), at + 30 + zz.readUInt16LE(at + 26) + size);
+      out[name] = zz.readUInt16LE(p + 10) ? inflateRawSync(body) : body;
+    }
+    return out;
+  };
+  const pngFields = (b) => { // a PNG's size and iTXt text fields
+    const f = { width: b.readUInt32BE(16), height: b.readUInt32BE(20) };
+    for (let p = 8; p < b.length;) {
+      const n = b.readUInt32BE(p), type = b.toString('latin1', p + 4, p + 8);
+      if (type === 'iTXt') { const parts = b.subarray(p + 8, p + 8 + n).toString('utf8').split('\0'); f[parts[0]] = parts.at(-1); }
+      if (type === 'IEND') break;
+      p += n + 12;
+    }
+    return f;
+  };
+  const PARITY = [
+    ['density and depth, no time', '#v=7/37.5/14/0&on=chart,coastline,depth,traffic,legend'],
+    ['NASA daily', '#v=5/40/10/0&col=gibs:terra&on=chart,coastline'],
+    ['Copernicus colours and arrows', '#v=6/39/14/0&col=waves:height&arr=currents:surface&on=chart,coastline,legend'],
+    ['Copernicus at a depth', '#v=6/39/14/0&col=temperature:depth&dz=100&on=chart,coastline,legend'],
+    ['daily only, an observation', '#v=6/39/14/0&col=sst:measured&on=chart,coastline,legend'],
+  ];
+  for (const [what, hash] of PARITY) {
+    const pp = await open(`${hash}&menu=0`);
+    await pp.waitForTimeout(3000);
+    const seen = await pp.evaluate(() => { // the map, read from MapLibre itself
+      const z = map.getZoom(), on = new Set(), draws = {};
+      for (const l of map.getStyle().layers) {
+        if (!l.metadata?.item || map.getLayoutProperty(l.id, 'visibility') !== 'visible' || z < (l.minzoom ?? 0) || z >= (l.maxzoom ?? 24)) continue;
+        on.add(l.metadata.item);
+        const look = /^cmems:\/\/\w+\/\w+\/(\w+)/.exec(map.getSource(l.source)?.tiles?.[0] || '')?.[1];
+        if (look) draws[l.metadata.item] = look;
+      }
+      return { on: [...on].sort(), draws, t: /t=([\d-]+T\d\d)/.exec(location.hash)?.[1] || '', dz: +(/dz=(\d+)/.exec(location.hash)?.[1] || 0),
+        hourly: /\d:\d\d/.test(document.querySelector('#shown').textContent), canvas: [map.getCanvas().width, map.getCanvas().height] };
+    });
+    const [dl] = await Promise.all([pp.waitForEvent('download', { timeout: 120000 }), pp.click('#zip')]);
+    const zf = files(await readFile(await dl.path())), item = JSON.parse(zf['item.json']), pr = item.properties, layers = pr['chart:layers'];
+    const chart = pngFields(zf['chart.png']), timed = !!seen.t;
+    const expect = !timed ? pr.created : seen.hourly ? `${seen.t}:00:00.000Z` : `${seen.t.slice(0, 10)}T00:00:00Z`;
+    const dataText = !timed ? null : seen.hourly ? `data at ${seen.t.replace('T', ' ')}:00 UTC` : `data of ${seen.t.slice(0, 10)}`;
+    const wrong = [];
+    if (layers.map((l) => l.id).sort().join() !== seen.on.join()) wrong.push(`layers ${layers.map((l) => l.id).sort()} ≠ map ${seen.on}`);
+    if (pr.datetime !== expect) wrong.push(`datetime ${pr.datetime} ≠ ${expect}`);
+    for (const l of layers) {
+      if (seen.draws[l.id] && l.draws !== seen.draws[l.id]) wrong.push(`${l.id} draws ${l.draws} ≠ map ${seen.draws[l.id]}`);
+      if (seen.dz && l.depth_m != null && Math.abs(l.depth_m - seen.dz) > seen.dz * 0.15) wrong.push(`${l.id} at ${l.depth_m} m ≠ ${seen.dz} m`);
+      if (seen.draws[l.id] && !(l.assets || []).some((a) => a.startsWith(`raster/${l.id}`))) wrong.push(`${l.id}: no values`);
+    }
+    if (chart.width !== seen.canvas[0] || chart.height !== seen.canvas[1]) wrong.push(`chart.png ${chart.width}×${chart.height} ≠ map ${seen.canvas.join('×')}`);
+    if (dataText && !chart.Description?.includes(dataText)) wrong.push(`chart.png says "${chart.Description}", not "${dataText}"`);
+    if (chart.Copyright !== pr['chart:attribution']) wrong.push('chart.png and item.json credit differently');
+    check(!wrong.length && !pp.errors.length, `export parity, ${what}: ${wrong.join('; ') || `${layers.length} layers, ${pr.datetime}`} ${pp.errors.join(' | ')}`);
+    await pp.close();
+  }
 } catch (err) {
   check(false, `smoke run crashed: ${err.message}`);
 } finally {

@@ -22,9 +22,13 @@ Mercator), the PNG export, one GeoJSON file per vector layer drawn (`vector/`:
 clipped to the view, pieces from neighbouring tiles joined) plus the
 measurements, the depth and land elevation in metres as GeoTIFF (`raster/`, when
 depth shading or relief and contours are drawn: the elevation tiles the map
-draws, at their resolution, over the view's bounding box; imagery and density
+draws, at their resolution, over the view's bounding box), the values of each
+Copernicus layer drawn as GeoTIFF (`raster/<layer>-global.tif`,
+`-mediterranean.tif`: read from Copernicus Marine's public Zarr stores at the
+time and depth drawn, in each dataset's own latitude/longitude grid over the
+view's bounding box, arrows as eastward and northward bands; imagery and density
 layers are in the pictures only), and a [STAC](https://stacspec.org) Item (`item.json`) with the
-view's footprint, the layers drawn, their sources, licences and files. QGIS
+view's footprint, the time of the data shown (its `datetime`; the export's own is `created`), the layers drawn (what each draws: colours or arrows, its time and depth), their sources, licences and files. QGIS
 opens every file straight from the zip.
 
 One limit of the GeoJSON: OpenMapTiles merges neighbouring buildings into one
@@ -84,7 +88,8 @@ on-screen credits and the PNG list only the sources that are drawn.
 - A Content-Security-Policy limits the page to the pinned CDN packages and the
   provider hosts listed in `tools/deps.mjs`.
 - Tile requests necessarily tell each provider which area is being viewed. A
-  hidden layer makes no requests.
+  hidden layer makes no requests. A GIS export with Copernicus layers drawn
+  also reads their datasets from Copernicus Marine's catalogue and stores.
 - Coordinates typed into the search box are parsed in the page and never sent.
   Place names are sent to Photon as you type, along with the map centre rounded
   to 0.1°. The results list says so.
@@ -125,7 +130,8 @@ The reasons behind each rule are documented next to the code that applies it.
 | `app.js` | Map setup, panels, URL state, search, legends, graticule, PNG and GIS export. |
 | `export.js` | GIS export contents: georeferencing and the STAC Item. |
 | `vector.js` | Vector layers of the view as GeoJSON: tile pieces joined, clipped to the view. |
-| `geotiff.js` | Elevation grids of the view as GeoTIFF. |
+| `geotiff.js` | GeoTIFF writer: elevation grids of the view, Copernicus values. |
+| `zarr.js` | Copernicus Marine's datasets as data: their Zarr stores, Blosc/LZ4 decoded. |
 | `cmems.js` | Copernicus Marine tiles (regional over global), time ranges, legends. |
 | `zip.js` | Zip writer (the browser's own deflate). |
 | `clip.js`, `clip-worker.js` | Elevation tiles cut to the OSM coastline, in a Web Worker. |
@@ -158,6 +164,18 @@ The smoke test depends on the network by design, because the page depends on
 the providers. A failure can therefore mean that a provider changed or went
 down, not only that the code broke.
 
+### Exports
+
+The PNG and GIS exports say what the map shows, and only from one place:
+`snapshot()` in `app.js`, read at the moment of capture (the view, the time and
+depth as stated beside the coordinates, the credits, each layer drawn with its
+state). Each kind of data layer (`KINDS` in `app.js`) says how it is exported,
+with `record()` and `values()` (`null`: in the pictures only); the page checks
+on load that every kind has them and every catalogue item's kind exists, and
+the smoke test fails on the console error. The smoke test also exports one view
+per kind and compares the zip with the map: layers, time, depth, colours or
+arrows, the PNG's size, text fields and credits, the Copernicus values.
+
 ### Continuous integration
 
 `.github/workflows/ci.yml` runs the unit, check, smoke and layout tests on
@@ -183,6 +201,10 @@ produce.
 
 The density periods offered in the menu are listed in `catalog.js`. When
 `npm run deps` reports newer data, extend the list there.
+
+## Roadmap
+
+Known gaps and parked ideas: [ROADMAP.md](ROADMAP.md).
 
 ## Archived work
 

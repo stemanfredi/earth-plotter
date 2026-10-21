@@ -11,7 +11,7 @@ import { serve, chromeOptions } from './serve.mjs';
 const server = await serve();
 const base = server.url;
 const browser = await chromium.launch(chromeOptions());
-const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 }, acceptDownloads: true, permissions: ['clipboard-read', 'clipboard-write'] });
+const ctx = await browser.newContext({ locale: 'en-US', viewport: { width: 1280, height: 800 }, acceptDownloads: true, permissions: ['clipboard-read', 'clipboard-write'] });
 const failures = [];
 // cross-origin requests that carried a Referer (the page and the clip worker both promise none)
 const referred = new Set();
@@ -74,12 +74,16 @@ try {
   check(await pv.evaluate(() => document.querySelector('#panel').hidden), "the shown view's button closes the panel");
   await pv.close();
 
-  // NASA SST is published about two days late: the date steps back to the newest one GIBS has
-  const sst = await open('#v=5/40/10/0&menu=1&g=imagery&on=chart,coastline,gibs&var=gibs:sst');
-  await sst.waitForFunction(() => document.querySelector('.latest')?.textContent, null, { timeout: 20000 }).catch(() => {});
-  const [shown, note] = await sst.evaluate(() => [document.querySelector('.datestep input').value, document.querySelector('.latest').textContent]);
-  check(/^Newest published: \d{4}-\d{2}-\d{2}$/.test(note) && note.endsWith(shown), `SST date is the newest published one (${shown}; ${note})`);
-  await sst.close();
+  // NASA true colour at the current hour: today's tiles if NASA has today, else its newest day,
+  // said so under its row
+  const tc = await open('#v=5/40/10/0&menu=1&g=observed&on=chart,coastline,gibs');
+  await tc.waitForFunction(() => map.getLayoutProperty('gibs-terra', 'visibility') === 'visible', null, { timeout: 20000 }).catch(() => {});
+  const [tcNote, tcHidden, tcTiles, rowsOn] = await tc.evaluate(() => [document.querySelector('.item:has(#i-gibs) .latest').textContent, document.querySelector('.item:has(#i-gibs) .latest').hidden,
+    map.getSource('gibs-terra').tiles[0], document.querySelector('#when').hidden ? 'hidden' : 'shown']);
+  const tcDay = /\/(\d{4}-\d{2}-\d{2})\//.exec(tcTiles)?.[1] || '', todayUtc = new Date().toISOString().slice(0, 10);
+  const said = `latest: ${new Date(`${tcDay}T00:00:00Z`).toUTCString().slice(0, 11)}`;
+  check(rowsOn === 'shown' && (tcDay === todayUtc ? tcHidden : !tcHidden && tcNote === said), `NASA true colour: today or its newest day, said so; the time line shown (${tcDay}; ${tcHidden ? 'no note' : tcNote})`);
+  await tc.close();
 
   // search: coordinates are read on the page (no request); a place comes from Photon
   const sp = await open('#v=6/41/12/0&menu=0');
@@ -123,6 +127,53 @@ try {
   check((await rt.evaluate(() => document.querySelector('.item:has(#i-routes) select.period').selectedOptions[0].text)) === 'Nov 2025', 'months labelled as "Nov 2025"');
   await rt.close();
 
+
+  // Copernicus sea state: tiles load, the hour steps and is kept in the link, the legend shows
+  const cm = await open('#v=6/40/14/0&on=chart,coastline,waves,currents,legend&menu=1&g=seastate');
+  await cm.waitForFunction(() => document.querySelectorAll('#legends canvas[data-legend=waves], #legends canvas[data-legend=currents]').length === 2, null, { timeout: 30000 }).catch(() => {});
+  const cmBroken = await cm.evaluate(() => [...document.querySelectorAll('.item.error, .item.partial')].map((r) => `${r.querySelector('label').textContent} (${r.title})`));
+  check(cmBroken.length === 0 && cm.errors.length === 0, `Copernicus waves and currents load ${cmBroken.join(', ')} ${cm.errors.join(' | ')}`);
+  check(await cm.evaluate(() => document.querySelectorAll('#legends canvas[data-legend=waves], #legends canvas[data-legend=currents]').length === 2), 'Copernicus legends shown');
+  // the time line at the panel's foot: a time picked there (local time) is drawn, read above the
+  // legends and kept in the link; › steps an hour; Now goes back to now
+  const ahead = await cm.evaluate(() => { const d = new Date(Date.now() + 864e5); d.setMinutes(0, 0, 0); return d.getTime(); });
+  const aLocal = await cm.evaluate((t) => { const d = new Date(t), p = (n) => String(n).padStart(2, '0'); return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:00`; }, ahead);
+  const [minMax, shownOn] = await cm.evaluate(() => [[document.querySelector('#when input').min, document.querySelector('#when input').max], !document.querySelector('#shown').hidden]);
+  check(shownOn && minMax[0] > '2020' && minMax[1] > minMax[0] && !minMax[1].startsWith('2099'), `the field holds the dates the layers have (${minMax.join(' to ')})`);
+  await cm.fill('#when input', aLocal);
+  await cm.waitForTimeout(1500);
+  const [shownText, cmHash] = await cm.evaluate(() => [document.querySelector('#shown').textContent, location.hash]);
+  check(!shownText.startsWith('Today') && cmHash.includes(`t=${new Date(ahead).toISOString().slice(0, 13)}`), `a time picked on the time line is drawn, shown on the map and kept in the link (${shownText})`);
+  const cmAgain = await open(cmHash);
+  check((await cmAgain.evaluate(() => document.querySelector('#when input').value)) === aLocal, 'the link reopens at that time');
+  await cm.click('#when [data-step="1"]');
+  await cm.waitForTimeout(500);
+  check((await cm.evaluate(() => location.hash)).includes(`t=${new Date(ahead + 36e5).toISOString().slice(0, 13)}`), 'the later button steps one hour');
+  // a day typed key by key passes through years 0002, 0020, 0202: none of them is taken
+  await cm.focus('#when input');
+  await cm.keyboard.type(`${aLocal.slice(5, 7)}${aLocal.slice(8, 10)}${aLocal.slice(0, 4)}`); // en-US field: mm dd yyyy first
+  await cm.waitForTimeout(500);
+  check(/t=20\d\d-/.test(await cm.evaluate(() => location.hash)), 'a day typed key by key never jumps to a year before 2000');
+  await cm.click('#when [data-now]');
+  await cm.waitForTimeout(500);
+  check((await cm.evaluate(() => document.querySelector('#shown').textContent)).startsWith('Today'), 'Now goes back to now');
+  await cm.click('#close');
+  await cm.click('#shown');
+  check(await cm.evaluate(() => !document.querySelector('#panel').hidden), 'the time on the map opens Layers');
+  await cm.close(); await cmAgain.close();
+  // water properties at a depth from the link: each model at its nearest level, said so
+  const wp = await open('#v=5/40/10/0&on=chart,coastline,temperature,legend&menu=1&g=water&dz=100');
+  await wp.waitForFunction(() => /at \d+ m/.test(document.querySelector('.item:has(#i-temperature) .cmems-note')?.textContent || ''), null, { timeout: 30000 }).catch(() => {});
+  const [wpNote, wpDepth, wpBroken] = await wp.evaluate(() => [document.querySelector('.item:has(#i-temperature) .cmems-note').textContent, document.querySelector('#when .depthsel select').value + ' ' + document.querySelector('#shown').textContent,
+    [...document.querySelectorAll('.item.error, .item.partial')].map((r) => r.title)]);
+  check(/^100 .* · 100 m$/.test(wpDepth) && /global: at \d+ m · Mediterranean: at \d+ m/.test(wpNote) && !wpBroken.length && !wp.errors.length, `temperature at 100 m, set and shown on the time line: ${wpDepth}; ${wpNote} ${wpBroken.join(' ')} ${wp.errors.join(' | ')}`);
+  await wp.close();
+  // a satellite observation at the current hour: its latest day, said so
+  const ob = await open('#v=5/40/10/0&on=chart,coastline,sst,legend&menu=1&g=observed');
+  await ob.waitForFunction(() => /latest:/.test(document.querySelector('.item:has(#i-sst) .cmems-note')?.textContent || ''), null, { timeout: 30000 }).catch(() => {});
+  const [obNote, obBroken] = await ob.evaluate(() => [document.querySelector('.item:has(#i-sst) .cmems-note').textContent, [...document.querySelectorAll('.item.error, .item.partial')].map((r) => r.title)]);
+  check(/Mediterranean: latest: /.test(obNote) && !obBroken.length && !ob.errors.length, `sea surface temperature shows its latest day: ${obNote} ${obBroken.join(' ')} ${ob.errors.join(' | ')}`);
+  await ob.close();
 
   // PNG export
   const [dl] = await Promise.all([again.waitForEvent('download', { timeout: 60000 }), again.click('#png')]);

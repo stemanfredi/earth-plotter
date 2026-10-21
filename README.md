@@ -2,7 +2,8 @@
 
 A world chart in a single static web page. It combines an OpenStreetMap base
 map with satellite imagery, depth shading and isobaths, seamarks, shipping
-density and NASA daily imagery, and adds geodesic measuring tools. Every source
+density, Copernicus Marine ocean data (sea state, water properties, satellite
+observations, water quality) and NASA daily imagery, and adds geodesic measuring tools. Every source
 is public and needs no API key. There is no build step and no backend.
 
 **Not for navigation.** Positions, coastlines and depths come from open
@@ -45,8 +46,23 @@ them from each provider, and each layer stays under its provider's licence.
 | Seamarks | OpenSeaMap | CC BY-SA 2.0 |
 | Vessel density | EMODnet Human Activities | EMODnet open data, attribution requested |
 | Route density | EMSA, via EMODnet Human Activities | CC BY 4.0 |
-| Daily imagery | NASA EOSDIS GIBS | NASA open data |
+| Sea state, water properties, satellite observations, water quality | Copernicus Marine Service | Copernicus Marine licence: free, attribution required |
+| NASA daily (true colour) | NASA EOSDIS GIBS | NASA open data |
 | Place search | Photon (komoot), OpenStreetMap data | ODbL |
+
+Layers that change with time (Copernicus and NASA daily) share one time, now by
+default. While one is on, the foot of the Layers panel holds one line to set
+it, in local time: the browser's own date and time field, limited to the dates
+those layers have, a step of an hour (a day, for daily layers) either way, and
+Now. The time shown is also written above the legends; tapping it opens Layers. Forecasts reach about nine days ahead. Copernicus layers: waves, currents and wind;
+temperature, salinity, mixed layer depth and water quality (dissolved oxygen, pH,
+nitrate, primary production); satellite sea surface temperature (and its anomaly),
+chlorophyll and sea level anomaly. Daily products show the day of that hour, and
+variables with depth are drawn at one depth, chosen on the same line. NASA daily
+is true colour: the day as the satellite saw it. In the Mediterranean they come from
+the regional products, elsewhere from the global ones. Observations (wind and
+the satellite layers, NASA daily too) are published late: after their latest day
+or hour they show it, and say so.
 
 Esri imagery is not open data: it is used under Esri's terms of use. The EOX
 2024 mosaic does not allow commercial use. Vessel and route density cover European and neighbouring
@@ -105,6 +121,7 @@ The reasons behind each rule are documented next to the code that applies it.
 | `export.js` | GIS export contents: georeferencing and the STAC Item. |
 | `vector.js` | Vector layers of the view as GeoJSON: tile pieces joined, clipped to the view. |
 | `geotiff.js` | Elevation grids of the view as GeoTIFF. |
+| `cmems.js` | Copernicus Marine tiles (regional over global), time ranges, legends. |
 | `zip.js` | Zip writer (the browser's own deflate). |
 | `clip.js`, `clip-worker.js` | Elevation tiles cut to the OSM coastline, in a Web Worker. |
 | `measure.js` | Geodesic ruler, area and range ring. |

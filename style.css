@@ -46,6 +46,13 @@ svg { flex: none; }
 .panel header { display: flex; align-items: center; gap: 8px; padding: 0 0 0 16px; min-height: 48px; border-bottom: 1px solid var(--line); flex: none; }
 .panel h1 { font-size: 15px; margin: 0; letter-spacing: .02em; }
 .panel footer { flex: none; border-top: 1px solid var(--line2); padding: 0 8px; }
+/* the map's settings, at the panel's foot: ‹ time › Now, then the depth (on the next line if need be) */
+.when { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 8px 0 2px; }
+.when input, .when select, .when button { min-height: var(--row); border: 1px solid var(--line); border-radius: 6px; background: #fff; padding: 0 8px; }
+.when input { flex: 1; min-width: 0; }
+.when button { min-width: var(--row); }
+.when [data-step] { font-size: 18px; padding: 0; }
+.when .depthsel { display: flex; align-items: center; gap: 8px; color: var(--soft); font-size: 12px; }
 .handle { display: none; }
 .spin { width: 12px; height: 12px; border: 2px solid var(--line); border-top-color: var(--accent); border-radius: 50%; visibility: hidden; }
 body.loading .spin { visibility: visible; animation: spin .8s linear infinite; }
@@ -99,16 +106,14 @@ body.loading .spin { visibility: visible; animation: spin .8s linear infinite; }
 .more:hover { background: var(--line2); color: var(--ink); }
 .more[aria-expanded="true"] { background: var(--line2); color: var(--accent); }
 .controls { display: grid; gap: 6px; padding: 0 8px 8px 0; }
-.controls select, .controls input[type=date], .controls input[type=number] {
+.controls select, .controls input[type=number] {
   width: 100%; min-height: var(--row); border: 1px solid var(--line); border-radius: 6px; padding: 2px 8px; background: #fff;
 }
 .seg { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
 .seg button { border: 0; background: #fff; min-height: var(--row); padding: 0 6px; font-size: 12px; }
 .seg button + button { border-left: 1px solid var(--line); }
 .seg button[aria-pressed="true"] { background: var(--accent); color: #fff; font-weight: 600; }
-.datestep { display: grid; grid-template-columns: var(--row) 1fr var(--row); gap: 4px; }
-.datestep button { border: 1px solid var(--line); background: #fff; border-radius: 6px; min-height: var(--row); font-size: 16px; }
-.datestep button:disabled { color: var(--line); cursor: default; }
+
 .opacity { display: flex; align-items: center; gap: 8px; color: var(--soft); font-size: 12px; }
 .opacity span { flex: none; min-width: 52px; }
 .opacity input[type=range] { flex: 1; height: var(--row); accent-color: var(--accent); margin: 0; }
@@ -160,7 +165,8 @@ body.loading .spin { visibility: visible; animation: spin .8s linear infinite; }
 
 /* ---- legends, stacked bottom left above the credits ---- */
 .legends { position: absolute; z-index: 3; left: 10px; bottom: calc(var(--status-h) + 8px); display: flex; flex-direction: column; align-items: flex-start; gap: 6px; pointer-events: none; }
-.legends:empty { display: none; }
+.legends .stack { display: contents; }
+.shown { pointer-events: auto; min-height: var(--row); padding: 0 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); box-shadow: var(--shadow); font-weight: 600; } /* the time shown: opens Layers */
 .legends canvas { display: block; border: 1px solid var(--line); border-radius: 6px; box-shadow: var(--shadow); }
 
 /* ---- bottom row: credits left; scale note, position and scale right. No bar: the row is

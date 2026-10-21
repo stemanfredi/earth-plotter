@@ -26,8 +26,9 @@ draws, at their resolution, over the view's bounding box), the values of each
 Copernicus layer drawn as GeoTIFF (`raster/<layer>-global.tif`,
 `-mediterranean.tif`: read from Copernicus Marine's public Zarr stores at the
 time and depth drawn, in each dataset's own latitude/longitude grid over the
-view's bounding box, arrows as eastward and northward bands; imagery and density
-layers are in the pictures only), and a [STAC](https://stacspec.org) Item (`item.json`) with the
+view's bounding box, arrows as eastward and northward bands), EMODnet's depth
+as GeoTIFF (`raster/emodnet-depth.tif`, 1/16 arc-minute, for views up to about
+4° wide; imagery, density and the other EMODnet layers are in the pictures only), and a [STAC](https://stacspec.org) Item (`item.json`) with the
 view's footprint, the time of the data shown (its `datetime`; the export's own is `created`), the layers drawn (what each draws: colours or arrows, its time and depth), their sources, licences and files. QGIS
 opens every file straight from the zip.
 
@@ -48,7 +49,11 @@ them from each provider, and each layer stays under its provider's licence.
 | Satellite | Esri World Imagery, or EOX Sentinel-2 cloudless | Esri terms of use; EOX: CC BY 4.0 (2016) or CC BY-NC-SA 4.0 (2024, non-commercial) |
 | Depth shading, isobaths, relief shading, land contours | AWS Terrain Tiles (Terrarium) | Open data, with attribution per source |
 | Seamarks | OpenSeaMap | CC BY-SA 2.0 |
+| EMODnet depth (Europe) | EMODnet Bathymetry (tiles; its values from its Zarr store, listed in EDITO's catalogue) | CC BY 4.0 |
+| Seabed substrate | EMODnet Geology | CC BY 4.0 |
+| Wrecks, cables, pipelines, offshore installations, wind farms, military and protected areas | EMODnet Human Activities (wrecks: UKHO) | CC BY 4.0 |
 | Vessel density | EMODnet Human Activities | EMODnet open data, attribution requested |
+| Vessel density (world) | World Bank Group and IMF, Global Shipping Traffic Density (the World Bank's tiles) | CC BY 4.0 |
 | Route density | EMSA, via EMODnet Human Activities | CC BY 4.0 |
 | Sea state, water properties, satellite observations, water quality | Copernicus Marine Service | Copernicus Marine licence: free, attribution required |
 | NASA daily (true colour) | NASA EOSDIS GIBS | NASA open data |
@@ -72,6 +77,29 @@ late, so while one is on the time goes no later than its latest day or hour. The
 are chosen in the Ocean data group, in two menus, one for colours and one for
 arrows, since two colour layers cannot be read together, nor two sets of arrows:
 currents are in both (speed in colour, direction in arrows), wind is arrows.
+
+### Shipping traffic data outside the app
+
+The density layers are pictures drawn by their services. To work with the data
+itself, these sources publish it (check each provider's current terms before use):
+
+- **EMODnet Human Activities**: vessel density (hours per km² per month, by ship
+  type, 2017–2024) and EMSA route density (monthly since 2019) for European seas,
+  as GeoTIFF downloads and OGC services, CC BY 4.0
+  ([emodnet.ec.europa.eu/en/human-activities](https://emodnet.ec.europa.eu/en/human-activities)).
+- **World Bank and IMF, Global Shipping Traffic Density**: world, 2015–2021, about
+  500 m, all vessels and by type (commercial, fishing, passenger, leisure, oil and
+  gas), as zipped GeoTIFFs (510 MB for all vessels), CC BY 4.0
+  ([dataset 0037580](https://datacatalog.worldbank.org/search/dataset/0037580)).
+- **Global Maritime Traffic Density Service** (GMTDS): world, monthly from 2011;
+  downloads and services by request ([globalmaritimetraffic.org](https://globalmaritimetraffic.org)).
+- **Global Fishing Watch**: fishing effort and vessel presence worldwide, through
+  its API with a free account and token
+  ([globalfishingwatch.org](https://globalfishingwatch.org)).
+- **Raw AIS positions** for national waters: the United States' Marine Cadastre
+  ([marinecadastre.gov](https://marinecadastre.gov)) and the Danish Maritime
+  Authority publish historical AIS downloads; live AIS streams exist too, mostly
+  behind a free registration or in exchange for feeding a receiver.
 
 Esri imagery is not open data: it is used under Esri's terms of use. The EOX
 2024 mosaic does not allow commercial use. Vessel and route density cover European and neighbouring

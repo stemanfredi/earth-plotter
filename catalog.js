@@ -71,6 +71,46 @@ export function densityTiles(id, type, period) {
     + `&crs=EPSG:3857&bbox={bbox-epsg-3857}&width=256&height=256&format=image/png&transparent=true&time=${d.time(period)}T00:00:00.000Z`];
 }
 
+// EMODnet layers drawn by EMODnet's own services (tiles, WMS), as they come: item → variant → tiles.
+// Depth (EMODnet Bathymetry's model, about 115 m in European waters: the styles that leave land to
+// the chart), seabed substrate (EMODnet Geology, 1:250k, Folk classes: its legend from the
+// service, CLASS_LEGENDS), and what is built, sunk or set aside at sea (EMODnet Human Activities).
+const wms = (base, layers, style = '') => [`${base}?service=WMS&version=1.3.0&request=GetMap&layers=${layers}&styles=${style}`
+  + '&crs=EPSG:3857&bbox={bbox-epsg-3857}&width=256&height=256&format=image/png&transparent=true'];
+const HA_WMS = 'https://ows.emodnet-humanactivities.eu/wms', GEOLOGY_WMS = 'https://drive.emodnet-geology.eu/geoserver/gtk/wms';
+const bathy = (style) => [`https://tiles.emodnet-bathymetry.eu/latest/${style}/web_mercator/{z}/{x}/{y}.png`];
+export const OVERLAYS = {
+  emodnetdepth: { multicolour: bathy('mean_multicolour'), rainbow: bathy('mean_rainbowcolour') },
+  substrate: { folk5: wms(GEOLOGY_WMS, 'seabed_substrate_250k', 'folk_5_substrate_class'), folk7: wms(GEOLOGY_WMS, 'seabed_substrate_250k', 'folk_7_substrate_class') },
+  // the World Bank's tiles of its global shipping density (with the IMF): world, all vessels, coarse
+  worlddensity: { all: ['https://tiles.arcgis.com/tiles/iQ1dY19aHwbSDYIF/arcgis/rest/services/Shipping_density_all_vessels_2015_to_2020/MapServer/tile/{z}/{y}/{x}'] },
+  wrecks: { all: wms(HA_WMS, 'wwshipwrecks') },
+  cables: { telecom: wms(HA_WMS, 'telecablesactual'), power: wms(HA_WMS, 'powercables') },
+  pipelines: { all: wms(HA_WMS, 'pipelines') },
+  platforms: { all: wms(HA_WMS, 'platforms') },
+  windfarms: { all: wms(HA_WMS, 'windfarmspoly,windfarms') },
+  military: { all: wms(HA_WMS, 'militaryareaspoly,militaryareas') },
+  protected: { natura: wms(HA_WMS, 'natura2000areas'), mpa: wms(HA_WMS, 'marineprotectedareas') },
+};
+const OVERLAY_MAXZOOM = { emodnetdepth: 12, worlddensity: 10 }; // the zoom their tiles stop at (18: as WMS, any)
+const OVERLAY_CREDIT = {
+  worlddensity: '<a href="https://datacatalog.worldbank.org/search/dataset/0037580">World Bank Group, IMF</a> (CC BY 4.0)',
+  emodnetdepth: '<a href="https://emodnet.ec.europa.eu/en/bathymetry">EMODnet Bathymetry</a>',
+  substrate: '<a href="https://emodnet.ec.europa.eu/en/geology">EMODnet Geology</a>',
+  wrecks: '<a href="https://emodnet.ec.europa.eu/en/human-activities">EMODnet Human Activities</a> (wrecks: UKHO)',
+};
+// EMODnet Bathymetry's model as data (GIS export): its Zarr store, as EDITO's catalogue lists it
+// (collection emodnet-elevation, DTM 2024): elevation in metres, 1/16 arc-minute, chunks of ~1°
+export const EMODNET_DTM = 'https://s3.waw3-1.cloudferro.com/emodnet/emodnet_bathymetry/14157/bathymetry_dtm_2024.zarr';
+// a classed layer's legend for a variant: the URL of its WMS's JSON legend (rules with a title and a
+// fill), or its classes [{ label, colour }] where the service gives them as pictures only
+export const CLASS_LEGENDS = {
+  // AIS positions per cell, as the World Bank's tile service colours them (its legend's swatches)
+  worlddensity: () => [['< 100 k', '#1b0c42'], ['100–250 k', '#4c0c6b'], ['250–500 k', '#791c6e'], ['0.5–1 M', '#a62d61'], ['1–5 M', '#cf4447'],
+    ['5–10 M', '#ee6925'], ['10–15 M', '#fc9b06'], ['15–25 M', '#f8d13c'], ['25–60 M', '#fdffa5']].map(([label, colour]) => ({ label, colour })),
+  substrate: (variant) => `${GEOLOGY_WMS}?service=WMS&request=GetLegendGraphic&version=1.0.0&format=application/json&layer=seabed_substrate_250k&style=${{ folk5: 'folk_5_substrate_class', folk7: 'folk_7_substrate_class' }[variant]}`,
+};
+
 export const ESRI_META = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer?f=json';
 const escapeHtml = (t) => String(t).replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 export const esriAttribution = (copyrightText) => `Powered by <a href="https://www.esri.com">Esri</a> · ${escapeHtml(copyrightText)}`;
@@ -247,6 +287,7 @@ export const GROUPS = [
   { id: 'data', label: 'Ocean data', sections: ['Sea state', 'Water column', 'Satellite'] },
   { id: 'sea', label: 'Sea' },
   { id: 'shipping', label: 'Shipping' },
+  { id: 'uses', label: 'Uses & areas' }, // EMODnet Human Activities
   { id: 'land', label: 'Land' },
   { id: 'labels', label: 'Labels & grid' },
 ];
@@ -263,12 +304,34 @@ export const ITEMS = [
     info: { src: 'AWS Terrain Tiles (Terrarium): ETOPO1 and GEBCO-class seabed, NOAA coastal DEMs', lic: 'Open data, attribution per source', res: 'Seabed ~1–2 km in open sea, finer in US and some European waters. Cut to the OSM coastline, so land below sea level is never tinted; sea the DEM calls dry is shown as the shallowest class. Inland water is classified once per water body from the DEM at its shore: at sea level (limans, lagoons, harbour basins) it is shown flat in the shallowest class, depth unknown; lakes above it are grey, no depth data. Caspian depths are measured from its surface (−28 m), not from sea level. Off above zoom 12: the data has no more detail', url: 'https://registry.opendata.aws/terrain-tiles/' } },
   { id: 'isobaths', group: 'sea', label: 'Isobaths', on: true, opacity: 1, minzoom: 4,
     info: { src: 'Contoured in your browser from the Terrarium DEM (maplibre-contour)', lic: 'As DEM', res: 'Spacing widens with depth and tightens with zoom: 5 m, every 10 m to 50 m, 50 m to 200 m, then 500/200/100 m to 3000 m and 1000/500 m below ( indicative only, the seabed data is ~1–2 km in open sea). As coarse as the DEM beneath: smoothed shapes, not surveyed soundings. Traced on the DEM cut to the OSM coastline (to zoom 12, about 38 m per pixel). Above zoom 12 the same lines are magnified: they can stop short of the coast or cross it by a few pixels', url: 'https://github.com/onthegomap/maplibre-contour' } },
+  { id: 'emodnetdepth', group: 'sea', label: 'EMODnet depth (Europe)', opacity: 1, kind: 'emodnet',
+    variants: { multicolour: 'Multicolour', rainbow: 'Rainbow' },
+    info: { src: 'EMODnet Bathymetry digital terrain model, drawn by EMODnet (tiles); its values go in the GIS export', lic: 'EMODnet open data, CC BY 4.0: attribution required', res: 'About 115 m (1/16 arc-minute) in European seas, from surveys where there are, a coarser model elsewhere; no data outside Europe. Mean depth, its own colours (no legend here: light in the shallows, dark in the deep). Referenced to lowest astronomical tide. Not for navigation', url: 'https://emodnet.ec.europa.eu/en/bathymetry' } },
+  { id: 'substrate', group: 'sea', label: 'Seabed substrate', opacity: 0.8, kind: 'classes',
+    variants: { folk5: 'Folk 5 classes', folk7: 'Folk 7 classes' },
+    info: { src: 'EMODnet Geology seabed substrate (WMS)', lic: 'EMODnet open data, CC BY 4.0: attribution required', res: '1:250 000, European seas; what the seabed is made of (mud, sand, coarse sediment, mixed, rock), in Folk classes. Compiled from national surveys: varies by country', url: 'https://emodnet.ec.europa.eu/en/geology' } },
   { id: 'traffic', group: 'shipping', label: 'Vessel density', opacity: 0.85, kind: 'density',
     variants: DENSITY.traffic.types,
     info: { src: 'EMODnet Human Activities vessel density (Cogea), from AIS bought from CLS, ORBCOMM and vesseltracker.com', lic: 'EMODnet open data, no access constraints; attribution requested', res: '1 km grid, annual averages of hours per km² per month, 2017–2024. EU and neighbouring seas only. 2024 is incomplete (satellite AIS lost from June). Not real time', url: 'https://emodnet.ec.europa.eu/en/human-activities' } },
+  { id: 'worlddensity', group: 'shipping', label: 'Vessel density (world)', opacity: 0.85, kind: 'classes', legendSub: 'AIS positions per cell, 2015–2020',
+    info: { src: 'World Bank Group and IMF, Global Shipping Traffic Density (all vessels), from the World Bank\'s tile service', lic: 'CC BY 4.0', res: 'World, Jan 2015 to Feb 2021 (the tiles say 2015–2020), all vessels: AIS positions counted per cell, aggregated for drawing (the service says to 0.5°). Coarser than the data: for the oceans\' lanes; in European seas Vessel density is finer. Not real time', url: 'https://datacatalog.worldbank.org/search/dataset/0037580' } },
   { id: 'routes', group: 'shipping', label: 'Route density', opacity: 0.85, kind: 'density',
     variants: DENSITY.routes.types,
     info: { src: 'EMSA route density, via EMODnet Human Activities: ship tracks rebuilt from terrestrial and satellite AIS, counting the routes that cross each cell', lic: 'CC BY 4.0 · European Maritime Safety Agency (EMSA)', res: '1 km grid, monthly totals since January 2019, about 3 months behind. EU and neighbouring seas only. Counts passages, not time spent (see Vessel density for hours)', url: 'https://www.emsa.europa.eu/related-operational-projects/traffic-density-maps.html' } },
+  { id: 'wrecks', group: 'uses', label: 'Wrecks', opacity: 1, minzoom: 9,
+    info: { src: 'UK Hydrographic Office worldwide wreck locations, via EMODnet Human Activities', lic: 'EMODnet open data, CC BY 4.0: attribution required', res: 'Wrecks as charted by the UKHO, worldwide; positions of varying accuracy. From zoom 9: they crowd the map below', url: 'https://emodnet.ec.europa.eu/en/human-activities' } },
+  { id: 'cables', group: 'uses', label: 'Cables', opacity: 1, variants: { telecom: 'Telecommunication', power: 'Power' },
+    info: { src: 'EMODnet Human Activities, from national authorities and operators', lic: 'EMODnet open data, CC BY 4.0: attribution required', res: 'Submarine cables in service, European seas; routes as reported, not surveyed positions', url: 'https://emodnet.ec.europa.eu/en/human-activities' } },
+  { id: 'pipelines', group: 'uses', label: 'Pipelines', opacity: 1,
+    info: { src: 'EMODnet Human Activities', lic: 'EMODnet open data, CC BY 4.0: attribution required', res: 'Oil, gas and other pipelines, European seas', url: 'https://emodnet.ec.europa.eu/en/human-activities' } },
+  { id: 'platforms', group: 'uses', label: 'Offshore installations', opacity: 1,
+    info: { src: 'EMODnet Human Activities, from OSPAR and national authorities', lic: 'EMODnet open data, CC BY 4.0: attribution required', res: 'Oil and gas platforms and other installations, European seas', url: 'https://emodnet.ec.europa.eu/en/human-activities' } },
+  { id: 'windfarms', group: 'uses', label: 'Wind farms', opacity: 1,
+    info: { src: 'EMODnet Human Activities', lic: 'EMODnet open data, CC BY 4.0: attribution required', res: 'Offshore wind farms (areas and points), planned to in production, European seas', url: 'https://emodnet.ec.europa.eu/en/human-activities' } },
+  { id: 'military', group: 'uses', label: 'Military areas', opacity: 1,
+    info: { src: 'EMODnet Human Activities, from national authorities', lic: 'EMODnet open data, CC BY 4.0: attribution required', res: 'Firing, exercise and other military areas, European seas; consult the official notices before entering', url: 'https://emodnet.ec.europa.eu/en/human-activities' } },
+  { id: 'protected', group: 'uses', label: 'Protected areas', opacity: 1, variants: { natura: 'Natura 2000', mpa: 'Regional sea conventions MPAs' },
+    info: { src: 'EMODnet Human Activities: Natura 2000 (EEA), MPAs of the regional sea conventions', lic: 'EMODnet open data, CC BY 4.0: attribution required', res: 'Marine protected areas, European seas', url: 'https://emodnet.ec.europa.eu/en/human-activities' } },
   { id: 'seamarks', group: 'sea', label: 'Seamarks', minzoom: 9, opacity: 1,
     info: { src: 'OpenSeaMap seamark overlay', lic: 'CC BY-SA 2.0 · OpenSeaMap contributors', res: 'Crowd-sourced; completeness varies. Not an official chart', url: 'https://openseamap.org' } },
 
@@ -322,7 +385,7 @@ export const ITEMS = [
   { id: 'seanames', group: 'labels', label: 'Sea names', on: true,
     info: { src: 'OpenStreetMap via OpenFreeMap', lic: 'ODbL · © OpenStreetMap contributors', res: 'Oceans, seas, bays, straits as tagged in OSM', url: 'https://openfreemap.org' } },
   { id: 'boundaries', group: 'labels', label: 'Boundaries', on: true,
-    info: { src: 'OpenStreetMap via OpenFreeMap', lic: 'ODbL · © OpenStreetMap contributors', res: 'Land boundaries only; maritime claims are not drawn', url: 'https://openfreemap.org' } },
+    info: { src: 'OpenStreetMap via OpenFreeMap', lic: 'ODbL · © OpenStreetMap contributors', res: 'Administrative boundaries, national to provincial. Lines OpenStreetMap tags as maritime (territorial seas, economic zones) are not drawn; where a country draws its provinces out to sea (Indonesia, to 12 NM), those limits are, as mapped', url: 'https://openfreemap.org' } },
   { id: 'graticule', group: 'labels', label: 'Graticule', on: true,
     info: { src: 'Computed in your browser (WGS 84)', lic: '—', res: 'Spacing adapts to zoom, down to 1′. With the map north-up, longitudes are labelled along the top edge and latitudes along the left', url: '' } },
 ];
@@ -354,6 +417,8 @@ function sources({ seaDemUrl, landDemUrl, isobathUrl, contourUrl, date, density 
       attribution: '<a href="https://www.emsa.europa.eu/">EMSA</a> (CC BY 4.0) via <a href="https://emodnet.ec.europa.eu/en/human-activities">EMODnet Human Activities</a>' },
     seamarks: { type: 'raster', tileSize: 256, minzoom: 6, maxzoom: 18, attribution: '<a href="https://openseamap.org">OpenSeaMap</a>',
       tiles: ['https://tiles.openseamap.org/seamark/{z}/{x}/{y}.png'] },
+    ...Object.fromEntries(Object.entries(OVERLAYS).flatMap(([item, vs]) => Object.entries(vs).map(([v, tiles]) => [`ov-${item}-${v}`,
+      { type: 'raster', tileSize: 256, maxzoom: OVERLAY_MAXZOOM[item] ?? 18, tiles, attribution: OVERLAY_CREDIT[item] || OVERLAY_CREDIT.wrecks.replace(' (wrecks: UKHO)', '') }]))),
     graticule: { type: 'geojson', data: { type: 'FeatureCollection', features: [] } },
     measure: { type: 'geojson', data: { type: 'FeatureCollection', features: [] } },
   };
@@ -370,6 +435,11 @@ function sources({ seaDemUrl, landDemUrl, isobathUrl, contourUrl, date, density 
 
 // ---- layers, bottom to top --------------------------------------------------
 const m = (item, variant) => ({ metadata: variant ? { item, variant } : { item } });
+// an overlay's layers, one per variant (OVERLAYS), from its item's minzoom
+const overlayLayers = (items) => items.flatMap((item) => {
+  const vs = Object.keys(OVERLAYS[item]), minzoom = ITEMS.find((it) => it.id === item).minzoom;
+  return vs.map((v) => ({ ...raster(`ov-${item}-${v}`, item, vs.length > 1 ? v : undefined), ...(minzoom && { minzoom }) }));
+});
 const raster = (id, item, variant) => ({ id, type: 'raster', source: id, ...m(item, variant), paint: { 'raster-fade-duration': 150 } });
 
 // Depth colour schemes ([depth m, colour] stops, shared by the depth shading and its legend). atlas: darker = deeper, as on atlases and ocean maps (default);
@@ -462,6 +532,7 @@ function layers() {
 
     // colour fills are chart-only: over satellite the image shows the water; isobaths still draw
     { id: 'depth', type: 'color-relief', source: 'dem-sea', maxzoom: 13, metadata: { item: 'depth', base: 'chart' }, paint: { 'color-relief-color': depthRamp(DEPTH_SCHEMES.atlas) } },
+    ...overlayLayers(['emodnetdepth', 'substrate']),
     ...Object.keys(GIBS).map((k) => ({ ...raster(`gibs-${k}`, 'gibs', k), source: `gibs-${k}` })),
     // colours, then the layers that can draw arrows (currents, then wind), whose arrows go over them
     ...Object.keys(CMEMS).sort((a, b) => ARROWS_LAST(a) - ARROWS_LAST(b)).map((id) => raster(`cmems-${id}`, id)),
@@ -503,6 +574,7 @@ function layers() {
         'line-width': ['match', ['get', 'admin_level'], 2, 1.1, 0.5], 'line-opacity': ['match', ['get', 'admin_level'], 2, 0.8, 0.45] } },
 
     raster('traffic', 'traffic'), raster('routes', 'routes'),
+    ...overlayLayers(['worlddensity', 'protected', 'military', 'windfarms', 'platforms', 'pipelines', 'cables', 'wrecks']),
     { ...raster('seamarks', 'seamarks'), minzoom: 9 },
 
     { id: 'graticule', type: 'line', source: 'graticule', ...m('graticule'), filter: ['==', ['geometry-type'], 'LineString'],

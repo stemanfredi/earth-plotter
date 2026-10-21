@@ -1,9 +1,9 @@
 import * as maplibregl from 'maplibre-gl';
 import mlcontour from 'maplibre-contour';
-import { GROUPS, ITEMS, GIBS, DEM_TILES, DEM_SEA, DEM_LAND, OMT_TILEJSON, ISOBATH_ZOOMS, OPACITY_PROP, DEPTH_SCHEMES, depthRamp, NO_DEPTH, DENSITY, ESRI_META, esriAttribution, buildStyle, defaultDate, gibsTiles, gibsDomainUrl, domainEnd, densityTiles, CMEMS, CMEMS_DEPTHS, drawsOf, cmemsStacUrl, storedVariables } from './catalog.js';
+import { GROUPS, ITEMS, GIBS, DEM_TILES, DEM_SEA, DEM_LAND, OMT_TILEJSON, ISOBATH_ZOOMS, OPACITY_PROP, DEPTH_SCHEMES, depthRamp, NO_DEPTH, DENSITY, ESRI_META, esriAttribution, buildStyle, defaultDate, gibsTiles, gibsDomainUrl, domainEnd, densityTiles, CMEMS, CMEMS_DEPTHS, drawsOf, cmemsStacUrl, storedVariables, CLASS_LEGENDS, EMODNET_DTM } from './catalog.js';
 import { cmemsTile, partTimes, partLevels, domainOf, cmemsLegend, regionOf } from './cmems.js';
 import { workerClipper } from './clip.js';
-import { drawRamp, drawColormap } from './legend.js';
+import { drawRamp, drawColormap, drawClasses } from './legend.js';
 import { fmtAngle, dm, mercatorVariation, niceLen, parseLatLon, exportName } from './format.js';
 import { Measure, MEASURE_LAYERS, summary, measureFeatures } from './measure.js';
 import { affine, mercator, worldFile, pamXml, stacItem, pngText } from './export.js';
@@ -359,7 +359,41 @@ async function cmemsDrawn(id, at = { variant: variantOf(id), t: state.time, dept
   return { time: times[k], level: levels[k] };
 }
 
+// a classed layer's classes, from its service's JSON legend: the rules with a fill, their titles
+// without the service's numbering ("2. Sand" → "Sand")
+const classLegends = {};
+function classesOf(url) {
+  return (classLegends[url] ||= fetch(url, { credentials: 'omit', referrerPolicy: 'no-referrer' })
+    .then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
+    .then((j) => j.Legend.flatMap((l) => l.rules).map((r) => ({ label: (r.title || r.name || '').replace(/^\d+\.\s*/, ''), colour: (r.symbolizers[0].Polygon || r.symbolizers[0].Raster || {}).fill }))
+      .filter((c) => c.colour && c.colour.toUpperCase() !== '#FFFFFF' && c.label))
+    .catch((e) => { delete classLegends[url]; throw e; }));
+}
+
 const KINDS = {
+  // EMODnet's depth, drawn by EMODnet (tiles); its values from its Zarr store
+  emodnet: {
+    show: (id) => applyItem(id),
+    record: async () => ({}),
+    values: (it, box) => emodnetValues(box),
+  },
+  // a classed layer its service draws (seabed substrate): its legend, the service's classes and colours
+  classes: {
+    show: (id) => applyItem(id),
+    legend(id, el) {
+      const src = CLASS_LEGENDS[id](state.variant[id]), url = typeof src === 'string' ? src : id; // a URL, or the classes themselves
+      if (el.dataset.key === url) return;
+      el.dataset.key = url;
+      (typeof src === 'string' ? classesOf(src) : Promise.resolve(src)).then((cls) => {
+        if (el.dataset.key !== url) return; // switched meanwhile
+        drawClasses(el, byId[id].label, byId[id].variants?.[state.variant[id]] ?? byId[id].legendSub, cls);
+        el.setAttribute('aria-label', `${byId[id].label} legend: ${cls.map((c) => c.label).join(', ')}`);
+        renderLegends(); // drawn after the stack was laid out: lay it out again with its size
+      }, (e) => { el.dataset.key = ''; console.warn('legend classes:', e.message); });
+    },
+    record: async () => ({}),
+    values: null, // the service draws it
+  },
   // EMODnet and EMSA density: a period of its own (a year or a month), not the map's time
   density: {
     show(id) {
@@ -1061,7 +1095,8 @@ function creditParts() {
   const srcs = [];
   for (const l of map.getStyle().layers) if (l.source && map.getLayoutProperty(l.id, 'visibility') !== 'none' && !srcs.includes(l.source)) srcs.push(l.source);
   srcs.sort((a, b) => baseSources.has(b) - baseSources.has(a));
-  return [...new Set(srcs.map((s) => map.getSource(s)?.attribution).filter(Boolean))];
+  const parts = [...new Set(srcs.map((s) => map.getSource(s)?.attribution).filter(Boolean))];
+  return parts.filter((p) => !parts.some((q) => q !== p && q.includes(p))); // a credit another holds: once
 }
 // as text, for the exports: parsed in an inert document (no image loads, no handlers run)
 const attributionText = () => creditParts().map((p) => new DOMParser().parseFromString(p, 'text/html').body.textContent).join(' · ');
@@ -1291,6 +1326,27 @@ async function cmemsValues(id, at, box) {
     return { key, file: `${key}.tif`, w, h, transform, names, units, title: `${v.label}${region ? `, ${region}` : ''}: values`, description,
       data: geotiff(planes, w, h, transform, { crs: 4326, bands: names.map((n, k) => ({ description: `${n}, ${when}${level != null ? `, ${level} m` : ''}`, unit: units[k] })) }) };
   }))).filter(Boolean);
+}
+
+// raster/emodnet-depth.tif: EMODnet Bathymetry's elevation over the view's bounding box, in its own
+// grid; a view needing more than 16 of its ~2 MB chunks (wider than about 4° × 4°) is left out:
+// zoom in to export it
+let dtm = null;
+const dtmStore = () => (dtm ||= (async () => {
+  const store = await openStore(EMODNET_DTM, fetchBytes);
+  const [lat, lon] = await Promise.all([store.coord('latitude'), store.coord('longitude')]);
+  return { store, lat, lon };
+})().catch((e) => { dtm = null; throw e; }));
+async function emodnetValues(box) {
+  const { store, lat, lon } = await dtmStore(), m = store.meta('elevation'), cells = cellsOf(lat, lon, box);
+  if (!cells.rows.length) return [];
+  const blocks = new Set(cells.rows.map((r) => Math.floor(r / m.chunks[0]))).size * new Set(cells.cols.map((c) => Math.floor(c / m.chunks[1]))).size;
+  if (blocks > 16) { console.warn(`EMODnet depth values: ${blocks} chunks of about 2 MB for this view; zoom in to export them`); return []; }
+  const w = cells.cols.length, h = cells.rows.length, key = 'raster/emodnet-depth';
+  const transform = [cells.dlon, 0, cells.west - cells.dlon / 2, 0, -cells.dlat, cells.north + cells.dlat / 2];
+  const description = `EMODnet Bathymetry DTM 2024: elevation (m, negative below the sea surface; vertical reference lowest astronomical tide), its own grid (1/16 arc-minute), EPSG:4326${cells.step > 1 ? `, every ${cells.step}th cell` : ''}, over the view's bounding box. No data: NaN. Not for navigation`;
+  return [{ key, file: `${key}.tif`, w, h, transform, names: ['elevation'], units: ['m'], title: 'EMODnet depth: values', description,
+    data: geotiff([await readCells(store, 'elevation', 0, 0, cells)], w, h, transform, { crs: 4326, bands: [{ description: 'elevation, EMODnet DTM 2024', unit: 'm' }] }) }];
 }
 
 const RASTERS = [

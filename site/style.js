@@ -22,11 +22,12 @@ function sources({ seaDemUrl, landDemUrl, isobathUrl, contourUrl, date, density 
   // made from is behind its ⓘ
   const ATTR_OSM = '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> · <a href="https://www.openmaptiles.org/">OpenMapTiles</a> · <a href="https://openfreemap.org">OpenFreeMap</a>';
   const ATTR_DEM = '<a href="https://registry.opendata.aws/terrain-tiles/">Mapzen Terrain Tiles</a>';
+  const ATTR_GEBCO = '<a href="https://www.gebco.net">GEBCO 2026 Grid</a>'; // the sea's depths (gebco.js)
   const s = {
     omt: { type: 'vector', url: OMT_TILEJSON, attribution: ATTR_OSM },
-    'dem-sea': { type: 'raster-dem', tiles: [seaDemUrl], encoding: 'terrarium', tileSize: 256, maxzoom: DEM_SEA.max, attribution: ATTR_DEM },
+    'dem-sea': { type: 'raster-dem', tiles: [seaDemUrl], encoding: 'terrarium', tileSize: 256, maxzoom: DEM_SEA.max, attribution: ATTR_GEBCO },
     dem: { type: 'raster-dem', tiles: [landDemUrl], encoding: 'terrarium', tileSize: 256, maxzoom: DEM_LAND.max, attribution: ATTR_DEM },
-    isobaths: { type: 'vector', tiles: [isobathUrl], maxzoom: 12, attribution: ATTR_DEM }, // 512 px tiles: z12 is cut with the z12 coastline
+    isobaths: { type: 'vector', tiles: [isobathUrl], maxzoom: 12, attribution: ATTR_GEBCO }, // 512 px tiles: z12 is cut with the z12 coastline
     contours: { type: 'vector', tiles: [contourUrl], maxzoom: DEM_LAND.max, attribution: ATTR_DEM },
     eox16: { type: 'raster', tileSize: 256, maxzoom: 14, attribution: 'Sentinel-2 cloudless 2016 by <a href="https://s2maps.eu">EOX IT Services GmbH</a> (contains modified Copernicus Sentinel data 2016), CC BY 4.0',
       tiles: ['https://tiles.maps.eox.at/wmts/1.0.0/s2cloudless_3857/default/g/{z}/{y}/{x}.jpg'] },
@@ -45,6 +46,8 @@ function sources({ seaDemUrl, landDemUrl, isobathUrl, contourUrl, date, density 
       tiles: ['https://tiles.openseamap.org/seamark/{z}/{x}/{y}.png'] },
     ...Object.fromEntries(Object.entries(OVERLAYS).flatMap(([item, vs]) => Object.entries(vs).map(([v, tiles]) => [`ov-${item}-${v}`,
       { type: 'raster', tileSize: 256, maxzoom: OVERLAY_MAXZOOM[item] ?? 18, tiles, attribution: OVERLAY_CREDIT[item] || HA_CREDIT }]))),
+    // GEBCO's type identifier grid, coloured by gebco.js (gebco-tid://); level 0 from zoom 8, then magnified
+    'gebco-tid': { type: 'raster', tileSize: 256, maxzoom: 10, tiles: ['gebco-tid://{z}/{x}/{y}'], attribution: '<a href="https://www.gebco.net">GEBCO 2026 Grid</a>' },
     graticule: { type: 'geojson', data: { type: 'FeatureCollection', features: [] } },
     measure: { type: 'geojson', data: { type: 'FeatureCollection', features: [] } },
   };
@@ -60,6 +63,12 @@ function sources({ seaDemUrl, landDemUrl, isobathUrl, contourUrl, date, density 
 }
 
 // ---- layers, bottom to top --------------------------------------------------
+// a pier line's width in pixels at each zoom: PIER_M metres (pixels of 512 px tiles at 45°, where most
+// of the map's use is: 55 346 / 2^z metres; nearer the poles a line reads a little wider), at least
+// a pixel; plus `extra` pixels (the outline's)
+const PIER_M = 3, PIER_OUTLINE_PX = 0.6;
+const pierWidth = (extra) => ['interpolate', ['linear'], ['zoom'],
+  ...[13, 14, 15, 16, 17, 18, 19, 20, 22].flatMap((z) => [z, +(Math.max(1, (PIER_M * 2 ** z) / 55346) + extra).toFixed(2)])];
 const m = (item, variant) => ({ metadata: variant ? { item, variant } : { item } });
 // an overlay's layers, one per variant (OVERLAYS), from its item's minzoom; a variant drawn lighter
 // than the item's opacity says so (OVERLAY_FAINT: app.js multiplies the opacity by it)
@@ -123,6 +132,7 @@ function layers() {
 
     // colour fills are chart-only: over satellite the image shows the water; isobaths still draw
     { id: 'depth', type: 'color-relief', source: 'dem-sea', maxzoom: 13, metadata: { item: 'depth', base: 'chart' }, paint: { 'color-relief-color': depthRamp(DEPTH_SCHEMES.atlas) } },
+    raster('gebco-tid', 'depthsource'),
     ...overlayLayers(['emodnetdepth', 'substrate']),
     ...Object.keys(GIBS).map((k) => ({ ...raster(`gibs-${k}`, 'gibs', k), source: `gibs-${k}` })),
     // colours, then the layers that can draw arrows (currents, then wind), whose arrows go over them
@@ -138,14 +148,18 @@ function layers() {
     { id: 'piers', type: 'fill', source: 'omt', 'source-layer': 'transportation', minzoom: 12, metadata: { item: 'coastline', base: 'chart' }, // over satellite the image shows the piers
       filter: ['all', ['==', ['get', 'class'], 'pier'], ['==', ['geometry-type'], 'Polygon']],
       paint: { 'fill-color': C.land, 'fill-outline-color': C.ink } },
-    { id: 'pier-lines-casing', type: 'line', source: 'omt', 'source-layer': 'transportation', minzoom: 12, metadata: { item: 'coastline', base: 'chart' }, // over satellite the image shows the piers
+    // Piers mapped as lines (pontoons, jetties) at about their true width, PIER_M: as narrow as a
+    // marina's pontoons are, with boats between them, not a comb of land; never under a pixel, and
+    // from zoom 13, where a marina's pontoons can be told apart. A thin ink outline, the same at
+    // every zoom, as mapped areas have
+    { id: 'pier-lines-casing', type: 'line', source: 'omt', 'source-layer': 'transportation', minzoom: 13, metadata: { item: 'coastline', base: 'chart' }, // over satellite the image shows the piers
       filter: ['all', ['==', ['get', 'class'], 'pier'], ['==', ['geometry-type'], 'LineString']],
       layout: { 'line-cap': 'butt', 'line-join': 'round' },
-      paint: { 'line-color': C.ink, 'line-width': ['interpolate', ['exponential', 2], ['zoom'], 12, 1.5, 18, 36] } },
-    { id: 'pier-lines', type: 'line', source: 'omt', 'source-layer': 'transportation', minzoom: 12, metadata: { item: 'coastline', base: 'chart' }, // over satellite the image shows the piers
+      paint: { 'line-color': ['interpolate', ['linear'], ['zoom'], 14, C.inkSoft, 15, C.ink], 'line-width': pierWidth(PIER_OUTLINE_PX * 2) } }, // while a pier is a pixel wide, a softer outline: not a dark hatching
+    { id: 'pier-lines', type: 'line', source: 'omt', 'source-layer': 'transportation', minzoom: 13, metadata: { item: 'coastline', base: 'chart' }, // over satellite the image shows the piers
       filter: ['all', ['==', ['get', 'class'], 'pier'], ['==', ['geometry-type'], 'LineString']],
       layout: { 'line-cap': 'butt', 'line-join': 'round' },
-      paint: { 'line-color': C.land, 'line-width': ['interpolate', ['exponential', 2], ['zoom'], 12, 0.5, 18, 32] } },
+      paint: { 'line-color': C.land, 'line-width': pierWidth(0) } },
 
     { id: 'roads', type: 'line', source: 'omt', 'source-layer': 'transportation', minzoom: 6, ...m('roads'),
       filter: ['in', ['get', 'class'], ['literal', ['motorway', 'trunk', 'primary', 'secondary', 'tertiary', 'minor', 'service']]],

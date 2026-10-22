@@ -1,6 +1,6 @@
 import * as maplibregl from 'maplibre-gl';
 import mlcontour from 'maplibre-contour';
-import { GROUPS, ITEMS, GIBS, DEM_TILES, DEM_SEA, DEM_LAND, OMT_TILEJSON, isobathSteps, DEPTH_SCHEMES, NO_DEPTH, DENSITY, ESRI_META, esriAttribution, gibsTiles, gibsDomainUrl, domainEnd, densityTiles, CMEMS, CMEMS_DEPTHS, drawsOf, CLASS_LEGENDS, CLASS_LABELS, EMODNET_DEPTH_STOPS } from './catalog.js';
+import { GROUPS, ITEMS, GIBS, DEM_TILES, DEM_SEA, DEPTH_SOURCES, DEM_LAND, OMT_TILEJSON, isobathSteps, DEPTH_SCHEMES, NO_DEPTH, DENSITY, ESRI_META, esriAttribution, gibsTiles, gibsDomainUrl, domainEnd, densityTiles, CMEMS, CMEMS_DEPTHS, drawsOf, CLASS_LEGENDS, CLASS_LABELS, EMODNET_DEPTH_STOPS } from './catalog.js';
 import { buildStyle, depthRamp, OPACITY_PROP } from './style.js';
 import { cmemsTile, partTimes, partLevels, domainOf, cmemsLegend } from './cmems.js';
 import { workerClipper } from './clip.js';
@@ -16,7 +16,8 @@ import { viewFeatures } from './vector.js';
 import { $, h } from './dom.js';
 import { search } from './search.js';
 import { chartCanvas, chartPng, pngOf } from './png.js';
-import { cmemsValues, emodnetValues } from './values.js';
+import { cmemsValues, emodnetValues, gebcoValues } from './values.js';
+import { tidTile, tidAt } from './gebco.js';
 
 const byId = Object.fromEntries(ITEMS.map((it) => [it.id, it]));
 // Ocean data: the layers that change with time, chosen in two menus, colours and arrows. An entry
@@ -129,6 +130,7 @@ for (const [dem, clip] of [[seaDem, seaClip], [landDem, landClip]]) {
 maplibregl.addProtocol('clip-sea', seaClip.protocol);
 maplibregl.addProtocol('clip-land', landClip.protocol);
 maplibregl.addProtocol('cmems', cmemsTile);
+maplibregl.addProtocol('gebco-tid', tidTile);
 const contourOpts = { contourLayer: 'contours', elevationKey: 'ele', levelKey: 'level', extent: 4096, buffer: 1 };
 const style = buildStyle({
   seaDemUrl: 'clip-sea://{z}/{x}/{y}',
@@ -355,6 +357,20 @@ function classesOf(urls) {
 
 const KINDS = {
   // EMODnet's depth, drawn by EMODnet (tiles); its values from its Zarr store
+  // GEBCO's depths, drawn by the depth shading (clip.js); its values from its Zarr store
+  gebco: {
+    show: (id) => applyItem(id),
+    record: async () => ({}),
+    values: (it, box) => gebcoValues(box),
+  },
+  // where GEBCO's depths come from (its type identifier grid, drawn by gebco.js): a classed layer,
+  // its codes in the GIS export
+  gebcotid: {
+    show: (id) => applyItem(id),
+    legend: (id, el) => KINDS.classes.legend(id, el),
+    record: async () => ({}),
+    values: (it, box) => gebcoValues(box, 'tid'),
+  },
   emodnet: {
     show: (id) => applyItem(id),
     legend(id, el) {
@@ -980,6 +996,24 @@ handle.addEventListener('pointerdown', (e) => {
 
 const q = search(map, maplibregl.Marker); // the search box: / goes to it
 
+// ---- depth at a point: a click on the sea says its depth and where it comes from --------------
+// As the depth shading has it (the sea's clipped tile: GEBCO, cut to the OSM coastline, the
+// Caspian from its own surface), rounded towards shallower (16.6 m reads 16 m); while the depth
+// shading or the isobaths are on, and not while measuring (a click there adds a point)
+const depthPopup = new maplibregl.Popup({ className: 'depthpop', maxWidth: '240px', focusAfterOpen: false });
+map.on('click', async (e) => {
+  if (measure.tool || !(state.on.has('depth') || state.on.has('isobaths'))) return;
+  const { lng, lat } = e.lngLat, z = Math.min(DEM_SEA.max, Math.floor(map.getZoom()) + 1), n = 2 ** z; // 256 px DEM tiles at z show at map zoom z − 1
+  const X = ((((lng + 180) / 360) % 1) + 1) % 1 * n, s = Math.sin((lat * Math.PI) / 180), Y = (0.5 - Math.log((1 + s) / (1 - s)) / (4 * Math.PI)) * n;
+  const [m, code] = await Promise.all([seaClip.metres(z, Math.floor(X), Math.floor(Y)), tidAt(lng, lat).catch(() => null)]);
+  const v = m[Math.floor((Y % 1) * 256) * 256 + Math.floor((X % 1) * 256)];
+  if (!Number.isFinite(v)) { depthPopup.remove(); return; } // land, a lake, inland water: no depth here
+  const source = DEPTH_SOURCES.find(({ codes: [a, b] }) => code >= a && code <= b);
+  // −1: shallower than 1 m, or sea the data calls dry (clip.js)
+  const depth = v >= -1 ? 'Shallow: under 1 m, or not known' : `${Math.floor(-v)} m deep`;
+  depthPopup.setLngLat(e.lngLat).setDOMContent(h('div', {}, h('b', {}, depth),
+    h('small', {}, ['GEBCO 2026', source?.label.toLowerCase()].filter(Boolean).join(' · ')))).addTo(map);
+});
 // cursor position readout
 map.on('mousemove', (e) => { posEl.textContent = `${dm(e.lngLat.lat, 'N', 'S')}  ${dm(((e.lngLat.lng + 540) % 360) - 180, 'E', 'W')}`; });
 

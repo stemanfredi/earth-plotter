@@ -3,7 +3,7 @@
 A world chart in a single static web page. It combines an OpenStreetMap base
 map with satellite imagery, depth shading and isobaths, seamarks, shipping
 density, Copernicus Marine ocean data (sea state, water properties, satellite
-observations, water quality) and NASA daily imagery, and adds geodesic measuring tools. Every source
+observations, water quality) and NASA daily imagery, and adds geodesic measuring tools. A click on the sea gives its depth (GEBCO's, rounded towards shallower) and how it was obtained. Every source
 is public and needs no API key. There is no build step and no backend.
 
 **Not for navigation.** Positions, coastlines and depths come from open
@@ -26,7 +26,10 @@ draws, at their resolution, over the view's bounding box), the values of each
 Copernicus layer drawn as GeoTIFF (`raster/<layer>-global.tif`,
 `-mediterranean.tif`: read from Copernicus Marine's public Zarr stores at the
 time and depth drawn, in each dataset's own latitude/longitude grid over the
-view's bounding box, arrows as eastward and northward bands), EMODnet's depth
+view's bounding box, arrows as eastward and northward bands), GEBCO's depth
+under the depth shading as GeoTIFF (`raster/gebco-depth.tif`, its own 15″ grid,
+or its means of 2 × 2, 4 × 4 … cells for wider views; with *Depth sources*, GEBCO's
+codes for how each depth was obtained, `raster/gebco-source.tif`), EMODnet's depth
 as GeoTIFF (`raster/emodnet-depth.tif`, 1/16 arc-minute, for views up to about
 4° wide; imagery, density and the other EMODnet layers are in the pictures only), and a [STAC](https://stacspec.org) Item (`item.json`) with the
 view's footprint, the time of the data shown (its `datetime`; the export's own is `created`), the layers drawn (what each draws: colours or arrows, its time and depth), their sources, licences and files. QGIS
@@ -47,7 +50,9 @@ them from each provider, and each layer stays under its provider's licence.
 |---|---|---|
 | Chart base, coastline, roads, buildings, names, boundaries | OpenStreetMap via OpenFreeMap (OpenMapTiles schema) | ODbL |
 | Satellite | Esri World Imagery, or EOX Sentinel-2 cloudless | Esri terms of use; EOX: CC BY 4.0 (2016) or CC BY-NC-SA 4.0 (2024, non-commercial) |
-| Depth shading, isobaths, relief shading, land contours | AWS Terrain Tiles (Terrarium) | Open data, with attribution per source |
+| Depth shading, isobaths | GEBCO 2026 Grid (GEBCO Compilation Group), repacked as a Zarr store at `geodata.makaw.org` (`tools/gebco.mjs`); Terrarium where it cannot be read | Free to use and redistribute, with attribution |
+| Depth sources (GEBCO) | GEBCO 2026 type identifier grid, at `geodata.makaw.org` | Free to use and redistribute, with attribution |
+| Relief shading, land contours | AWS Terrain Tiles (Terrarium) | Open data, with attribution per source |
 | Seamarks | OpenSeaMap | CC BY-SA 2.0 |
 | EMODnet depth (Europe) | EMODnet Bathymetry (tiles; its values from its Zarr store, listed in EDITO's catalogue) | CC BY 4.0 |
 | Seabed substrate | EMODnet Geology | CC BY 4.0 |
@@ -117,7 +122,8 @@ on-screen credits and the PNG list only the sources that are drawn.
 - A Content-Security-Policy limits the page to the pinned CDN packages and the
   provider hosts listed in `tools/deps.mjs`.
 - Tile requests necessarily tell each provider which area is being viewed. A
-  hidden layer makes no requests. A GIS export with Copernicus layers drawn
+  hidden layer makes no requests. GEBCO's depths come from this project's own
+  bucket, `geodata.makaw.org`. A GIS export with Copernicus layers drawn
   also reads their datasets from Copernicus Marine's catalogue and stores.
 - Coordinates typed into the search box are parsed in the page and never sent.
   Place names are sent to Photon as you type, along with the map centre rounded
@@ -164,11 +170,12 @@ development.
 | `site/app.js` | Map setup, state and URL, panels, legends, graticule, credits; assembles the exports. |
 | `site/search.js` | Place search (Photon) and coordinates. |
 | `site/png.js` | The PNG export's picture and text fields. |
-| `site/values.js` | Layers as data for the GIS export: Copernicus and EMODnet values from their Zarr stores. |
+| `site/values.js` | Layers as data for the GIS export: Copernicus, GEBCO and EMODnet values from their Zarr stores. |
+| `site/gebco.js` | The sea's depths for the elevation tiles, from GEBCO's Zarr store. |
 | `site/export.js` | GIS export contents: georeferencing, the STAC Item, PNG text fields. |
 | `site/vector.js` | Vector layers of the view as GeoJSON: tile pieces joined, clipped to the view. |
 | `site/geotiff.js` | GeoTIFF writer: elevation grids of the view, data values. |
-| `site/zarr.js` | Zarr stores: metadata, chunks, Blosc/LZ4 decoded. |
+| `site/zarr.js` | Zarr stores: metadata, chunks, Blosc (LZ4 or zlib) decoded. |
 | `site/cmems.js` | Copernicus Marine tiles (regional over global), time steps and depth levels, legends. |
 | `site/zip.js` | Zip writer (the browser's own deflate). |
 | `site/clip.js`, `site/clip-worker.js` | Elevation tiles cut to the OSM coastline, in a Web Worker. |
@@ -177,6 +184,7 @@ development.
 | `site/format.js` | Pure formatting and parsing helpers. |
 | `site/geo.js`, `site/net.js`, `site/dom.js` | Web Mercator maths; how requests are made and shared; DOM helpers. |
 | `tools/deps.mjs` | Pins, hashes and checks the CDN dependencies. |
+| `tools/gebco.mjs` | GEBCO's depth grids as Zarr stores (download, build, verify), published at `geodata.makaw.org`. |
 | `test/` | Unit tests, browser tests, and the development server. |
 
 ## Development
@@ -193,6 +201,7 @@ npm run check       # index.html CDN block matches the pins, SRI hashes and CSP
 npm run smoke       # end-to-end in headless Chrome, against the live providers
 npm run ui          # layout at phone, tablet and desktop widths
 npm run tiles-check # elevation tiles of known trouble spots: seams, zooms, lakes
+npm run perf        # how long the depth layers take to draw, GEBCO against Terrarium
 npm run deps        # newer library versions and newer density data periods
 ```
 

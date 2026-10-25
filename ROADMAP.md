@@ -51,10 +51,6 @@ What walkers and climbers need from a map, against the open data that a keyless 
   layer would stay blank. The data is 2.4 million polygons: built into tiles and published with
   geodata.makaw.org, as seagrass is, if seagrass shows that build to be worth it; or live, if
   EMODnet speeds up its service.
-- **Draw: lines offset by MapLibre's own `line-offset`** where a line's whole offset is constant (a
-  line drawn apart along all its length): drawn by the GPU, nothing recomputed while zooming. Today
-  every offset line is computed geometry (`site/draw/schematic.js`), recomputed once a frame while
-  zooming: one mechanism, needed anyway where an offset varies along a line or tapers to its end. Worth it only if zooming gets slow on large drawings.
 - **Draw: a drawing as a viewer page.** Export a standalone HTML page holding only the map and the
   elements visible at that moment, with a box to show and hide them, and no editing: a way to show a
   drawing to someone without the app, as a file (a link never carries a drawing). Only what is
@@ -75,9 +71,12 @@ What walkers and climbers need from a map, against the open data that a keyless 
 - **Detailed world vessel density, by vessel type.** The world layer is the World Bank's
   own tiles: all vessels, coarse. Its data (World Bank and IMF, 2015–2021, 0.005°, CC BY
   4.0: commercial, fishing, passenger, leisure, oil and gas) comes as GeoTIFFs only
-  (510 MB zip for all vessels): tiles would be built from them and published with the site
-  (z0–7 PNG, estimated 150–250 MB; PMTiles, a ~8 KB library, or plain folders; files under
-  100 MB for GitHub Pages).
+  (510 MB zip for all vessels, datacatalog.worldbank.org dataset 0037580): tiles would be built from
+  them and published with the site (z0–7 PNG, estimated 150–250 MB; PMTiles, a ~8 KB library, or
+  plain folders; files under 100 MB for GitHub Pages). EMODnet's own density (hours per km² per month
+  by ship type, 2017–2024) and EMSA's route density come as GeoTIFFs and OGC services too, CC BY 4.0
+  (emodnet.ec.europa.eu/en/human-activities); Global Fishing Watch has fishing effort behind a free
+  token; raw AIS for national waters: Marine Cadastre (US), the Danish Maritime Authority.
 - **GMTDS world density, monthly to 2024** (NGA, by MapLarge: WMS/WMTS at
   gmtds.maplarge.com, keyless and readable from a page). Its terms conflict: CC BY 4.0
   for authorised downloads, services by request, site terms forbidding public display.

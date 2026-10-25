@@ -20,26 +20,16 @@ from soundings.
   nautical miles (the switch beside the scale), with true bearings beside each
   leg when switched on; both are kept in the link. A measurement is a guide
   showing its values, made with the drawing's own tools and part of the drawing.
-- **Drawing** (Tools): points (a symbol), circles, rings and sectors about a
-  centre, outlines of real size (rectangles, triangles, ellipses, vehicle
-  outlines), polygons, lines (geodesic, or curved: a curve's length is the drawn
-  line's), labels, and groups whose style each member takes unless it has its
-  own.
-  - Every shape is placed in two clicks, the centre then its size (a sector in
-    three, a polygon corner by corner).
-  - Line ends attach to points, to outlines' and polygons' corners and edges and
-    to other lines' vertices, and follow them; snapping finds them.
-  - Circles are repeated along a line or an arc and connected to origins in trees
-    or chains.
-  - Everything is named, edited in small tables and dragged on the map, with
-    lengths, areas and totals; a line also has its depth profile and its length
-    along the seabed.
-  - Lines that run together can be drawn a few pixels apart (lengths stay real),
-    and small outlines are shown enlarged.
-  - Drawings stay in the browser, several of them, saved as you go and never sent
-    anywhere. Export › Drawing (GeoJSON) writes one as a `.geojson` file
-    (`docs/drawing-format.md`) with its view and layers, and Import adds one back
-    (or any GeoJSON).
+- **Drawing** (Tools): points with circles, rings, sectors and outlines of real
+  size about them, polygons, geodesic or curved lines, labels, and groups whose
+  look each member takes unless it has its own. Line ends attach to points,
+  corners, edges and vertices and follow them. Copies are distributed along a
+  line or an arc and connected to roots in trees or chains, the cheapest way.
+  Everything is named, edited in small tables and dragged on the map, with
+  lengths, areas, totals, a line's depth profile and its length along the
+  seabed. Drawings stay in the browser, saved as you go and never sent anywhere;
+  Export › Drawing writes one as GeoJSON (`docs/drawing-format.md`), Import adds
+  one back, or any GeoJSON. The interface: `docs/drawing-ui.md`.
 - **Search** takes place names or coordinates. **The link** reopens the exact
   view and layers, never a drawing.
 - **My location** (the button under zoom): off until pressed. The map goes to
@@ -81,24 +71,11 @@ unions those parts, but now and then a building feature comes out still touching
 itself (a few in a dense city centre). GIS tools open these files;
 QGIS's *Fix geometries* repairs them.
 
-The drawing's file is plain GeoJSON, so any GIS opens it, with these limits:
-
-- Other tools see points, lines and polygons, the user's properties as columns,
-  and the common style names (`stroke`, `stroke-width`, `stroke-opacity`, `fill`,
-  `fill-opacity`). They do not see radii, sectors, outlines or symbols: those are
-  properties of a point (the GIS export has them drawn, as polygons).
-- Legs are geodesics in the app; GeoJSON calls a leg straight in longitude and
-  latitude. A long east-west leg is drawn slightly apart elsewhere (about 40 m at
-  the middle of a 50 km leg at 40°N; nothing for a leg running north-south).
-  Curved lines show straight through their vertices.
-- Groups, the view, attachments, labels' placement and what Repeat along and
-  Connect keep linked are in the app's own member, `charts`, which other tools
-  ignore and keep or drop as they do.
-- The app reads its own files of format version 1; a file of another version
-  is refused.
-- A file edited elsewhere and read back: an attached line end moves to what it is
-  attached to (the report says how many); a nested value a GIS turned into text is
-  read again.
+The drawing's file is plain GeoJSON, so any GIS opens it: points, lines and
+polygons with the user's properties as columns and the common style names; what
+is the app's own (radii, outlines, groups, attachments, the rules) is under one
+member, `charts`, which other tools keep or drop. What other tools see and what
+comes back from a file edited elsewhere: `docs/drawing-format.md`, §13 and §11.
 
 ## Data sources
 
@@ -125,47 +102,14 @@ them from each provider, and each layer stays under its provider's licence.
 | NASA daily (true colour) | NASA EOSDIS GIBS | NASA open data |
 | Place search | Photon (komoot), OpenStreetMap data | ODbL |
 
-Layers that change with time (Copernicus and NASA daily) share one time, now by
-default. While one is on, the top of the Layers panel holds one line to set
-it, in local time: the browser's own date and time field, limited to the dates
-those layers have, a step of an hour (a day, for daily layers) either way, and
-Now. The time shown is also written beside the cursor's coordinates. Forecasts reach about nine days ahead. Copernicus layers: waves, currents and wind;
-temperature, salinity, mixed layer depth and water quality (dissolved oxygen, pH,
-nitrate, primary production); satellite sea surface temperature (and its anomaly),
-chlorophyll and sea level anomaly. Daily products show the day of that hour, and
-variables with depth are drawn at one depth, chosen on the same line. NASA daily
-is true colour: the day as the satellite saw it. In the Mediterranean they come from
-the regional products, elsewhere from the global ones. Everything is drawn at
-the time shown, each dataset at its own time resolution (an hour, the global
-waves' three hours, a day), and the time can only be one every layer that is on
-has: observations (wind and the satellite layers, NASA daily too) are published
-late, so while one is on the time goes no later than its latest day or hour. They
-are chosen in the Ocean data group, in two menus, one for colours and one for
-arrows, since two colour layers cannot be read together, nor two sets of arrows:
-currents are in both (speed in colour, direction in arrows), wind is arrows.
-
-### Shipping traffic data outside the app
-
-The density layers are pictures drawn by their services. To work with the data
-itself, these sources publish it (check each provider's current terms before use):
-
-- **EMODnet Human Activities**: vessel density (hours per km² per month, by ship
-  type, 2017–2024) and EMSA route density (monthly since 2019) for European seas,
-  as GeoTIFF downloads and OGC services, CC BY 4.0
-  ([emodnet.ec.europa.eu/en/human-activities](https://emodnet.ec.europa.eu/en/human-activities)).
-- **World Bank and IMF, Global Shipping Traffic Density**: world, 2015–2021, about
-  500 m, all vessels and by type (commercial, fishing, passenger, leisure, oil and
-  gas), as zipped GeoTIFFs (510 MB for all vessels), CC BY 4.0
-  ([dataset 0037580](https://datacatalog.worldbank.org/search/dataset/0037580)).
-- **Global Maritime Traffic Density Service** (GMTDS): world, monthly from 2011;
-  downloads and services by request ([globalmaritimetraffic.org](https://globalmaritimetraffic.org)).
-- **Global Fishing Watch**: fishing effort and vessel presence worldwide, through
-  its API with a free account and token
-  ([globalfishingwatch.org](https://globalfishingwatch.org)).
-- **Raw AIS positions** for national waters: the United States' Marine Cadastre
-  ([marinecadastre.gov](https://marinecadastre.gov)) and the Danish Maritime
-  Authority publish historical AIS downloads; live AIS streams exist too, mostly
-  behind a free registration or in exchange for feeding a receiver.
+Layers that change with time (Copernicus Marine and NASA daily) share one time,
+now by default, set on one line at the top of the Layers panel: an hour, or a day
+for daily products, within the dates every layer that is on has (forecasts reach
+about nine days ahead; observations are published late). Variables with depth
+are drawn at one depth, chosen on the same line. In the Mediterranean the
+regional products are drawn over the global ones. Colours and arrows are two
+menus of the Ocean data group, since two colour layers cannot be read together.
+Each layer's ⓘ says its product, resolution and period.
 
 Esri imagery is not open data: it is used under Esri's terms of use. The EOX
 2024 mosaic does not allow commercial use. Vessel and route density cover European and neighbouring
@@ -237,7 +181,8 @@ development.
 | `site/style.css` | All styling. |
 | `site/catalog.js` | Menu items and their provenance, data sources, datasets. |
 | `site/style.js` | The map style built from the catalogue: sources, layers in draw order. |
-| `site/app.js` | Map setup, state and URL, panels, legends, graticule, credits; assembles the exports. |
+| `site/app.js` | Map setup, state and URL, panels, legends, graticule, credits; the PNG export; what the exports say (`snapshot`). |
+| `site/gis.js` | The GIS export: the zip of GIS data assembled from the view. |
 | `site/search.js` | Place search (Photon) and coordinates (never sent, complete or not). |
 | `site/png.js` | The PNG export's picture and text fields. |
 | `site/values.js` | Layers as data for the GIS export: Copernicus, GEBCO and EMODnet values from their Zarr stores. |
@@ -250,16 +195,16 @@ development.
 | `site/zip.js` | Zip writer (the browser's own deflate). |
 | `site/clip.js`, `site/clip-worker.js` | Elevation tiles cut to the OSM coastline, in a Web Worker. |
 | `site/geodesy.js` | Geodesics on WGS 84 (GeographicLib) for every measured and drawn length; a local planar frame about a point (`localFrame`). |
-| `site/tools.js`, `site/keys.js`, `site/fields.js`, `site/listrow.js`, `site/menu.js` | The keys of what is being drawn, every key, the fields, a list row, the rail's menus. |
+| `site/keys.js`, `site/fields.js`, `site/menu.js` | Every key, the fields, the rail's menus. |
 | `site/hosts.js` | Every host the page may reach: read by the catalogue and by `tools/deps.mjs` (the Content-Security-Policy). |
 | `site/draw/document.js`, `site/draw/check.js` | The drawing's model: points, lines, areas, labels, groups; the style cascade; operations; field checks. |
 | `site/draw/file.js` | The drawing's file: GeoJSON read (any) and written, with a report. |
 | `site/draw/attach.js`, `site/draw/snap.js` | Line ends attached to points, corners, edges and vertices; snapping. |
 | `site/draw/presets.js`, `site/draw/clipboard.js` | The user's presets (this browser only); copy, paste, duplicate. |
 | `site/draw/lines.js` | Lines: geodesic and curved legs, lengths, distance along, totals, smoothing. |
-| `site/draw/schematic.js` | Draw apart: lines kept from being drawn over others on screen (display only). |
+| `site/draw/inflate.js` | Inflate: a connection's trees drawn bowed (display only). |
 | `site/draw/features.js` | What the map draws, what the GIS export writes; each kind's bounds, box test and move. |
-| `site/draw/generator.js` | Repeat along a line or an arc, Connect (trees, chains), and how they follow. |
+| `site/draw/generator.js` | Distribute along a line or an arc, Connect (trees, chains: the cheapest cut), and how they follow. |
 | `site/draw/store.js`, `site/draw/saving.js` | The document's selection and undo; the drawings kept in the browser. |
 | `site/draw/drawing.js`, `site/draw/layers.js` | The drawing on the map: every tool (Measure's are its own, with Guide and Show values), the values shown while drawing, dragging, its layers. |
 | `site/draw/place.js` | What the Point and Shape tools place, sized by the second click, each named after its look ("Circle 2"). |
@@ -273,13 +218,13 @@ development.
 | `tools/deps.mjs` | Pins, hashes and checks the CDN dependencies. |
 | `tools/gebco.mjs` | GEBCO's depth grids as Zarr stores (download, build, verify), published at `geodata.makaw.org`. |
 | `tools/seagrass.mjs` | EMODnet's seagrass as vector tiles (download, build), published at `geodata.makaw.org`: its WMS takes a minute or more a tile. |
-| `test/` | Unit tests, browser tests, and the development server. |
+| `test/` | Unit tests; the browser tests (`browser.mjs`: what they share: the site served, Chrome, sections that fail on their own) and the development server. |
 | `docs/` | The drawing tools: the file format and the interface. |
 
 ## Development
 
 Requirements: the Node.js version in `.nvmrc`. The browser tests also need a
-local Chrome or Chromium.
+local Chrome or Chromium. Some functions are exported only for the unit tests.
 
 ```sh
 npm ci              # development dependencies (test tooling only)
@@ -295,7 +240,21 @@ npm run deps        # newer library versions and newer density data periods
 ```
 
 The page itself needs no installation. Any static web server can host the
-`site/` folder. The browser tests use `/usr/bin/google-chrome` by default; set
+`site/` folder.
+
+### Hosting the data yourself
+
+GEBCO's depths and the seagrass tiles are read from `geodata.makaw.org`, named
+in `site/hosts.js`; a copy of the site reading its own data changes that one
+line. What that host must be: a static file server (any object storage with a
+public bucket does) that serves the folders the two tools build, `gebco-2026/`
+(two Zarr stores: small files, whole files fetched, no range requests) and
+`seagrass-2025/` (`{z}/{x}/{y}.pbf` and `index.json`), over HTTPS, with
+cross-origin reads allowed from the page's origin and, for the browser tests,
+from `http://127.0.0.1:8099`. The page reads every file as bytes itself, so
+content types and encodings are not needed (nor is anything compressed on the
+wire). The release is in each path, so the files can be cached as immutable.
+Nothing else: no listing, no function, no key. The browser tests use `/usr/bin/google-chrome` by default; set
 `CHROME=/path/to/chrome` to use another binary.
 
 The smoke test depends on the network by design, because the page depends on
@@ -307,10 +266,11 @@ down, not only that the code broke.
 The PNG and GIS exports say what the map shows, and only from one place:
 `snapshot()` in `site/app.js`, read at the moment of capture (the view, the time and
 depth as stated beside the coordinates, the credits, each layer drawn with its
-state). Each kind of data layer (`KINDS` in `site/app.js`) says how it is exported,
-with `record()` and `values()` (`null`: in the pictures only); the page checks
-on load that every kind has them and every catalogue item's kind exists, and
-the smoke test fails on the console error. The smoke test also exports one view
+state, its period, its day, what it draws). A kind of data layer (`KINDS` in
+`site/app.js`) whose values the export can read says so with `values()`; the
+others are in the pictures only. The page checks on load that every catalogue
+item's kind exists, and the smoke test fails on the console error. The GIS export
+itself is `site/gis.js`. The smoke test also exports one view
 per kind and compares the zip with the map: layers, time, depth, colours or
 arrows, the PNG's size, text fields and credits, the Copernicus values.
 
@@ -318,8 +278,11 @@ arrows, the PNG's size, text fields and credits, the Copernicus values.
 
 `.github/workflows/ci.yml` runs the unit, lint, check, smoke and layout tests on
 pushes to `main` and on pull requests. When they pass, it deploys `main` to
-GitHub Pages; only `site/` is published. A scheduled run repeats the
-tests against the live providers and reports dependency and data updates as
+GitHub Pages; only `site/` is published. What a provider served (tiles, legends,
+places found) is checked on every run but held against the page only on the
+weekly one, which is strict (`STRICT=1`): a provider's outage shows as warnings
+on a push and does not hold up a deploy, and as a failed run, mailed, when it
+lasts a week. The scheduled run also reports dependency and data updates as
 notices. Pages must be enabled once in the repository settings, with
 *Source: GitHub Actions*.
 

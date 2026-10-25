@@ -10,12 +10,13 @@
 import { FORMAT, VERSION, KINDS, KIND, SYMBOLS, LEADERS, LABEL_OFFSET,
   emptyDoc, newId } from './document.js';
 import { ID, isObj, fin, Skip, time, text, properties, flag, position, angle, handle, ownStyle, look, parts, readView } from './check.js';
-import { anchorAt } from './labels.js';
+import { resolve as anchorAt } from './attach.js';
 import { targetPosition } from './attach.js';
-import { columnsOf } from './features.js';
+import { columnsOf } from './document.js';
 
 const SIDES = ['left', 'right', 'alternate'];
-const MAX_OFFSET = 2000;
+const MAX_LABEL_OFFSET = 2000; // px: a label's text from its anchor
+const MAX_POSITIONS = 100000; // positions in one line or area: more would stall the page at every change
 // the properties a feature's own are written beside: a user's key that is one of these gets a p_
 const RESERVED = ['name', 'stroke', 'stroke-width', 'stroke-opacity', 'fill', 'fill-opacity', 'charts'];
 const GEOMETRIES = ['Point', 'MultiPoint', 'LineString', 'MultiLineString', 'Polygon', 'MultiPolygon', 'GeometryCollection'];
@@ -156,7 +157,7 @@ function read(raw, app, known, now, report) {
     label.anchor = { position: [...p], ...to };
   }
 
-  // rules: what Repeat along and Connect keep linked, checked loosely (a reference gone is dropped at
+  // rules: what Distribute along and Connect keep linked, checked loosely (a reference gone is dropped at
   // the next change)
   const idList = (v) => (Array.isArray(v) ? v.filter((y) => typeof y === 'string' && ID.test(y)) : []);
   const pair = (p) => Array.isArray(p) && fin(p[0]) && fin(p[1]);
@@ -164,14 +165,14 @@ function read(raw, app, known, now, report) {
   for (const x of Array.isArray(app?.rules) ? app.rules : []) {
     const r = attempt('rule', x?.id, (c) => {
       if (!isObj(x) || !ref(x.id) || taken.has(x.id)) c.skip('no valid ID');
-      if (x.kind !== 'repeat' && x.kind !== 'connect') c.skip(`unknown kind "${String(x.kind).slice(0, 20)}"`);
-      if (x.kind === 'repeat') {
+      if (x.kind !== 'distribute' && x.kind !== 'connect') c.skip(`unknown kind "${String(x.kind).slice(0, 20)}"`);
+      if (x.kind === 'distribute') {
         const along = isObj(x.along) ? ref(x.along.element) : null;
         if (!along) c.skip('nothing it is along');
         taken.add(x.id);
         const d = (k) => (fin(x[k]) && x[k] >= 0 ? x[k] : 0);
         const copy = isObj(x.copy) ? { symbol: SYMBOLS.includes(x.copy.symbol) ? x.copy.symbol : 'none', parts: parts(x.copy.parts, c) } : null;
-        return { id: x.id, kind: 'repeat', groupId: ref(x.groupId), circlesId: ref(x.circlesId), along: { element: along, part: Number.isInteger(x.along.part) && x.along.part >= 0 ? x.along.part : null },
+        return { id: x.id, kind: 'distribute', groupId: ref(x.groupId), copiesId: ref(x.copiesId), along: { element: along, part: Number.isInteger(x.along.part) && x.along.part >= 0 ? x.along.part : null },
           spacing: fin(x.spacing) && x.spacing > 0 ? x.spacing : null, count: Number.isInteger(x.count) && x.count > 0 ? x.count : null,
           startMargin: d('startMargin'), endMargin: d('endMargin'), offset: d('offset'), side: SIDES.includes(x.side) ? x.side : 'left',
           radius: fin(x.radius) && x.radius > 0 ? x.radius : null, aperture: fin(x.aperture) && x.aperture > 0 && x.aperture < 360 ? x.aperture : null,
@@ -179,10 +180,11 @@ function read(raw, app, known, now, report) {
           points: Array.isArray(x.points) ? x.points.filter((f) => isObj(f) && ref(f.pointId) && fin(f.t) && pair(f.pos)).map((f) => ({ pointId: f.pointId, t: f.t, left: f.left === true, pos: [f.pos[0], f.pos[1]] })) : [] };
       }
       taken.add(x.id);
-      return { id: x.id, kind: 'connect', groupId: ref(x.groupId), pattern: x.pattern === 'chain' ? 'chain' : 'tree', capacity: Number.isInteger(x.capacity) && x.capacity > 0 ? x.capacity : 'auto',
-        minBranch: Number.isFinite(x.minBranch) && x.minBranch > 0 ? x.minBranch : 0, originIds: idList(x.originIds), pointIds: idList(x.pointIds),
-        hubs: Array.isArray(x.hubs) ? x.hubs.filter((b) => isObj(b) && ref(b.pointId) && ref(b.originId) && Array.isArray(b.pointIds) && pair(b.pos))
-          .map((b) => ({ pointId: b.pointId, pointIds: idList(b.pointIds), originId: b.originId, pos: [b.pos[0], b.pos[1]] })) : [],
+      return { id: x.id, kind: 'connect', groupId: ref(x.groupId), pattern: x.pattern === 'chain' ? 'chain' : 'tree', groupSize: Number.isInteger(x.groupSize) && x.groupSize > 0 ? x.groupSize : 'auto',
+        minBranch: Number.isFinite(x.minBranch) && x.minBranch > 0 ? x.minBranch : 0, inflate: fin(x.inflate) && x.inflate > 0 ? Math.min(1, x.inflate) : 0, pointIds: idList(x.pointIds),
+        roots: Array.isArray(x.roots) ? x.roots.filter((r) => isObj(r) && ref(r.id)).map((r) => ({ id: r.id, weight: fin(r.weight) && r.weight > 0 ? r.weight : 1 })) : [],
+        hubs: Array.isArray(x.hubs) ? x.hubs.filter((b) => isObj(b) && ref(b.pointId) && ref(b.rootId) && Array.isArray(b.pointIds) && pair(b.pos))
+          .map((b) => ({ pointId: b.pointId, pointIds: idList(b.pointIds), rootId: b.rootId, pos: [b.pos[0], b.pos[1]] })) : [],
         created: idList(x.created) };
     });
     if (r) doc.rules.push(r);
@@ -230,7 +232,7 @@ function refIn(v) {
 // each kind's reader: (coordinates, properties, the app's own, the element so far, ctx, state) → element
 const READ = {
   point(coords, props, mine, x, c, { foreign }) {
-    const p = { ...x, position: coord(coords, c, 'position'), bearing: mine.bearing === undefined ? 0 : angle(mine.bearing, c, 'bearing', false) };
+    const p = { ...x, position: coord(coords, c, 'position'), bearing: mine.bearing === undefined ? 0 : angle(mine.bearing, c, 'bearing') };
     p.parts = parts(mine.parts, c);
     const dflt = foreign ? 'diamond' : 'none'; // a point from another tool: a diamond, to be seen
     p.symbol = SYMBOLS.includes(mine.symbol) ? mine.symbol : (mine.symbol !== undefined && c.warn(`unknown symbol "${String(mine.symbol).slice(0, 20)}", default used`), dflt);
@@ -238,6 +240,7 @@ const READ = {
   },
   line(coords, props, mine, x, c, { ends }) {
     if (!Array.isArray(coords) || coords.length < 2) c.skip('a line needs two positions');
+    if (coords.length > MAX_POSITIONS) c.skip(`more than ${MAX_POSITIONS} positions`);
     const pts = coords.map((q, k) => coord(q, c, `position ${k + 1}`));
     const meta = Array.isArray(mine.vertices) ? mine.vertices : [];
     const s = { ...x, start: { position: pts[0], element: null }, end: { position: pts.at(-1), element: null },
@@ -259,6 +262,7 @@ const READ = {
   area(coords, props, mine, x, c) {
     if (!Array.isArray(coords) || !Array.isArray(coords[0])) c.skip('no ring');
     if (coords.length > 1) c.warn('holes are not read; the outer ring only');
+    if (coords[0].length > MAX_POSITIONS) c.skip(`more than ${MAX_POSITIONS} corners`);
     let pts = coords[0].map((q, k) => coord(q, c, `corner ${k + 1}`));
     if (pts.length > 1 && pts[0][0] === pts.at(-1)[0] && pts[0][1] === pts.at(-1)[1]) pts = pts.slice(0, -1);
     if (pts.length < 3) c.skip('an area needs 3 corners');
@@ -268,7 +272,7 @@ const READ = {
   label(coords, props, mine, x, c, { anchored }) {
     const at = coord(coords, c, 'position');
     const o = mine.offset;
-    const offset = Array.isArray(o) && o.length >= 2 && fin(o[0]) && fin(o[1]) ? [Math.max(-MAX_OFFSET, Math.min(MAX_OFFSET, o[0])), Math.max(-MAX_OFFSET, Math.min(MAX_OFFSET, o[1]))]
+    const offset = Array.isArray(o) && o.length >= 2 && fin(o[0]) && fin(o[1]) ? [Math.max(-MAX_LABEL_OFFSET, Math.min(MAX_LABEL_OFFSET, o[0])), Math.max(-MAX_LABEL_OFFSET, Math.min(MAX_LABEL_OFFSET, o[1]))]
       : (o !== undefined && c.warn('offset: not [x, y] pixels, the default used'), [...LABEL_OFFSET]);
     const one = (v, list, d, what) => (v === undefined ? d : list.includes(v) ? v : (c.warn(`${what}: unknown "${String(v).slice(0, 20)}", ${d} used`), d));
     const a = { ...x, text: text(mine.text, c, 'text'), anchor: { position: at }, offset, leader: one(mine.leader, LEADERS, 'arrow', 'leader') };
@@ -299,8 +303,8 @@ const partOut = (r) => lean({ kind: r.kind, radius: r.radius && r3(r.radius), ap
 { radius: undefined, aperture: undefined, length: undefined, width: undefined, fill: true, shown: true, name: '', strokeColor: null, strokeDash: null });
 const VIEW_D = { center: null, zoom: null, bearing: 0, layers: null, data: null, units: 'km', bearings: false };
 const VERTEX_D = { handleIn: null, handleOut: null, name: '', properties: [] };
-const REPEAT_D = { groupId: null, circlesId: null, spacing: null, count: null, startMargin: 0, endMargin: 0, offset: 0, side: 'left', radius: null, aperture: null, preset: null, copy: null };
-const CONNECTION_D = { groupId: null, pattern: 'tree', capacity: 'auto', minBranch: 0, hubs: [] };
+const DISTRIBUTE_D = { groupId: null, copiesId: null, spacing: null, count: null, startMargin: 0, endMargin: 0, offset: 0, side: 'left', radius: null, aperture: null, preset: null, copy: null };
+const CONNECTION_D = { groupId: null, pattern: 'tree', groupSize: 'auto', minBranch: 0, inflate: 0, hubs: [] };
 
 // the user's properties as GIS columns (features.js), their keys checked against the file's own
 const columns = (list) => columnsOf(list, RESERVED);
@@ -313,7 +317,7 @@ function lookOut(l, simple = false) {
     if (Object.keys(v).length) out[part] = v;
   }
   if (l.text && Object.keys(l.text).length) out.text = { ...l.text };
-  if (l.apart != null) out.apart = r3(l.apart);
+  if (l.offset != null) out.offset = r3(l.offset);
   if (l.minSize != null) out.minSize = r3(l.minSize);
   return out;
 }
@@ -340,7 +344,7 @@ const signed = (pts) => pts.reduce((a, p, i) => { const q = pts[(i + 1) % pts.le
 // one element as a Feature
 function feature(doc, kind, el) {
   const { out: cols, changed } = columns(el.properties);
-  const props = lean({ name: el.name }, { name: '' });
+  const props = Object.assign(Object.create(null), lean({ name: el.name }, { name: '' })); // no prototype: a column named __proto__ is set, not the prototype
   Object.assign(props, cols, kind === 'label' ? {} : styleNames(el.look));
   const mine = { kind, ...(changed ? { properties: el.properties.map((p) => ({ ...p })) } : {}),
     ...lean({ group: el.groupId, visible: el.visible, guide: el.guide ?? false, look: lookOut(el.look, kind !== 'label') }, { group: null, visible: true, guide: false, look: {} }) };
@@ -382,12 +386,12 @@ export function toFile(doc) {
     look: lookOut(doc.look ?? {}),
     groups: doc.groups.map((g) => lean({ id: g.id, groupId: g.groupId, name: g.name, properties: g.properties.map((p) => ({ ...p })), visible: g.visible,
       look: lookOut(g.look) }, { groupId: null, name: '', properties: [], visible: true, look: {} })),
-    rules: doc.rules.map((a) => (a.kind === 'repeat'
+    rules: doc.rules.map((a) => (a.kind === 'distribute'
       ? lean({ ...a, along: { element: a.along.element, ...(a.along.part != null ? { part: a.along.part } : {}) }, spacing: a.spacing == null ? null : r3(a.spacing), radius: a.radius == null ? null : r3(a.radius),
         aperture: a.aperture == null ? null : r4(a.aperture), startMargin: r3(a.startMargin), endMargin: r3(a.endMargin), offset: r3(a.offset),
         copy: a.copy && { symbol: a.copy.symbol, parts: a.copy.parts.map(partOut) },
-        points: a.points.map((f) => ({ pointId: f.pointId, t: +f.t.toFixed(9), ...(f.left ? { left: true } : {}), pos: pos(f.pos) })) }, REPEAT_D)
-      : lean({ ...a, originIds: [...a.originIds], pointIds: [...a.pointIds], hubs: a.hubs.map((b) => ({ ...b, pointIds: [...b.pointIds], pos: pos(b.pos) })), created: [...a.created] }, CONNECTION_D))),
+        points: a.points.map((f) => ({ pointId: f.pointId, t: +f.t.toFixed(9), ...(f.left ? { left: true } : {}), pos: pos(f.pos) })) }, DISTRIBUTE_D)
+      : lean({ ...a, inflate: r3(a.inflate), roots: a.roots.map((r) => (r.weight === 1 ? { id: r.id } : { ...r })), pointIds: [...a.pointIds], hubs: a.hubs.map((b) => ({ ...b, pointIds: [...b.pointIds], pos: pos(b.pos) })), created: [...a.created] }, CONNECTION_D))),
   }, { meta: {}, view: null, look: {}, groups: [], rules: [] });
   return { type: 'FeatureCollection', charts: app, features: KINDS.filter((k) => k !== 'group').flatMap((k) => doc[KIND[k].list].map((el) => feature(doc, k, el))) };
 }

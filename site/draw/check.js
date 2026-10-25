@@ -3,11 +3,10 @@
 // (file.js). Pure: no map, no DOM.
 
 import { MAX_LAT, norm360 } from '../geo.js';
-import { DEFAULT_STYLE, MAX_APART, DASHES, MAX_RADIUS, LABEL_SIZES, BACKGROUNDS, ROUND, PART_KINDS, isoNow } from './document.js';
+import { DEFAULT_STYLE, MAX_OFFSET, MAX_MIN_SIZE, STROKE_WIDTH, DASHES, MAX_RADIUS, LABEL_SIZES, BACKGROUNDS, ROUND, PART_KINDS, isoNow } from './document.js';
 
 export const ID = /^[A-Za-z0-9_-]{1,64}$/;
 const COLOUR = /^#[0-9a-fA-F]{6}$/;
-const MAX_MIN_SIZE = 200;
 export const isObj = (x) => x !== null && typeof x === 'object' && !Array.isArray(x);
 export const fin = (x) => typeof x === 'number' && Number.isFinite(x);
 
@@ -16,9 +15,12 @@ export class Skip extends Error {}
 export function time(t) {
   return typeof t === 'string' && !Number.isNaN(Date.parse(t)) ? isoNow(Date.parse(t)) : null;
 }
+export const MAX_TEXT = 10000; // characters: a name, a value, a description
+export const MAX_PARTS = 100; // parts on one point
+export const MAX_PROPERTIES = 200; // properties on one element
 export function text(v, c, what) {
   if (v === undefined || v === null) return '';
-  if (typeof v === 'string') return v;
+  if (typeof v === 'string') return v.length > MAX_TEXT ? (c.warn(`${what}: cut to ${MAX_TEXT} characters`), v.slice(0, MAX_TEXT)) : v;
   if (typeof v === 'number' || typeof v === 'boolean') { c.warn(`${what}: ${typeof v} made text`); return String(v); }
   c.warn(`${what}: not text, ignored`);
   return '';
@@ -28,6 +30,7 @@ export function properties(list, c) {
   if (!Array.isArray(list)) { c.warn('properties: not a list, ignored'); return []; }
   const out = [];
   for (const p of list) {
+    if (out.length >= MAX_PROPERTIES) { c.warn(`more than ${MAX_PROPERTIES} properties: the rest dropped`); break; }
     if (!isObj(p)) { c.warn('a property that is not {key, value} dropped'); continue; }
     const key = text(p.key, c, 'property key');
     if (!key) { c.warn('a property with an empty key dropped'); continue; }
@@ -35,12 +38,12 @@ export function properties(list, c) {
   }
   return out;
 }
-// Draw apart, on a line or a group: the gap kept between strokes (px, 0: off), or null (a line's: its
+// Offset, on a line or a group: px to the right of the line (negative: left), or null (a line's: its
 // group's)
-export function apart(v, c) {
+export function offset(v, c) {
   if (v === undefined || v === null) return null;
-  if (fin(v) && v >= 0) return Math.min(MAX_APART, v);
-  c.warn('Draw apart: not a number of pixels ≥ 0; ignored');
+  if (fin(v)) return Math.max(-MAX_OFFSET, Math.min(MAX_OFFSET, v));
+  c.warn('Offset: not a number of pixels; ignored');
   return null;
 }
 export function flag(v, c, what) {
@@ -53,16 +56,12 @@ export function position(p, c, what) {
   // a longitude past ±180 (placed on a copy of the world beside the first): the same place, brought back
   return [Math.abs(p[0]) > 180 ? norm360(p[0] + 180) - 180 : p[0], p[1]];
 }
-export function angle(a, c, what, required) {
-  if (!fin(a)) { if (required) c.skip(`${what}: not a number`); return 0; }
+export function angle(a, c, what) {
+  if (!fin(a)) return 0;
   if (a >= 0 && a < 360) return a;
   const n = norm360(a);
   if (n !== a) c.warn(`${what} ${a} read as ${n}`);
   return n;
-}
-export function dist(d, c, what) {
-  if (!fin(d) || d <= 0) c.skip(`${what}: not a distance above 0`);
-  return d;
 }
 // a minimum display size in px: 0 to MAX_MIN_SIZE, or null (not valid: warned)
 export function minSize(v, c, what) {
@@ -108,7 +107,7 @@ export function ownStyle(s, c, fill) {
     if (Object.keys(v).length) out[key] = v;
   };
   const check = (key) => (f, v) => (f === 'color' ? colour(v, undefined, c, `${key} colour`) : f === 'dash' ? (DASHES.includes(v) ? v : (c.warn(`unknown dash "${String(v).slice(0, 20)}", ignored`), undefined))
-    : clamp(v, f === 'width' ? 0.5 : 0, f === 'width' ? 20 : 1, undefined, c, `${key} ${f}`));
+    : clamp(v, f === 'width' ? STROKE_WIDTH[0] : 0, f === 'width' ? STROKE_WIDTH[1] : 1, undefined, c, `${key} ${f}`));
   if (fill) part('fill', DEFAULT_STYLE.fill, check('fill'));
   else if (s.fill !== undefined) c.warn('fill: a line has none; ignored');
   part('stroke', DEFAULT_STYLE.stroke, check('stroke'));
@@ -132,8 +131,8 @@ export function look(l, c, fill = true) {
     if (t.color != null) { const v = colour(t.color, undefined, c, 'look text colour'); if (v !== undefined) o.color = v; }
     if (Object.keys(o).length) out.text = o;
   }
-  const a = apart(l.apart, c);
-  if (a !== null) out.apart = a;
+  const a = offset(l.offset, c);
+  if (a !== null) out.offset = a;
   if (l.minSize != null) { const m = minSize(l.minSize, c, 'look minSize'); if (m !== null) out.minSize = m; }
   return out;
 }
@@ -142,6 +141,7 @@ export function parts(list, c) {
   if (list === undefined || list === null) return [];
   if (!Array.isArray(list)) { c.warn('parts: not a list, ignored'); return []; }
   const out = [];
+  if (list.length > MAX_PARTS) { c.warn(`more than ${MAX_PARTS} parts: the first ${MAX_PARTS} kept`); list = list.slice(0, MAX_PARTS); }
   list.forEach((r, i) => {
     const n = i + 1, round = ROUND.includes(r?.kind), size = (v) => fin(v) && v > 0 && v < MAX_RADIUS;
     const bad = !isObj(r) ? 'not an object' : !PART_KINDS.includes(r.kind) ? `unknown kind "${String(r.kind).slice(0, 20)}"`
@@ -169,7 +169,7 @@ export function readView(v, known, c) {
     try { view.center = position(v.center, c, 'center'); } catch (e) { if (!(e instanceof Skip)) throw e; c.warn(`${e.message}; ignored`); }
   }
   if (v.zoom !== undefined) view.zoom = fin(v.zoom) ? Math.min(24, Math.max(0, v.zoom)) : (c.warn('zoom: not a number, ignored'), null);
-  if (v.bearing !== undefined) view.bearing = angle(v.bearing, c, 'bearing', false);
+  if (v.bearing !== undefined) view.bearing = angle(v.bearing, c, 'bearing');
   if (v.bearings !== undefined) view.bearings = flag(v.bearings, c, 'bearings');
   if (v.units !== undefined) view.units = v.units === 'nm' || v.units === 'km' ? v.units : (c.warn(`unknown units "${String(v.units).slice(0, 10)}", km used`), 'km');
   if (Array.isArray(v.layers)) {
@@ -177,7 +177,7 @@ export function readView(v, known, c) {
     for (const l of v.layers) {
       if (!isObj(l) || typeof l.id !== 'string') { c.warn('a layer without an ID skipped'); continue; }
       const k = known?.layers;
-      if (k && !k[l.id]) { c.warn(`layer "${l.id.slice(0, 40)}" not known here; skipped`); continue; }
+      if (k && !Object.hasOwn(k, l.id)) { c.warn(`layer "${l.id.slice(0, 40)}" not known here; skipped`); continue; }
       const out = { id: l.id };
       for (const [key, list] of [['variant', k?.[l.id]?.variants], ['period', k?.[l.id]?.periods]]) {
         if (l[key] === undefined || l[key] === null) continue;
@@ -194,7 +194,7 @@ export function readView(v, known, c) {
       const e = v.data[slot];
       if (e === undefined || e === null) continue;
       if (!isObj(e) || typeof e.id !== 'string') { c.warn(`data ${slot}: not {id, variant}, ignored`); continue; }
-      const variants = known?.data?.[e.id];
+      const variants = known?.data && Object.hasOwn(known.data, e.id) ? known.data[e.id] : undefined;
       if (known && !(variants && (e.variant == null || variants.includes(e.variant)))) { c.warn(`data ${slot}: "${e.id}${e.variant ? `:${e.variant}` : ''}" not known here; skipped`); continue; }
       d[slot] = { id: e.id, variant: e.variant == null ? null : String(e.variant) };
     }

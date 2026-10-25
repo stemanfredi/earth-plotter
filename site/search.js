@@ -20,8 +20,8 @@ const resultKind = (p) => (p.osm_key === 'highway' ? 'street' : (p.osm_value ===
 const seaFirst = ({ properties: p }) => (SEA_TAGS.some((t) => t === p.osm_key || t === `${p.osm_key}:${p.osm_value}`) ? 0 : 1);
 const ZOOM_OF = { city: 11, town: 12, village: 13, hamlet: 14, island: 11, sea: 6, ocean: 4, bay: 10, strait: 9 };
 
-// free(): the padding that keeps a place found clear of the panel
-export function search(map, Marker, free = () => 60) {
+// free(): the padding { top, right, bottom, left } that keeps a place found clear of the panel
+export function search(map, Marker, free) {
   const q = $('#q'), qClear = $('#q-clear'), results = $('#results'), resultList = results.querySelector('ul');
   let hits = [], active = -1, searchCtl = null, searchTimer = 0, pin = null;
   function showResults(list) {
@@ -55,8 +55,8 @@ export function search(map, Marker, free = () => 60) {
     pin = new Marker({ element: h('div', { class: 'pin', title: r.name }) }).setLngLat(r.at).addTo(map);
     if (r.bounds) map.fitBounds(r.bounds, { padding: free(), maxZoom: 15, bearing: map.getBearing() });
     else { // centred in the part of the map left free; an offset, not padding, which the map would keep
-      const f = free(), n = (k) => (typeof f === 'number' ? f : f[k]);
-      map.flyTo({ center: r.at, zoom: Math.max(map.getZoom(), r.zoom), offset: [(n('left') - n('right')) / 2, (n('top') - n('bottom')) / 2] });
+      const f = free();
+      map.flyTo({ center: r.at, zoom: Math.max(map.getZoom(), r.zoom), offset: [(f.left - f.right) / 2, (f.top - f.bottom) / 2] });
     }
     q.blur();
   }
@@ -70,11 +70,12 @@ export function search(map, Marker, free = () => 60) {
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
       // the same name, kind and town once (a port's ferry terminals); the sea's first, seven shown
       const seen = new Set();
-      const features = (await r.json()).features
+      const place = (f) => Array.isArray(f?.geometry?.coordinates) && f.geometry.coordinates.length === 2 && f.geometry.coordinates.every(Number.isFinite) && f.properties;
+      const features = ((await r.json()).features || []).filter(place) // only results with a place and properties
         .filter(({ properties: p }) => { const k = `${(p.name || '').toLowerCase()}|${resultKind(p)}|${p.city}`; return !seen.has(k) && seen.add(k); })
         .sort((a, b) => seaFirst(a) - seaFirst(b)).slice(0, 7);
       showResults(features.map((f) => {
-        const p = f.properties, e = p.extent; // [west, north, east, south]
+        const p = f.properties, e = Array.isArray(p.extent) && p.extent.length === 4 && p.extent.every(Number.isFinite) ? p.extent : null; // [west, north, east, south]
         return { go: true, name: p.name || p.street || text, at: f.geometry.coordinates,
           where: [resultKind(p), p.city !== p.name ? p.city : null, p.state, p.country].filter(Boolean).join(' · '),
           bounds: e ? [[e[0], e[3]], [e[2], e[1]]] : null, zoom: ZOOM_OF[p.osm_value] || 14 };

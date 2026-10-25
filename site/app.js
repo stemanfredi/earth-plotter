@@ -10,24 +10,18 @@ import { Drawing } from './draw/drawing.js';
 import { DRAW_LAYERS } from './draw/layers.js';
 import { savedView } from './draw/saving.js';
 import { drawView } from './draw/panel.js';
-import { exportFeatures } from './draw/features.js';
 import { profileOf } from './draw/profile.js';
-import { lineTrace } from './draw/lines.js';
 import { isShown } from './draw/document.js';
 import { circle } from './geodesy.js';
-import { affine, worldFile, pamXml, stacItem } from './export.js';
-import { mercator, norm360 } from './geo.js';
-import { FETCH, memo } from './net.js';
-import { gridFor, mosaic, gridTransform, geotiff } from './geotiff.js';
-import { zip } from './zip.js';
-import { viewFeatures } from './vector.js';
-import { $, h } from './dom.js';
+import { norm360, tileXY, TILE } from './geo.js';
+import { FETCH, memo, fetchOk, lru } from './net.js';
+import { $, h, typing } from './dom.js';
 import { choice } from './fields.js';
 import { keyEntry, openKey, keyList } from './keys.js';
-import { Toolbox } from './tools.js';
 import { railMenu } from './menu.js';
 import { search } from './search.js';
-import { chartCanvas, chartPng, pngOf } from './png.js';
+import { gisExport } from './gis.js';
+import { chartCanvas, chartPng } from './png.js';
 import { cmemsValues, emodnetValues, gebcoValues } from './values.js';
 import { tidTile, tidAt } from './gebco.js';
 
@@ -43,13 +37,15 @@ const entryLabel = (it, v, slot) => (it.kind === 'gibs' ? `NASA ${GIBS[v].label.
 const ENTRIES = { colour: [], arrows: [] }; // slot → [{ key, it, label }]
 for (const it of DATA) for (const v of variantsOf(it)) for (const slot of drawsOfEntry(it, v)) ENTRIES[slot].push({ key: `${it.id}:${v}`, it, label: entryLabel(it, v, slot) });
 
+const hour = (t) => Math.floor(t / 36e5) * 36e5; // the hour a time falls in (ms)
+const dayOf = (t) => new Date(t).toISOString().slice(0, 10); // its day (UTC)
+
 // ---- state (mirrored in the URL hash) ---------------------------------------
 const state = {
   on: new Set(ITEMS.filter((it) => it.on).map((it) => it.id)),
   variant: Object.fromEntries(ITEMS.filter((it) => it.variants).map((it) => [it.id, Object.keys(it.variants)[0]])),
   opacity: Object.fromEntries(ITEMS.filter((it) => it.opacity != null).map((it) => [it.id, it.opacity])),
-  time: Math.floor(Date.now() / 36e5) * 36e5, // the map's time: the hour shown (ms), now by default
-  date: '', // NASA daily: the day drawn, that of the hour shown (readHash sets it)
+  time: hour(Date.now()), // the map's time: the hour shown (ms), now by default
   depth: 0, // Copernicus layers with depth: metres below the surface (CMEMS_DEPTHS)
   period: Object.fromEntries(Object.entries(DENSITY).map(([id, d]) => [id, d.defaultPeriod])), // density datasets
   colour: '', arrows: '', // Ocean data: the entry drawing colours, the one drawing arrows ('item:variant', '' for none)
@@ -57,12 +53,14 @@ const state = {
   panel: window.innerWidth >= 1200 ? 'layers' : null, // the side panel's view; open beside the map where it leaves room
 };
 let view = { zoom: 4, center: [12, 41], bearing: 0 };
-let urlBearings = false;
+// the display's units and each leg's bearing beside its length (the switch beside the scale, the
+// drawing's inspector): the drawing's lengths and values, labels and exports follow them
+const display = { units: 'km', bearings: false };
 
 function readHash() {
   const q = new URLSearchParams(location.hash.slice(1));
   const v = (q.get('v') || '').split('/').map(Number);
-  if (v.length >= 3 && v.every(Number.isFinite)) view = { zoom: v[0], center: [v[2], v[1]], bearing: v[3] || 0 };
+  if (v.length >= 3 && v.every(Number.isFinite) && Math.abs(v[1]) <= 90) view = { zoom: v[0], center: [v[2], v[1]], bearing: v[3] || 0 }; // a latitude past the pole would throw in MapLibre
   if (q.has('on')) state.on = new Set(q.get('on').split(',').filter((id) => byId[id]));
   for (const kv of (q.get('var') || '').split(',')) {
     const [k, val] = kv.split(':');
@@ -74,8 +72,8 @@ function readHash() {
   }
   for (const [slot, key] of [['colour', 'col'], ['arrows', 'arr']]) if (ENTRIES[slot].some((e) => e.key === q.get(key))) state[slot] = q.get(key);
   for (const it of DATA) state.on.delete(it.id); // the menus switch them (applyData)
-  if (/^\d{4}-\d{2}-\d{2}T\d{2}$/.test(q.get('t') || '')) state.time = Date.parse(`${q.get('t')}:00:00Z`);
-  state.date = new Date(state.time).toISOString().slice(0, 10);
+  const t = /^\d{4}-\d{2}-\d{2}T\d{2}$/.test(q.get('t') || '') ? Date.parse(`${q.get('t')}:00:00Z`) : NaN; // a date that is no date (month 13) is NaN
+  if (Number.isFinite(t)) state.time = t;
   if (CMEMS_DEPTHS.includes(+q.get('dz'))) state.depth = +q.get('dz');
   for (const kv of (q.get('per') || '').split(',')) {
     const [k, val] = kv.split(':');
@@ -83,8 +81,8 @@ function readHash() {
   }
   if (q.has('g')) state.open = new Set(q.get('g').split(',').filter((g) => GROUPS.some((x) => x.id === g)));
   if (q.has('menu')) state.panel = { 1: 'layers', draw: 'draw' }[q.get('menu')] || null; // menu=1: Layers
-  urlBearings = q.get('brg') === '1';
-  return q.get('u');
+  display.bearings = q.get('brg') === '1';
+  if (q.get('u') === 'nm') display.units = 'nm';
 }
 
 let hashTimer = 0;
@@ -126,7 +124,7 @@ const KNOWN = {
   data: {},
   depths: CMEMS_DEPTHS,
 };
-for (const e of [...ENTRIES.colour, ...ENTRIES.arrows]) { const [id, v] = e.key.split(':'); (KNOWN.data[id] ||= []).includes(v) || KNOWN.data[id].push(v); }
+for (const e of [...ENTRIES.colour, ...ENTRIES.arrows]) { const [id, v] = e.key.split(':'); if (!(KNOWN.data[id] ||= []).includes(v)) KNOWN.data[id].push(v); }
 
 // The drawing's saved view comes back only when the address has none (docs/drawing-format.md §10):
 // written into the address before anything reads it, so the page loads once with it
@@ -134,7 +132,8 @@ if (!new URLSearchParams(location.hash.slice(1)).has('v')) {
   const v = savedView(KNOWN);
   if (v?.center && v.zoom !== null) { const q = new URLSearchParams(location.hash.slice(1)); viewToAddress(v, q); setHash(q); }
 }
-const urlUnits = readHash();
+readHash();
+let gibsDay = dayOf(state.time); // NASA daily: the day its sources draw (gibs.show moves it with the time)
 
 // ---- map --------------------------------------------------------------------
 // Elevation goes through clip.js (cut to the OSM coastline). worker: false keeps
@@ -145,9 +144,7 @@ const urlUnits = readHash();
 const demOpts = { url: DEM_TILES, encoding: 'terrarium', worker: false, cacheSize: 64 };
 const seaDem = new mlcontour.DemSource({ ...demOpts, id: 'sea', maxzoom: DEM_SEA.max });
 const landDem = new mlcontour.DemSource({ ...demOpts, id: 'land', maxzoom: DEM_LAND.max });
-// a water body classified after some of its tiles were drawn: redraw the depth shading
-const reloadDepth = () => map.getSource('dem-sea')?.setTiles(['clip-sea://{z}/{x}/{y}']);
-const seaClip = workerClipper({ template: DEM_TILES, native: DEM_SEA.native, mode: 'sea', omtTileJson: OMT_TILEJSON, onStale: reloadDepth });
+const seaClip = workerClipper({ template: DEM_TILES, native: DEM_SEA.native, mode: 'sea', omtTileJson: OMT_TILEJSON });
 const landClip = workerClipper({ template: DEM_TILES, native: DEM_LAND.native, mode: 'land', omtTileJson: OMT_TILEJSON });
 for (const [dem, clip] of [[seaDem, seaClip], [landDem, landClip]]) {
   dem.manager.getTile = clip.getTile;
@@ -179,7 +176,7 @@ const style = buildStyle({
   // zoom → [interval] in metres (isobaths: traced at the steps their depths need, catalog.js)
   isobathUrl: seaDem.contourProtocolUrl({ ...contourOpts, thresholds: isobathSteps() }),
   contourUrl: landDem.contourProtocolUrl({ ...contourOpts, thresholds: { 9: [100, 500], 11: [50, 250], 12: [20, 100] } }),
-  date: state.date,
+  date: gibsDay,
   density: Object.fromEntries(Object.keys(DENSITY).map((id) => [id, [state.variant[id], state.period[id]]])),
 });
 style.layers.push(...DRAW_LAYERS, ...LOCATION_LAYERS); // the drawing above the map, its values on top; the device's location over all
@@ -293,11 +290,6 @@ if (!('geolocation' in navigator)) locate.hidden = true;
 locate.addEventListener('click', () => setLocating(!locating()));
 document.addEventListener('visibilitychange', () => { if (locating()) watchLocation(document.visibilityState === 'visible'); });
 
-// the keys and the one bar of what is being drawn (tools.js)
-const toolbox = new Toolbox(map, () => drawing.select([])); // a right-click with no tool on: nothing selected
-// the display's units and each leg's bearing beside its length (the switch beside the scale, the
-// drawing's inspector): the drawing's lengths and values, labels and exports follow them
-const display = { units: urlUnits === 'nm' ? 'nm' : 'km', bearings: urlBearings };
 // the Tools panel compact: only its tools (drawing-ui.md §1); auto: made so by a tool started
 const compact = { on: false, auto: false };
 function setDisplay(changes) {
@@ -350,7 +342,7 @@ function viewToAddress(v, q) {
   if (v.bearings) q.set('brg', '1'); else q.delete('brg');
 }
 const drawing = new Drawing(map, {
-  known: KNOWN, getView: viewOf, units: () => display.units, bearings: () => display.bearings, tools: toolbox,
+  known: KNOWN, getView: viewOf, units: () => display.units, bearings: () => display.bearings,
   onChange: (what) => {
     if (what === 'tool') renderDrawTool();
     // phones: something selected on the map while only the tools show: the sheet to half, for its fields
@@ -484,27 +476,24 @@ async function creditEsri() {
 //   range(id)      promise of its datasets' spans, [[start, end]] in ms (null where not known)
 //   controls(it)   elements under its row; render(it, el) brings them up to date
 //   legend(id, el) draws its legend on the canvas el
-//   record(it)     promise of what the GIS export records of it, beyond its variant, from it.at:
 //                  the state as the view was captured (snapshot)
 //   values(it, box) promise of its values as GeoTIFF over [west, south, east, north], or null:
 //                  in the pictures only
-const variantOf = (id) => state.variant[id] || Object.keys(CMEMS[id])[0];
-const dayOf = (t) => new Date(t).toISOString().slice(0, 10);
+//   legend(id)     what its legend is now, or null: { key (drawn again only when it changes), ready
+//                  (what it needs first, a promise or a value), paint(el, data) → its aria text }
 
 // NASA publishes each layer after its own delay (true colour within a day): GIBS says the newest
 // date of the layer shown, the last day the map's time can take while it is on
-const gibsEnd = {}; // GIBS key → promise of its newest date, or null if unknown
+const gibsEnd = Object.create(null); // GIBS key → promise of its newest date, or null if unknown
 function latestGibs(key) {
-  return memo(gibsEnd, key, () => fetch(gibsDomainUrl(key, shiftDay(today(), -60), today()), FETCH)
-    .then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.text(); })
-    .then(domainEnd)).catch(() => null);
+  return memo(gibsEnd, key, () => fetchOk(gibsDomainUrl(key, shiftDay(today(), -60), today())).then((r) => r.text()).then(domainEnd)).catch(() => null);
 }
 
 // Copernicus: each dataset at its own step for the hour shown, its time resolution (cmems.js draws
 // the tiles)
-const cmemsDepth = (id) => !!CMEMS[id][variantOf(id)].depth;
-// the time and level the item draws (now, or at: { variant, t, depth } as captured): its regional part's, drawn on top
-async function cmemsDrawn(id, at = { variant: variantOf(id), t: state.time, depth: state.depth }) {
+const cmemsDepth = (id) => !!CMEMS[id][state.variant[id]].depth;
+// the time and level the item draws at: { variant, t, depth } as captured: its regional part's, drawn on top
+async function cmemsDrawn(id, at) {
   const [times, levels] = await Promise.all([partTimes(id, at.variant, at.t), partLevels(id, at.variant, at.depth)]);
   const k = times.length - 1 - [...times].reverse().findIndex((pt) => pt != null);
   return { time: times[k], level: levels[k] };
@@ -513,11 +502,11 @@ async function cmemsDrawn(id, at = { variant: variantOf(id), t: state.time, dept
 // a classed layer's classes, from its services' JSON legends (legend.js wmsClasses): a class drawn
 // by several (an area, and a point where it is too small) once, with its fill and its symbol; the
 // symbols loaded as pictures (one that does not load is left out, its class kept)
-const classLegends = {}, icons = {};
-const iconOf = (url) => memo(icons, url, () => fetch(url, FETCH).then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.blob(); }).then(createImageBitmap));
+const classLegends = Object.create(null), icons = Object.create(null); // keyed by URLs: no prototype to reach
+const iconOf = (url) => memo(icons, url, () => fetchOk(url).then((r) => r.blob()).then(createImageBitmap));
 function classesOf(urls) {
   return memo(classLegends, urls.join(' '), async () => {
-    const all = (await Promise.all(urls.map((url) => fetch(url, FETCH).then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); }).then(wmsClasses)))).flat();
+    const all = (await Promise.all(urls.map((url) => fetchOk(url).then((r) => r.json()).then(wmsClasses)))).flat();
     const byLabel = new Map();
     for (const c of all) {
       const label = CLASS_LABELS[c.label] || c.label, had = byLabel.get(label);
@@ -531,48 +520,34 @@ const KINDS = {
   // EMODnet's depth, drawn by EMODnet (tiles); its values from its Zarr store
   // GEBCO's depths, drawn by the depth shading (clip.js); its values from its Zarr store
   gebco: {
-    show: (id) => applyItem(id),
-    record: async () => ({}),
+    // the depth shading's legend: while the chart is under it, zoomed out (the shading ends at 13)
+    legend: () => (state.on.has('chart') && map.getZoom() < 13 ? { key: state.variant.depth, paint: (el) => {
+      drawRamp(el, 'Depth shading', 'm · approximate (DEM)', depthStops(), { colour: NO_DEPTH, label: 'lakes: no depth · lagoons: shown as 0–5 m' });
+      return `Depth shading legend: ${depthStops().map(([d]) => d).join(', ')} metres`;
+    } } : null),
     values: (it, box) => gebcoValues(box),
   },
   // where GEBCO's depths come from (its type identifier grid, drawn by gebco.js): a classed layer,
   // its codes in the GIS export
   gebcotid: {
-    show: (id) => applyItem(id),
-    legend: (id, el) => KINDS.classes.legend(id, el),
-    record: async () => ({}),
+    legend: (id) => KINDS.classes.legend(id),
     values: (it, box) => gebcoValues(box, 'tid'),
   },
   emodnet: {
-    show: (id) => applyItem(id),
-    legend(id, el) {
+    legend(id) {
       const v = state.variant[id], stops = EMODNET_DEPTH_STOPS[v];
-      if (el.dataset.key === v) return;
-      el.dataset.key = v;
-      drawRamp(el, byId[id].label, 'm · not linear', stops);
-      el.setAttribute('aria-label', `${byId[id].label} legend: ${stops.map(([d]) => d).join(', ')} metres`);
+      return { key: v, paint: (el) => { drawRamp(el, byId[id].label, 'm · not linear', stops); return `${byId[id].label} legend: ${stops.map(([d]) => d).join(', ')} metres`; } };
     },
-    record: async () => ({}),
     values: (it, box) => emodnetValues(box),
   },
   // a classed layer its service draws (seabed substrate): its legend, the service's classes and colours
   classes: {
-    show: (id) => applyItem(id),
-    legend(id, el) {
+    legend(id) {
       // the URL of its service's legend, the URLs of several, or the classes themselves
       const src = CLASS_LEGENDS[id](state.variant[id]), urls = typeof src === 'string' ? [src] : typeof src[0] === 'string' ? src : null;
-      const key = urls ? urls.join(' ') : `${id}:${state.variant[id]}`;
-      if (el.dataset.key === key) return;
-      el.dataset.key = key;
-      (urls ? classesOf(urls) : Promise.resolve(src)).then((cls) => {
-        if (el.dataset.key !== key) return; // switched meanwhile
-        drawClasses(el, byId[id].label, [byId[id].variants?.[state.variant[id]], byId[id].legendSub].filter(Boolean).join(' · '), cls);
-        el.setAttribute('aria-label', `${byId[id].label} legend: ${cls.map((c) => c.label).join(', ')}`);
-        renderLegends(); // drawn after the stack was laid out: lay it out again with its size
-      }, (e) => { el.dataset.key = ''; console.warn('legend classes:', e.message); });
+      return { key: urls ? urls.join(' ') : `${id}:${state.variant[id]}`, ready: urls ? classesOf(urls) : src,
+        paint: (el, cls) => { drawClasses(el, byId[id].label, [byId[id].variants?.[state.variant[id]], byId[id].legendSub].filter(Boolean).join(' · '), cls); return `${byId[id].label} legend: ${cls.map((c) => c.label).join(', ')}`; } };
     },
-    record: async () => ({}),
-    values: null, // the service draws it
   },
   // EMODnet and EMSA density: a period of its own (a year or a month), not the map's time
   density: {
@@ -583,15 +558,10 @@ const KINDS = {
     controls: (it) => [h('select', { class: 'period', 'aria-label': `${it.label} period`, onchange: (e) => { state.period[it.id] = e.target.value; refresh(it.id); writeHash(); renderMenu(); } },
       DENSITY[it.id].periods.map((p) => h('option', { value: p }, DENSITY[it.id].periodLabel(p))))],
     render(it, el) { $('select.period', el).value = state.period[it.id]; },
-    legend(id, el) {
-      const d = DENSITY[id], key = `${state.variant[id]}|${state.period[id]}`;
-      if (el.dataset.key === key) return; // drawn as it is
-      el.dataset.key = key;
-      drawRamp(el, d.title, `${d.unit} · ${d.types[state.variant[id]]} · ${d.periodLabel(state.period[id])}`, d.stops);
-      el.setAttribute('aria-label', `${d.title} legend: ${d.stops.map(([v]) => v).join(', ')} ${d.unit}`);
+    legend(id) {
+      const d = DENSITY[id];
+      return { key: `${state.variant[id]}|${state.period[id]}`, paint: (el) => { drawRamp(el, d.title, `${d.unit} · ${d.types[state.variant[id]]} · ${d.periodLabel(state.period[id])}`, d.stops); return `${d.title} legend: ${d.stops.map(([v]) => v).join(', ')} ${d.unit}`; } };
     },
-    record: async (it) => ({ period: it.at.period }),
-    values: null, // EMODnet's WMS serves pictures
   },
   // NASA daily: the day of the time shown (UTC). Drawn only once its newest day is known, and not
   // after it (the time is brought within it), so it never asks for a day not published yet
@@ -600,61 +570,41 @@ const KINDS = {
     async show(id) {
       const key = state.variant[id], end = await latestGibs(key), day = dayOf(state.time);
       if (key !== state.variant[id] || !state.on.has(id) || (end && day > end)) return; // switched meanwhile, or not published yet
-      if (day !== state.date) {
-        state.date = day;
+      if (day !== gibsDay) {
+        gibsDay = day;
         for (const k of Object.keys(GIBS)) map.getSource(`gibs-${k}`).setTiles(gibsTiles(k, day));
       }
       applyItem(id);
     },
     range: (id) => latestGibs(state.variant[id]).then((end) => [[null, end && Date.parse(`${end}T23:00:00Z`)]]),
-    record: async (it) => ({ date: it.at.date }),
-    values: null, // imagery
   },
   // Copernicus Marine: the hour shown (daily means: its day), at the depth shown for variables with depth
   cmems: {
-    time: (id) => (CMEMS[id][variantOf(id)].daily ? 'day' : 'hour'),
+    time: (id) => (CMEMS[id][state.variant[id]].daily ? 'day' : 'hour'),
     depth: cmemsDepth,
     show(id) {
       const depth = cmemsDepth(id) ? state.depth : 0; // no new tiles for a depth change it ignores
-      map.getSource(`cmems-${id}`).setTiles([`cmems://${id}/${variantOf(id)}/${looks[id] || 'both'}/${state.time}/${depth}/{z}/{x}/{y}`]);
+      map.getSource(`cmems-${id}`).setTiles([`cmems://${id}/${state.variant[id]}/${looks[id] || 'both'}/${state.time}/${depth}/{z}/{x}/{y}`]);
       applyItem(id);
     },
     // each dataset from its first step to the end of its last (a daily mean covers its day, a
     // 3-hourly step three hours)
-    range: (id) => Promise.all(CMEMS[id][variantOf(id)].parts.map((p) => domainOf(p).then(({ time }) =>
+    range: (id) => Promise.all(CMEMS[id][state.variant[id]].parts.map((p) => domainOf(p).then(({ time }) =>
       [Math.min(...time.map((r) => r.start)), Math.max(...time.map((r) => r.end + Math.max(0, r.step - 36e5)))], () => null))),
     // the colours and unit: the time and depth are the map's, said once beside the coordinates
-    legend(id, el) {
-      const v = CMEMS[id][variantOf(id)];
-      if (el.dataset.key === variantOf(id)) return;
-      el.dataset.key = variantOf(id);
-      cmemsLegend(id, variantOf(id))
-        .then((cm) => {
-          // '<' below the scale only where values go on below it (not under 0 m, 0 m/s)
-          drawColormap(el, v.label, v.unit, cm, [v.log || v.range[0] + (v.offset || 0) < 0, true], v.log);
-          el.setAttribute('aria-label', `${v.label} legend${v.unit ? `, ${v.unit}` : ''}`);
-          renderLegends(); // drawn after the stack was laid out: lay it out again with its size
-        })
-        .catch((err) => { el.dataset.key = ''; console.warn('legend colour map:', err.message); });
-    },
-    // the time and level it drew (its regional part's: its own step and level)
-    async record(it) {
-      const { time, level } = await cmemsDrawn(it.id, it.at);
-      return { draws: it.at.draws, time: time == null ? undefined : new Date(time).toISOString(), depth: level == null ? undefined : +Math.abs(+level).toFixed(2) };
+    legend(id) {
+      const v = CMEMS[id][state.variant[id]];
+      // '<' below the scale only where values go on below it (not under 0 m, 0 m/s)
+      return { key: state.variant[id], ready: cmemsLegend(id, state.variant[id]), paint: (el, cm) => { drawColormap(el, v.label, v.unit, cm, [v.log || v.range[0] + (v.offset || 0) < 0, true], v.log); return `${v.label} legend${v.unit ? `, ${v.unit}` : ''}`; } };
     },
     values: (it, box) => cmemsValues(it.id, it.at, box), // from its datasets' Zarr stores
   },
 };
-// every kind says how it is drawn and how it is exported, and every item's kind is one of them: a
-// gap is an error on the console, which fails the browser tests
-for (const [k, kind] of Object.entries(KINDS)) {
-  for (const f of ['show', 'record']) if (typeof kind[f] !== 'function') console.error(`kind ${k}: no ${f}()`);
-  if (!('values' in kind)) console.error(`kind ${k}: no values() (null: in the pictures only)`);
-}
+// every item's kind is one of them: a gap is an error on the console, which fails the browser tests
 for (const it of ITEMS) if (it.kind && !KINDS[it.kind]) console.error(`${it.id}: kind ${it.kind} is not one of KINDS`);
 const kindOf = (id) => KINDS[byId[id].kind];
-// draws an item as the state says; a kind asks its service only while the item is on
-const refresh = (id) => (state.on.has(id) && kindOf(id) ? kindOf(id).show(id) : applyItem(id));
+// draws an item as the state says; a kind with a show() of its own asks its service, only while the item is on
+const refresh = (id) => (state.on.has(id) && kindOf(id)?.show ? kindOf(id).show(id) : applyItem(id));
 const timeOn = () => ITEMS.filter((it) => state.on.has(it.id) && kindOf(it.id)?.time);
 const depthOn = () => ITEMS.filter((it) => state.on.has(it.id) && kindOf(it.id)?.depth?.(it.id));
 const hourly = () => timeOn().some((it) => kindOf(it.id).time(it.id) === 'hour');
@@ -667,14 +617,14 @@ const looks = {}; // item → what it draws: 'colour', 'arrows' or 'both'
 function applyData() {
   const [ci, cv] = state.colour.split(':'), [ai, av] = state.arrows.split(':');
   for (const it of DATA) {
-    const was = state.on.has(it.id) ? `${looks[it.id]}:${variantOf(it.id)}` : '';
+    const was = state.on.has(it.id) ? `${looks[it.id]}:${state.variant[it.id]}` : '';
     const look = it.id === ci ? (it.id === ai ? 'both' : 'colour') : it.id === ai ? 'arrows' : '';
     if (look) {
       state.on.add(it.id);
       looks[it.id] = look;
-      if (it.variants) state.variant[it.id] = it.id === ci ? cv : av;
+      state.variant[it.id] = it.id === ci ? cv : av;
     } else state.on.delete(it.id);
-    if ((look && `${look}:${variantOf(it.id)}`) !== was) refresh(it.id);
+    if ((look && `${look}:${state.variant[it.id]}`) !== was) refresh(it.id);
   }
 }
 
@@ -713,12 +663,12 @@ async function updateRange() {
   rangeKey = key;
   const spans = (await Promise.all(timeOn().map((it) => kindOf(it.id).range(it.id)))).flat().filter(Boolean);
   if (key !== rangeKey) return; // the layers changed meanwhile
-  const hour = (t) => Math.floor(t / 36e5) * 36e5, starts = spans.map((s) => s[0]).filter(Number.isFinite), ends = spans.map((s) => s[1]).filter(Number.isFinite);
+  const starts = spans.map((s) => s[0]).filter(Number.isFinite), ends = spans.map((s) => s[1]).filter(Number.isFinite);
   const end = ends.length ? hour(Math.min(...ends)) : RANGE[1];
   range = [Math.min(end, starts.length ? hour(Math.max(...starts)) : RANGE[0]), end];
   if (state.time !== within(state.time)) setTime(state.time); else renderWhen();
 }
-const within = (t) => Math.min(range[1], Math.max(range[0], Math.floor(t / 36e5) * 36e5));
+const within = (t) => Math.min(range[1], Math.max(range[0], hour(t)));
 // taken as it changes (a day clicked in the calendar, not when the calendar closes). A time typed
 // in the field changes with each key (year 0002, 0020, 0202, 2026): only a whole time within the
 // field's range is taken
@@ -852,7 +802,7 @@ for (const el of document.querySelectorAll('[data-icon]')) el.replaceWith(icon(.
 // ---- layers panel -----------------------------------------------------------
 const menu = $('#menu');
 const rows = {};
-const segs = [];
+let depthSeg = null; // the depth colours' control: rendered again with the menu
 function setVariant(id, v) {
   state.variant[id] = v;
   refresh(id);
@@ -883,7 +833,7 @@ function controlsOf(it) {
   let variant = null;
   if (it.id === 'depth') {
     variant = choice('Depth colours', [['atlas', 'Darker = deeper', it.variants.atlas], ['nautical', 'Darker = shallower', it.variants.nautical]], () => state.variant.depth, (v) => setVariant('depth', v));
-    segs.push(variant);
+    depthSeg = variant;
   } else if (it.variants) {
     variant = h('select', { class: 'variant', 'aria-label': `${it.label} variant`, onchange: (e) => setVariant(it.id, e.target.value) },
       Object.entries(it.variants).map(([k, label]) => h('option', { value: k }, label)));
@@ -970,7 +920,7 @@ function renderMenu() {
     const rng = (r.infos?.[it.id] || r.row).querySelector('input[type=range]');
     if (rng) rng.value = state.opacity[it.id];
   }
-  for (const s of segs) s.render();
+  depthSeg?.render();
   for (const slot in picks) picks[slot].value = state[slot];
   for (const [id, el] of Object.entries(dataInfos)) {
     el.hidden = !(dataMore.getAttribute('aria-expanded') === 'true' && state.on.has(id));
@@ -1007,19 +957,27 @@ let legendWant = [];
 function legendEl(id) {
   return (legendEls[id] ||= h('canvas', { role: 'img', 'data-legend': id }));
 }
+// a legend painted when what it shows changed (its key); one that needs data first is painted when
+// that comes, if still wanted, and the stack laid out again with its size
+async function paintLegend(id, el, spec) {
+  if (el.dataset.key === spec.key) return;
+  el.dataset.key = spec.key;
+  const later = !!spec.ready?.then;
+  try {
+    const data = await spec.ready;
+    if (el.dataset.key !== spec.key) return; // switched meanwhile
+    el.setAttribute('aria-label', spec.paint(el, data));
+    if (later) renderLegends();
+  } catch (e) { el.dataset.key = ''; console.warn(`${byId[id].label} legend:`, e.message); }
+}
 function renderLegends() {
-  const on = (id) => state.on.has(id);
   const want = [];
-  if (on('depth') && on('chart') && map.getZoom() < 13) want.push('depth');
-  for (const it of ITEMS) if (on(it.id) && kindOf(it.id)?.legend) { kindOf(it.id).legend(it.id, legendEl(it.id)); want.push(it.id); }
-  legendWant = want;
-  if (want.includes('depth') && legendEl('depth').dataset.key !== state.variant.depth) {
-    const el = legendEl('depth');
-    el.dataset.key = state.variant.depth;
-    drawRamp(el, 'Depth shading', 'm · approximate (DEM)', depthStops(), { colour: NO_DEPTH, label: 'lakes: no depth · lagoons: shown as 0–5 m' });
-    el.setAttribute('aria-label', `Depth shading legend: ${depthStops().map(([d]) => d).join(', ')} metres`);
+  for (const it of ITEMS) {
+    const spec = state.on.has(it.id) && kindOf(it.id)?.legend?.(it.id);
+    if (spec) { paintLegend(it.id, legendEl(it.id), spec); want.push(it.id); }
   }
-  legends.replaceChildren(...(on('legend') ? want.map((id) => legendEls[id]) : []));
+  legendWant = want;
+  legends.replaceChildren(...(state.on.has('legend') ? want.map((id) => legendEls[id]) : []));
   snapLegends();
 }
 // the stack on whole screen pixels: gaps of whole pixels, and moved by the fraction its place
@@ -1060,7 +1018,7 @@ function renderUnits() {
   unitsBtn.title = nm ? 'Distances in nautical miles: click for kilometres' : 'Distances in kilometres: click for nautical miles';
 }
 
-// ---- the Draw view (draw/panel.js), and the bar while a placing tool is on --------------------
+// ---- the Draw view (draw/panel.js) ------------------------------------------------------------
 const drawPanel = drawView($('#dview'), {
   drawing, display, setDisplay, map, icon, known: KNOWN, units: () => display.units, isOpen: () => state.panel === 'draw',
   measureIcon: ICON.ruler, measureIcons: (k) => ICON[k], compact: () => compact.on, setCompact: (v) => setCompact(v), free: () => free(), header: $('#panel-actions'),
@@ -1079,7 +1037,6 @@ function renderDrawTool() {
   if (placing && state.panel === 'draw' && !compact.on) setCompact(true, true);
   else if (!placing && compact.auto) setCompact(false);
 }
-toolbox.add(drawing);
 
 // ---- side panel, link and PNG, about -----------------------------------------------------
 // One side panel; the Layers and Measure buttons switch what it shows, and the button of the
@@ -1089,8 +1046,8 @@ const VIEWS = { layers: [$('#b-layers'), $('#lview'), 'Layers'], draw: [$('#b-dr
 // The padding that keeps what the map is fitted to (Zoom to, a place found) in the part not under the
 // panel: on a phone above the sheet, elsewhere left of the panel; 60 px of margin all round. Only for
 // fitting: the map itself does not move when the panel opens or closes.
-function free(margin = 60) {
-  const p = { top: margin, right: margin, bottom: margin, left: margin };
+function free() {
+  const p = { top: 60, right: 60, bottom: 60, left: 60 };
   if (panel.hidden) return p;
   const r = panel.getBoundingClientRect();
   if (small()) p.bottom += Math.max(0, innerHeight - r.top); else p.right += Math.max(0, innerWidth - r.left);
@@ -1134,9 +1091,10 @@ async function copyLink(b) {
   writeHashNow(); // the link must be the view as it is now
   try { await navigator.clipboard.writeText(location.href); flash(b, 'Copied'); } catch { prompt('Copy this link', location.href); }
 }
-// a button's own label and tooltip, kept while it says something else
+// a button's own label and tooltip, kept while it says something else for a moment (flash: the text,
+// and why in its tooltip)
 const labelOf = (b) => { b.dataset.label ||= b.querySelector('span').textContent; b.dataset.title ||= b.title; return b.dataset; };
-function flash(b, text, title = '', ms = 1200) { // the button's own text says it, for a moment; its tooltip why
+function flash(b, text, title = '', ms = 1200) {
   const own = labelOf(b);
   clearTimeout(b.flashTimer);
   b.querySelector('span').textContent = text;
@@ -1187,9 +1145,9 @@ $('#issue').addEventListener('click', (e) => {
 about.querySelector('[data-close]').addEventListener('click', () => about.close());
 
 // the single keys (keys.js), from anywhere: search, a panel, or a tool, which opens its panel
-// (tools.js handles the keys of what is being drawn; draw/panel.js the Tools panel's own)
+// (draw/drawing.js handles the keys of what is being drawn; draw/panel.js the Tools panel's own)
 window.addEventListener('keydown', (e) => {
-  if (e.ctrlKey || e.metaKey || e.altKey || document.querySelector('dialog[open]') || e.target.closest('input, select, textarea')) return;
+  if (e.ctrlKey || e.metaKey || e.altKey || document.querySelector('dialog[open]') || typing(e.target)) return;
   const k = keyEntry(e.key);
   if (!k?.open && !k?.tool) return;
   if (k.open === 'search') { e.preventDefault(); q.focus(); }
@@ -1241,27 +1199,15 @@ const q = search(map, maplibregl.Marker, free); // the search box: / goes to it
 const depthPopup = new maplibregl.Popup({ className: 'depthpop', maxWidth: '240px', focusAfterOpen: false });
 // The depth profiles read (a line's Depth profile pressed), by trace: the GIS export's seabed lengths
 // come from these only, so that an export reads no depth tiles along lines nobody asked about
-const profiled = new Map(); // JSON of the trace's coordinates → promise of its profile
-function profileFor(trace) {
-  const key = JSON.stringify(trace.coords);
-  if (!profiled.has(key)) {
-    if (profiled.size > 64) profiled.delete(profiled.keys().next().value);
-    profiled.set(key, profileOf(trace, depthAt, DEM_SEA.max).catch((err) => { profiled.delete(key); throw err; }));
-  }
-  return profiled.get(key);
-}
+const profiled = lru(64); // JSON of the trace's coordinates → promise of its profile
+const profileFor = (trace) => profiled(JSON.stringify(trace.coords), () => profileOf(trace, depthAt, DEM_SEA.max));
 // The depth at p ([lng, lat]) as the depth shading has it, read at zoom z: metres, negative below the
 // sea surface; NaN on land, lakes, no data. A profile reads many places of few tiles: each tile once.
-const depthTiles = new Map();
+const depthTiles = lru(64);
 async function depthAt([lng, lat], z) {
-  const n = 2 ** z, X = ((((lng + 180) / 360) % 1) + 1) % 1 * n, s = Math.sin((lat * Math.PI) / 180), Y = (0.5 - Math.log((1 + s) / (1 - s)) / (4 * Math.PI)) * n;
-  const key = `${z}/${Math.floor(X)}/${Math.floor(Y)}`;
-  if (!depthTiles.has(key)) {
-    if (depthTiles.size > 64) depthTiles.delete(depthTiles.keys().next().value);
-    depthTiles.set(key, seaClip.metres(z, Math.floor(X), Math.floor(Y)).catch((err) => { depthTiles.delete(key); throw err; }));
-  }
-  const m = await depthTiles.get(key);
-  return m[Math.floor((Y % 1) * 256) * 256 + Math.floor((X % 1) * 256)];
+  const { x: X, y: Y } = tileXY(lng, lat, z), tx = Math.floor(X), ty = Math.floor(Y);
+  const m = await depthTiles(`${z}/${tx}/${ty}`, () => seaClip.metres(z, tx, ty));
+  return m[Math.floor((Y % 1) * TILE) * TILE + Math.floor((X % 1) * TILE)];
 }
 map.on('click', async (e) => {
   if (drawing.tool || drawing.picking || drawing.repointing || !(state.on.has('depth') || state.on.has('isobaths'))) return;
@@ -1369,12 +1315,15 @@ function download(blob, name) {
 // ---- what the map shows, read once for an export -------------------------------------------
 // The only source of what an export says: the view, the time and depth as the reading beside the
 // coordinates states them, the credits, each layer drawn with the state it is drawn in (it.at, for
-// its kind's record and values). Read at the moment of capture, so nothing is read after an await.
+// its kind's values). Read at the moment of capture, so nothing is read after an await.
 function snapshot(src) {
   writeHashNow(); // the link is the view as it is now
   const when = new Date(), c = map.getCenter(), W = src.clientWidth, H = src.clientHeight;
   const timed = timeOn().length > 0, hr = hourly(), depth = depthOn().length ? state.depth : null, t = state.time;
-  const layers = drawnItems().map((it) => ({ ...it, at: { variant: state.variant[it.id] ?? (CMEMS[it.id] ? variantOf(it.id) : undefined), t, depth: state.depth, period: state.period[it.id], date: state.date, draws: looks[it.id] } }));
+  // each layer with what it is drawn with: at (its variant, the time and depth: its values are read at these), and for
+  // item.json its period (density), its day (NASA daily), what it draws (colours, arrows: Copernicus)
+  const layers = drawnItems().map((it) => ({ ...it, assets: [], at: { variant: state.variant[it.id], t, depth: state.depth },
+    period: DENSITY[it.id] ? state.period[it.id] : undefined, date: it.kind === 'gibs' ? gibsDay : undefined, draws: it.kind === 'cmems' ? looks[it.id] : undefined }));
   return {
     when, name: exportName(when, c.lat, c.lng), at: `${dm(c.lat, 'N', 'S')} ${dm(c.lng, 'E', 'W')}`, lat: c.lat,
     zoom: map.getZoom(), bearing: map.getBearing(), link: location.href, credits: attributionText(), layers, legends: legendWant.map((id) => legendEls[id]),
@@ -1387,7 +1336,7 @@ function snapshot(src) {
     depthText: depth == null ? '' : depthWords(depth),
     // drawn shapes too small to see, drawn enlarged: the picture says they are not to scale
     drawText: [drawing.doc.points.some((pt) => isShown(drawing.doc, pt) && drawing.enlargement(pt) > 1) ? 'small shapes shown enlarged, not to scale' : '',
-      drawing.apart().length ? 'lines drawn apart or offset, not to scale' : ''].filter(Boolean).join(' · '),
+      drawing.offset().length ? 'lines drawn offset, not to scale' : '', drawing.inflatedIds().length ? 'lines drawn bowed, not to scale' : ''].filter(Boolean).join(' · '),
     // for files read elsewhere: in UTC
     dataText: !timed ? '' : `data ${hr ? `at ${new Date(t).toISOString().slice(0, 16).replace('T', ' ')} UTC` : `of ${dayOf(t)} (UTC)`}${depth == null ? '' : `, ${depthWords(depth)}`}`,
   };
@@ -1406,121 +1355,7 @@ function drawnItems() {
   return ITEMS.filter((it) => (layersOf[it.id] || []).some((l) => map.getLayoutProperty(l.id, 'visibility') === 'visible' && z >= (l.minzoom ?? 0) && z < (l.maxzoom ?? 24)))
     .map((it) => ({ ...it, variant: it.variants?.[state.variant[it.id]] }));
 }
-// what the item's vector layers draw, as pieces for vector.js: one query per source layer and
-// filter (a line and its casing, or a line and its labels, are the same features). Symbols placed
-// along lines are labels of features exported anyway; computed overlays (graticule) are left out.
-function vectorPieces(id) {
-  const z = map.getZoom(), queries = new Map();
-  for (const l of layersOf[id] || []) {
-    if (map.getSource(l.source)?.type !== 'vector' || !['line', 'fill', 'symbol'].includes(l.type) || l.layout?.['symbol-placement'] === 'line') continue;
-    if (map.getLayoutProperty(l.id, 'visibility') !== 'visible' || z < (l.minzoom ?? 0) || z >= (l.maxzoom ?? 24)) continue;
-    queries.set(JSON.stringify([l.source, l['source-layer'], l.filter]), l);
-  }
-  const pieces = [];
-  for (const l of queries.values()) {
-    const fs = map.querySourceFeatures(l.source, { sourceLayer: l['source-layer'], filter: l.filter });
-    // private MapLibre fields: the tile each copy comes from (lines are cut at its edges); if an
-    // upgrade renames them, say so (the smoke test fails on this)
-    if (fs.length && !Number.isInteger(fs[0]._z)) console.error('MapLibre: feature tile (_z/_x/_y) missing; exported lines keep their tile overlaps');
-    const zmax = Math.max(...fs.map((f) => f._z ?? 0)); // tiles kept from another zoom while loading: not twice
-    for (const f of fs) {
-      if ((f._z ?? 0) !== zmax) continue;
-      pieces.push({ id: f.id, properties: { ...f.properties, layer: l['source-layer'] }, geometry: f.geometry, tile: Number.isInteger(f._z) ? [f._z, f._x, f._y] : null });
-    }
-  }
-  return pieces;
-}
-// raster/<key>.tif: the clipped DEM an item draws, in metres, at the zoom of the tiles on screen
-// (256 px DEM tiles at z show at map zoom z − 1, clip.js)
-const RASTERS = [
-  { key: 'depth', items: ['depth'], clip: seaClip, native: DEM_SEA.native, max: DEM_SEA.max, title: 'Depth',
-    description: 'Seabed elevation in metres, negative below sea level, as the depth shading draws it: Terrarium DEM cut to the OSM coastline, pits and tile seams corrected; sea the DEM calls dry is -1. No data on land, lakes and inland water at sea level' },
-  { key: 'elevation', items: ['relief', 'contours'], clip: landClip, native: DEM_LAND.native, max: DEM_LAND.max, title: 'Land elevation',
-    description: 'Land elevation in metres, as the relief shading and land contours use it: Terrarium DEM (SRTM on land) cut to the OSM coastline. No data in the sea' },
-];
-const featureCollection = (name, features) => `${JSON.stringify({ type: 'FeatureCollection', name, features })}\n`;
-
-// polygon-clipping (vector.js) loads on the first ZIP export, not with the page: a script from
-// the pinned URL in index.html, checked by the browser against its hash (tools/deps.mjs)
-const libs = {};
-const polygonClipping = () => memo(libs, 'polygon-clipping', () => new Promise((resolve, reject) => {
-  const el = $('#polygon-clipping'), { content: src, dataset: { integrity } } = el;
-  document.head.append(h('script', { src, integrity, crossorigin: 'anonymous', onload: () => resolve(globalThis.polygonClipping),
-    onerror: (e) => { e.target.remove(); reject(new Error('polygon-clipping did not load')); } }));
-}));
-function exportZip(b) {
-  let clipping;
-  onFrame(b, async (src) => {
-    const s = snapshot(src), { when, name, corners, layers } = s; // the view as captured, however long the rest takes
-    const plain = h('canvas', { width: src.width, height: src.height });
-    plain.getContext('2d').drawImage(src, 0, 0);
-    const chart = chartCanvas(src, s);
-    const transform = affine(corners, src.width, src.height);
-    // vector/<item>.geojson for each item drawn with features in view, and the measurements
-    const vectors = [];
-    for (const it of layers) {
-      const fs = viewFeatures(vectorPieces(it.id), corners, clipping);
-      if (fs.length) vectors.push({ key: `vector/${it.id}`, title: it.label, file: `vector/${it.id}.geojson`, data: featureCollection(it.label, fs), n: fs.length, how: 'clipped to the view' });
-      it.assets = fs.length ? [`vector/${it.id}`] : []; // in item.json: the assets that hold this layer as data (keyed by path: a layer may be called chart, as the overview is)
-    }
-    // raster/<key>.tif for each elevation grid an item drawn reads
-    const rasters = [];
-    for (const r of RASTERS) {
-      if (!layers.some((l) => r.items.includes(l.id))) continue;
-      const grid = gridFor(corners.map(mercator), Math.max(0, Math.min(Math.floor(s.zoom + 1), r.max))), n = 2 ** grid.z;
-      const tiles = await Promise.all(grid.tiles.map(([tx, ty]) => r.clip.metres(grid.z, ((tx % n) + n) % n, ty)));
-      const transform = gridTransform(grid);
-      rasters.push({ ...r, file: `raster/${r.key}.tif`, asset: `raster/${r.key}`, data: geotiff(mosaic(grid, tiles), grid.w, grid.h, transform, { description: r.description }), grid, transform });
-      for (const l of layers) if (r.items.includes(l.id)) l.assets.push(`raster/${r.key}`);
-    }
-    // the values of each layer drawn whose kind has them (Copernicus), as the view was captured
-    const xs = corners.map((p) => p[0]), ys = corners.map((p) => p[1]), box = [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)];
-    const left = []; // values that could not be read: the rest is saved, the button says what is missing
-    const values = (await Promise.all(layers.filter((l) => kindOf(l.id)?.values).map((l) => kindOf(l.id).values(l, box)
-      .then((rs) => { l.assets.push(...rs.map((r) => r.key)); return rs; }, (e) => { console.warn(`${l.label} values:`, e.message); left.push(`${l.label} values (${e.message})`); return []; })))).flat();
-    for (const l of layers) Object.assign(l, await kindOf(l.id)?.record(l)); // what each drew: period, day, time, depth
-    // the drawing: its visible elements as drawn (radii and outlines as polygons), and its file, to import again
-    const drawn = exportFeatures(drawing.doc, display.units);
-    // a line's length along the seabed (profile.js; a lower bound, the grid's relief), where its depth
-    // profile was read as it is now drawn
-    await Promise.all(drawn.filter((x) => x.properties.kind === 'line').map(async (f) => {
-      const line = drawing.doc.lines.find((x) => x.id === f.properties.id), prof = profiled.get(JSON.stringify(lineTrace(drawing.doc, line).coords));
-      try { if (prof) f.properties.seabed_length_m = Math.round((await prof).seabed * 1000) / 1000; } catch { /* no depths: left out */ }
-    }));
-    if (drawn.length) vectors.push({ key: 'vector/drawings', title: 'Drawings', file: 'vector/drawings.geojson', data: featureCollection('Drawings', drawn), n: drawn.length, how: 'whole, geodesic values in metres' });
-    const drawingFile = drawing.isEmpty() ? null : drawing.text();
-    const item = stacItem({
-      id: name, title: `Chart · ${s.at}`, when, data: s.time, corners, zoom: s.zoom, bearing: s.bearing, layers,
-      attribution: s.credits, link: s.link,
-      assets: {
-        map: { href: './map.png', type: 'image/png', title: 'The map as drawn, georeferenced (world file map.pgw, CRS in map.png.aux.xml)', roles: ['visual'],
-          'proj:code': 'EPSG:3857', 'proj:shape': [src.height, src.width], 'proj:transform': transform },
-        worldfile: { href: './map.pgw', type: 'text/plain', title: 'World file of map.png', roles: ['metadata'] },
-        crs: { href: './map.png.aux.xml', type: 'application/xml', title: 'CRS of map.png (GDAL sidecar)', roles: ['metadata'] },
-        chart: { href: './chart.png', type: 'image/png', title: 'The map with legends, credits and scale, its details in text fields: the PNG export', roles: ['overview'] },
-        ...Object.fromEntries(rasters.map((r) => [r.asset, { href: `./${r.file}`, type: 'image/tiff; application=geotiff', title: `${r.title}: DEM tiles of zoom ${r.grid.z}${r.grid.z > r.native ? `, upsampled from zoom ${r.native}` : ''}, over the view's bounding box`, description: r.description, roles: ['data'],
-          'proj:code': 'EPSG:3857', 'proj:shape': [r.grid.h, r.grid.w], 'proj:transform': r.transform, bands: [{ data_type: 'float32', nodata: 'nan', unit: 'm' }] }])),
-        ...Object.fromEntries(vectors.map((v) => [v.key, { href: `./${v.file}`, type: 'application/geo+json', title: `${v.title}: ${v.n} feature${v.n === 1 ? '' : 's'}, ${v.how}`, roles: ['data'] }])),
-        ...(drawingFile ? { drawing: { href: './drawing.geojson', type: 'application/geo+json', title: 'The drawing, editable: Charts, Import (GeoJSON, with what the app needs to edit it)', roles: ['data'] } } : {}),
-        ...Object.fromEntries(values.map((r) => [r.key, { href: `./${r.file}`, type: 'image/tiff; application=geotiff', title: r.title, description: r.description, roles: ['data'],
-          'proj:code': 'EPSG:4326', 'proj:shape': [r.h, r.w], 'proj:transform': r.transform, bands: r.names.map((n, k) => ({ name: n, data_type: 'float32', nodata: 'nan', unit: r.units[k] })) }])),
-      },
-    });
-    const [mapPng, chartFile] = await Promise.all([pngOf(plain), chartPng(chart)]);
-    download(await zip([
-      { name: 'item.json', data: `${JSON.stringify(item, null, 2)}\n` },
-      { name: 'map.png', data: mapPng },
-      { name: 'map.pgw', data: worldFile(transform) },
-      { name: 'map.png.aux.xml', data: pamXml() },
-      { name: 'chart.png', data: chartFile },
-      ...vectors.map((v) => ({ name: v.file, data: v.data })),
-      ...(drawingFile ? [{ name: 'drawing.geojson', data: drawingFile }] : []),
-      ...rasters.map((r) => ({ name: r.file, data: r.data })),
-      ...values.map((r) => ({ name: r.file, data: r.data })),
-    ], when), `${name}.zip`);
-    return left;
-  }, async () => { clipping = await polygonClipping(); });
-}
+const exportZip = gisExport({ map, layersOf, kindOf, drawing, display, profiled, clips: { sea: seaClip, land: landClip }, cmemsDrawn, snapshot, onFrame, download });
 
 // ---- go ---------------------------------------------------------------------
 map.on('load', () => {

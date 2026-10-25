@@ -5,21 +5,17 @@
 // Network-dependent by design: it is also what tells us a provider changed or went down.
 import { readFile } from 'node:fs/promises';
 import { inflateRawSync } from 'node:zlib';
-import { chromium } from 'playwright-core';
-import { serve, chromeOptions } from './serve.mjs';
+import { start } from './browser.mjs';
 
-const server = await serve();
-const base = server.url;
-const browser = await chromium.launch(chromeOptions());
+const { browser, base, check, section, finish } = await start();
 const ctx = await browser.newContext({ locale: 'en-US', viewport: { width: 1280, height: 800 }, acceptDownloads: true, permissions: ['clipboard-read', 'clipboard-write'] });
-const failures = [];
 // cross-origin requests that carried a Referer (the page and the clip worker both promise none)
 const referred = new Set();
 ctx.on('request', (r) => { const u = new URL(r.url()); if (u.origin !== new URL(base).origin && r.headers().referer) referred.add(u.host); });
-const check = (ok, what) => { console.log(`${ok ? 'ok  ' : 'FAIL'}  ${what}`); if (!ok) failures.push(what); };
 
-async function open(hash) {
-  const page = await ctx.newPage();
+// a page at hash, loaded, its errors collected (in: another context, a phone's)
+async function open(hash, inCtx = ctx) {
+  const page = await inCtx.newPage();
   page.errors = [];
   page.on('pageerror', (e) => page.errors.push(e.message));
   page.on('console', (m) => m.type() === 'error' && page.errors.push(m.text().slice(0, 200)));
@@ -32,13 +28,36 @@ const visible = (page, id) => page.evaluate((id) => map.getLayoutProperty(id, 'v
 // an item of the rail's Export menu (link, png, zip, save): the menu opened, then the item
 const exportItem = async (page, id) => { await page.click('#export'); await page.click(`#${id}`); };
 
-try {
+// name → bytes, every entry of a zip (central directory: name and local header offset), and its item.json
+function files(zz) {
+  const out = {};
+  for (let p = zz.readUInt32LE(zz.length - 6); zz.readUInt32LE(p) === 0x02014b50; p += 46 + zz.readUInt16LE(p + 28)) {
+    const name = zz.toString('utf8', p + 46, p + 46 + zz.readUInt16LE(p + 28)), at = zz.readUInt32LE(p + 42), size = zz.readUInt32LE(p + 20);
+    const body = zz.subarray(at + 30 + zz.readUInt16LE(at + 26), at + 30 + zz.readUInt16LE(at + 26) + size);
+    out[name] = zz.readUInt16LE(p + 10) ? inflateRawSync(body) : body;
+  }
+  return out;
+}
+const unzip = (zz) => { const f = files(zz); return { files: f, names: Object.keys(f), item: JSON.parse(f['item.json']) }; };
+// a PNG's size and iTXt text fields
+function pngFields(b) {
+  const f = { width: b.readUInt32BE(16), height: b.readUInt32BE(20) };
+  for (let p = 8; p < b.length;) {
+    const n = b.readUInt32BE(p), type = b.toString('latin1', p + 4, p + 8);
+    if (type === 'iTXt') { const parts = b.subarray(p + 8, p + 8 + n).toString('utf8').split('\0'); f[parts[0]] = parts.at(-1); }
+    if (type === 'IEND') break;
+    p += n + 12;
+  }
+  return f;
+}
+
+await section('the default view and the menu', async () => {
   // default view
-  let p = await open('');
+  const p = await open('');
   check(p.errors.length === 0, `default view loads without errors ${p.errors.join(' | ')}`);
   check(await p.evaluate(() => map.getStyle().layers.length > 30), 'style has its layers');
   const broken = await p.evaluate(() => [...document.querySelectorAll('.item.error')].map((r) => `${r.querySelector('label').textContent} (${r.title})`));
-  check(broken.length === 0, `no source marked failing ${broken.join(', ')}`);
+  check(broken.length === 0, `no source marked failing ${broken.join(', ')}`, true);
   check(referred.size === 0, `no request to a tile host carries a Referer ${[...referred].join(', ')}`);
 
   // menu: a row's switch turns its layer on; the base cards swap chart and satellite
@@ -49,18 +68,20 @@ try {
   await p.waitForTimeout(1500);
   const credits = await p.evaluate(() => document.querySelector('.credits-text')?.textContent || '');
   const live = await p.evaluate(async () => (await (await fetch('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer?f=json')).json()).copyrightText);
-  check(credits.includes('Powered by Esri') && credits.includes(live), `Esri credits: "Powered by Esri" and the service's own text (${live})`);
+  check(credits.includes('Powered by Esri') && credits.includes(live), `Esri credits: "Powered by Esri" and the service's own text (${live})`, true);
   // the base map's credit first, so a line cut at its end ("…") never cuts it
   await p.click('.basecard[data-base=chart]');
   await p.waitForTimeout(500);
   const chartCredits = await p.evaluate(() => document.querySelector('.credits-text').textContent);
   check(credits.startsWith('Powered by Esri') && chartCredits.startsWith('© OpenStreetMap'), `the base map's credit first (${credits.slice(0, 30)}… / ${chartCredits.slice(0, 30)}…)`);
   await p.close();
+});
 
+await section('URL state, Link, Measure, a bad link', async () => {
   // URL state: view and layers survive a reload; Link copies the current view. Measure's tools make
   // guides showing their values (a distance: a line; a ring: a circle in two clicks), their values
   // drawn with the drawing's
-  p = await open('#v=9/35.9/14.4/0&on=chart,coastline,depth,isobaths&u=nm&menu=draw');
+  const p = await open('#v=9/35.9/14.4/0&on=chart,coastline,depth,isobaths&u=nm&menu=draw');
   await p.keyboard.press('m'); // Measure, a distance
   await p.mouse.click(300, 300);
   await p.mouse.move(420, 340);
@@ -83,7 +104,15 @@ try {
   const again = await open(new URL(link).hash);
   check((await again.evaluate(() => map.getZoom().toFixed(2))) === '6.00' && (await visible(again, 'isobaths')) === 'visible', 'the copied link reopens the same view and layers');
   check(again.errors.length === 0, `reloaded view without errors ${again.errors.join(' | ')}`);
+  await again.close();
+  // a link with a latitude past the pole and a time that is no date: the page comes up, both ignored
+  const bad = await open('#v=5/95/10/0&t=2026-13-40T99&on=chart');
+  const badView = await bad.evaluate(() => [map.getCenter().lat, document.querySelector('#nostart')]);
+  check(bad.errors.length === 0 && Math.abs(badView[0]) <= 85.1 && badView[1] === null, `a bad link's latitude and time are ignored, the page starts (lat ${badView[0]}) ${bad.errors.join(' | ')}`);
+  await bad.close();
+});
 
+await section('one side panel', async () => {
   // one side panel: Draw replaces Layers in place, the link keeps the view, its button closes it
   const pv = await open('#v=6/41/12/0&menu=1');
   await pv.click('#b-draw');
@@ -93,7 +122,9 @@ try {
   await pv.click('#b-draw');
   check(await pv.evaluate(() => document.querySelector('#panel').hidden), "the shown view's button closes the panel");
   await pv.close();
+});
 
+await section('NASA true colour', async () => {
   // NASA true colour opened at now: the time goes no later than NASA's newest day, and the tiles
   // are of the day shown (no older day passed off as it)
   const tc = await open('#v=5/40/10/0&menu=1&g=data&col=gibs:terra&on=chart,coastline');
@@ -102,9 +133,11 @@ try {
   const [tcTiles, tcHash, rowsOn, tcNotes] = await tc.evaluate(() => [map.getSource('gibs-terra').tiles[0], location.hash, document.querySelector('#when').hidden ? 'hidden' : 'shown',
     document.querySelectorAll('.item .note:not([hidden])').length]);
   const tcDay = /\/(\d{4}-\d{2}-\d{2})\//.exec(tcTiles)?.[1] || '', tcT = /t=([\d-]+T\d\d)/.exec(tcHash)?.[1] || '';
-  check(rowsOn === 'shown' && tcDay && tcT.startsWith(tcDay) && tcDay <= new Date().toISOString().slice(0, 10) && !tcNotes, `NASA true colour: the tiles are of the day shown, no later than today, no note (${tcDay}, t=${tcT})`);
+  check(rowsOn === 'shown' && tcDay && tcT.startsWith(tcDay) && tcDay <= new Date().toISOString().slice(0, 10) && !tcNotes, `NASA true colour: the tiles are of the day shown, no later than today, no note (${tcDay}, t=${tcT})`, true);
   await tc.close();
+});
 
+await section('a zoom', async () => {
   // a zoom alone updates what depends on it: a layer out of its range greyed out with its hint,
   // the depth shading's legend gone above zoom 12
   const zm = await open('#v=8/43.6/13.6/0&on=chart,coastline,depth,seamarks,legend&menu=1&g=sea');
@@ -115,7 +148,9 @@ try {
   const z13 = await zoomed();
   check(z8.join() === 'zoom 9+,true,true' && z13.join() === ',false,false', `a zoom updates the hints and legends (zoom 8: ${z8}; 13.5: ${z13})`);
   await zm.close();
+});
 
+await section('search', async () => {
   // search: coordinates are read on the page (no request); a place comes from Photon
   const sp = await open('#v=6/41/12/0&menu=0');
   const near = (lat, lon, tol) => sp.evaluate(({ lat, lon, tol }) => { const c = map.getCenter(); return Math.abs(c.lat - lat) < tol && Math.abs(c.lng - lon) < tol; }, { lat, lon, tol });
@@ -129,14 +164,16 @@ try {
   await sp.waitForSelector('#results li[role=option]', { timeout: 15000 }).catch(() => {});
   await sp.keyboard.press('Enter');
   await sp.waitForTimeout(2500);
-  check((await near(35.9, 14.51, 0.05)) && photonCalls > 0, 'a place name is found (Photon) and the map goes there');
-  check(sp.errors.length === 0, `search without errors ${sp.errors.join(' | ')}`);
+  check((await near(35.9, 14.51, 0.05)) && photonCalls > 0, 'a place name is found (Photon) and the map goes there', true);
+  check(sp.errors.length === 0, `search without errors ${sp.errors.join(' | ')}`, true);
   await sp.close();
+});
 
+await section('vessel density', async () => {
   // vessel density (EMODnet, off by default): loads, has a legend, type and year change the tiles
   const tr = await open('#v=7/37.5/14/0&on=chart,coastline,traffic,legend&menu=1&g=shipping');
-  check(tr.errors.length === 0 && !(await tr.evaluate(() => document.querySelector('#i-traffic').closest('.item').classList.contains('error'))), `vessel density loads ${tr.errors.join(' | ')}`);
-  check(await tr.evaluate(() => !!document.querySelector('#legends canvas[data-legend=traffic]')), 'vessel density legend shown');
+  check(tr.errors.length === 0 && !(await tr.evaluate(() => document.querySelector('#i-traffic').closest('.item').classList.contains('error'))), `vessel density loads ${tr.errors.join(' | ')}`, true);
+  check(await tr.evaluate(() => !!document.querySelector('#legends canvas[data-legend=traffic]')), 'vessel density legend shown', true);
   await tr.selectOption('.item:has(#i-traffic) select.variant', 't10');
   await tr.selectOption('.item:has(#i-traffic) select.period', '2019');
   await tr.waitForTimeout(500); // the URL is written 250 ms after a change
@@ -145,35 +182,38 @@ try {
   check(/vesseldensity_10avg&/.test(tiles) && /time=2019-/.test(tiles), 'ship type and year select the WMS layer and time');
   check(/var=[^&]*traffic:t10/.test(hash) && /per=[^&]*traffic:2019/.test(hash), 'ship type and year are kept in the link');
   await tr.close();
+});
 
+await section('route density', async () => {
   // route density (EMSA, monthly): newest month by default, month and type change the tiles
   const rt = await open('#v=7/37.5/14/0&on=chart,coastline,routes,legend&menu=1&g=shipping');
-  check(rt.errors.length === 0 && !(await rt.evaluate(() => document.querySelector('#i-routes').closest('.item').classList.contains('error'))), `route density loads ${rt.errors.join(' | ')}`);
+  check(rt.errors.length === 0 && !(await rt.evaluate(() => document.querySelector('#i-routes').closest('.item').classList.contains('error'))), `route density loads ${rt.errors.join(' | ')}`, true);
   await rt.selectOption('.item:has(#i-routes) select.variant', 't04');
   await rt.selectOption('.item:has(#i-routes) select.period', '2025-11');
   await rt.waitForTimeout(500);
   const rtiles = await rt.evaluate(() => map.getSource('routes').tiles[0]);
   check(/routedensity_04&/.test(rtiles) && /time=2025-11-01T/.test(rtiles) && /per=[^&]*routes:2025-11/.test(await rt.evaluate(() => location.hash)), 'route density month and type in tiles and link');
-  check(await rt.evaluate(() => !!document.querySelector('#legends canvas[data-legend=routes]')), 'route density legend shown');
-  check((await rt.evaluate(() => document.querySelector('.item:has(#i-routes) select.period').selectedOptions[0].text)) === 'Nov 2025', 'months labelled as "Nov 2025"');
+  check(await rt.evaluate(() => !!document.querySelector('#legends canvas[data-legend=routes]')), 'route density legend shown', true);
+  check((await rt.evaluate(() => document.querySelector('.item:has(#i-routes) select.period').selectedOptions[0].text)) === 'Nov 2025', 'months labelled as "Nov 2025"', true);
   await rt.close();
+});
 
-
+await section('Copernicus layers, the time line, About, the manifest, my location', async () => {
   // Copernicus sea state, waves in colour and currents in arrows: tiles load, the legends show
   const cm = await open('#v=6/40/14/0&col=waves:height&arr=currents:surface&on=chart,coastline,legend&menu=1&g=data');
   await cm.waitForFunction(() => document.querySelectorAll('#legends canvas[data-legend=waves], #legends canvas[data-legend=currents]').length === 2, null, { timeout: 30000 }).catch(() => {});
   const cmBroken = await cm.evaluate(() => [...document.querySelectorAll('.item.error, .item.partial')].map((r) => `${r.querySelector('.name').textContent} (${r.title})`));
-  check(cmBroken.length === 0 && cm.errors.length === 0, `Copernicus waves and currents load ${cmBroken.join(', ')} ${cm.errors.join(' | ')}`);
+  check(cmBroken.length === 0 && cm.errors.length === 0, `Copernicus waves and currents load ${cmBroken.join(', ')} ${cm.errors.join(' | ')}`, true);
   const [cmPicks, cmLink] = await cm.evaluate(() => [[...document.querySelectorAll('.pick select')].map((s) => s.value).join(' '), location.hash]);
   check(cmPicks === 'waves:height currents:surface' && /col=waves:height/.test(cmLink) && /arr=currents:surface/.test(cmLink) && !/on=[^&]*waves/.test(cmLink),
     `the link's entries are in the menus and stay in the link: colours, arrows ${cmPicks}`);
-  check(await cm.evaluate(() => document.querySelectorAll('#legends canvas[data-legend=waves], #legends canvas[data-legend=currents]').length === 2), 'Copernicus legends shown');
+  check(await cm.evaluate(() => document.querySelectorAll('#legends canvas[data-legend=waves], #legends canvas[data-legend=currents]').length === 2), 'Copernicus legends shown', true);
   // the time line at the panel's foot: a time picked there (local time) is drawn, read above the
   // legends and kept in the link; › steps an hour; Now goes back to now
   const ahead = await cm.evaluate(() => { const d = new Date(Date.now() + 864e5); d.setMinutes(0, 0, 0); return d.getTime(); });
   const aLocal = await cm.evaluate((t) => { const d = new Date(t), p = (n) => String(n).padStart(2, '0'); return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:00`; }, ahead);
   const [minMax, shownOn] = await cm.evaluate(() => [[document.querySelector('#when input').min, document.querySelector('#when input').max], !document.querySelector('#shown').hidden]);
-  check(shownOn && minMax[0] > '2020' && minMax[1] > minMax[0] && !minMax[1].startsWith('2099'), `the field holds the dates the layers have (${minMax.join(' to ')})`);
+  check(shownOn && minMax[0] > '2020' && minMax[1] > minMax[0] && !minMax[1].startsWith('2099'), `the field holds the dates the layers have (${minMax.join(' to ')})`, true);
   await cm.fill('#when input', aLocal);
   await cm.waitForTimeout(1500);
   const [shownText, cmHash] = await cm.evaluate(() => [document.querySelector('#shown').textContent, location.hash]);
@@ -221,6 +261,9 @@ try {
   check(!sent.length && /latitude, then longitude/.test(await cm.textContent('#results')), `coordinates being typed stay in the page (${sent.length} sent)`);
   await cm.fill('#q', '');
   await cm.close(); await cmAgain.close();
+});
+
+await section('the Ocean data menus', async () => {
   // the Ocean data menus: waves in colours, currents in arrows; wind in arrows; currents in both
   // draw speed and direction; none
   const sl = await open('#v=6/40/14/0&col=waves:height&arr=currents:surface&on=chart,coastline&menu=1&g=data');
@@ -241,17 +284,23 @@ try {
   check(l1 === 'waves:colour currents:arrows' && l2 === 'waves:colour wind:arrows' && l3 === 'currents:both' && /col=currents:surface&arr=currents:surface/.test(l3hash) && !l4 && whenHidden,
     `Ocean data menus: ${l1} → arrows wind: ${l2} → currents in both: ${l3} → none: ${l4 || 'nothing drawn, no time line'}`);
   await sl.close();
+});
+
+await section('water properties at a depth', async () => {
   // water properties at a depth from the link: "100 m deep" beside the time, each model at its own
   // level (the export records it), no note under the row
   const wp = await open('#v=5/40/10/0&col=temperature:depth&on=chart,coastline,legend&menu=1&g=data&dz=100');
   await wp.waitForFunction(() => !!document.querySelector('#legends canvas[data-legend=temperature]')?.style.width, null, { timeout: 30000 }).catch(() => {});
   const [wpDepth, wpNotes, wpBroken] = await wp.evaluate(() => [document.querySelector('#when .depthsel select').value + ' ' + document.querySelector('#shown').textContent,
     document.querySelectorAll('.item .note:not([hidden])').length, [...document.querySelectorAll('.item.error, .item.partial')].map((r) => r.title)]);
-  check(/^100 .* · 100 m deep$/.test(wpDepth) && !wpNotes && !wpBroken.length && !wp.errors.length, `temperature at 100 m, set on the time line and shown as "100 m deep": ${wpDepth} ${wpBroken.join(' ')} ${wp.errors.join(' | ')}`);
+  check(/^100 .* · 100 m deep$/.test(wpDepth) && !wpNotes && !wpBroken.length && !wp.errors.length, `temperature at 100 m, set on the time line and shown as "100 m deep": ${wpDepth} ${wpBroken.join(' ')} ${wp.errors.join(' | ')}`, true);
   // the depth on a row of its own, under the time line, which keeps its width
   const [inW, below] = await wp.evaluate(() => { const i = document.querySelector('#when input').getBoundingClientRect(), d = document.querySelector('#when .depthsel').getBoundingClientRect(); return [i.width, d.top >= i.bottom]; });
   check(below && inW >= 150, `the depth sits under the time line, which keeps its width (${Math.round(inW)} px)`);
   await wp.close();
+});
+
+await section('a satellite observation', async () => {
   // a satellite observation opened at now: the time goes no later than its latest day, and the
   // day shown is the day drawn
   const ob = await open('#v=5/40/10/0&col=sst:measured&on=chart,coastline,legend&menu=1&g=data');
@@ -263,9 +312,12 @@ try {
       `${new Date(ms).toLocaleDateString([], { weekday: 'short', timeZone: 'UTC' })} ${new Date(ms).getUTCDate()} ${new Date(ms).toLocaleDateString([], { month: 'short', timeZone: 'UTC' })}`, [...document.querySelectorAll('.item.error, .item.partial')].map((r) => r.title)];
   });
   check(obT && obWithin && (obShown === 'Today' || obShown === obDay) && !obBroken.length && !ob.errors.length,
-    `sea surface temperature: the time within its days, its day shown (t=${obT}, ${obShown}) ${obBroken.join(' ')} ${ob.errors.join(' | ')}`);
+    `sea surface temperature: the time within its days, its day shown (t=${obT}, ${obShown}) ${obBroken.join(' ')} ${ob.errors.join(' | ')}`, true);
   await ob.close();
+});
 
+await section('the PNG and GIS exports', async () => {
+  const again = await open('#v=6/41/12/0&on=chart,coastline,depth,isobaths&u=nm'); // the view the link reopened
   // the nautical scale reads NM, as Measure and the PNG do (MapLibre writes "nm")
   check(/\d\sNM$/.test(await again.evaluate(() => document.querySelectorAll('.maplibregl-ctrl-scale')[1].textContent)), 'the nautical scale reads NM');
   // PNG export
@@ -291,54 +343,33 @@ try {
   const z = await readFile(await dz.path());
   const names = ['item.json', 'map.png', 'map.pgw', 'map.png.aux.xml', 'chart.png', 'vector/coastline.geojson', 'vector/isobaths.geojson', 'raster/depth.tif'];
   check(z.readUInt32LE(0) === 0x04034b50 && names.every((n) => z.includes(n)) && dz.suggestedFilename().endsWith('.zip'), `GIS export holds ${names.join(', ')} (${Math.round(z.length / 1024)} KB)`);
-  // item.json lists every file in the zip, once (central directory: name and local header offset)
-  const unzip = (zz) => {
-    const entries = [];
-    for (let p = zz.readUInt32LE(zz.length - 6); zz.readUInt32LE(p) === 0x02014b50; p += 46 + zz.readUInt16LE(p + 28)) {
-      entries.push({ name: zz.toString('utf8', p + 46, p + 46 + zz.readUInt16LE(p + 28)), at: zz.readUInt32LE(p + 42), method: zz.readUInt16LE(p + 10), size: zz.readUInt32LE(p + 20) });
-    }
-    const ij = entries.find((e) => e.name === 'item.json'), body = zz.subarray(ij.at + 30 + zz.readUInt16LE(ij.at + 26), ij.at + 30 + zz.readUInt16LE(ij.at + 26) + ij.size);
-    return { entries, item: JSON.parse((ij.method ? inflateRawSync(body) : body).toString()) };
-  };
-  const { entries, item } = unzip(z);
+  // item.json lists every file in the zip, once
+  const { names: entries, item } = unzip(z);
   const listed = Object.values(item.assets).map((a) => a.href.replace(/^\.\//, '')).sort().join();
-  check(listed === entries.map((e) => e.name).filter((n) => n !== 'item.json').sort().join(), `item.json lists every file in the zip (${Object.keys(item.assets).length} assets)`);
+  check(listed === entries.filter((n) => n !== 'item.json').sort().join(), `item.json lists every file in the zip (${Object.keys(item.assets).length} assets)`);
   // GEBCO's own values under the depth shading: its grid over the view, in metres, at a level that fits
   const gb = item.assets['raster/gebco-depth'];
-  check(entries.some((e) => e.name === 'raster/gebco-depth.tif') && gb?.bands?.[0]?.unit === 'm' && gb['proj:code'] === 'EPSG:4326' && /GEBCO 2026/.test(gb.description),
+  check(entries.includes('raster/gebco-depth.tif') && gb?.bands?.[0]?.unit === 'm' && gb['proj:code'] === 'EPSG:4326' && /GEBCO 2026/.test(gb.description),
     `GIS export: GEBCO's depths as values (${gb ? `${gb['proj:shape'].join(' × ')} cells, ${/level \d+|own grid/.exec(gb.description)?.[0]}` : 'missing'})`);
+  await again.close();
+});
+
+await section('the values of a Copernicus layer in the GIS export', async () => {
   // the values of a Copernicus layer, from its datasets' Zarr stores: global and Mediterranean waves
   const cv = await open('#v=7/39.5/14/0&col=waves:height&on=chart,coastline&menu=0');
   await cv.waitForTimeout(3000);
   const [dv] = await Promise.all([cv.waitForEvent('download', { timeout: 120000 }), exportItem(cv, 'zip')]);
-  const { entries: ve, item: vi } = unzip(await readFile(await dv.path()));
+  const { names: ve, item: vi } = unzip(await readFile(await dv.path()));
   const wave = (k) => vi.assets[k]?.bands?.[0];
-  check(['raster/waves-global.tif', 'raster/waves-mediterranean.tif'].every((n) => ve.some((e) => e.name === n)) && wave('raster/waves-mediterranean')?.name === 'VHM0' && wave('raster/waves-mediterranean')?.unit === 'm'
+  check(['raster/waves-global.tif', 'raster/waves-mediterranean.tif'].every((n) => ve.includes(n)) && wave('raster/waves-mediterranean')?.name === 'VHM0' && wave('raster/waves-mediterranean')?.unit === 'm'
     && vi.assets['raster/waves-mediterranean']['proj:code'] === 'EPSG:4326' && cv.errors.length === 0,
-    `GIS export: the waves' values as GeoTIFF, global and Mediterranean (${ve.filter((e) => e.name.startsWith('raster/')).map((e) => e.name).join(', ')}) ${cv.errors.join(' | ')}`);
+    `GIS export: the waves' values as GeoTIFF, global and Mediterranean (${ve.filter((n) => n.startsWith('raster/')).join(', ')}) ${cv.errors.join(' | ')}`, true);
   await cv.close();
+});
 
-  // ---- the export says what the map shows (parity) ----
-  // one view per kind of layer; each exported, and the zip compared with the map as it was
-  const files = (zz) => { // name → bytes, every entry of a zip
-    const out = {};
-    for (let p = zz.readUInt32LE(zz.length - 6); zz.readUInt32LE(p) === 0x02014b50; p += 46 + zz.readUInt16LE(p + 28)) {
-      const name = zz.toString('utf8', p + 46, p + 46 + zz.readUInt16LE(p + 28)), at = zz.readUInt32LE(p + 42), size = zz.readUInt32LE(p + 20);
-      const body = zz.subarray(at + 30 + zz.readUInt16LE(at + 26), at + 30 + zz.readUInt16LE(at + 26) + size);
-      out[name] = zz.readUInt16LE(p + 10) ? inflateRawSync(body) : body;
-    }
-    return out;
-  };
-  const pngFields = (b) => { // a PNG's size and iTXt text fields
-    const f = { width: b.readUInt32BE(16), height: b.readUInt32BE(20) };
-    for (let p = 8; p < b.length;) {
-      const n = b.readUInt32BE(p), type = b.toString('latin1', p + 4, p + 8);
-      if (type === 'iTXt') { const parts = b.subarray(p + 8, p + 8 + n).toString('utf8').split('\0'); f[parts[0]] = parts.at(-1); }
-      if (type === 'IEND') break;
-      p += n + 12;
-    }
-    return f;
-  };
+await section('export parity', async () => {
+  // the export says what the map shows: one view per kind of layer; each exported, and the zip compared
+  // with the map as it was
   const PARITY = [
     ['density and depth, no time', '#v=7/37.5/14/0&on=chart,coastline,depth,traffic,legend'],
     ['NASA daily', '#v=5/40/10/0&col=gibs:terra&on=chart,coastline'],
@@ -376,9 +407,12 @@ try {
     if (chart.width !== seen.canvas[0] || chart.height !== seen.canvas[1]) wrong.push(`chart.png ${chart.width}×${chart.height} ≠ map ${seen.canvas.join('×')}`);
     if (dataText && !chart.Description?.includes(dataText)) wrong.push(`chart.png says "${chart.Description}", not "${dataText}"`);
     if (chart.Copyright !== pr['chart:attribution']) wrong.push('chart.png and item.json credit differently');
-    check(!wrong.length && !pp.errors.length, `export parity, ${what}: ${wrong.join('; ') || `${layers.length} layers, ${pr.datetime}`} ${pp.errors.join(' | ')}`);
+    check(!wrong.length && !pp.errors.length, `export parity, ${what}: ${wrong.join('; ') || `${layers.length} layers, ${pr.datetime}`} ${pp.errors.join(' | ')}`, true);
     await pp.close();
   }
+});
+
+await section('EMODnet and the depth sources', async () => {
   // EMODnet: depth and its values, seabed substrate with its classes, the human activities overlays
   const em = await open('#v=9/52.6/3.2/0&on=chart,coastline,emodnetdepth,substrate,cables,windfarms,wrecks,worlddensity,depthsource,legend&menu=0');
   await em.waitForTimeout(3000);
@@ -387,13 +421,16 @@ try {
   const [de] = await Promise.all([em.waitForEvent('download', { timeout: 120000 }), exportItem(em, 'zip')]);
   const emFiles = files(await readFile(await de.path())), emItem = JSON.parse(emFiles['item.json']);
   check(!emBroken.length && !em.errors.length && /Sand/.test(emClasses) && emFiles['raster/emodnet-depth.tif'] && emItem.assets['raster/emodnet-depth']?.bands?.[0]?.unit === 'm',
-    `EMODnet and World Bank layers load; substrate classes (${emClasses.slice(0, 60)}…); the depth values in the GIS export ${emBroken.join(', ')} ${em.errors.join(' | ')}`);
+    `EMODnet and World Bank layers load; substrate classes (${emClasses.slice(0, 60)}…); the depth values in the GIS export ${emBroken.join(', ')} ${em.errors.join(' | ')}`, true);
   // where GEBCO's depths come from: its layer draws, its codes go in the GIS export
   const src = emItem.assets['raster/gebco-source'];
   check(emFiles['raster/gebco-source.tif'] && /type identifier/.test(src?.description || '') && src?.['proj:code'] === 'EPSG:4326'
     && (await em.evaluate(() => /Surveyed/.test(document.querySelector('#legends canvas[data-legend=depthsource]')?.getAttribute('aria-label') || ''))),
     `depth sources (GEBCO): drawn with its legend, its codes in the GIS export (${src ? src['proj:shape'].join(' × ') : 'missing'})`);
   await em.close();
+});
+
+await section('the depth on a click', async () => {
   // a click on the sea says its depth (GEBCO, rounded towards shallower) and its source; on land, nothing
   const dp = await open('#v=9/43.9/8.3/0&on=chart,coastline,depth,isobaths&menu=0');
   const at = async (lng, lat) => {
@@ -408,6 +445,9 @@ try {
   const ink = await dp.evaluate(() => [map.getPaintProperty('isobaths', 'line-color'), map.getStyle().layers.find((l) => l.id === 'depth').maxzoom]);
   check(Array.isArray(ink[0]) && ink[0][0] === 'step' && ink[0][3] === ink[1] && ink[0][4] === '#335f97', `isobaths: the shading's colours up to zoom ${ink[1]}, its deepest blue above (${JSON.stringify(ink[0]).slice(0, 80)})`);
   await dp.close();
+});
+
+await section('seagrass', async () => {
   // seagrass: its tiles from the bucket draw meadows off Liguria, with their legend; a tile with no
   // seagrass (none stored) is empty, not an error
   const sg = await open('#v=11/44.1/9.75/0&on=chart,coastline,seagrass,legend&menu=0');
@@ -415,14 +455,19 @@ try {
     document.querySelector('#legends canvas[data-legend=seagrass]')?.getAttribute('aria-label') || '']);
   check(sgDrawn > 0 && /Posidonia oceanica/.test(sgLegend) && !sg.errors.length, `seagrass: ${sgDrawn} features drawn, with its legend ${sg.errors.join(' | ')}`);
   await sg.close();
+});
+
+await section('maritime zones', async () => {
   // Marine Regions' maritime limits load, with their legend (line types, from its WMS)
   const mz = await open('#v=6/40/16/0&on=chart,coastline,maritime,legend&menu=0');
   await mz.waitForFunction(() => /Median line/.test(document.querySelector('#legends canvas[data-legend=maritime]')?.getAttribute('aria-label') || ''), null, { timeout: 30000 }).catch(() => {});
   const [mzBroken, mzLegend] = await mz.evaluate(() => [[...document.querySelectorAll('.item.error, .item.partial')].map((r) => r.title), document.querySelector('#legends canvas[data-legend=maritime]')?.getAttribute('aria-label') || '']);
-  check(!mzBroken.length && !mz.errors.length && /Median line/.test(mzLegend), `maritime zones load, with their legend (${mzLegend.slice(0, 60)}…) ${mzBroken.join(', ')} ${mz.errors.join(' | ')}`);
+  check(!mzBroken.length && !mz.errors.length && /Median line/.test(mzLegend), `maritime zones load, with their legend (${mzLegend.slice(0, 60)}…) ${mzBroken.join(', ')} ${mz.errors.join(' | ')}`, true);
   await mz.close();
+});
 
-  // ---- the drawing: place, edit, undo, export, New, import, restore, the exports ----
+await section('the drawing', async () => {
+  // the drawing: place, edit, undo, export, New, import, restore, the exports
   const dw = await open('#v=11/40.2/12.1/0&on=chart,coastline&menu=draw');
   await dw.evaluate(async () => { const { addLine } = await import('./draw/document.js'); drawing.change((doc) => addLine(doc, [12, 40.1], [], [12.05, 40.12], { name: 'Distance 1', guide: true, look: { text: { values: true } } })); });
   // the drawing open, as saved in this browser (one key each, the open one's in charts.drawings.current): GeoJSON
@@ -564,21 +609,19 @@ try {
     return drawing.doc.lines.every((s) => [s.start, s.end].every((e) => !e.element || (e.position[0] === at[0] && e.position[1] === at[1])));
   });
   check(follows, 'drawing: a point moved, the lines attached to it follow');
-  // Draw apart: nothing moves until ticked; a copy of the first line ticked with it: the two drawn side
-  // by side (2 px between strokes by default), the slider setting the gap; unticked, on the real line
-  // again; the totals unchanged by it
+  // Offset: a line drawn beside its geometry by MapLibre, set in pixels; its length stays real. A copy
+  // of the first line, the two selected: the field sets both
   await dw.evaluate(() => drawing.change((doc) => { doc.lines.push({ ...structuredClone(doc.lines[0]), id: 'copy1', name: 'Line 4' }); }));
-  const before = await dw.evaluate(() => drawing.apart().length);
+  const before = await dw.evaluate(() => drawing.offset().length);
   await dw.evaluate(() => drawing.select([drawing.doc.lines[0].id, 'copy1']));
-  await dw.locator('.dinspect input[aria-label="Draw apart"]').check();
-  const apart = await dw.evaluate(() => drawing.apart().length);
-  await dw.locator('.dinspect input[type=range][aria-label="Draw apart (px)"]').fill('8');
-  const gap = await dw.evaluate(() => [drawing.doc.lines[0].look.apart, drawing.doc.lines.at(-1).look.apart]);
-  await dw.locator('.dinspect input[aria-label="Draw apart"]').uncheck();
-  const flat = await dw.evaluate(async () => { const { totals } = await import('./draw/lines.js'); return [drawing.apart().length, totals(drawing.doc).all.lines]; });
-  await dw.keyboard.press('Escape');
-  check(before === 0 && apart === 2 && gap.join() === '8,8' && flat[0] === 0 && flat[1] === 4,
-    `drawing: Draw apart off until ticked (${before}); two lines together drawn side by side (${apart}), the gap set by its slider (${gap}), unticked on the real line (${flat[0]})`);
+  const offField = dw.locator('.dinspect input[aria-label="Offset (px)"]');
+  await offField.fill('-8');
+  await offField.press('Enter');
+  await dw.waitForTimeout(600);
+  const offset = await dw.evaluate(async () => { const { totals } = await import('./draw/lines.js'); return [drawing.offset().length, drawing.doc.lines[0].look.offset, drawing.doc.lines.at(-1).look.offset, totals(drawing.doc).all.lines]; });
+  const painted = await dw.evaluate(() => map.querySourceFeatures('drawzoom').filter((f) => f.properties.kind === 'path').map((f) => f.properties.off));
+  check(before === 0 && offset.join() === '2,-8,-8,4' && painted.includes(-8),
+    `drawing: Offset off until set (${before}); −8 px on the two lines selected (${offset.slice(0, 3)}), their lengths still counted (${offset[3]} lines), carried to the map (${painted})`);
   await dw.click('.tools2 button[data-tool=area]'); // Select area, a tool after Measure
   await dw.mouse.move(150, 250);
   await dw.mouse.down();
@@ -616,11 +659,11 @@ try {
   const guide = await dw.evaluate(() => drawing.doc.lines.at(-1).id);
   await dw.evaluate((id) => drawing.select([id]), guide);
   const beforeGen = await dw.evaluate(() => [drawing.doc.lines.length, drawing.undos.length]);
-  await dw.click('.dinspect button:has-text("Repeat along…")');
+  await dw.click('.dinspect button:has-text("Distribute along…")');
   const gsp = dw.locator('input[aria-label=Spacing]');
   await gsp.fill('2 km');
   await gsp.press('Enter');
-  await dw.click('.dinspect label:has-text("Connect to origins") input');
+  await dw.click('.dinspect label:has-text("Connect to roots") input');
   await dw.mouse.click(420, 700); // the circle's centre: an origin (a click on a point uses it)
   const mb = dw.locator('input[aria-label="Shortest branch"]'); // Tree: each branch at least this long
   await mb.fill('300 m');
@@ -629,9 +672,9 @@ try {
   await dw.click('.dinspect button.done:has-text("Create")');
   const gen = await dw.evaluate(() => {
     const part = (v) => drawing.doc.lines.filter((s) => s.properties.some((p) => p.key === 'part' && p.value === v)).length;
-    const rules = (k) => drawing.doc.rules.filter((r) => r.kind === k), a = rules('repeat')[0], c = rules('connect')[0];
+    const rules = (k) => drawing.doc.rules.filter((r) => r.kind === k), a = rules('distribute')[0], c = rules('connect')[0];
     const names = (gid) => drawing.doc.groups.filter((g) => g.groupId === gid).map((g) => g.name).sort().join();
-    return { a: rules('repeat').length, n: a?.points.length, c: rules('connect').length, subgroups: a && names(a.groupId), inCircles: a && a.points.every((x) => drawing.doc.points.find((q) => q.id === x.pointId).groupId === a.circlesId), trunks: part('trunk'), branches: part('branch'),
+    return { a: rules('distribute').length, n: a?.points.length, c: rules('connect').length, subgroups: a && names(a.groupId), inCircles: a && a.points.every((x) => drawing.doc.points.find((q) => q.id === x.pointId).groupId === a.copiesId), trunks: part('trunk'), branches: part('branch'),
       attached: drawing.doc.lines.filter((s) => s.start.element && s.end.element).length, undos: drawing.undos.length, group: drawing.selected()[0]?.kind,
       // the branches' shortest (m, near enough at this scale), the hubs: one of its own per trunk
       shortest: Math.min(...drawing.doc.lines.filter((s) => s.properties.some((p) => p.key === 'part' && p.value === 'branch')).map((s) => {
@@ -641,16 +684,16 @@ try {
   });
   await dw.locator('.dinspect h2').first().click();
   await dw.keyboard.press('Control+z');
-  const genUndone = await dw.evaluate(() => [drawing.doc.rules.filter((r) => r.kind === 'connect').length, drawing.doc.lines.length, drawing.doc.rules.filter((r) => r.kind === 'repeat').length]);
-  check(previewed[0] === gen.n && previewed[1] > 0, `drawing: Repeat along previews its points and lines before making them (${previewed})`);
+  const genUndone = await dw.evaluate(() => [drawing.doc.rules.filter((r) => r.kind === 'connect').length, drawing.doc.lines.length, drawing.doc.rules.filter((r) => r.kind === 'distribute').length]);
+  check(previewed[0] === gen.n && previewed[1] > 0, `drawing: Distribute along previews its points and lines before making them (${previewed})`);
   check(gen.a === 1 && gen.n > 1 && gen.c === 1 && gen.trunks > 0 && gen.branches > 0 && gen.attached >= gen.trunks + gen.branches && gen.undos === beforeGen[1] + 1 && gen.group === 'group'
-    && genUndone.join() === `0,${beforeGen[0]},0`, `drawing: Repeat along and Connect in one form, one undo step, the group selected (${gen.n} points, ${gen.trunks} + ${gen.branches} lines)`);
-  check(gen.subgroups === 'Circles,Connection' && gen.inCircles, `rules: Repeat along's own group holds Circles (its copies) and Connection (${gen.subgroups})`);
+    && genUndone.join() === `0,${beforeGen[0]},0`, `drawing: Distribute along and Connect in one form, one undo step, the group selected (${gen.n} points, ${gen.trunks} + ${gen.branches} lines)`);
+  check(gen.subgroups === 'Connection,Copies' && gen.inCircles, `rules: Distribute along's own group holds Copies and Connection (${gen.subgroups})`);
   check(gen.minBranch === 300 && gen.shortest >= 297 && gen.hubs === gen.trunks && gen.branches === gen.n,
     `drawing: Tree, a hub of its own per trunk, a branch to every point, each at least the 300 m set (${Math.round(gen.shortest)} m)`);
   // points round a circle: a circle's inspector offers them; they follow it when it grows
   const arcOf = await dw.evaluate(() => { const x = drawing.doc.points.at(-1); drawing.select([x.id]); return x.id; });
-  await dw.click('.dinspect button:has-text("Repeat along…")');
+  await dw.click('.dinspect button:has-text("Distribute along…")');
   await dw.click('.dinspect [aria-label="Points by"] button:has-text("Count")');
   const gcount = dw.locator('input[aria-label=Count]');
   await gcount.fill('6');
@@ -658,18 +701,18 @@ try {
   await dw.click('.dinspect button.done:has-text("Create")');
   const onArc = await dw.evaluate(async (id) => {
     const { inverse } = await import('./geodesy.js');
-    const a = drawing.doc.rules.find((x) => x.kind === 'repeat' && x.along.element === id);
+    const a = drawing.doc.rules.find((x) => x.kind === 'distribute' && x.along.element === id);
     drawing.change((doc) => { doc.points.find((x) => x.id === id).parts[0].radius *= 2; });
     const c2 = drawing.doc.points.find((x) => x.id === id), r = c2.parts[0].radius;
     return a.points.map((x) => Math.round(inverse(c2.position, drawing.doc.points.find((n) => n.id === x.pointId).position).s / r * 100) / 100);
   }, arcOf);
   check(onArc.length === 6 && onArc.every((k) => k === 1), `drawing: points along a circle, following it when its radius doubles (${onArc})`);
   // a copy selected: the rule it was made by, Select all selects every copy
-  await dw.evaluate((id) => { const a = drawing.doc.rules.find((x) => x.kind === 'repeat' && x.along.element === id); drawing.select([a.points[0].pointId]); }, arcOf);
+  await dw.evaluate((id) => { const a = drawing.doc.rules.find((x) => x.kind === 'distribute' && x.along.element === id); drawing.select([a.points[0].pointId]); }, arcOf);
   const madeBy = await dw.locator('.dinspect .frow:has(.flabel:text-is("Made by")) .fvalue').textContent().catch(() => '');
   await dw.click('.dinspect button:has-text("Select all")'); // under Made by
   const allCopies = await dw.evaluate(() => drawing.sel.size);
-  check(/Repeat along .* · 6 copies/.test(madeBy) && allCopies === 6, `rules: a copy says what made it; Select all selects every copy (${madeBy}; ${allCopies})`);
+  check(/Distribute along .* · 6 copies/.test(madeBy) && allCopies === 6, `rules: a copy says what made it; Select all selects every copy (${madeBy}; ${allCopies})`);
   await dw.keyboard.press('Escape');
   await dw.keyboard.press('Control+z');
   await dw.keyboard.press('Control+z');
@@ -813,7 +856,7 @@ try {
   await dw.selectOption('.dinspect select[aria-label="Totals by"]', 'kind');
   const byKind = await dw.evaluate(() => [...document.querySelectorAll('.dinspect .vtable.totals td:first-child')].map((td) => td.textContent));
   check(byKind.includes('“x”') && byKind.includes('No kind'), `drawing: a property added in Data, the totals by its key (${byKind.join(', ')})`);
-  const pointed = await dw.evaluate(async () => { const { anchorAt } = await import('./draw/labels.js'); return anchorAt(drawing.doc, drawing.doc.labels[0].anchor).position; });
+  const pointed = await dw.evaluate(async () => { const { resolve } = await import('./draw/attach.js'); return resolve(drawing.doc, drawing.doc.labels[0].anchor).position; });
   await dw.evaluate((id) => drawing.remove([id]), nid);
   const freed = await dw.evaluate(() => drawing.doc.labels[0]?.anchor);
   check(!freed?.element && freed?.position?.[0] === pointed[0] && freed.position[1] === pointed[1], 'labels: the point deleted, its label stays, free, where it pointed');
@@ -881,14 +924,12 @@ try {
   check(prof[0] > 0 && /along the seabed/.test(prof[1]) && deepLength > 25000, `a line's depth profile: the chart and the length along the seabed (${prof[1]})`);
   check(!dw.errors.length, `drawing: no errors ${dw.errors.join(' | ')}`);
   await dw.close();
+});
 
-  // ---- with a finger, on a phone (drawing-ui.md §1): the sheet's heights, the touch row, handles ----
+await section('with a finger, on a phone', async () => {
+  // with a finger, on a phone (drawing-ui.md §1): the sheet's heights, the touch row, handles
   const fctx = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
-  const fp = await fctx.newPage();
-  fp.errors = [];
-  fp.on('pageerror', (e) => fp.errors.push(e.message));
-  await fp.goto(`${base}#v=11/40.2/12.1/0&on=chart,coastline&menu=draw`);
-  await fp.waitForFunction(() => window.map?.loaded?.(), null, { timeout: 90000 });
+  const fp = await open('#v=11/40.2/12.1/0&on=chart,coastline&menu=draw', fctx);
   const sheet = () => fp.evaluate(() => { const c = document.querySelector('#panel').classList; return c.contains('compact') ? 'compact' : c.contains('half') ? 'half' : 'full'; });
   await fp.evaluate(() => drawing.setVariant('shape', 'circle'));
   const atTool = await sheet();
@@ -923,11 +964,6 @@ try {
   check(handles === 1.75 && after[0] === rBefore && !after[1], `finger: handles drawn larger (${handles}); a second finger during a drag puts it back (${rBefore} → ${after[0]})`);
   check(!fp.errors.length, `finger: no errors ${fp.errors.join(' | ')}`);
   await fctx.close();
-} catch (err) {
-  check(false, `smoke run crashed: ${err.message.split('\n').filter((l) => l.trim()).slice(0, 8).map((l) => l.trim()).join(' / ')} (${err.stack?.split('\n').find((l) => l.includes('smoke.mjs'))?.trim() ?? 'where unknown'})`);
-} finally {
-  await browser.close();
-  server.close();
-}
-console.log(failures.length ? `\n${failures.length} failed` : '\nall passed');
-process.exit(failures.length ? 1 : 0);
+});
+
+await finish();

@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 // EMODnet Seabed Habitats' seagrass (the Essential Ocean Variable, 2025) as vector tiles for Charts:
-// its WMS takes a minute or more a tile, so the data is cut into tiles once and published at
-// geodata.makaw.org/seagrass-2025/{z}/{x}/{y}.pbf (upload: SETUP.md beside the data); the page
-// reads them through its seagrass:// handler (app.js), asking only for the tiles the index lists.
+// its WMS takes a minute or more a tile, so the data is cut into tiles once and published as plain
+// files at geodata.makaw.org/seagrass-2025/{z}/{x}/{y}.pbf (README: Hosting the data yourself); the
+// page reads them through its seagrass:// handler (app.js), asking only for the tiles the index lists.
 //
 //   node tools/seagrass.mjs download DIR       the product's zip into DIR, unzipped into DIR/shp
 //   node tools/seagrass.mjs build DIR          DIR/tiles/seagrass-2025/: tiles, zooms 7–13, and
@@ -14,6 +14,7 @@
 // and points, property c (catalog.js SEAGRASS_CLASSES). Cut a zoom-5 region at a time (geojson-vt,
 // then vt-pbf), so that memory holds one region's features, not Europe's.
 import { openSync, readSync, closeSync, mkdirSync, writeFileSync, existsSync, statSync, createWriteStream } from 'node:fs';
+import { tileXY } from '../site/geo.js';
 import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { Readable } from 'node:stream';
@@ -78,8 +79,8 @@ function* shapes(path) {
 }
 
 // ---- tiles -------------------------------------------------------------------------------------
-const tileX = (lon, z) => Math.floor(((lon + 180) / 360) * 2 ** z);
-const tileY = (lat, z) => { const s = Math.sin((Math.max(-85, Math.min(85, lat)) * Math.PI) / 180); return Math.floor((0.5 - Math.log((1 + s) / (1 - s)) / (4 * Math.PI)) * 2 ** z); };
+const tileX = (lon, z) => Math.floor(tileXY(lon, 0, z).x);
+const tileY = (lat, z) => Math.floor(tileXY(0, Math.max(-85, Math.min(85, lat)), z).y);
 
 // a shapefile's polygons are rings, outer ones clockwise and holes anticlockwise: GeoJSON wants
 // each outer ring followed by its holes, so a polygon of several outer rings becomes several

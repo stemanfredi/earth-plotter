@@ -1,14 +1,15 @@
 // The map's style, from the catalogue: every source, and every layer in draw order. A layer belongs
 // to a menu item through metadata.item; layers of a hidden item are set to visibility:none, and
 // MapLibre requests no tiles for a source whose layers are all hidden.
-import { DEM_SEA, DEM_LAND, OMT_TILEJSON, DENSITY, densityTiles, OVERLAYS, OVERLAY_MAXZOOM, OVERLAY_CREDIT, OVERLAY_FAINT, HA_CREDIT, esriAttribution, GIBS, gibsTiles, CMEMS, ITEMS, DEPTH_SCHEMES, ISOBATH_ZOOMS, DEPTH_LEVELS, isMajorIsobath, NO_DEPTH, NO_DEPTH_M } from './catalog.js';
+import { DEM_SEA, DEM_LAND, OMT_TILEJSON, DENSITY, densityTiles, OVERLAYS, OVERLAY_MAXZOOM, OVERLAY_CREDIT, OVERLAY_FAINT, HA_CREDIT, esriAttribution, GIBS, gibsTiles, CMEMS, ITEMS, DEPTH_SCHEMES, ISOBATH_ZOOMS, DEPTH_LEVELS, isMajorIsobath, NO_DEPTH, NO_DEPTH_M, SEAGRASS_ZOOMS, SEAGRASS_CLASSES } from './catalog.js';
+import { HOSTS } from './hosts.js';
 
 const C = {
   land: '#f1ebdc', sea: '#ffffff', ink: '#2b3a46', inkSoft: '#5d6d79',
   noDepth: NO_DEPTH,
   water: '#a9cbe3', waterText: '#2f6690', building: '#d9d1c1', buildingEdge: '#b7ac98',
   road: '#c9bea9', roadMajor: '#b3a68e', boundary: '#8a6f8f', grid: '#6b8193',
-  isobath: '#5b8db5', contour: '#a88a62',
+  isobath: DEPTH_SCHEMES.atlas.at(-1)[1], contour: '#a88a62', // isobaths on white: the deepest blue of the depth shading
 };
 const FONT = ['Noto Sans Regular'], FONT_I = ['Noto Sans Italic'], FONT_B = ['Noto Sans Bold'];
 const NAME = ['coalesce', ['get', 'name:en'], ['get', 'name']];
@@ -27,23 +28,25 @@ function sources({ seaDemUrl, landDemUrl, isobathUrl, contourUrl, date, density 
     omt: { type: 'vector', url: OMT_TILEJSON, attribution: ATTR_OSM },
     'dem-sea': { type: 'raster-dem', tiles: [seaDemUrl], encoding: 'terrarium', tileSize: 256, maxzoom: DEM_SEA.max, attribution: ATTR_GEBCO },
     dem: { type: 'raster-dem', tiles: [landDemUrl], encoding: 'terrarium', tileSize: 256, maxzoom: DEM_LAND.max, attribution: ATTR_DEM },
+    seagrass: { type: 'vector', tiles: ['seagrass://{z}/{x}/{y}'], minzoom: SEAGRASS_ZOOMS[0], maxzoom: SEAGRASS_ZOOMS[1], bounds: [-50, 25, 45, 72],
+      attribution: '<a href="https://emodnet.ec.europa.eu/en/seabed-habitats">EMODnet Seabed Habitats</a>' },
     isobaths: { type: 'vector', tiles: [isobathUrl], maxzoom: 12, attribution: ATTR_GEBCO }, // 512 px tiles: z12 is cut with the z12 coastline
     contours: { type: 'vector', tiles: [contourUrl], maxzoom: DEM_LAND.max, attribution: ATTR_DEM },
     eox16: { type: 'raster', tileSize: 256, maxzoom: 14, attribution: 'Sentinel-2 cloudless 2016 by <a href="https://s2maps.eu">EOX IT Services GmbH</a> (contains modified Copernicus Sentinel data 2016), CC BY 4.0',
-      tiles: ['https://tiles.maps.eox.at/wmts/1.0.0/s2cloudless_3857/default/g/{z}/{y}/{x}.jpg'] },
+      tiles: [`${HOSTS.eox}/wmts/1.0.0/s2cloudless_3857/default/g/{z}/{y}/{x}.jpg`] },
     eox24: { type: 'raster', tileSize: 256, maxzoom: 14, attribution: 'Sentinel-2 cloudless 2024 by <a href="https://s2maps.eu">EOX IT Services GmbH</a> (contains modified Copernicus Sentinel data 2024), CC BY-NC-SA 4.0',
-      tiles: ['https://tiles.maps.eox.at/wmts/1.0.0/s2cloudless-2024_3857/default/g/{z}/{y}/{x}.jpg'] },
+      tiles: [`${HOSTS.eox}/wmts/1.0.0/s2cloudless-2024_3857/default/g/{z}/{y}/{x}.jpg`] },
     // Esri asks for "Powered by Esri" plus the service's own copyrightText (app.js refreshes it from
     // ESRI_META; this is the text it had on 2026-10-20)
     esri: { type: 'raster', tileSize: 256, maxzoom: 18, attribution: esriAttribution('Source: Esri, Vantor, Earthstar Geographics, and the GIS User Community'),
-      tiles: ['https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'] },
+      tiles: [`${HOSTS.esri}/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}`] },
     // the grid is 1 km: beyond zoom 10 the map overzooms instead of asking for more tiles
     traffic: { type: 'raster', tileSize: 256, maxzoom: 10, tiles: densityTiles('traffic', ...(density.traffic || ['all', DENSITY.traffic.defaultPeriod])),
       attribution: HA_CREDIT },
     routes: { type: 'raster', tileSize: 256, maxzoom: 10, tiles: densityTiles('routes', ...(density.routes || ['all', DENSITY.routes.defaultPeriod])),
       attribution: '<a href="https://www.emsa.europa.eu/">EMSA</a> (CC BY 4.0) via ' + HA_CREDIT },
     seamarks: { type: 'raster', tileSize: 256, minzoom: 6, maxzoom: 18, attribution: '<a href="https://openseamap.org">OpenSeaMap</a>',
-      tiles: ['https://tiles.openseamap.org/seamark/{z}/{x}/{y}.png'] },
+      tiles: [`${HOSTS.openseamap}/seamark/{z}/{x}/{y}.png`] },
     ...Object.fromEntries(Object.entries(OVERLAYS).flatMap(([item, vs]) => Object.entries(vs).map(([v, tiles]) => [`ov-${item}-${v}`,
       { type: 'raster', tileSize: 256, maxzoom: OVERLAY_MAXZOOM[item] ?? 18, tiles, attribution: OVERLAY_CREDIT[item] || HA_CREDIT }]))),
     // GEBCO's type identifier grid, coloured by gebco.js (gebco-tid://); level 0 from zoom 8, then magnified
@@ -93,6 +96,7 @@ export function depthRamp(stops) {
 // the isobaths drawn from each zoom where lines are added (catalog.js ISOBATHS), one layer each
 // (filters can't use zoom): [minzoom, maxzoom, depths]
 const ISOBATH_RANGES = ISOBATH_ZOOMS.map(([z, ds], k, a) => [z, a[k + 1]?.[0] ?? 24, ds]);
+const SEAGRASS_COLOUR = ['match', ['get', 'c'], ...SEAGRASS_CLASSES.flatMap(({ c, colour }) => [c, colour]), SEAGRASS_CLASSES.at(-1).colour];
 const DEPTH = ['abs', ['get', 'ele']];
 const isobathFilter = (depths) => ['all', ['<', ['get', 'ele'], 0], ['in', DEPTH, ['literal', depths]]];
 const MAJOR = ['in', DEPTH, ['literal', DEPTH_LEVELS.filter(isMajorIsobath)]];
@@ -137,11 +141,23 @@ function layers() {
     ...Object.keys(GIBS).map((k) => ({ ...raster(`gibs-${k}`, 'gibs', k), source: `gibs-${k}` })),
     // colours, then the layers that can draw arrows (currents, then wind), whose arrows go over them
     ...Object.keys(CMEMS).sort((a, b) => ARROWS_LAST(a) - ARROWS_LAST(b)).map((id) => raster(`cmems-${id}`, id)),
+    raster('traffic', 'traffic'), raster('routes', 'routes'), ...overlayLayers(['worlddensity']),
+    // seagrass: meadows as fills, a thin edge of their colour once they are large enough to need
+    // one; survey points as dots from zoom 10, where they no longer merge into smudges
+    { id: 'seagrass', type: 'fill', source: 'seagrass', 'source-layer': 'seagrass', ...m('seagrass'),
+      filter: ['==', ['geometry-type'], 'Polygon'], paint: { 'fill-color': SEAGRASS_COLOUR, 'fill-outline-color': SEAGRASS_COLOUR } },
+    { id: 'seagrass-points', type: 'circle', source: 'seagrass', 'source-layer': 'seagrass', minzoom: 10, ...m('seagrass'),
+      filter: ['==', ['geometry-type'], 'Point'],
+      paint: { 'circle-color': SEAGRASS_COLOUR, 'circle-radius': ['interpolate', ['linear'], ['zoom'], 10, 1.5, 15, 3.5],
+        'circle-stroke-color': '#ffffff', 'circle-stroke-width': ['interpolate', ['linear'], ['zoom'], 10, 0, 13, 0.6] } },
 
-    // drawn at every zoom: above the DEM's zoom 12 the lines are magnified, not refined
+    // drawn at every zoom: above the DEM's zoom 12 the lines are magnified, not refined; above every
+    // picture that colours the sea, under what stands in it (piers, zones, cables, wrecks, seamarks).
+    // Their colour follows what is under them (app.js isobathInk). The shelf and every 1000 m a
+    // little wider: not so much that they outweigh the rest (their labels say which they are)
     ...ISOBATH_RANGES.map(([z0, z1, depths], k) => ({ id: k ? `isobaths-${k}` : 'isobaths', type: 'line', source: 'isobaths', 'source-layer': 'contours',
       minzoom: z0, maxzoom: z1, ...m('isobaths'), filter: isobathFilter(depths),
-      paint: { 'line-color': C.isobath, 'line-width': ['case', MAJOR, 0.9, 0.45] } })),
+      paint: { 'line-color': C.isobath, 'line-width': ['case', MAJOR, 0.8, 0.55] } })),
 
     // Piers and breakwaters as land at about their true width (the shore line under the water
     // fill would otherwise half-hide anything narrower than itself), above every water layer
@@ -178,8 +194,7 @@ function layers() {
       paint: { 'line-color': C.boundary, 'line-dasharray': [3, 2],
         'line-width': ['match', ['get', 'admin_level'], 2, 1.1, 0.5], 'line-opacity': ['match', ['get', 'admin_level'], 2, 0.8, 0.45] } },
 
-    raster('traffic', 'traffic'), raster('routes', 'routes'),
-    ...overlayLayers(['worlddensity', 'maritime', 'protected', 'military', 'windfarms', 'platforms', 'pipelines', 'cables', 'wrecks']),
+    ...overlayLayers(['maritime', 'protected', 'military', 'windfarms', 'platforms', 'pipelines', 'cables', 'wrecks']),
     { ...raster('seamarks', 'seamarks'), minzoom: 9 },
 
     { id: 'graticule', type: 'line', source: 'graticule', ...m('graticule'), filter: ['==', ['geometry-type'], 'LineString'],
@@ -188,8 +203,11 @@ function layers() {
     ...ISOBATH_RANGES.map(([z0, z1, depths], k) => ({ id: k ? `isobath-labels-${k}` : 'isobath-labels', type: 'symbol', source: 'isobaths', 'source-layer': 'contours',
       minzoom: Math.max(6, z0), maxzoom: z1, ...m('isobaths'), filter: isobathFilter(depths),
       layout: { 'symbol-placement': 'line', 'text-field': ['concat', ['to-string', DEPTH], ' m'],
-        // coarse contours wiggle: allow more bend and place often, or long stretches go unlabelled
-        'text-font': FONT, 'text-size': 10, 'symbol-spacing': 220, 'text-max-angle': 55 },
+        // coarse contours wiggle: allow more bend and place often, or long stretches go unlabelled;
+        // zoomed in, where lines run close along a coast, each label further along its line and
+        // kept clear of its neighbours' (padding), so fewer of them crowd together
+        'text-font': FONT, 'text-size': 10, 'symbol-spacing': ['interpolate', ['linear'], ['zoom'], 8, 220, 13, 600], 'text-max-angle': 55,
+        'text-padding': ['interpolate', ['linear'], ['zoom'], 8, 2, 13, 24] },
       paint: { 'text-color': C.isobath, ...HALO } })),
     { id: 'contour-labels', type: 'symbol', source: 'contours', 'source-layer': 'contours', minzoom: 11, ...m('contours'),
       filter: ['all', ['>', ['get', 'ele'], 0], ['==', ['get', 'level'], 1]],
@@ -235,10 +253,15 @@ function layers() {
   return L;
 }
 
+// the colour pictures drawn above EMODnet depth and under the isobaths (layers() puts them there):
+// over one, the isobaths take a dark ink (app.js isobathInk). Ocean data is the same; seagrass, whose
+// meadows leave the depth shading seen round them, is not
+export const SEA_PICTURES = ['substrate', 'traffic', 'routes', 'worlddensity'];
+
 export function buildStyle(opts) {
   return {
     version: 8,
-    glyphs: 'https://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf',
+    glyphs: `${HOSTS.openfreemap}/fonts/{fontstack}/{range}.pbf`,
     sources: sources(opts),
     layers: layers(),
   };
@@ -246,6 +269,6 @@ export function buildStyle(opts) {
 
 // Paint property that an item's opacity slider drives, per layer type.
 export const OPACITY_PROP = {
-  raster: 'raster-opacity', fill: 'fill-opacity', line: 'line-opacity', symbol: 'text-opacity',
+  raster: 'raster-opacity', fill: 'fill-opacity', line: 'line-opacity', symbol: 'text-opacity', circle: 'circle-opacity',
   'color-relief': 'color-relief-opacity', hillshade: 'hillshade-exaggeration',
 };

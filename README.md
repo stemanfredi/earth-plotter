@@ -5,7 +5,7 @@
 A world chart in a single static web page. It combines an OpenStreetMap base
 map with satellite imagery, depth shading and isobaths, seamarks, shipping
 density, Copernicus Marine ocean data (sea state, water properties, satellite
-observations, water quality) and NASA daily imagery, and adds geodesic measuring tools. A click on the sea gives its depth (GEBCO's, rounded towards shallower) and how it was obtained. Every source
+observations, water quality) and NASA daily imagery, and adds geodesic measuring tools and drawings. A click on the sea gives its depth (GEBCO's, rounded towards shallower) and how it was obtained. Every source
 is public and needs no API key. There is no build step and no backend.
 
 **Not for navigation.** Positions, coastlines and depths come from open
@@ -14,34 +14,87 @@ from soundings.
 
 ## Features
 
-Layers are grouped by task, each with an ⓘ for its source, licence and
-resolution. Depth shading and isobaths end at the OpenStreetMap coastline.
-Ruler, area and range ring are geodesic on WGS 84, in kilometres or nautical
-miles, with bearings (true) beside each leg when switched on. Search takes place names or coordinates. The link reopens the exact
-view, and the PNG export is the map as on screen, without the controls: legends and credits bottom left, its centre, zoom, projection and the data's time beside the scale bottom right; the same details, the credits and a not-for-navigation disclaimer are also in the PNG's text fields. The GIS export
-is a zip: the map as a georeferenced PNG (world file, Web
-Mercator), the PNG export, one GeoJSON file per vector layer drawn (`vector/`:
-clipped to the view, pieces from neighbouring tiles joined) plus the
-measurements, the depth and land elevation in metres as GeoTIFF (`raster/`, when
-depth shading or relief and contours are drawn: the elevation tiles the map
-draws, at their resolution, over the view's bounding box), the values of each
-Copernicus layer drawn as GeoTIFF (`raster/<layer>-global.tif`,
-`-mediterranean.tif`: read from Copernicus Marine's public Zarr stores at the
-time and depth drawn, in each dataset's own latitude/longitude grid over the
-view's bounding box, arrows as eastward and northward bands), GEBCO's depth
-under the depth shading as GeoTIFF (`raster/gebco-depth.tif`, its own 15″ grid,
-or its means of 2 × 2, 4 × 4 … cells for wider views; with *Depth sources*, GEBCO's
-codes for how each depth was obtained, `raster/gebco-source.tif`), EMODnet's depth
-as GeoTIFF (`raster/emodnet-depth.tif`, 1/16 arc-minute, for views up to about
-4° wide; imagery, density and the other EMODnet layers are in the pictures only), and a [STAC](https://stacspec.org) Item (`item.json`) with the
-view's footprint, the time of the data shown (its `datetime`; the export's own is `created`), the layers drawn (what each draws: colours or arrows, its time and depth), their sources, licences and files. QGIS
-opens every file straight from the zip.
+- **Layers**, grouped by task, each with an ⓘ for its source, licence and
+  resolution. Depth shading and isobaths end at the OpenStreetMap coastline.
+- **Measuring**, geodesic on WGS 84 (distance, area, ring), in kilometres or
+  nautical miles (the switch beside the scale), with true bearings beside each
+  leg when switched on; both are kept in the link. A measurement is a guide
+  showing its values, made with the drawing's own tools and part of the drawing.
+- **Drawing** (Tools): points (a symbol), circles, rings and sectors about a
+  centre, outlines of real size (rectangles, triangles, ellipses, vehicle
+  outlines), polygons, lines (geodesic, or curved: a curve's length is the drawn
+  line's), labels, and groups whose style each member takes unless it has its
+  own.
+  - Every shape is placed in two clicks, the centre then its size (a sector in
+    three, a polygon corner by corner).
+  - Line ends attach to points, to outlines' and polygons' corners and edges and
+    to other lines' vertices, and follow them; snapping finds them.
+  - Circles are repeated along a line or an arc and connected to origins in trees
+    or chains.
+  - Everything is named, edited in small tables and dragged on the map, with
+    lengths, areas and totals; a line also has its depth profile and its length
+    along the seabed.
+  - Lines that run together can be drawn a few pixels apart (lengths stay real),
+    and small outlines are shown enlarged.
+  - Drawings stay in the browser, several of them, saved as you go and never sent
+    anywhere. Export › Drawing (GeoJSON) writes one as a `.geojson` file
+    (`docs/drawing-format.md`) with its view and layers, and Import adds one back
+    (or any GeoJSON).
+- **Search** takes place names or coordinates. **The link** reopens the exact
+  view and layers, never a drawing.
+- **Picture (PNG):** the map as on screen, without the controls: legends and
+  credits bottom left; its centre, zoom, projection and the data's time beside
+  the scale bottom right. The same details, the credits and a
+  not-for-navigation disclaimer are also in the PNG's text fields.
+- **GIS data:** a zip that QGIS opens file by file:
+  - the map as a georeferenced PNG (world file, Web Mercator), and the PNG export;
+  - one GeoJSON file per vector layer drawn (`vector/`: clipped to the view,
+    pieces from neighbouring tiles joined), plus the drawing as drawn and its
+    `.geojson` file, to import again;
+  - the depth and land elevation in metres as GeoTIFF (`raster/`, when depth
+    shading or relief and contours are drawn: the elevation tiles the map draws,
+    at their resolution, over the view's bounding box);
+  - the values of each Copernicus layer drawn as GeoTIFF
+    (`raster/<layer>-global.tif`, `-mediterranean.tif`: read from Copernicus
+    Marine's public Zarr stores at the time and depth drawn, in each dataset's own
+    latitude/longitude grid over the view's bounding box, arrows as eastward and
+    northward bands);
+  - GEBCO's depth under the depth shading (`raster/gebco-depth.tif`, its own 15″
+    grid, or its means of 2 × 2, 4 × 4 … cells for wider views; with *Depth
+    sources*, GEBCO's codes for how each depth was obtained,
+    `raster/gebco-source.tif`);
+  - EMODnet's depth (`raster/emodnet-depth.tif`, 1/16 arc-minute, for views up to
+    about 4° wide; imagery, density and the other EMODnet layers are in the
+    pictures only);
+  - a [STAC](https://stacspec.org) Item (`item.json`) with the view's footprint,
+    the time of the data shown (its `datetime`; the export's own is `created`),
+    the layers drawn (what each draws: colours or arrows, its time and depth),
+    their sources, licences and files.
 
 One limit of the GeoJSON: OpenMapTiles merges neighbouring buildings into one
 feature whose parts touch, which is not valid geometry to begin with. The export
 unions those parts, but now and then a building feature comes out still touching
-itself (3 of 49 in central Taranto at zoom 14.5). GIS tools open these files;
+itself (a few in a dense city centre). GIS tools open these files;
 QGIS's *Fix geometries* repairs them.
+
+The drawing's file is plain GeoJSON, so any GIS opens it, with these limits:
+
+- Other tools see points, lines and polygons, the user's properties as columns,
+  and the common style names (`stroke`, `stroke-width`, `stroke-opacity`, `fill`,
+  `fill-opacity`). They do not see radii, sectors, outlines or symbols: those are
+  properties of a point (the GIS export has them drawn, as polygons).
+- Legs are geodesics in the app; GeoJSON calls a leg straight in longitude and
+  latitude. A long east-west leg is drawn slightly apart elsewhere (about 40 m at
+  the middle of a 50 km leg at 40°N; nothing for a leg running north-south).
+  Curved lines show straight through their vertices.
+- Groups, the view, attachments, labels' placement and what Repeat along and
+  Connect keep linked are in the app's own member, `charts`, which other tools
+  ignore and keep or drop as they do.
+- The app reads its own files of format version 1; a file of another version
+  is refused.
+- A file edited elsewhere and read back: an attached line end moves to what it is
+  attached to (the report says how many); a nested value a GIS turned into text is
+  read again.
 
 ## Data sources
 
@@ -57,13 +110,13 @@ them from each provider, and each layer stays under its provider's licence.
 | Relief shading, land contours | AWS Terrain Tiles (Terrarium) | Open data, with attribution per source |
 | Seamarks | OpenSeaMap | CC BY-SA 2.0 |
 | EMODnet depth (Europe) | EMODnet Bathymetry (tiles; its values from its Zarr store, listed in EDITO's catalogue) | CC BY 4.0 |
-| Seabed substrate | EMODnet Geology | CC BY 4.0 |
+| Seabed substrate (Europe) | EMODnet Geology | CC BY 4.0 |
 | Seagrass (Europe) | EMODnet Seabed Habitats, seagrass cover 2025, cut into tiles at `geodata.makaw.org` (`tools/seagrass.mjs`); its Caribbean part (CC BY-NC) left out | CC BY 4.0 |
 | Maritime zones | Marine Regions (Flanders Marine Institute, VLIZ): maritime boundaries and zones | CC BY 4.0; not for legal or navigational use |
 | Wrecks, cables, pipelines, offshore installations, wind farms, military and protected areas | EMODnet Human Activities (wrecks: UKHO) | CC BY 4.0 |
-| Vessel density | EMODnet Human Activities | EMODnet open data, attribution requested |
+| Vessel density (Europe) | EMODnet Human Activities | EMODnet open data, attribution requested |
 | Vessel density (world) | World Bank Group and IMF, Global Shipping Traffic Density (the World Bank's tiles) | CC BY 4.0 |
-| Route density | EMSA, via EMODnet Human Activities | CC BY 4.0 |
+| Route density (Europe) | EMSA, via EMODnet Human Activities | CC BY 4.0 |
 | Sea state, water properties, satellite observations, water quality | Copernicus Marine Service | Copernicus Marine licence: free, attribution required |
 | NASA daily (true colour) | NASA EOSDIS GIBS | NASA open data |
 | Place search | Photon (komoot), OpenStreetMap data | ODbL |
@@ -123,14 +176,18 @@ on-screen credits and the PNG list only the sources that are drawn.
 - No request sends a `Referer` header, including requests from MapLibre's and
   the clipping worker's threads.
 - A Content-Security-Policy limits the page to the pinned CDN packages and the
-  provider hosts listed in `tools/deps.mjs`.
+  provider hosts listed in `site/hosts.js`. The libraries come from jsDelivr,
+  which sees each visit as any CDN does.
 - Tile requests necessarily tell each provider which area is being viewed. A
   hidden layer makes no requests. GEBCO's depths and the seagrass come from this project's own
   bucket, `geodata.makaw.org`. A GIS export with Copernicus layers drawn
   also reads their datasets from Copernicus Marine's catalogue and stores.
+- Drawings stay in the browser. A line's depth profile, when opened, reads the
+  depth tiles along that line; nothing else of a drawing makes a request.
 - Coordinates typed into the search box are parsed in the page and never sent.
   Place names are sent to Photon as you type, along with the map centre rounded
-  to 0.1°. The results list says so.
+  to 0.1°. The results list says so. For a place that should not be named, type
+  its coordinates.
 
 ## How it works
 
@@ -171,7 +228,7 @@ development.
 | `site/catalog.js` | Menu items and their provenance, data sources, datasets. |
 | `site/style.js` | The map style built from the catalogue: sources, layers in draw order. |
 | `site/app.js` | Map setup, state and URL, panels, legends, graticule, credits; assembles the exports. |
-| `site/search.js` | Place search (Photon) and coordinates. |
+| `site/search.js` | Place search (Photon) and coordinates (never sent, complete or not). |
 | `site/png.js` | The PNG export's picture and text fields. |
 | `site/values.js` | Layers as data for the GIS export: Copernicus, GEBCO and EMODnet values from their Zarr stores. |
 | `site/gebco.js` | The sea's depths for the elevation tiles, from GEBCO's Zarr store. |
@@ -182,15 +239,32 @@ development.
 | `site/cmems.js` | Copernicus Marine tiles (regional over global), time steps and depth levels, legends. |
 | `site/zip.js` | Zip writer (the browser's own deflate). |
 | `site/clip.js`, `site/clip-worker.js` | Elevation tiles cut to the OSM coastline, in a Web Worker. |
-| `site/measure.js` | Geodesic ruler, area and range ring. |
+| `site/geodesy.js` | Geodesics on WGS 84 (GeographicLib) for every measured and drawn length; a local planar frame about a point (`localFrame`). |
+| `site/tools.js`, `site/keys.js`, `site/fields.js`, `site/listrow.js`, `site/menu.js` | The keys of what is being drawn, every key, the fields, a list row, the rail's menus. |
 | `site/hosts.js` | Every host the page may reach: read by the catalogue and by `tools/deps.mjs` (the Content-Security-Policy). |
+| `site/draw/document.js`, `site/draw/check.js` | The drawing's model: points, lines, areas, labels, groups; the style cascade; operations; field checks. |
+| `site/draw/file.js` | The drawing's file: GeoJSON read (any) and written, with a report. |
+| `site/draw/attach.js`, `site/draw/snap.js` | Line ends attached to points, corners, edges and vertices; snapping. |
+| `site/draw/presets.js`, `site/draw/clipboard.js` | The user's presets (this browser only); copy, paste, duplicate. |
+| `site/draw/lines.js` | Lines: geodesic and curved legs, lengths, distance along, totals, smoothing. |
+| `site/draw/schematic.js` | Draw apart: lines kept from being drawn over others on screen (display only). |
+| `site/draw/features.js` | What the map draws, what the GIS export writes; each kind's bounds, box test and move. |
+| `site/draw/generator.js` | Repeat along a line or an arc, Connect (trees, chains), and how they follow. |
+| `site/draw/store.js`, `site/draw/saving.js` | The document's selection and undo; the drawings kept in the browser. |
+| `site/draw/drawing.js`, `site/draw/layers.js` | The drawing on the map: every tool (Measure's are its own, with Guide and Show values), the values shown while drawing, dragging, its layers. |
+| `site/draw/place.js` | What the Point and Shape tools place, sized by the second click, each named after its look ("Circle 2"). |
+| `site/draw/profile.js` | A line's depth profile and its length along the seabed, from the depths the depth shading draws. |
+| `site/draw/panel.js` | The Tools panel: the tools and their kinds, list, inspector, forms, import report. |
+| `site/draw/grid.js`, `site/draw/paste.js` | The inspector's lists as small spreadsheets; rows copied out of them and places pasted in. |
+| `site/draw/drag.js`, `site/draw/labels.js`, `site/draw/outlines.js` | Dragging geometry; labels' anchors and text; shapes' outlines. |
 | `site/legend.js` | Legend drawing. |
 | `site/format.js` | Pure formatting and parsing helpers. |
-| `site/geo.js`, `site/net.js`, `site/dom.js` | Web Mercator maths; how requests are made and shared; DOM helpers. |
+| `site/geo.js`, `site/net.js`, `site/dom.js` | Web Mercator maths and small geometry helpers (`D2R`, `norm360`, `nearestOnSegment`); how requests are made and shared; DOM helpers. |
 | `tools/deps.mjs` | Pins, hashes and checks the CDN dependencies. |
 | `tools/gebco.mjs` | GEBCO's depth grids as Zarr stores (download, build, verify), published at `geodata.makaw.org`. |
 | `tools/seagrass.mjs` | EMODnet's seagrass as vector tiles (download, build), published at `geodata.makaw.org`: its WMS takes a minute or more a tile. |
 | `test/` | Unit tests, browser tests, and the development server. |
+| `docs/` | The drawing tools: the file format and the interface. |
 
 ## Development
 

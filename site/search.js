@@ -5,6 +5,10 @@ import { dm, parseLatLon } from './format.js';
 import { FETCH } from './net.js';
 import { HOSTS } from './hosts.js';
 
+// Text that can only be coordinates, complete or not: digits with signs, separators, degree, minute
+// and second marks, hemisphere letters
+export const looksLikeCoords = (text) => /\d/.test(text) && /^[\d\s.,;:°º'"′″+\-NSEWnsew]+$/.test(text);
+
 const PHOTON = `${HOSTS.photon}/api/`;
 // what a sea chart is mostly searched for comes first: places, the coast and the sea (capes, bays,
 // straits, beaches, harbours), marinas, ferry terminals, lighthouses, piers; then the rest (streets,
@@ -16,7 +20,8 @@ const resultKind = (p) => (p.osm_key === 'highway' ? 'street' : (p.osm_value ===
 const seaFirst = ({ properties: p }) => (SEA_TAGS.some((t) => t === p.osm_key || t === `${p.osm_key}:${p.osm_value}`) ? 0 : 1);
 const ZOOM_OF = { city: 11, town: 12, village: 13, hamlet: 14, island: 11, sea: 6, ocean: 4, bay: 10, strait: 9 };
 
-export function search(map, Marker) {
+// free(): the padding that keeps a place found clear of the panel
+export function search(map, Marker, free = () => 60) {
   const q = $('#q'), qClear = $('#q-clear'), results = $('#results'), resultList = results.querySelector('ul');
   let hits = [], active = -1, searchCtl = null, searchTimer = 0, pin = null;
   function showResults(list) {
@@ -48,8 +53,11 @@ export function search(map, Marker) {
     hideResults();
     pin?.remove();
     pin = new Marker({ element: h('div', { class: 'pin', title: r.name }) }).setLngLat(r.at).addTo(map);
-    if (r.bounds) map.fitBounds(r.bounds, { padding: 60, maxZoom: 15, bearing: map.getBearing() });
-    else map.flyTo({ center: r.at, zoom: Math.max(map.getZoom(), r.zoom) });
+    if (r.bounds) map.fitBounds(r.bounds, { padding: free(), maxZoom: 15, bearing: map.getBearing() });
+    else { // centred in the part of the map left free; an offset, not padding, which the map would keep
+      const f = free(), n = (k) => (typeof f === 'number' ? f : f[k]);
+      map.flyTo({ center: r.at, zoom: Math.max(map.getZoom(), r.zoom), offset: [(n('left') - n('right')) / 2, (n('top') - n('bottom')) / 2] });
+    }
     q.blur();
   }
   async function searchPlaces(text) {
@@ -84,6 +92,9 @@ export function search(map, Marker) {
     if (ll) { // coordinates: nothing leaves the page
       searchCtl?.abort();
       showResults([{ go: true, name: `${dm(ll.lat, 'N', 'S')}  ${dm(ll.lon, 'E', 'W')}`, where: 'coordinates', at: [ll.lon, ll.lat], zoom: 11 }]);
+    } else if (looksLikeCoords(text)) { // coordinates still being typed: never sent either
+      searchCtl?.abort();
+      showResults([{ name: 'Coordinates: latitude, then longitude', where: 'kept in the page' }]);
     } else if (text.length >= 3) searchTimer = setTimeout(() => searchPlaces(text), 300);
     else hideResults();
   });

@@ -73,9 +73,9 @@ tool remembers the kind chosen last; its key pressed again, while it is on, move
 ### 2.1 Placing and drawing
 
 - **Point**: a click places one where it snaps, and selects it.
-- **Shape**, in two clicks: the centre, then its size, shown as the pointer moves. It faces north:
-  its bearing is a second step (the rotate handle, or Bearing in the inspector), so that it does not
-  swing while it is sized. The second click sets its largest part's reach, every part scaled with
+- **Shape**: the centre, then its size, shown as the pointer moves. It faces north: its bearing is
+  a second step (the stalk beyond a sector's arc or an outline's front, or Bearing in the inspector;
+  a circle or rings have no bearing), so that it does not swing while it is sized. The second click sets its largest part's reach, every part scaled with
   it: a circle's radius; rings' outermost (the others at a third and two thirds of it); an outline's
   front (half its length, its width in proportion: 100 × 50; a triangle equilateral). The second
   click on the first places the default size. A preset of the user's keeps its size: one click
@@ -101,8 +101,8 @@ tool remembers the kind chosen last; its key pressed again, while it is on, move
   values while it moves.
 - **Shift** turns the leg being drawn in 15° steps from the leg before (from north for the first, and
   for a sector's edges). **Alt** places freely: nothing snapped, nothing attached.
-- Esc or a right-click (not a right-drag) drops what is half drawn; else ends the tool; with no tool
-  on, clears the selection.
+- Esc or a right-click (not a right-drag) drops what is half drawn; else ends the tool; else cancels
+  **Attach to…** waiting for a click; else clears the selection (the Tools panel open or not).
 
 ### 2.2 Snapping and attaching
 
@@ -212,7 +212,7 @@ it.
   closing edge following; its bar: **Insert after** (halfway to the next), **Delete** (while more than
   three are left)).
 - **Line:** **Start** and **End** (attached: what to, and which vertex or edge, with **Attach to…**
-  (the next click on the map chooses again; Esc cancels) and **×**, which detaches it: the end stays where it
+  (the next click on the map chooses again; Esc or a right-click cancels) and **×**, which detaches it: the end stays where it
   is; free: its position, and **Attach to…**); Length (the drawn line's, curves
   included) with **Distribute along…** (§6); **Depth profile** (pressed: the depth along
   the line, as the depth shading has it (GEBCO, cut to the coast), sampled at the grid's spacing, at
@@ -267,7 +267,7 @@ one end to the other, an outline's ring.
   **Connection**: each looked at, hidden or styled apart.
 - **Connect to roots**, in the same form: **Tree · Chain** (Tree: root → hub → each point; Chain:
   root → point → next point; Tree to start with); **Group size** Auto (any size: the cheapest cut,
-  trees of up to 32 points) or Set, a number (3 to start with); **Min. branch** (Tree only: 0 m to
+  trees of up to 32 points) or Set, a number (3 to start with; a tree's up to 32); **Min. branch** (Tree only: 0 m to
   start with; every hub at least this far from its points and from its root; at 0 a hub may sit on a
   point, a branch of 0 m, and can be dragged off it); **Roots**, listed with a **weight** each (1 to
   start with), × dropping one. While roots are picked the cursor is a crosshair, where a click places
@@ -275,7 +275,7 @@ one end to the other, an outline's ring.
   The plan: the points, in order along the line, are cut into groups of consecutive points, each
   joined to one root, the cut and the roots chosen together as the cheapest: the sum of the groups'
   lengths, each divided by its root's weight (a root weighted 2 wins groups as if it were half as
-  far); a tie goes to the most even cut. The summary says the trees or chains and their sizes, the
+  far); a tie goes to the cut whose largest group is smallest. The summary says the trees or chains and their sizes, the
   roots used and the total length of the lines; a root that wins no group is reported unused.
 - A faint preview shows the copies, the lines and the roots (ringed) as the settings change.
   **Create** makes it all in one undo step and selects its group (another selection closes the
@@ -301,7 +301,8 @@ one end to the other, an outline's ring.
 ## 7. On the map
 
 - **Selection:** a yellow band just outside an element (a point's outermost round part, or its largest outline),
-  on both sides of a line, clear of its stroke; a ring round a point's centre. Hovering a row shows
+  on both sides of a line, clear of its stroke; a ring round a point's centre (a shape with an
+  outline: its halo only). Hovering a row shows
   the same, lighter. Selecting never moves the map; Zoom to does.
 - **Clicks:** with no tool on, a click selects the topmost element; the same place again, the next
   one down. Shift or Ctrl/⌘-click adds or removes.

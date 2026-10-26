@@ -25,7 +25,7 @@ import { chartCanvas, chartPng } from './png.js';
 import { cmemsValues, emodnetValues, gebcoValues } from './values.js';
 import { tidTile, tidAt } from './gebco.js';
 
-const byId = Object.fromEntries(ITEMS.map((it) => [it.id, it]));
+const byId = Object.assign(Object.create(null), Object.fromEntries(ITEMS.map((it) => [it.id, it]))); // no inherited names: the link names items
 // Ocean data: the layers that change with time, chosen in two menus, colours and arrows. An entry
 // is an item at a variant ('waves:height'), in the menus of what it can draw (drawsOf: currents in
 // both, speed and direction)
@@ -64,11 +64,11 @@ function readHash() {
   if (q.has('on')) state.on = new Set(q.get('on').split(',').filter((id) => byId[id]));
   for (const kv of (q.get('var') || '').split(',')) {
     const [k, val] = kv.split(':');
-    if (byId[k]?.variants?.[val]) state.variant[k] = val;
+    if (Object.hasOwn(byId[k]?.variants ?? {}, val)) state.variant[k] = val;
   }
   for (const kv of (q.get('op') || '').split(',')) {
     const [k, val] = kv.split(':');
-    if (k in state.opacity && Number.isFinite(+val)) state.opacity[k] = Math.min(1, Math.max(0, +val));
+    if (Object.hasOwn(state.opacity, k) && Number.isFinite(+val)) state.opacity[k] = Math.min(1, Math.max(0, +val));
   }
   for (const [slot, key] of [['colour', 'col'], ['arrows', 'arr']]) if (ENTRIES[slot].some((e) => e.key === q.get(key))) state[slot] = q.get(key);
   for (const it of DATA) state.on.delete(it.id); // the menus switch them (applyData)
@@ -77,10 +77,10 @@ function readHash() {
   if (CMEMS_DEPTHS.includes(+q.get('dz'))) state.depth = +q.get('dz');
   for (const kv of (q.get('per') || '').split(',')) {
     const [k, val] = kv.split(':');
-    if (DENSITY[k]?.periods.includes(val)) state.period[k] = val;
+    if (Object.hasOwn(DENSITY, k) && DENSITY[k].periods.includes(val)) state.period[k] = val;
   }
   if (q.has('g')) state.open = new Set(q.get('g').split(',').filter((g) => GROUPS.some((x) => x.id === g)));
-  if (q.has('menu')) state.panel = { 1: 'layers', draw: 'draw' }[q.get('menu')] || null; // menu=1: Layers
+  if (q.has('menu')) state.panel = { 1: 'layers', draw: 'draw' }[q.get('menu') === '1' ? 1 : q.get('menu') === 'draw' ? 'draw' : ''] || null; // menu=1: Layers
   display.bearings = q.get('brg') === '1';
   if (q.get('u') === 'nm') display.units = 'nm';
 }
@@ -459,8 +459,6 @@ async function creditEsri() {
 //   time(id)       'hour' or 'day' if it changes with the map's time; depth(id): drawn at the map's depth
 //   range(id)      promise of its datasets' spans, [[start, end]] in ms (null where not known)
 //   controls(it)   elements under its row; render(it, el) brings them up to date
-//   legend(id, el) draws its legend on the canvas el
-//                  the state as the view was captured (snapshot)
 //   values(it, box) promise of its values as GeoTIFF over [west, south, east, north], or null:
 //                  in the pictures only
 //   legend(id)     what its legend is now, or null: { key (drawn again only when it changes), ready
@@ -951,7 +949,7 @@ async function paintLegend(id, el, spec) {
     const data = await spec.ready;
     if (el.dataset.key !== spec.key) return; // switched meanwhile
     el.setAttribute('aria-label', spec.paint(el, data));
-    if (later) renderLegends();
+    later ? renderLegends() : snapLegends(); // painted after the stack was laid out (await): its size may have changed
   } catch (e) { el.dataset.key = ''; console.warn(`${byId[id].label} legend:`, e.message); }
 }
 function renderLegends() {
@@ -999,6 +997,7 @@ unitsBtn.addEventListener('click', () => setDisplay({ units: display.units === '
 function renderUnits() {
   const nm = display.units === 'nm';
   unitsBtn.textContent = nm ? 'NM' : 'km';
+  unitsBtn.setAttribute('aria-label', nm ? 'Distance units: nautical miles' : 'Distance units: kilometres');
   unitsBtn.title = nm ? 'Distances in nautical miles: click for kilometres' : 'Distances in kilometres: click for nautical miles';
   scale.setUnit(nm ? 'nautical' : 'metric');
   scaleUnits();
@@ -1199,7 +1198,8 @@ map.on('click', async (e) => {
   if (drawing.tool || drawing.picking || drawing.repointing || !(state.on.has('depth') || state.on.has('isobaths'))) return;
   if (drawing.hitAt(e.point).length) return; // a click on a drawing selects it
   const { lng, lat } = e.lngLat, z = Math.min(DEM_SEA_MAX, Math.floor(map.getZoom()) + 1); // 256 px DEM tiles at z show at map zoom z − 1
-  const [v, code] = await Promise.all([depthAt([lng, lat], z), tidAt(lng, lat).catch(() => null)]);
+  const [v, code] = await Promise.all([depthAt([lng, lat], z).catch(() => null), tidAt(lng, lat).catch(() => null)]);
+  if (v === null) { depthPopup.setLngLat(e.lngLat).setDOMContent(h('div', {}, h('b', {}, 'Depth not available'), h('small', {}, 'GEBCO 2026 could not be read'))).addTo(map); return; }
   if (!Number.isFinite(v)) { depthPopup.remove(); return; } // land, a lake, inland water: no depth here
   const source = DEPTH_SOURCES.find(({ codes: [a, b] }) => code >= a && code <= b);
   // −1: shallower than 1 m, or sea the data calls dry (clip.js)

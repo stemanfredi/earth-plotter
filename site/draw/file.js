@@ -13,10 +13,14 @@ import { ID, isObj, fin, Skip, time, text, properties, flag, position, angle, ha
 import { resolve as anchorAt } from './attach.js';
 import { targetPosition } from './attach.js';
 import { columnsOf } from './document.js';
+import { groupSizeOf } from './generator.js';
 
 const SIDES = ['left', 'right', 'alternate'];
 const MAX_LABEL_OFFSET = 2000; // px: a label's text from its anchor
 const MAX_POSITIONS = 100000; // positions in one line or area: more would stall the page at every change
+const MAX_FEATURES = 20000; // elements in one file: the rest are skipped (as many points stall the list)
+const MAX_TOTAL_POSITIONS = 1000000; // positions in a file's lines and areas together: more is refused, as soon as read
+class Refused extends Error {}
 // the properties a feature's own are written beside: a user's key that is one of these gets a p_
 const RESERVED = ['name', 'stroke', 'stroke-width', 'stroke-opacity', 'fill', 'fill-opacity', 'charts'];
 const GEOMETRIES = ['Point', 'MultiPoint', 'LineString', 'MultiLineString', 'Polygon', 'MultiPolygon', 'GeometryCollection'];
@@ -37,7 +41,8 @@ export function parse(text, known = null, now = Date.now()) {
   if (raw.type !== 'FeatureCollection' && raw.type !== 'Feature' && !GEOMETRIES.includes(raw.type)) return refuse('This is neither a drawing file nor GeoJSON.');
   const app = isObj(unpack(raw.charts)) ? unpack(raw.charts) : null; // as text: a GIS may write it so
   if (app && fin(app.version) && app.version !== VERSION) return refuse(`This drawing is of format version ${app.version}; this app reads version ${VERSION}.`);
-  return { doc: read(raw, app, known, now, report), report };
+  const doc = read(raw, app, known, now, report);
+  return { doc: report.refused ? null : doc, report };
 }
 
 // a value a GIS may have written back as text (a nested value): read again
@@ -109,7 +114,8 @@ function read(raw, app, known, now, report) {
     : raw.type === 'Feature' ? [raw] : [{ type: 'Feature', properties: {}, geometry: raw }];
   const ends = []; // lines' attached ends, resolved once every point is read
   const anchored = []; // labels on an element, resolved once every element is read
-  features.forEach((f, i) => {
+  let over = 0, positions = 0;
+  try { features.forEach((f, i) => {
     const fid = isObj(f) && (typeof f.id === 'string' || typeof f.id === 'number') ? String(f.id) : null;
     if (!isObj(f) || f.type !== 'Feature') { report.skipped.push({ kind: 'feature', id: fid ?? String(i + 1), reason: 'not a Feature' }); return; }
     const g = f.geometry;
@@ -117,11 +123,13 @@ function read(raw, app, known, now, report) {
     const props = isObj(f.properties) ? f.properties : {};
     const own = unpack(props.charts);
     const mine = isObj(own) ? own : null;
+    if (typeof g.type !== 'string') { report.skipped.push({ kind: 'feature', id: fid ?? String(i + 1), reason: 'geometry type: not text' }); return; }
     const parts = g.type === 'GeometryCollection' ? null : g.type.startsWith('Multi')
       ? (Array.isArray(g.coordinates) ? g.coordinates.map((coordinates) => ({ type: g.type.slice(5), coordinates })) : [])
       : [g];
     if (!parts) { report.skipped.push({ kind: 'feature', id: fid ?? String(i + 1), reason: 'a geometry collection: not read' }); return; }
     parts.forEach((part, k) => {
+      if (doc.points.length + doc.lines.length + doc.areas.length + doc.labels.length >= MAX_FEATURES) { over++; return; } // a Multi geometry: each part an element
       const kind = mine?.kind === 'label' && part.type === 'Point' ? 'label' : { Point: 'point', LineString: 'line', Polygon: 'area' }[part.type];
       if (!kind) { report.skipped.push({ kind: 'feature', id: fid ?? String(i + 1), reason: `geometry ${String(part.type).slice(0, 20)}: not read` }); return; }
       const el = attempt(kind, fid, (c) => {
@@ -136,12 +144,15 @@ function read(raw, app, known, now, report) {
         }
         return READ[kind](part.coordinates, props, mine || {}, x, c, { ends, anchored, taken, doc, foreign: !mine });
       });
+      positions += el?.vertices ? el.vertices.length + 2 : el?.points?.length ?? 0; // a line's, an area's
+      if (positions > MAX_TOTAL_POSITIONS) throw new Refused(`This file holds more than ${MAX_TOTAL_POSITIONS.toLocaleString('en')} positions in its lines and areas: it would stall the page at every change.`);
       if (el) doc[KIND[kind].list].push(el);
     });
-  });
+  }); } catch (e) { if (!(e instanceof Refused)) throw e; report.refused = e.message; return null; }
 
   // a line's end attached: the attachment wins, the end goes where what it is attached to is
   let moved = 0;
+  if (over) report.warnings.push(`${over} past the first ${MAX_FEATURES} elements: skipped`);
   for (const { line, end, to } of ends) {
     const p = to.element !== line.id && targetPosition(doc, to);
     if (!p) { report.warnings.push(`line ${line.id}: its ${end} is attached to ${String(to.element).slice(0, 64)}, which is not here (or has no such vertex or edge); free`); continue; }
@@ -180,7 +191,7 @@ function read(raw, app, known, now, report) {
           points: Array.isArray(x.points) ? x.points.filter((f) => isObj(f) && ref(f.pointId) && fin(f.t) && pair(f.pos)).map((f) => ({ pointId: f.pointId, t: f.t, left: f.left === true, pos: [f.pos[0], f.pos[1]] })) : [] };
       }
       taken.add(x.id);
-      return { id: x.id, kind: 'connect', groupId: ref(x.groupId), pattern: x.pattern === 'chain' ? 'chain' : 'tree', groupSize: Number.isInteger(x.groupSize) && x.groupSize > 0 ? x.groupSize : 'auto',
+      return { id: x.id, kind: 'connect', groupId: ref(x.groupId), pattern: x.pattern === 'chain' ? 'chain' : 'tree', groupSize: groupSizeOf(x.groupSize, x.pattern === 'chain' ? 'chain' : 'tree'),
         minBranch: Number.isFinite(x.minBranch) && x.minBranch > 0 ? x.minBranch : 0, inflate: fin(x.inflate) && x.inflate > 0 ? Math.min(1, x.inflate) : 0, pointIds: idList(x.pointIds),
         roots: Array.isArray(x.roots) ? x.roots.filter((r) => isObj(r) && ref(r.id)).map((r) => ({ id: r.id, weight: fin(r.weight) && r.weight > 0 ? r.weight : 1 })) : [],
         hubs: Array.isArray(x.hubs) ? x.hubs.filter((b) => isObj(b) && ref(b.pointId) && ref(b.rootId) && Array.isArray(b.pointIds) && pair(b.pos))
@@ -391,7 +402,7 @@ export function toFile(doc) {
         aperture: a.aperture == null ? null : r4(a.aperture), startMargin: r3(a.startMargin), endMargin: r3(a.endMargin), offset: r3(a.offset),
         copy: a.copy && { symbol: a.copy.symbol, parts: a.copy.parts.map(partOut) },
         points: a.points.map((f) => ({ pointId: f.pointId, t: +f.t.toFixed(9), ...(f.left ? { left: true } : {}), pos: pos(f.pos) })) }, DISTRIBUTE_D)
-      : lean({ ...a, inflate: r3(a.inflate), roots: a.roots.map((r) => (r.weight === 1 ? { id: r.id } : { ...r })), pointIds: [...a.pointIds], hubs: a.hubs.map((b) => ({ ...b, pointIds: [...b.pointIds], pos: pos(b.pos) })), created: [...a.created] }, CONNECTION_D))),
+      : lean({ ...a, inflate: r3(a.inflate), roots: a.roots.map((r) => (r.weight === 1 ? { id: r.id } : { id: r.id, weight: +r.weight.toPrecision(6) })), pointIds: [...a.pointIds], hubs: a.hubs.map((b) => ({ ...b, pointIds: [...b.pointIds], pos: pos(b.pos) })), created: [...a.created] }, CONNECTION_D))),
   }, { meta: {}, view: null, look: {}, groups: [], rules: [] });
   return { type: 'FeatureCollection', charts: app, features: KINDS.filter((k) => k !== 'group').flatMap((k) => doc[KIND[k].list].map((el) => feature(doc, k, el))) };
 }

@@ -11,7 +11,7 @@
 //                                  lists (newer library versions: npm outdated)
 //
 // To upgrade a library: change its version in package.json, npm install, --write, then test the page.
-import { readFile, writeFile, mkdir, readdir } from 'node:fs/promises';
+import { readFile, writeFile, mkdir, readdir, rm } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { HOSTS, cspSource } from '../site/hosts.js';
 
@@ -45,7 +45,8 @@ const BLOCK = /(<!-- csp:start[^>]*-->)[\s\S]*?(<!-- csp:end -->)/;
 // what site/vendor/ should hold: name → the bytes in node_modules (the libraries and their licences)
 async function wanted() {
   const out = new Map();
-  for (const [pkg, file, name] of LIBRARIES) out.set(name, await readFile(new URL(`${pkg}/${file}`, MODULES)));
+  // without the source-map pointer: the maps are not shipped, and the browser's tools would ask for them
+  for (const [pkg, file, name] of LIBRARIES) out.set(name, Buffer.from((await readFile(new URL(`${pkg}/${file}`, MODULES), 'utf8')).replace(/\n\/[/*]# sourceMappingURL=\S+( \*\/)?\s*$/, '\n')));
   for (const pkg of new Set(LIBRARIES.map(([p]) => p))) {
     const licence = (await readdir(new URL(`${pkg}/`, MODULES))).find((f) => /^licen[cs]e/i.test(f));
     if (!licence) throw new Error(`${pkg}: no licence file in the package`);
@@ -65,6 +66,8 @@ export async function stale() {
     const have = await readFile(new URL(name, VENDOR)).catch(() => null);
     if (!have || !have.equals(bytes)) out.push(`site/vendor/${name}`);
   }
+  const w = await wanted();
+  for (const e of await readdir(VENDOR, { withFileTypes: true }).catch(() => [])) if (!w.has(e.name) || e.isDirectory()) out.push(`site/vendor/${e.name}: not a library of package.json's`);
   const html = await readFile(INDEX, 'utf8');
   if (indexWith(html) !== html) out.push('index.html: the Content-Security-Policy');
   return out;
@@ -72,7 +75,9 @@ export async function stale() {
 
 async function write() {
   await mkdir(VENDOR, { recursive: true });
-  for (const [name, bytes] of await wanted()) await writeFile(new URL(name, VENDOR), bytes);
+  const w = await wanted();
+  for (const e of await readdir(VENDOR, { withFileTypes: true })) if (!w.has(e.name) || e.isDirectory()) await rm(new URL(e.name, VENDOR), { recursive: true }); // a library renamed or dropped, or anything else left there
+  for (const [name, bytes] of w) await writeFile(new URL(name, VENDOR), bytes);
   await writeFile(INDEX, indexWith(await readFile(INDEX, 'utf8')));
   console.log('site/vendor/ and the policy written');
 }

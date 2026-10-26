@@ -864,3 +864,24 @@ test('hardening: a property key named like Object.prototype\'s is a column like 
   const back = read(JSON.stringify(toFile(doc))).doc.points.find((n) => n.id === 'p');
   assert.deepEqual(back.properties, p.properties, 'read back as they were');
 });
+
+test('root weights: read as given, small ones kept; 0, a negative, text read as 1; written as read', () => {
+  const pts = ['a', 'b', 'c', 'd', 'e'].map((id) => ({ type: 'Feature', id, geometry: { type: 'Point', coordinates: [12, 40] }, properties: { charts: { kind: 'point' } } }));
+  const { doc } = read(collection(pts, { rules: [{ id: 'c1', kind: 'connect', pointIds: ['a'],
+    roots: [{ id: 'a', weight: 2 }, { id: 'b', weight: 0.0004 }, { id: 'c', weight: 0 }, { id: 'd', weight: -1 }, { id: 'e', weight: 'x' }] }] }));
+  assert.deepEqual(doc.rules[0].roots.map((r) => r.weight), [2, 0.0004, 1, 1, 1]);
+  assert.deepEqual(again(doc).doc.rules[0].roots.map((r) => r.weight), [2, 0.0004, 1, 1, 1], 'the file keeps a small weight');
+});
+
+test('a file of more than a million positions is refused, as soon as that is known', () => {
+  const line = (id) => ({ type: 'Feature', id, geometry: { type: 'LineString', coordinates: Array.from({ length: 100000 }, (_, i) => [12 + i * 1e-6, 41]) }, properties: {} });
+  const { doc, report } = read(collection(Array.from({ length: 11 }, (_, i) => line(`l${i}`))));
+  assert.equal(doc, null);
+  assert.match(report.refused, /^This file holds more than 1,000,000 positions/);
+});
+
+test('a feature whose geometry type is not text is skipped with a reason, not thrown', () => {
+  const { doc, report } = read({ type: 'FeatureCollection', features: [{ type: 'Feature', properties: {}, geometry: { type: 7, coordinates: [1, 2] } }, { type: 'Feature', properties: {}, geometry: { type: 'Point', coordinates: [1, 2] } }] });
+  assert.equal(doc.points.length, 1);
+  assert.deepEqual(report.skipped.map((s) => s.reason), ['geometry type: not text']);
+});

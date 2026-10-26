@@ -121,17 +121,17 @@ test('selection and hover: a halo just outside, handles, a mark at the centre, n
   assert.deepEqual(handles('n').map((x) => [x.properties.role, x.properties.ref, Math.round(inverse([12, 41], x.geometry.coordinates).s)]), [['radius', 0, 500], ['radius', 1, 1000]]);
   assert.deepEqual(handles('s').map((x) => [x.properties.role, x.properties.ref, Math.round(inverse([12, 41], x.geometry.coordinates).azi)]),
     [['radius', 0, 90], ['aperture', '0:-0.5', 60], ['aperture', '0:0.5', 120]]);
-  assert.deepEqual(handles('h').map((x) => [x.properties.role, x.properties.ref]), [['corner', '0:0'], ['corner', '0:1'], ['corner', '0:2'], ['corner', '0:3']]); // no zoom: no rotate handle
+  assert.deepEqual(handles('h').map((x) => [x.properties.role, x.properties.ref]), [['corner', '0:0'], ['corner', '0:1'], ['corner', '0:2'], ['corner', '0:3']]); // no zoom: no rotate stalk
   assert.equal(handles('m').length, 0);
   assert.deepEqual(handles('gm').map((x) => [x.properties.role, x.properties.ref]), [['radius', 0]]); // a member's parts: its own
   assert.ok(gm.groupId);
-  // the ring round a selected or hovered point's centre; a shape's centre is not marked: its outline's halo says it
-  assert.deepEqual(kindsOf(marks.filter((x) => x.geometry.type === 'Point' && x.properties.kind !== 'handle')), [['n', 'sel'], ['m', 'hover'], ['s', 'sel'], ['gm', 'sel'], ['h', 'sel']]);
+  // the ring round a selected or hovered point's centre; a shape has none: its outline's halo says it
+  assert.deepEqual(kindsOf(marks.filter((x) => x.geometry.type === 'Point' && x.properties.kind !== 'handle')), [['n', 'sel'], ['m', 'hover'], ['s', 'sel'], ['gm', 'sel']]);
   // the element's own features are unchanged by being selected
   assert.deepEqual(f.filter((x) => !marks.includes(x)), drawFeatures(doc).features);
 });
 
-test('a selected outline: corners and a rotate handle on a stalk at its front; drawn enlarged, it is only moved', () => {
+test('a selected outline: corners and a rotate stalk at its front; drawn enlarged, it is only moved', () => {
   const doc = emptyDoc(0);
   const h = addShape(doc, [12, 40]);
   Object.assign(h.parts[0], { length: 10, width: 5 });

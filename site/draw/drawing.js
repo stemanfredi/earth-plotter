@@ -108,7 +108,7 @@ export class Drawing extends DrawStore {
   addIcons() { addIcons(this.map); }
   // Draw the parts asked for (features.js drawParts), each in its own source: 'draw' what never
   // depends on the zoom, 'drawzoom' what may, 'drawover' the marks, the line being drawn and the
-  // forms' previews (Array, Connect). A change to the document draws all three; the selection, the pointer and the
+  // forms' previews (Distribute, Connect). A change to the document draws all three; the selection, the pointer and the
   // Line tool's cursor only the marks; zooming only what follows it.
   render(parts = ALL_PARTS) {
     const p = drawParts(this.doc, this.sel, this.hover, { zoom: this.map.getZoom(), ctrl: this.handlesShown, midPx: MID_PX }, parts);
@@ -195,7 +195,7 @@ export class Drawing extends DrawStore {
   pointer(e) {
     this.lastPoint = e.point; // where a paste goes
     if (this.tool === 'line' || this.tool === 'polygon' || this.tool === 'sector' || (this.tool === 'shape' && this.draft)) {
-      const r = this.snapFor(e.point, e.originalEvent, this.lastLeg());
+      const r = this.snapFor(e.point, e.originalEvent, this.tool === 'shape' ? {} : this.lastLeg()); // a shape's size: Shift steps nothing, as on its click
       this.cursor = { point: e.point, p: r.position, snap: r };
       this.renderMarks();
       if (this.draft) this.onChange('draft');
@@ -394,7 +394,8 @@ export class Drawing extends DrawStore {
   }
   finishesOnDoubleClick() { return this.tool === 'line' || this.tool === 'polygon'; }
   // Shape (and Measure › ring), in two clicks: the centre; then the size, the pointer showing it (a
-  // circle's radius, an outline's front). A second click on the first: the default size, facing north.
+  // circle's radius, an outline's front). A second click on the first: the default size. Facing north
+  // always (the bearing is set afterwards); a preset of the user's, which has its size, in one click.
   shapeClick(point, e) {
     if (!this.draft) {
       this.draft = { pts: [this.snapFor(point, e).position] };
@@ -614,11 +615,11 @@ export class Drawing extends DrawStore {
     map.on('contextmenu', (e) => { if (right && Math.hypot(e.point.x - right.x, e.point.y - right.y) <= 3) escape(); });
     map.on('dblclick', (e) => { if (this.finishesOnDoubleClick()) { e.preventDefault(); this.finish(); } });
     window.addEventListener('keydown', (e) => {
-      if (e.ctrlKey || e.metaKey || e.altKey || typing(e.target) || document.querySelector('dialog[open]')) return;
-      if (e.key === 'Escape') escape();
-      else if (!this.tool) return;
+      if (typing(e.target) || document.querySelector('dialog[open]')) return;
+      if (e.key === 'Escape') escape(); // with Alt held too: Alt is the key for dragging free of snapping
+      else if (e.ctrlKey || e.metaKey || e.altKey || !this.tool) return;
       else if (e.key === 'Enter' && !e.target.closest('button')) { e.preventDefault(); this.finish(); } // Enter on a focused button is that button's own click
-      else if (e.key === 'Backspace') { e.preventDefault(); this.undoPoint(); }
+      else if (e.key === 'Backspace' && !e.target.closest('input, select, textarea')) { e.preventDefault(); this.undoPoint(); } // a slider's or a box's Backspace is its own
     });
   }
   // the drag's new values, on this.doc as it was when it started (p: the pointer; e: Shift, Alt)
@@ -637,7 +638,6 @@ export class Drawing extends DrawStore {
       case 'point': { // a line's end attached to a point's centre: the point moves, snapped (not onto itself or its lines)
         const n = point(d.ref), mine = new Set([n.id, ...doc.lines.filter((s) => s.start.element === n.id || s.end.element === n.id).map((s) => s.id)]);
         n.position = this.snapped(pt, e, moved(n.position, d.start, p), { exclude: mine }).position;
-       
         return;
       }
       case 'end': { // a line's end, snapped; on something to attach to, attached there (Alt: free)
@@ -645,34 +645,29 @@ export class Drawing extends DrawStore {
         const r = this.snapped(pt, e, moved(el[key].position, d.start, p), { exclude: new Set([el.id]), ...neighbours(key === 'end' ? ps : ps.slice().reverse(), key === 'end' ? k : ps.length - 1) });
         const to = r.to && attachTo(doc, r.to);
         el[key] = typeof to === 'string' ? { position: [...r.position], element: to } : to || { position: r.position, element: null };
-       
         return;
       }
       case 'vertex': {
         const v = el.vertices[d.ref], r = this.snapped(pt, e, moved(v.position, d.start, p), { exclude: new Set([el.id]), ...neighbours(positionsOf(doc, el), d.ref + 1) });
         v.position = r.position;
-       
         return;
       }
       case 'mid': { const q = this.snapped(pt, e, p, { exclude: new Set([el.id]) }).position; addVertex(doc, el, d.ref, q); return; }
       case 'ppoint': { // an area's corner, snapped
         const n = el.points.length, ring = [...el.points.slice(d.ref + 1), ...el.points.slice(0, d.ref + 1)]; // ending at this corner
         el.points[d.ref] = this.snapped(pt, e, moved(el.points[d.ref], d.start, p), { exclude: new Set([el.id]), ...neighbours(ring, n - 1) }).position;
-       
         return;
       }
       case 'pmid': { const q = this.snapped(pt, e, p, { exclude: new Set([el.id]) }).position; insertCorner(doc, el, d.ref, q); return; } // a corner added halfway along an edge
       case 'radius': {
         const part = el.parts[+d.ref];
         part.radius = Math.max(1, Math.min(9.9e6, radiusTo(el.position, p))); // its size only: a sector's ends and the stalk turn it
-       
         return;
       }
       case 'aperture': { // one end of a sector part's arc: its aperture, and the point's bearing (its middle)
         const [i, k] = String(d.ref).split(':').map(Number), part = el.parts[i], r = sectorEdgeTo(el.position, el.bearing, part.aperture, k, p, snap);
         el.bearing = r.bearing;
         part.aperture = r.aperture;
-       
         return;
       }
       case 'corner': {
@@ -681,7 +676,6 @@ export class Drawing extends DrawStore {
         const r = resizeRect(s, rectangle(s.center, s.bearing, s.length, s.width).corners, c, p, { keep: e.shiftKey, aboutCentre: e.altKey || el.parts.length > 1 });
         el.position = r.center;
         Object.assign(el.parts[i], { length: r.length, width: r.width });
-       
         return;
       }
       case 'rotate': el.bearing = bearingTo(el.position, p, snap); return;
@@ -691,7 +685,6 @@ export class Drawing extends DrawStore {
         const h = handleTo(anchor, p);
         if (k === 0) el.startHandle = h; else if (k === last) el.endHandle = h; else el.vertices[k - 1][which === 'in' ? 'handleIn' : 'handleOut'] = h;
         el.mode = 'fixed';
-       
       }
     }
   }

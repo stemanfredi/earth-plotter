@@ -368,7 +368,7 @@ dialog.dreport button.done { background: var(--accent); border-color: var(--acce
 
 
 /* ---- legends, stacked bottom left above the credits ---- */
-.legends { position: absolute; z-index: 3; left: 10px; bottom: calc(var(--status-h) + 8px); display: flex; flex-direction: column; align-items: flex-start; gap: var(--legend-gap, 6px); pointer-events: none; }
+.legends { position: absolute; z-index: 3; left: 10px; bottom: calc(var(--status-h) + 11px); /* the zoom rail's 10 px, plus the outline drawn outside the canvases: their visible edges level */ display: flex; flex-direction: column; align-items: flex-start; gap: var(--legend-gap, 6px); pointer-events: none; }
 .legends:empty { display: none; }
 .legends canvas { display: block; outline: 1px solid var(--line); border-radius: 6px; box-shadow: var(--shadow); } /* an outline, not a border: it moves no pixel of the canvas */
 
@@ -407,10 +407,7 @@ dialog .action { justify-content: center; border: 1px solid var(--line); margin-
 
 /* ---- phones: sheets from the bottom, pinch instead of zoom buttons ---- */
 @media (max-width: 720px) {
-  .zoom { background: none; border: 0; box-shadow: none; }
-  #zoom-in, #zoom-out { display: none; }
-  #compass, .zoom .units { background: var(--bg); border: 1px solid var(--line); box-shadow: var(--shadow); }
-  .zoom .units { height: 54px; }
+  #zoom-in, #zoom-out { display: none; } /* the rail stays, one box: my location, the units, the compass when the map is turned */
   /* a sheet from the bottom, as tall as its content up to 85% of the screen */
   .panel { z-index: 8; top: auto; left: 0; right: 0; bottom: 0; width: auto; max-height: 85%; border-radius: 12px 12px 0 0; transition: transform .2s; }
   .panel.dragging { transition: none; }

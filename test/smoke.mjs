@@ -318,8 +318,8 @@ await section('a satellite observation', async () => {
 
 await section('the PNG and GIS exports', async () => {
   const again = await open('#v=6/41/12/0&on=chart,coastline,depth,isobaths&u=nm'); // the view the link reopened
-  // the nautical scale reads NM, as Measure and the PNG do (MapLibre writes "nm")
-  check(/\d\sNM$/.test(await again.evaluate(() => document.querySelectorAll('.maplibregl-ctrl-scale')[1].textContent)), 'the nautical scale reads NM');
+  // the scale is in the display's units, one bar: NM here, as Measure does (MapLibre writes "nm")
+  check(/\d\sNM$/.test(await again.evaluate(() => document.querySelector('#scale').textContent)) && await again.evaluate(() => document.querySelectorAll('.maplibregl-ctrl-scale').length === 1), 'the scale reads NM, one bar');
   // PNG export
   const [dl] = await Promise.all([again.waitForEvent('download', { timeout: 60000 }), exportItem(again, 'png')]);
   const png = await readFile(await dl.path());
@@ -752,14 +752,14 @@ await section('the drawing', async () => {
     drawn: map.querySourceFeatures('draw').filter((f) => f.properties.id === x.id && f.properties.kind === 'ring').length + map.querySourceFeatures('drawzoom').filter((f) => f.properties.id === x.id && f.properties.kind === 'shape').length }; });
   check(twoParts.kinds === 'surface-vehicle,circle' && twoParts.len === 100 && twoParts.preset === 'Rectangle' && twoParts.drawn >= 2,
     `parts: an outline's kind changed, its length kept; a circle added, both drawn; its preset remembered (${JSON.stringify(twoParts)})`);
-  // two clicks: the centre, then the front (the bearing and the length; the width in proportion)
+  // two clicks: the centre, then the reach (half the length; the width in proportion); facing north
   await dw.evaluate(() => { drawing.stop(); drawing.variant.shape = 'rectangle'; });
   await dw.keyboard.press('s');
   await dw.mouse.click(300, 500);
   await dw.mouse.move(360, 500, { steps: 3 });
   await dw.mouse.click(360, 500);
   const sized = await dw.evaluate(async () => { const { inverse } = await import('./geodesy.js'); const x = drawing.doc.points.at(-1), a = map.unproject([300, 500]), b = map.unproject([360, 500]); return [x.bearing, x.parts[0].length, x.parts[0].width, inverse([a.lng, a.lat], [b.lng, b.lat]).s]; });
-  check(Math.abs(sized[0] - 90) < 1 && Math.abs(sized[1] - 2 * sized[3]) < 2 && Math.abs(sized[2] - sized[1] / 2) < 1, `shapes in two clicks: a rectangle's front set by the second (${sized.map((v) => Math.round(v))})`);
+  check(sized[0] === 0 && Math.abs(sized[1] - 2 * sized[3]) < 2 && Math.abs(sized[2] - sized[1] / 2) < 1, `shapes in two clicks: a rectangle sized by the second, facing north (${sized.map((v) => Math.round(v))})`);
   await dw.keyboard.press('Escape');
   await dw.keyboard.press('Escape');
   // attaching: a line drawn to a shape's corner ends attached there, and follows it when it turns
@@ -829,7 +829,8 @@ await section('the drawing', async () => {
   check(Math.abs(moved[0][0] - lab.a.offset[0] - 60) <= 2 && moved[1] === lab.undos + 1 && moved[2].join() === lab.point.join(),
     `labels: its text dragged 60 px, the point unmoved, one undo step (offset ${moved[0].join(', ')})`);
   await dw.evaluate((id) => drawing.change((doc) => { doc.points.find((n) => n.id === id).look.text = { name: true }; }), nid);
-  await dw.waitForTimeout(300);
+  // laid out in MapLibre's worker: not there on the next frame
+  await dw.waitForFunction(() => map.queryRenderedFeatures({ layers: ['draw-name-point'] }).length > 0, null, { timeout: 5000, polling: 100 }).catch(() => {});
   const shownNames = await dw.evaluate(() => map.queryRenderedFeatures({ layers: ['draw-name-point'] }).map((f) => f.properties.nm));
   check(shownNames.length > 0, `labels: a point's name shown on the map (${shownNames.join(', ')})`);
   // the drawing's look (its Display, nothing selected): names on for every element that does not say

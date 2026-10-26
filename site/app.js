@@ -1,6 +1,6 @@
-import * as maplibregl from 'maplibre-gl';
-import mlcontour from 'maplibre-contour';
-import { GROUPS, ITEMS, GIBS, DEM_TILES, DEM_SEA, DEPTH_SOURCES, DEM_LAND, OMT_TILEJSON, isobathSteps, DEPTH_SCHEMES, NO_DEPTH, DENSITY, ESRI_META, esriAttribution, gibsTiles, gibsDomainUrl, domainEnd, densityTiles, CMEMS, CMEMS_DEPTHS, drawsOf, CLASS_LEGENDS, CLASS_LABELS, EMODNET_DEPTH_STOPS, SEAGRASS } from './catalog.js';
+import * as maplibregl from './vendor/maplibre-gl.mjs';
+import mlcontour from './vendor/maplibre-contour.mjs';
+import { GROUPS, ITEMS, GIBS, DEM_TILES, DEM_SEA_MAX, DEPTH_SOURCES, DEM_LAND_MAX, OMT_TILEJSON, isobathSteps, DEPTH_SCHEMES, NO_DEPTH, DENSITY, ESRI_META, esriAttribution, gibsTiles, gibsDomainUrl, domainEnd, densityTiles, CMEMS, CMEMS_DEPTHS, drawsOf, CLASS_LEGENDS, CLASS_LABELS, EMODNET_DEPTH_STOPS, SEAGRASS } from './catalog.js';
 import { buildStyle, depthRamp, OPACITY_PROP, SEA_PICTURES, LOCATION_LAYERS } from './style.js';
 import { cmemsTile, partTimes, partLevels, domainOf, cmemsLegend } from './cmems.js';
 import { workerClipper } from './clip.js';
@@ -142,10 +142,10 @@ let gibsDay = dayOf(state.time); // NASA daily: the day its sources draw (gibs.s
 // Its own caches hold copies of those tiles (256 KB each): enough for a screen's contours and
 // their neighbours (a contour tile reads 3 × 3 DEM tiles), not hundreds (200 per source: 100 MB)
 const demOpts = { url: DEM_TILES, encoding: 'terrarium', worker: false, cacheSize: 64 };
-const seaDem = new mlcontour.DemSource({ ...demOpts, id: 'sea', maxzoom: DEM_SEA.max });
-const landDem = new mlcontour.DemSource({ ...demOpts, id: 'land', maxzoom: DEM_LAND.max });
-const seaClip = workerClipper({ template: DEM_TILES, native: DEM_SEA.native, mode: 'sea', omtTileJson: OMT_TILEJSON });
-const landClip = workerClipper({ template: DEM_TILES, native: DEM_LAND.native, mode: 'land', omtTileJson: OMT_TILEJSON });
+const seaDem = new mlcontour.DemSource({ ...demOpts, id: 'sea', maxzoom: DEM_SEA_MAX });
+const landDem = new mlcontour.DemSource({ ...demOpts, id: 'land', maxzoom: DEM_LAND_MAX });
+const seaClip = workerClipper({ mode: 'sea', omtTileJson: OMT_TILEJSON });
+const landClip = workerClipper({ template: DEM_TILES, mode: 'land', omtTileJson: OMT_TILEJSON });
 for (const [dem, clip] of [[seaDem, seaClip], [landDem, landClip]]) {
   dem.manager.getTile = clip.getTile;
   dem.manager.decodeImage = clip.decodeImage;
@@ -181,23 +181,6 @@ const style = buildStyle({
 });
 style.layers.push(...DRAW_LAYERS, ...LOCATION_LAYERS); // the drawing above the map, its values on top; the device's location over all
 
-// MapLibre's worker from the pinned, hashed URL in index.html (tools/deps.mjs): a copy the browser
-// has checked against the hash, instead of MapLibre's own unchecked import from the CDN. The hash
-// is checked here, not by fetch(): Firefox does not hand a fetch with `integrity` the preloaded
-// copy (it downloads the worker twice), and Chrome warns about integrity on a fetch preload.
-async function verifiedWorker({ href, dataset: { integrity } }) {
-  const opts = { referrerPolicy: 'no-referrer' };
-  // plain http (a phone on the LAN, npm run serve) has no SubtleCrypto: fetch checks, downloading twice
-  if (!crypto.subtle) return (await fetch(href, { ...opts, integrity })).blob();
-  const r = await fetch(href, opts);
-  if (!r.ok) throw new Error(`MapLibre worker: HTTP ${r.status}`);
-  const code = await r.arrayBuffer();
-  const digest = new Uint8Array(await crypto.subtle.digest('SHA-384', code));
-  if (`sha384-${btoa(String.fromCharCode(...digest))}` !== integrity) throw new Error(`MapLibre worker: hash mismatch (${href})`);
-  return new Blob([code], { type: 'text/javascript' });
-}
-maplibregl.setWorkerUrl(URL.createObjectURL(await verifiedWorker($('#maplibre-gl-worker'))));
-
 const map = new maplibregl.Map({
   container: 'map', style, ...view,
   maxPitch: 0, pitchWithRotate: false, dragRotate: true, touchPitch: false,
@@ -210,17 +193,18 @@ map.touchZoomRotate.disableRotation();
 $('#nostart').remove(); // started (index.html)
 const small = () => window.innerWidth < 720;
 
-// ---- bottom row: credits; scale note, time shown, cursor position, double scale
-// The scale is double, as on OpenSeaMap: km above the line, nautical miles below. Credits are
-// always on screen (Esri: data attribution "always visible"; OSM likewise), on one line: what
-// does not fit ends in "…", and a tap on the line shows it all.
+// ---- bottom row: credits; scale note, time shown, cursor position, the scale
+// One scale bar, in the display's units (the switch beside it); the PNG export draws a double
+// one, km and NM (png.js). Credits are always on screen (Esri: data attribution "always visible";
+// OSM likewise), on one line: what does not fit ends in "…", and a tap on the line shows it all.
 const statusEl = $('#status');
 const posEl = h('div', { class: 'pos', id: 'pos', 'aria-live': 'off' });
 const shownEl = h('div', { class: 'pos shown', id: 'shown', hidden: true }); // the time (and depth) the layers show
-const scales = ['metric', 'nautical'].map((unit) => new maplibregl.ScaleControl({ maxWidth: 100, unit }));
-const scalesEl = h('div', { class: 'scales', id: 'scales' }, scales.map((s) => s.onAdd(map)));
+const scale = new maplibregl.ScaleControl({ maxWidth: 100, unit: 'metric' });
+const scaleEl = scale.onAdd(map);
+scaleEl.id = 'scale';
 // MapLibre writes nautical miles "nm" (the nanometre's symbol): NM, as on charts and in Measure
-const scaleUnits = () => { for (const el of scalesEl.children) el.textContent = el.textContent.replace(/\snm$/, '\u00a0NM'); };
+const scaleUnits = () => { scaleEl.textContent = scaleEl.textContent.replace(/\snm$/, '\u00a0NM'); };
 const scaleNoteEl = h('div', { class: 'scalenote', id: 'scalenote' });
 const creditsText = h('span', { class: 'credits-text' });
 const credits = h('div', { class: 'credits' }, creditsText);
@@ -238,7 +222,7 @@ credits.addEventListener('click', (e) => {
 });
 // credits on the left; the scale note, time shown, cursor position and scale on the right (not for
 // navigation: About and the exports say it)
-statusEl.append(credits, h('div', { class: 'readout' }, scaleNoteEl, shownEl, posEl, scalesEl));
+statusEl.append(credits, h('div', { class: 'readout' }, scaleNoteEl, shownEl, posEl, scaleEl));
 // the panel, zoom buttons and legends sit above the bottom row, whose height follows its credits
 new ResizeObserver(() => { document.documentElement.style.setProperty('--status-h', `${statusEl.offsetHeight}px`); snapLegends(); }).observe(statusEl);
 
@@ -1016,6 +1000,8 @@ function renderUnits() {
   const nm = display.units === 'nm';
   unitsBtn.textContent = nm ? 'NM' : 'km';
   unitsBtn.title = nm ? 'Distances in nautical miles: click for kilometres' : 'Distances in kilometres: click for nautical miles';
+  scale.setUnit(nm ? 'nautical' : 'metric');
+  scaleUnits();
 }
 
 // ---- the Draw view (draw/panel.js) ------------------------------------------------------------
@@ -1200,7 +1186,7 @@ const depthPopup = new maplibregl.Popup({ className: 'depthpop', maxWidth: '240p
 // The depth profiles read (a line's Depth profile pressed), by trace: the GIS export's seabed lengths
 // come from these only, so that an export reads no depth tiles along lines nobody asked about
 const profiled = lru(64); // JSON of the trace's coordinates → promise of its profile
-const profileFor = (trace) => profiled(JSON.stringify(trace.coords), () => profileOf(trace, depthAt, DEM_SEA.max));
+const profileFor = (trace) => profiled(JSON.stringify(trace.coords), () => profileOf(trace, depthAt, DEM_SEA_MAX));
 // The depth at p ([lng, lat]) as the depth shading has it, read at zoom z: metres, negative below the
 // sea surface; NaN on land, lakes, no data. A profile reads many places of few tiles: each tile once.
 const depthTiles = lru(64);
@@ -1212,7 +1198,7 @@ async function depthAt([lng, lat], z) {
 map.on('click', async (e) => {
   if (drawing.tool || drawing.picking || drawing.repointing || !(state.on.has('depth') || state.on.has('isobaths'))) return;
   if (drawing.hitAt(e.point).length) return; // a click on a drawing selects it
-  const { lng, lat } = e.lngLat, z = Math.min(DEM_SEA.max, Math.floor(map.getZoom()) + 1); // 256 px DEM tiles at z show at map zoom z − 1
+  const { lng, lat } = e.lngLat, z = Math.min(DEM_SEA_MAX, Math.floor(map.getZoom()) + 1); // 256 px DEM tiles at z show at map zoom z − 1
   const [v, code] = await Promise.all([depthAt([lng, lat], z), tidAt(lng, lat).catch(() => null)]);
   if (!Number.isFinite(v)) { depthPopup.remove(); return; } // land, a lake, inland water: no depth here
   const source = DEPTH_SOURCES.find(({ codes: [a, b] }) => code >= a && code <= b);

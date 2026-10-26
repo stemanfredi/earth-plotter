@@ -2,7 +2,7 @@
 // PNG, one GeoJSON per vector layer drawn, the elevation grids and the data layers' values as
 // GeoTIFF, the drawing as drawn and as its file, and a STAC Item that says what each is. What the
 // map shows comes from app.js snapshot(), read when the view is captured.
-import { DEM_SEA, DEM_LAND } from './catalog.js';
+import { DEM_SEA_MAX, DEM_LAND_MAX } from './catalog.js';
 import { affine, worldFile, pamXml, stacItem } from './export.js';
 import { gridFor, mosaic, gridTransform, geotiff } from './geotiff.js';
 import { zip } from './zip.js';
@@ -11,7 +11,7 @@ import { exportFeatures } from './draw/features.js';
 import { lineTrace } from './draw/lines.js';
 import { mercator } from './geo.js';
 import { memo } from './net.js';
-import { $, h } from './dom.js';
+import { h } from './dom.js';
 import { chartCanvas, chartPng, pngOf } from './png.js';
 
 // deps: map, layersOf (item → its style layers), kindOf (item → its kind, with values()), drawing,
@@ -46,19 +46,17 @@ export function gisExport({ map, layersOf, kindOf, drawing, display, profiled, c
   // raster/<key>.tif: the clipped DEM an item draws, in metres, at the zoom of the tiles on screen
   // (256 px DEM tiles at z show at map zoom z − 1, clip.js)
   const RASTERS = [
-    { key: 'depth', items: ['depth'], clip: clips.sea, native: DEM_SEA.native, max: DEM_SEA.max, title: 'Depth',
-      description: 'Seabed elevation in metres, negative below sea level, as the depth shading draws it: Terrarium DEM cut to the OSM coastline, pits and tile seams corrected; sea the DEM calls dry is -1. No data on land, lakes and inland water at sea level' },
-    { key: 'elevation', items: ['relief', 'contours'], clip: clips.land, native: DEM_LAND.native, max: DEM_LAND.max, title: 'Land elevation',
+    { key: 'depth', items: ['depth'], clip: clips.sea, max: DEM_SEA_MAX, title: 'Depth',
+      description: 'Seabed elevation in metres, negative below sea level, as the depth shading draws it: the GEBCO 2026 Grid sampled at the pixels (a cubic spline over its cells), cut to the OSM coastline; sea the grid calls dry is -1. No data on land, lakes and inland water at sea level' },
+    { key: 'elevation', items: ['relief', 'contours'], clip: clips.land, max: DEM_LAND_MAX, title: 'Land elevation',
       description: 'Land elevation in metres, as the relief shading and land contours use it: Terrarium DEM (SRTM on land) cut to the OSM coastline. No data in the sea' },
   ];
   const featureCollection = (name, features) => `${JSON.stringify({ type: 'FeatureCollection', name, features })}\n`;
 
-  // polygon-clipping (vector.js) loads on the first ZIP export, not with the page: a script from
-  // the pinned URL in index.html, checked by the browser against its hash (tools/deps.mjs)
+  // polygon-clipping (vector.js) loads on the first ZIP export, not with the page (site/vendor/)
   const libs = {};
   const polygonClipping = () => memo(libs, 'polygon-clipping', () => new Promise((resolve, reject) => {
-    const el = $('#polygon-clipping'), { content: src, dataset: { integrity } } = el;
-    document.head.append(h('script', { src, integrity, crossorigin: 'anonymous', onload: () => resolve(globalThis.polygonClipping),
+    document.head.append(h('script', { src: 'vendor/polygon-clipping.umd.min.js', onload: () => resolve(globalThis.polygonClipping),
       onerror: (e) => { e.target.remove(); reject(new Error('polygon-clipping did not load')); } }));
   }));
   function exportZip(b) {
@@ -117,7 +115,7 @@ export function gisExport({ map, layersOf, kindOf, drawing, display, profiled, c
           worldfile: { href: './map.pgw', type: 'text/plain', title: 'World file of map.png', roles: ['metadata'] },
           crs: { href: './map.png.aux.xml', type: 'application/xml', title: 'CRS of map.png (GDAL sidecar)', roles: ['metadata'] },
           chart: { href: './chart.png', type: 'image/png', title: 'The map with legends, credits and scale, its details in text fields: the PNG export', roles: ['overview'] },
-          ...Object.fromEntries(rasters.map((r) => [r.asset, { href: `./${r.file}`, type: 'image/tiff; application=geotiff', title: `${r.title}: DEM tiles of zoom ${r.grid.z}${r.grid.z > r.native ? `, upsampled from zoom ${r.native}` : ''}, over the view's bounding box`, description: r.description, roles: ['data'],
+          ...Object.fromEntries(rasters.map((r) => [r.asset, { href: `./${r.file}`, type: 'image/tiff; application=geotiff', title: `${r.title}: tiles of zoom ${r.grid.z}, over the view's bounding box`, description: r.description, roles: ['data'],
             'proj:code': 'EPSG:3857', 'proj:shape': [r.grid.h, r.grid.w], 'proj:transform': r.transform, bands: [{ data_type: 'float32', nodata: 'nan', unit: 'm' }] }])),
           ...Object.fromEntries(vectors.map((v) => [v.key, { href: `./${v.file}`, type: 'application/geo+json', title: `${v.title}: ${v.n} feature${v.n === 1 ? '' : 's'}, ${v.how}`, roles: ['data'] }])),
           ...(drawingFile ? { drawing: { href: './drawing.geojson', type: 'application/geo+json', title: 'The drawing, editable: Charts, Import (GeoJSON, with what the app needs to edit it)', roles: ['data'] } } : {}),

@@ -27,7 +27,18 @@ async function open(hash, inCtx = ctx) {
 }
 const visible = (page, id) => page.evaluate((id) => map.getLayoutProperty(id, 'visibility'), id);
 // an item of the rail's Export menu (link, png, zip, save): the menu opened, then the item
-const exportItem = async (page, id) => { await page.click('#export'); await page.click(`#${id}`); };
+// the view's outputs: in the Export menu, or from 1024 px wide in the rail's ☰ (each item then says how it went)
+const wideOn = (page) => page.evaluate(() => matchMedia('(min-width: 1024px)').matches);
+const exportItem = async (page, id) => {
+  if (!(await wideOn(page))) await page.click('#export');
+  else if (!(await page.isVisible('.dmenu'))) await page.click('#dstrip .filebtn'); // the menu stays open while an export runs
+  await page.click(`#${id}`);
+};
+// the time line: from 1024 px wide behind the time chip on the bottom row
+const timeOpen = async (page) => { if ((await wideOn(page)) && !(await page.isVisible('#when'))) await page.click('#shown'); };
+const saidOn = async (page, id) => ((await wideOn(page)) ? `#${id}` : '#export'); // where an export says how it went
+// the search: from 1024 px wide behind its lens
+const findOpen = async (page) => { if (await wideOn(page)) await page.click('#b-find'); };
 
 // name → bytes, every entry of a zip (central directory: name and local header offset), and its item.json
 function files(zz) {
@@ -84,6 +95,7 @@ await section('URL state, Link, Measure, a bad link', async () => {
   // guides showing their values (a distance: a line; a ring: a circle in two clicks), their values
   // drawn with the drawing's
   const p = await open('#v=9/35.9/14.4/0&on=chart,coastline,depth,isobaths&u=nm&menu=draw');
+  await p.keyboard.press('e'); // the column hidden: the clicks below land on the map
   await p.keyboard.press('m'); // Measure, a distance
   await p.mouse.click(300, 300);
   await p.mouse.move(420, 340);
@@ -95,7 +107,7 @@ await section('URL state, Link, Measure, a bad link', async () => {
   await p.mouse.click(560, 300);
   await p.keyboard.press('Escape');
   await p.waitForTimeout(400);
-  const kinds = (await p.evaluate(() => [...document.querySelectorAll('#dview .drow:not(.dall) .dname')].map((l) => l.textContent.split(' ')[0]))).sort().join();
+  const kinds = (await p.evaluate(() => [...document.querySelectorAll('.dlist .drow .dname')].map((l) => l.textContent.split(' ')[0]))).sort().join();
   const measured = await p.evaluate(async () => { const { elements, isMeasurement } = await import('./draw/document.js'); return [elements(drawing.doc).filter((x) => isMeasurement(drawing.doc, x.el)).length, map.querySourceFeatures('drawvalue').map((f) => f.properties.label)]; });
   check(kinds === 'Distance,Ring' && measured[0] === 2 && measured[1].some((t) => /NM$/.test(t)) && liveValues > 0,
     `Measure: a distance and a ring, guides showing their values in NM, the leg's length shown while drawing (${kinds}; ${measured[1].join(' | ')}; ${liveValues} live)`);
@@ -115,14 +127,16 @@ await section('URL state, Link, Measure, a bad link', async () => {
 });
 
 await section('one side panel', async () => {
-  // one side panel: Draw replaces Layers in place, the link keeps the view, its button closes it
+  // from 1024 px wide the tools are always on, in the left frame; the right-hand panel is Layers' alone:
+  // its button opens and closes it, the frame staying; no Tools button
   const pv = await open('#v=6/41/12/0&menu=1');
-  await pv.click('#b-draw');
+  const now = () => pv.evaluate(() => [!!document.querySelector('#panel').offsetParent && !document.querySelector('#lview').hidden, !document.querySelector('#dstrip').hidden,
+    !!document.querySelector('#b-draw').offsetParent, new URLSearchParams(location.hash.slice(1)).get('menu')]);
+  const opened = await now();
+  await pv.click('#b-maplayers');
   await pv.waitForTimeout(400);
-  const views = await pv.evaluate(() => [!document.querySelector('#panel').hidden, document.querySelector('#lview').hidden, !document.querySelector('#dview').hidden, document.querySelector('#panel-title').textContent, location.hash.includes('menu=draw')]);
-  check(views.join() === 'true,true,true,Tools,true', `Tools switches the panel in place and the link keeps it (${views.join()})`);
-  await pv.click('#b-draw');
-  check(await pv.evaluate(() => document.querySelector('#panel').hidden), "the shown view's button closes the panel");
+  const closed = await now();
+  check(opened.join() === 'true,true,false,1' && closed.join() === 'false,true,false,0', `Layers opened and closed by its button, the tools' frame always there (${opened}; ${closed})`);
   await pv.close();
 });
 
@@ -155,13 +169,20 @@ await section('a zoom', async () => {
 await section('search', async () => {
   // search: coordinates are read on the page (no request); a place comes from Photon
   const sp = await open('#v=6/41/12/0&menu=0');
-  const near = (lat, lon, tol) => sp.evaluate(({ lat, lon, tol }) => { const c = map.getCenter(); return Math.abs(c.lat - lat) < tol && Math.abs(c.lng - lon) < tol; }, { lat, lon, tol });
+  // there: in the middle of the map's part left free by the left frame (from 1024 px wide), within tol degrees
+  const near = (lat, lon, tol) => sp.evaluate(({ lat, lon, tol }) => {
+    const L = Math.max(0, ...['#dstrip', '#elements'].map((x) => document.querySelector(x)).filter((e) => !e.hidden).map((e) => e.getBoundingClientRect().right));
+    const c = map.unproject([(L + innerWidth) / 2, innerHeight / 2]);
+    return Math.abs(c.lat - lat) < tol && Math.abs(c.lng - lon) < tol;
+  }, { lat, lon, tol });
   let photonCalls = 0;
   sp.on('request', (r) => { if (r.url().includes('photon.komoot.io')) photonCalls++; });
+  await findOpen(sp);
   await sp.fill('#q', '35 54N 14 31E');
   await sp.keyboard.press('Enter');
   await sp.waitForTimeout(2500);
   check((await near(35.9, 14 + 31 / 60, 0.01)) && photonCalls === 0, 'coordinates in the search box go there, without a request');
+  await findOpen(sp);
   await sp.fill('#q', 'Valletta');
   await sp.waitForSelector('#results li[role=option]', { timeout: 15000 }).catch(() => {});
   await sp.keyboard.press('Enter');
@@ -216,6 +237,7 @@ await section('Copernicus layers, the time line, About, the manifest, my locatio
   const aLocal = await cm.evaluate((t) => { const d = new Date(t), p = (n) => String(n).padStart(2, '0'); return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:00`; }, ahead);
   const [minMax, shownOn] = await cm.evaluate(() => [[document.querySelector('#when input').min, document.querySelector('#when input').max], !document.querySelector('#shown').hidden]);
   check(shownOn && minMax[0] > '2020' && minMax[1] > minMax[0] && !minMax[1].startsWith('2099'), `the field holds the dates the layers have (${minMax.join(' to ')})`, true);
+  await timeOpen(cm);
   await cm.fill('#when input', aLocal);
   await cm.waitForTimeout(1500);
   const [shownText, cmHash] = await cm.evaluate(() => [document.querySelector('#shown').textContent, location.hash]);
@@ -234,7 +256,7 @@ await section('Copernicus layers, the time line, About, the manifest, my locatio
   await cm.waitForTimeout(500);
   check((await cm.evaluate(() => document.querySelector('#shown').textContent)).startsWith('Today'), 'Now goes back to now');
   // About, in the right-hand column
-  await cm.click('#b-about');
+  if (await wideOn(cm)) { await cm.click('#dstrip .filebtn'); await cm.click('.dmenu .mabout'); } else await cm.click('#b-about');
   check(await cm.evaluate(() => document.querySelector('#about').open), 'the About button opens About');
   await cm.click('#about [data-close]');
   check(await cm.evaluate(() => !document.querySelector('#nostart')), 'the map started: the notice that it did not is gone');
@@ -258,6 +280,7 @@ await section('Copernicus layers, the time line, About, the manifest, my locatio
   // coordinates being typed never reach the place search
   const sent = [];
   cm.on('request', (r) => { if (r.url().includes('photon')) sent.push(r.url()); });
+  await findOpen(cm);
   await cm.fill('#q', '35 54N 14');
   await cm.waitForTimeout(800);
   check(!sent.length && /latitude, then longitude/.test(await cm.textContent('#results')), `coordinates being typed stay in the page (${sent.length} sent)`);
@@ -297,6 +320,7 @@ await section('water properties at a depth', async () => {
     document.querySelectorAll('.item .note:not([hidden])').length, [...document.querySelectorAll('.item.error, .item.partial')].map((r) => r.title)]);
   check(/^100 .* · 100 m deep$/.test(wpDepth) && !wpNotes && !wpBroken.length && !wp.errors.length, `temperature at 100 m, set on the time line and shown as "100 m deep": ${wpDepth} ${wpBroken.join(' ')} ${wp.errors.join(' | ')}`, true);
   // the depth on a row of its own, under the time line, which keeps its width
+  await timeOpen(wp);
   const [inW, below] = await wp.evaluate(() => { const i = document.querySelector('#when input').getBoundingClientRect(), d = document.querySelector('#when .depthsel').getBoundingClientRect(); return [i.width, d.top >= i.bottom]; });
   check(below && inW >= 150, `the depth sits under the time line, which keeps its width (${Math.round(inW)} px)`);
   await wp.close();
@@ -337,10 +361,12 @@ await section('the PNG and GIS exports', async () => {
   // an export that fails says so on its button, and the next click tries again
   await again.route('**/polygon-clipping*', (r) => r.abort());
   await exportItem(again, 'zip');
-  await again.waitForFunction(() => document.querySelector('#export span').textContent === 'Failed', null, { timeout: 15000 }).catch(() => {});
-  const [zipLabel, zipTitle] = await again.evaluate(() => [document.querySelector('#export span').textContent, document.querySelector('#export').title]);
+  const zipSays = await saidOn(again, 'zip');
+  await again.waitForFunction((sel) => document.querySelector(`${sel} span`).textContent === 'Failed', zipSays, { timeout: 15000 }).catch(() => {});
+  const [zipLabel, zipTitle] = await again.evaluate((sel) => [document.querySelector(`${sel} span`).textContent, document.querySelector(sel).title], zipSays);
   check(zipLabel === 'Failed' && /polygon-clipping/.test(zipTitle), `a failed GIS export says so on its button (${zipLabel}: ${zipTitle})`);
   await again.unroute('**/polygon-clipping*');
+  await again.keyboard.press('Escape'); // the menu closed (from 1024 px wide it stays open while an export runs)
   const [dz] = await Promise.all([again.waitForEvent('download', { timeout: 60000 }), exportItem(again, 'zip')]);
   const z = await readFile(await dz.path());
   const names = ['item.json', 'map.png', 'map.pgw', 'map.png.aux.xml', 'chart.png', 'vector/coastline.geojson', 'vector/isobaths.geojson', 'raster/depth.tif'];
@@ -471,6 +497,13 @@ await section('maritime zones', async () => {
 await section('the drawing', async () => {
   // the drawing: place, edit, undo, export, New, import, restore, the exports
   const dw = await open('#v=11/40.2/12.1/0&on=chart,coastline&menu=draw');
+  const DX = 400; // from 1024 px wide the left frame (rail and column) covers the map's left: the clicks below, written for the whole map, moved right of it
+  await dw.evaluate(() => { if (document.querySelector('#elements').hidden) document.querySelector('#dstrip .coltoggle').click(); }); // open (an earlier section may have hidden it)
+  // the drawing's file out: from the menu beside its title, in the Elements panel's head
+  const exportDrawing = async () => {
+    await dw.click('#dstrip .filebtn');
+    await dw.click('.dmenu button:text-is("Export drawing (GeoJSON)")');
+  };
   await dw.evaluate(async () => { const { addLine } = await import('./draw/document.js'); drawing.change((doc) => addLine(doc, [12, 40.1], [], [12.05, 40.12], { name: 'Distance 1', guide: true, look: { text: { values: true } } })); });
   // the drawing open, as saved in this browser (one key each, the open one's in charts.drawings.current): GeoJSON
   const saved = () => dw.evaluate(() => JSON.parse(localStorage.getItem(`charts.drawing.${localStorage.getItem('charts.drawings.current')}`) || 'null'));
@@ -479,20 +512,30 @@ await section('the drawing', async () => {
   const measuredOf = (fc) => (fc?.features || []).filter((f) => own(f)?.guide && own(f)?.look?.text?.values);
   await dw.keyboard.press('s'); // the Shape tool, a circle (its first kind)
   const sub = await dw.locator('.subrail button').evaluateAll((bs) => bs.map((b) => b.getAttribute('aria-label')));
-  check(sub.join() === 'Circle,Rings,Sector,Rectangle,Ellipse,Triangle,Polygon,Aerial vehicle,Surface vehicle,Underwater vehicle',
+  check(sub.join() === 'Circle,Rings,Sector,Arc,Rectangle,Ellipse,Triangle,Polygon,Aerial vehicle,Surface vehicle,Underwater vehicle',
     `tools: Shape's kinds, round a centre first, then the outlines, then the vehicles (${sub})`);
-  const compactNow = () => dw.evaluate(() => [document.querySelector('#panel').classList.contains('compact'), !!document.querySelector('.dinspect')?.offsetParent]);
-  const onTool = await compactNow();
-  await dw.keyboard.press('Escape'); // the tool ends: the panel whole again
-  const offTool = await compactNow();
-  await dw.click('.cbtn'); // by hand: compact, and back
-  const byHand = await compactNow();
-  await dw.click('.cbtn');
+  // from 1024 px wide: the rail docked at the left edge, the tool's kinds a column beside it, nothing
+  // folded away; the column (tree over inspector) open, hidden by the rail's toggle, back with E; the
+  // inspector showing the drawing with nothing selected
+  const layoutNow = () => dw.evaluate(() => [document.querySelector('#panel').classList.contains('compact'),
+    !!document.querySelector('#dstrip button[data-tool=shape][aria-pressed=true]')?.offsetParent, !!document.querySelector('#dstrip .subrail')?.offsetParent,
+    !document.querySelector('#elements').hidden, Math.round(document.querySelector('#dstrip').getBoundingClientRect().left), document.querySelector('.dinsphead .ititle')?.textContent]);
+  const onTool = await layoutNow();
+  await dw.click('#dstrip .coltoggle');
+  const hiddenE = await layoutNow();
+  await dw.keyboard.press('e');
+  const shownE = await layoutNow();
+  check(onTool.join() === 'false,true,true,true,0,Untitled drawing' && !hiddenE[3] && shownE[3],
+    `tools: the rail at the left edge, the kinds beside it; the column open (the drawing in the inspector), hidden by the rail's toggle, back with E (${onTool}; ${hiddenE[3]}; ${shownE[3]})`);
+  // a kind picked: the column still open (until the tool ends), the tool's button showing it; Circle again
+  await dw.click('#dstrip .subrail button[aria-label="Rings"]');
+  const picked = await dw.evaluate(() => [!!document.querySelector('#dstrip .subrail')?.offsetParent, document.querySelector('#dstrip button[data-tool=shape]').dataset.shows]);
+  await dw.keyboard.press('Escape');
   await dw.keyboard.press('s');
-  check(onTool.join() === 'true,false' && offTool.join() === 'false,true' && byHand.join() === 'true,false',
-    `tools: a tool started makes the panel compact (only the tools), its end makes it whole; the button switches by hand (${onTool}; ${offTool}; ${byHand})`);
-  await dw.mouse.click(500, 400);
-  await dw.mouse.click(500, 400); // its centre again: the default size
+  await dw.click('#dstrip .subrail button[aria-label="Circle"]');
+  check(picked[0] && picked[1] === 'rings', `tools: a kind picked, the column stays open while the tool is on, the tool's button shows it (${picked})`);
+  await dw.mouse.click(DX + 500, 400);
+  await dw.mouse.click(DX + 500, 400); // its centre again: the default size
   await dw.keyboard.press('Escape');
   const radius = dw.locator('.dinspect input[aria-label="Part 1 radius"]');
   await radius.fill('1.5 NM');
@@ -516,7 +559,7 @@ await section('the drawing', async () => {
   const nudged = await dw.evaluate(() => drawing.selected()[0].el.bearing);
   await dw.evaluate(() => drawing.undo()); // back to 330, for the undo check below
   check(!tall.length && nudged === 331, `inspector: value rows never wrap (${tall.join(' | ') || 'none taller'}); ↑ nudges a bearing (330 → ${nudged})`);
-  await dw.locator('.dinspect h2').click(); // out of the fields: the keys are the drawing's
+  await dw.locator('.dinsphead .ititle').click(); // out of the fields: the keys are the drawing's
   await dw.keyboard.press('Control+z');
   await dw.waitForTimeout(600);
   d = await saved();
@@ -526,8 +569,9 @@ await section('the drawing', async () => {
   d = await saved();
   check(undone === 0 && pt0().bearing === 330, `drawing: undo and redo (bearing ${undone}, then 330)`);
   // the list's header box: all shown, a click hides them all; again, shows them all
-  const allBox = dw.locator('.dlist .dall input[aria-label="Show all listed"]');
-  const wasAll = await allBox.isChecked();
+  const allBox = dw.locator('.dlisthead .deye');
+  const isAll = async () => (await allBox.getAttribute('aria-pressed')) === 'true';
+  const wasAll = await isAll();
   await allBox.click();
   await dw.waitForTimeout(600);
   d = await saved();
@@ -535,8 +579,9 @@ await section('the drawing', async () => {
   await allBox.click();
   await dw.waitForTimeout(600);
   d = await saved();
-  check(wasAll && hidden === false && (pt0().visible ?? true) === true && await allBox.isChecked(), 'drawing: the list\'s All row hides all, then shows all');
-  const [dex] = await Promise.all([dw.waitForEvent('download'), (async () => { await dw.keyboard.press('Escape'); await exportItem(dw, 'save'); })()]);
+  const allAgain = await isAll();
+  check(wasAll && hidden === false && (pt0().visible ?? true) === true && allAgain, 'drawing: the list\'s eye hides all, then shows all');
+  const [dex] = await Promise.all([dw.waitForEvent('download'), (async () => { await dw.keyboard.press('Escape'); await exportDrawing(); })()]);
   const savedFile = JSON.parse(await readFile(await dex.path(), 'utf8'));
   const ruler = measuredOf(savedFile).find((f) => f.geometry.type === 'LineString' && f.geometry.coordinates[0][0] === 12);
   check(/\.geojson$/.test(dex.suggestedFilename()) && savedFile.type === 'FeatureCollection' && savedFile.charts?.view?.layers?.some((l) => l.id === 'coastline') && ruler?.geometry.type === 'LineString',
@@ -546,7 +591,7 @@ await section('the drawing', async () => {
   savedFile.features = [...savedFile.features.filter((f) => !measuredOf(savedFile).includes(f)), ruler];
   const exported = JSON.stringify(savedFile);
   const measuredNow = () => dw.evaluate(async () => { const { elements, isMeasurement } = await import('./draw/document.js'); return elements(drawing.doc).filter((x) => isMeasurement(drawing.doc, x.el)).map((x) => x.el.start?.position ?? x.el.position ?? x.el.points[0]); });
-  await dw.click('.dinspect button:has-text("New")'); // a new drawing in the list, nothing asked
+  await dw.click('#dstrip .filebtn'); await dw.click('.dmenu .dnew'); // a new drawing, from the rail's ☰, nothing asked
   await dw.waitForFunction(() => !drawing.doc.points.length && !drawing.doc.lines.length);
   await dw.evaluate(() => map.jumpTo({ center: [0, 0], zoom: 3 }));
   await dw.setInputFiles('#dview input[type=file]', { name: 'x.geojson', mimeType: 'application/geo+json', buffer: Buffer.from(exported) });
@@ -559,8 +604,12 @@ await section('the drawing', async () => {
     `drawing: New, then the file opened again: its element, its view and its measurement (${c.lat.toFixed(2)}, ${c.lng.toFixed(2)}; ${mAfter})`);
   // a file without the measurement: its drawing has none (they are each drawing's)
   savedFile.features = savedFile.features.filter((f) => f !== ruler);
-  await dw.click('#import');
-  await dw.setInputFiles('#dview input[type=file]', { name: 'other.geojson', mimeType: 'application/geo+json', buffer: Buffer.from(JSON.stringify(savedFile)) });
+  // dropped on the map: imported as from the menu (its report first)
+  await dw.evaluate((text) => {
+    const dt = new DataTransfer();
+    dt.items.add(new File([text], 'other.geojson', { type: 'application/geo+json' }));
+    map.getContainer().dispatchEvent(new DragEvent('drop', { dataTransfer: dt, bubbles: true, cancelable: true }));
+  }, JSON.stringify(savedFile));
   await Promise.all([dw.waitForEvent('load'), dw.click('dialog[open] button.done')]);
   await dw.waitForFunction(() => window.map?.loaded?.(), null, { timeout: 90000 });
   await dw.waitForTimeout(500);
@@ -569,10 +618,11 @@ await section('the drawing', async () => {
   check(drawings.length === 3, `drawing: every drawing kept in the list, the imported ones added (${drawings.join(', ')})`); // the first and two imported (an empty New left nothing)
   await dw.reload();
   await dw.waitForFunction(() => window.map?.loaded?.(), null, { timeout: 90000 });
-  check((await dw.locator('#dview .drow:not(.dall)').count()) === 1, 'drawing: restored after a reload');
-  await dw.locator('#dview .drow:not(.dall) .dname').first().click(); // selected: its highlight must stay out of the picture
+  check((await dw.locator('.dlist .drow').count()) === 1, 'drawing: restored after a reload');
+  await dw.evaluate(() => drawing.select([drawing.doc.points[0].id])); // selected: its highlight must stay out of the picture
   const [dpng] = await Promise.all([dw.waitForEvent('download', { timeout: 120000 }), exportItem(dw, 'png')]);
   const [dzip] = await Promise.all([dw.waitForEvent('download', { timeout: 120000 }), exportItem(dw, 'zip')]);
+  await dw.keyboard.press('Escape'); // the ☰ menu closed (it stays open while an export runs)
   const dfiles = files(await readFile(await dzip.path()));
   const dgj = JSON.parse(dfiles['vector/drawings.geojson'] || '{}'), ditem = JSON.parse(dfiles['item.json']), dfile = JSON.parse(dfiles['drawing.geojson'] || '{}');
   check(dpng && dgj.features?.map((f) => f.properties.kind).join() === 'point,sector' && dgj.features[1].properties.radius_m === 2778
@@ -581,18 +631,18 @@ await section('the drawing', async () => {
   check(await dw.evaluate(() => map.getLayoutProperty('draw-mark-line-polygon', 'visibility') === 'visible'), 'drawing: the selection shown again after the exports');
   // lines: a line and two lines from its end drawn with the Line tool (joined there: a point, each
   // attached to it), the totals
-  await dw.locator('.dinspect h2').first().click();
+  await dw.locator('.dinsphead .ititle').click();
   await dw.keyboard.press('Escape'); // nothing selected: the drawing's own inspector
-  await dw.click('.dinspect button:has-text("New")'); // a new drawing in the list, nothing asked
+  await dw.click('#dstrip .filebtn'); await dw.click('.dmenu .dnew'); // a new drawing, from the rail's ☰, nothing asked
   await dw.waitForFunction(() => !drawing.doc.points.length);
   await dw.keyboard.press('g');
-  await dw.mouse.click(200, 500);
-  await dw.mouse.click(300, 420);
-  await dw.mouse.dblclick(420, 400); // the first line ends there, free
-  await dw.mouse.click(420, 400); // starts on its end: a point made there, both attached
-  await dw.mouse.dblclick(600, 300);
-  await dw.mouse.click(420, 400); // starts on that point
-  await dw.mouse.dblclick(620, 520);
+  await dw.mouse.click(DX + 200, 500);
+  await dw.mouse.click(DX + 300, 420);
+  await dw.mouse.dblclick(DX + 420, 400); // the first line ends there, free
+  await dw.mouse.click(DX + 420, 400); // starts on its end: a point made there, both attached
+  await dw.mouse.dblclick(DX + 600, 300);
+  await dw.mouse.click(DX + 420, 400); // starts on that point
+  await dw.mouse.dblclick(DX + 620, 520);
   await dw.keyboard.press('Escape');
   const segs = await dw.evaluate(() => drawing.doc.lines.map((s) => [s.start.element, s.end.element, s.vertices.length]));
   check(segs.length === 3 && segs[0][1] && segs[1][0] === segs[0][1] && segs[2][0] === segs[0][1] && segs[0][2] === 1,
@@ -624,39 +674,39 @@ await section('the drawing', async () => {
   const painted = await dw.evaluate(() => map.querySourceFeatures('drawzoom').filter((f) => f.properties.kind === 'path').map((f) => f.properties.off));
   check(before === 0 && offset.join() === '2,-8,-8,4' && painted.includes(-8),
     `drawing: Offset off until set (${before}); −8 px on the two lines selected (${offset.slice(0, 3)}), their lengths still counted (${offset[3]} lines), carried to the map (${painted})`);
-  await dw.click('.tools2 button[data-tool=area]'); // Select area, a tool after Measure
-  await dw.mouse.move(150, 250);
+  await dw.keyboard.press('a'); // Select area, a kind of Select
+  await dw.mouse.move(DX + 150, 250);
   await dw.mouse.down();
-  await dw.mouse.move(700, 600, { steps: 5 });
+  await dw.mouse.move(DX + 700, 600, { steps: 5 });
   await dw.mouse.up();
   await dw.keyboard.press('Escape');
-  await dw.click('.dinspect button:text-is("Group")');
+  await dw.click('.dinsphead button[aria-label=Group]'); // the title row's Group
   check(await dw.evaluate(() => drawing.doc.groups.length === 1 && drawing.doc.lines.every((s) => s.groupId === drawing.doc.groups[0].id)), 'drawing: Select area, then a group of everything in it');
   // two of its lines grouped: a subgroup of it, one step further in the list; deleted alone, its lines
   // back in the group above
   const top = await dw.evaluate(() => { drawing.select(drawing.doc.lines.slice(0, 2).map((s) => s.id)); return drawing.doc.groups[0].id; });
-  await dw.click('.dinspect button:text-is("Group")');
+  await dw.click('.dinsphead button[aria-label=Group]'); // the title row's Group
   const nested = await dw.evaluate((t) => {
     const g = drawing.doc.groups.find((x) => x.groupId === t), cls = (id) => document.querySelector(`.dlist [data-id="${id}"]`)?.className ?? '';
     return g && { id: g.id, members: drawing.doc.lines.filter((s) => s.groupId === g.id).length, row: cls(g.id), member: cls(drawing.doc.lines[0].id), selected: drawing.selected()[0]?.el.id === g.id };
   }, top);
-  check(nested?.members === 2 && nested.selected && /\bd2\b/.test(nested.row) && /\bd3\b/.test(nested.member),
+  check(nested?.members === 2 && nested.selected && /\bd1\b/.test(nested.row) && /\bd2\b/.test(nested.member),
     `drawing: a group of a group's members is a subgroup of it, indented further (${JSON.stringify(nested)})`);
   await dw.evaluate((id) => drawing.remove([id]), nested?.id);
   check(await dw.evaluate((t) => drawing.doc.groups.length === 1 && drawing.doc.lines.every((s) => s.groupId === t), top), 'drawing: a subgroup deleted alone: its lines back in the group above');
-  const [dnet] = await Promise.all([dw.waitForEvent('download'), (async () => { await dw.keyboard.press('Escape'); await exportItem(dw, 'save'); })()]);
+  const [dnet] = await Promise.all([dw.waitForEvent('download'), (async () => { await dw.keyboard.press('Escape'); await exportDrawing(); })()]);
   const back = JSON.parse(await readFile(await dnet.path(), 'utf8'));
   check(featuresOf(back, 'line').length === 4 && featuresOf(back, 'point').length === 1 && back.charts.groups.length === 1 && featuresOf(back, 'line').filter((f) => own(f).start || own(f).end).length === 4,
     'drawing: exported whole, the lines\' ends attached to the point');
   // points along a line, connected to one root in the same form: one step, undone at once
   await dw.keyboard.press('Escape');
   await dw.keyboard.press('g');
-  await dw.mouse.click(150, 650);
-  await dw.mouse.dblclick(700, 640);
+  await dw.mouse.click(DX + 150, 650);
+  await dw.mouse.dblclick(DX + 700, 640);
   await dw.evaluate(() => { drawing.stop(); drawing.variant.shape = 'circle'; }); // a circle, whatever was on
   await dw.keyboard.press('s');
-  await dw.mouse.click(420, 760 - 60);
-  await dw.mouse.click(420, 760 - 60); // its centre again: the default size
+  await dw.mouse.click(DX + 420, 760 - 60);
+  await dw.mouse.click(DX + 420, 760 - 60); // its centre again: the default size
   await dw.keyboard.press('Escape');
   const guide = await dw.evaluate(() => drawing.doc.lines.at(-1).id);
   await dw.evaluate((id) => drawing.select([id]), guide);
@@ -666,7 +716,7 @@ await section('the drawing', async () => {
   await gsp.fill('2 km');
   await gsp.press('Enter');
   await dw.click('.dinspect label:has-text("Connect to roots") input');
-  await dw.mouse.click(420, 700); // the circle's centre: a root (a click on a point uses it)
+  await dw.mouse.click(DX + 420, 700); // the circle's centre: a root (a click on a point uses it)
   const mb = dw.locator('input[aria-label="Shortest branch"]'); // Tree: each branch at least this long
   await mb.fill('300 m');
   await mb.press('Enter');
@@ -686,7 +736,7 @@ await section('the drawing', async () => {
         return 111320 * Math.hypot((b[0] - a[0]) * k, b[1] - a[1]);
       })), hubs: c?.hubs.length, minBranch: c?.minBranch };
   });
-  await dw.locator('.dinspect h2').first().click();
+  await dw.locator('.dinsphead .ititle').click();
   await dw.keyboard.press('Control+z');
   const genUndone = await dw.evaluate(() => [drawing.doc.rules.filter((r) => r.kind === 'connect').length, drawing.doc.lines.length, drawing.doc.rules.filter((r) => r.kind === 'distribute').length]);
   check(previewed[0] === gen.n && previewed[1] > 0, `drawing: Distribute along previews its points and lines before making them (${previewed})`);
@@ -724,8 +774,8 @@ await section('the drawing', async () => {
   await dw.keyboard.press('Escape');
   await dw.evaluate(() => { drawing.stop(); drawing.variant.shape = 'circle'; }); // a circle, whatever was on
   await dw.keyboard.press('s');
-  await dw.mouse.click(640, 300);
-  await dw.mouse.click(640, 300); // its centre again: the default size
+  await dw.mouse.click(DX + 640, 300);
+  await dw.mouse.click(DX + 640, 300); // its centre again: the default size
   await dw.keyboard.press('Escape');
   await dw.waitForTimeout(300);
   const nd = await dw.evaluate(async () => { const { destination } = await import('./geodesy.js'); const x = drawing.doc.points.at(-1); const q = map.project(destination(x.position, 0, x.parts[0].radius)); return { r: x.parts[0].radius, x: q.x, y: q.y, undos: drawing.undos.length }; });
@@ -746,8 +796,8 @@ await section('the drawing', async () => {
   // drawn with it; the preset it was placed from remembered
   await dw.evaluate(() => { drawing.stop(); drawing.variant.shape = 'rectangle'; });
   await dw.keyboard.press('s');
-  await dw.mouse.click(300, 200);
-  await dw.mouse.click(300, 200); // its centre again: the default size
+  await dw.mouse.click(DX + 300, 200);
+  await dw.mouse.click(DX + 300, 200); // its centre again: the default size
   await dw.keyboard.press('Escape');
   await dw.selectOption('.dinspect select[aria-label="Part 1 kind"]', 'surface-vehicle');
   await dw.selectOption('.dinspect select[aria-label="Add a part"]', 'circle');
@@ -756,14 +806,41 @@ await section('the drawing', async () => {
     drawn: map.querySourceFeatures('draw').filter((f) => f.properties.id === x.id && f.properties.kind === 'ring').length + map.querySourceFeatures('drawzoom').filter((f) => f.properties.id === x.id && f.properties.kind === 'shape').length }; });
   check(twoParts.kinds === 'surface-vehicle,circle' && twoParts.len === 100 && twoParts.preset === 'Rectangle' && twoParts.drawn >= 2,
     `parts: an outline's kind changed, its length kept; a circle added, both drawn; its preset remembered (${JSON.stringify(twoParts)})`);
-  // two clicks: the centre, then the reach (half the length; the width in proportion); facing north
+  // a rectangle corner to corner: its box from the first click to the second, facing north; Shift: a
+  // square, the larger side
   await dw.evaluate(() => { drawing.stop(); drawing.variant.shape = 'rectangle'; });
   await dw.keyboard.press('s');
-  await dw.mouse.click(300, 500);
-  await dw.mouse.move(360, 500, { steps: 3 });
-  await dw.mouse.click(360, 500);
-  const sized = await dw.evaluate(async () => { const { inverse } = await import('./geodesy.js'); const x = drawing.doc.points.at(-1), a = map.unproject([300, 500]), b = map.unproject([360, 500]); return [x.bearing, x.parts[0].length, x.parts[0].width, inverse([a.lng, a.lat], [b.lng, b.lat]).s]; });
-  check(sized[0] === 0 && Math.abs(sized[1] - 2 * sized[3]) < 2 && Math.abs(sized[2] - sized[1] / 2) < 1, `shapes in two clicks: a rectangle sized by the second, facing north (${sized.map((v) => Math.round(v))})`);
+  await dw.mouse.click(DX + 300, 460);
+  await dw.mouse.move(DX + 380, 500, { steps: 3 });
+  await dw.mouse.click(DX + 380, 500);
+  const boxOf = (a, b) => dw.evaluate(async ([a, b]) => { const { inverse } = await import('./geodesy.js'); const x = drawing.doc.points.at(-1), p = map.unproject(a), q = map.unproject(b), c = map.project(x.position);
+    return [x.bearing, x.parts[0].length, x.parts[0].width, inverse([p.lng, p.lat], [p.lng, q.lat]).s, inverse([p.lng, p.lat], [q.lng, p.lat]).s, Math.round(c.x), Math.round(c.y)]; }, [a, b]);
+  const sized = await boxOf([DX + 300, 460], [DX + 380, 500]);
+  await dw.mouse.click(DX + 300, 560);
+  await dw.keyboard.down('Shift');
+  await dw.mouse.click(DX + 380, 600);
+  await dw.keyboard.up('Shift');
+  const square = await boxOf([DX + 300, 560], [DX + 380, 600]);
+  check(sized[0] === 0 && Math.abs(sized[1] - sized[3]) < 2 && Math.abs(sized[2] - sized[4]) < 2 && Math.abs(sized[5] - DX - 340) <= 1 && Math.abs(sized[6] - 480) <= 1 && square[1] === square[2] && Math.abs(square[1] - square[4]) < 2,
+    `shapes: a rectangle corner to corner, facing north, centred between them; Shift a square (${sized.map((v) => Math.round(v))}; ${square.slice(1, 3).map(Math.round)})`);
+  // a polygon closed by a click on its first corner; an arc in three clicks: open, never filled
+  await dw.keyboard.press('Escape');
+  await dw.evaluate(() => { drawing.variant.shape = 'polygon'; });
+  await dw.keyboard.press('s');
+  const areasBefore = await dw.evaluate(() => drawing.doc.areas.length);
+  for (const [x, y] of [[450, 450], [520, 450], [500, 520], [451, 451]]) await dw.mouse.click(DX + x, y);
+  const closed = await dw.evaluate(() => [drawing.doc.areas.length, drawing.doc.areas.at(-1)?.points.length, !!drawing.draft]);
+  await dw.keyboard.press('Escape');
+  await dw.evaluate(() => { drawing.variant.shape = 'arc'; });
+  await dw.keyboard.press('s');
+  for (const [x, y] of [[600, 450], [600, 400], [650, 450]]) await dw.mouse.click(DX + x, y);
+  await dw.waitForTimeout(300);
+  const arc = await dw.evaluate(() => { const x = drawing.doc.points.at(-1); return [x.parts.map((q) => [q.kind, q.fill, Math.round(q.aperture)].join(':')).join(), x.name.split(' ')[0],
+    map.querySourceFeatures('draw').filter((f) => f.properties.id === x.id && f.properties.kind === 'ring').map((f) => f.geometry.type)[0]]; });
+  await dw.keyboard.press('Escape');
+  check(closed.join() === `${areasBefore + 1},3,false` && arc[0] === 'arc:false:90' && arc[1] === 'Arc' && arc[2] === 'LineString',
+    `shapes: a polygon closed on its first corner (${closed}); an arc in three clicks, open and unfilled (${arc})`);
+  await dw.evaluate(() => drawing.remove([drawing.doc.points.at(-1).id, drawing.doc.areas.at(-1).id])); // the checks after these find the drawing as it was
   await dw.keyboard.press('Escape');
   await dw.keyboard.press('Escape');
   // attaching: a line drawn to a shape's corner ends attached there, and follows it when it turns
@@ -815,9 +892,9 @@ await section('the drawing', async () => {
   // deleted, the label stays where it pointed
   const nid = await dw.evaluate(() => drawing.doc.points.filter((x) => !x.parts.some((q) => q.length)).at(-1).id);
   await dw.keyboard.press('t');
-  await dw.mouse.click(640, 300);
+  await dw.mouse.click(DX + 640, 300);
   await dw.keyboard.type('Hi {name}');
-  await dw.locator('.dinspect h2').first().click();
+  await dw.locator('.dinsphead .ititle').click();
   await dw.keyboard.press('Escape'); // the tool off; the label stays selected
   // drawn once its glyphs have loaded and it has been placed: a fixed wait was sometimes too short
   await dw.waitForFunction(() => map.queryRenderedFeatures({ layers: ['draw-label-text'] }).length > 0, null, { timeout: 5000 }).catch(() => {});
@@ -840,6 +917,7 @@ await section('the drawing', async () => {
   // the drawing's look (its Display, nothing selected): names on for every element that does not say
   // otherwise; a point's own switch still wins
   await dw.evaluate((id) => { drawing.change((doc) => { doc.points.find((n) => n.id === id).look = {}; }); drawing.select([]); }, nid);
+  await dw.click('.dtitle');
   await dw.locator('.dinspect .fblock:has(h3:text-is("Display")) input[aria-label="Names on map"]').check();
   const byDefault = await dw.evaluate((id) => [drawing.doc.look.text?.name, drawing.doc.points.find((n) => n.id === id).look.text], nid);
   await dw.waitForTimeout(300);
@@ -857,7 +935,7 @@ await section('the drawing', async () => {
   const val = dw.locator('.dinspect [data-grid$=":data"] input[aria-label=Value]').last();
   await val.fill('x');
   await val.press('Enter');
-  await dw.evaluate(() => drawing.select([]));
+  await dw.click('.dtitle');
   await dw.selectOption('.dinspect select[aria-label="Totals by"]', 'kind');
   const byKind = await dw.evaluate(() => [...document.querySelectorAll('.dinspect .vtable.totals td:first-child')].map((td) => td.textContent));
   check(byKind.some((t) => t.endsWith('“x”')) && byKind.some((t) => t.endsWith('No kind')), `drawing: a property added in Data, the totals by its key (${byKind.join(', ')})`);
@@ -927,6 +1005,22 @@ await section('the drawing', async () => {
   const prof = await dw.evaluate(() => [document.querySelectorAll('svg.profile polyline').length, document.querySelector('.dinspect .fblock .fvalue[title*="lower bound"]')?.textContent || '']);
   const deepLength = await dw.evaluate(async (id) => { const { lineTrace } = await import('./draw/lines.js'); return lineTrace(drawing.doc, drawing.doc.lines.find((x) => x.id === id)).length; }, deepLine);
   check(prof[0] > 0 && /along the seabed/.test(prof[1]) && deepLength > 25000, `a line's depth profile: the chart and the length along the seabed (${prof[1]})`);
+  // a long line's vertex table a page at a time: 100 rows built, not 502; ‹ › move by a page
+  const longId = await dw.evaluate(async () => {
+    const { addLine } = await import('./draw/document.js');
+    let s;
+    drawing.change((doc) => { s = addLine(doc, [12, 40], Array.from({ length: 500 }, (_, i) => [12 + (i + 1) / 600, 40 + Math.sin(i / 9) / 200]), [12.9, 40]); });
+    drawing.select([s.id]);
+    return s.id;
+  });
+  const t0 = Date.now();
+  await dw.waitForSelector('.dinspect .lpager');
+  const pageOne = await dw.evaluate(() => [document.querySelectorAll('.dinspect [data-grid*=":vertices"] tbody tr[data-r]').length, document.querySelector('.dinspect .lpager .funit').textContent]);
+  await dw.click('.dinspect .lpager button[aria-label="Next rows"]');
+  const pageTwo = await dw.evaluate(() => [document.querySelector('.dinspect .lpager .funit').textContent, document.querySelector('.dinspect input[aria-label="Vertex 100 latitude"]') !== null]);
+  check(pageOne[0] === 100 && pageOne[1] === '1–100 of 502' && pageTwo[0] === '101–200 of 502' && pageTwo[1] && Date.now() - t0 < 5000,
+    `drawing: a long line's vertices a page at a time (${pageOne}; ${pageTwo}; ${Date.now() - t0} ms)`);
+  await dw.evaluate((id) => drawing.remove([id]), longId);
   check(!dw.errors.length, `drawing: no errors ${dw.errors.join(' | ')}`);
   await dw.close();
 });

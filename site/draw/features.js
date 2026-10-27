@@ -5,7 +5,7 @@
 import { circle, sector, rectangle, reachesPole, ccw, areaOf, destination, inverse, pathOf, perimeterOf, fmtDist, fmtArea, fmtBrg } from '../geodesy.js';
 
 export { perimeterOf }; // the panel's and the tests' (geodesy.js)
-import { styleOf, lookOf, minSizeOf, offsetOf, isShown, elements, groupsOf, centroid, roundParts, outlineParts, mainOutline, reachOf } from './document.js';
+import { styleOf, lookOf, minSizeOf, offsetOf, isShown, elements, groupsOf, centroid, roundParts, outlineParts, mainOutline, reachOf, ARCED } from './document.js';
 import { mercator, unmercator, unrollTo, metresPerPixel } from '../geo.js';
 import { columnsOf } from './document.js';
 import { rotateHandle } from './drag.js';
@@ -16,7 +16,10 @@ import { resolve as anchorAt } from './attach.js';
 import { outlineOf, isVehicle, VEHICLE_MIN_FACTOR } from './outlines.js';
 
 // a round part's polygon about its point: a circle, or a sector centred on the point's bearing
-export const ringOf = (p, part) => (part.kind === 'sector' ? sector(p.position, part.radius, p.bearing, part.aperture) : circle(p.position, part.radius));
+export const ringOf = (p, part) => (part.kind === 'sector' ? sector(p.position, part.radius, p.bearing, part.aperture)
+  : part.kind === 'arc' ? sector(p.position, part.radius, p.bearing, part.aperture).slice(1, -1) : circle(p.position, part.radius)); // an arc: open, its edge alone
+// a round part's geometry: a ring (a polygon), an arc a line
+const roundGeometry = (part, rg) => (part.kind === 'arc' ? { type: 'LineString', coordinates: rg } : { type: 'Polygon', coordinates: [rg] });
 // whether a point's radius can be drawn: a circle reaching a pole cannot be a polygon
 export const drawable = (p, r) => !reachesPole(p.position, r);
 // a point's outline part (i: its place; none: its largest) as a shape: { center, bearing, length,
@@ -37,6 +40,7 @@ export function enlargement(doc, p, zoom) {
 }
 
 const HANDLE_GAP = 12; // px
+const BAND_GAP = 2; // px: the hover band's points, at least this far apart on screen
 
 // line paint of a style's stroke (a radius may have its own colour and dash)
 const lineProps = (s, colour = s.color, dash = s.dash) => ({ sc: colour, so: s.opacity, sw: s.width, dash });
@@ -63,16 +67,20 @@ export function drawParts(doc, sel = new Set(), hover = null, display = {}, want
   // What says "selected": the one element selected shows its handles and its own stroke, untouched
   // (as the drawing tools do: the edge is what one aligns to), a point a small white dot at its
   // centre; among several selected, each shows such dots at its key points (dots(): a line's ends and
-  // vertices, an area's or an outline's corners), inert, thinned as handles are. The yellow band
+  // vertices, an area's or an outline's corners), inert, thinned as handles are. The blue band
   // along an element is for hovering only.
   const mark = (id, geometry, props = {}, dots = null) => {
     const kind = markOf(id);
     if (!kind) return kind;
     if (kind === 'sel' && geometry.type !== 'Point') {
       if (sel.size > 1 && dots) for (const p of thinned(dots())) marks.push({ type: 'Feature', properties: { id, kind }, geometry: { type: 'Point', coordinates: p } });
-    } else marks.push({ type: 'Feature', properties: { id, kind, ...props }, geometry });
+    } else marks.push({ type: 'Feature', properties: { id, kind, ...props }, geometry: fine(geometry) });
     return kind;
   };
+  // a band's line or outline at the screen's resolution: a point every BAND_GAP px is all it shows (a
+  // line of 10,000 vertices would be re-tiled whole at each hover)
+  const fine = (g) => (g.type === 'LineString' ? { ...g, coordinates: thinned(g.coordinates, BAND_GAP) }
+    : g.type === 'Polygon' ? { ...g, coordinates: g.coordinates.map((r) => thinned(r, BAND_GAP)) } : g);
   const midway = (a, b) => { const d = inverse(a, b); return destination(a, d.azi, d.s / 2); };
   // handles, thinned at the map's zoom: one at least HANDLE_GAP px from the last one kept, and the
   // last point always (a line of hundreds of points would be a chain of squares)
@@ -80,14 +88,14 @@ export function drawParts(doc, sel = new Set(), hover = null, display = {}, want
   const midPx = display.midPx ?? 40; // a + halfway only along a leg or edge this long on screen (80 with a finger)
   // Each handle says what dragging it does: role and ref (a part's place in its point's list, an index, a point ID).
   // items: [{ p, role, ref, kind ('handle', 'mid', 'ctrl') }]; thin: a line's points thinned.
-  // positions thinned at the map's zoom: one at least HANDLE_GAP px from the last kept, the last always
-  const thinned = (ps) => {
+  // positions thinned at the map's zoom: one at least gap px from the last kept, the last always
+  const thinned = (ps, gap = HANDLE_GAP) => {
     if (!mpp) return ps;
     const out = [];
     let last = null;
     ps.forEach((p, i) => {
       const m = mercator(p);
-      if (last && i < ps.length - 1 && Math.hypot(m[0] - last[0], m[1] - last[1]) / mpp < HANDLE_GAP) return;
+      if (last && i < ps.length - 1 && Math.hypot(m[0] - last[0], m[1] - last[1]) / mpp < gap) return;
       last = m;
       out.push(p);
     });
@@ -118,18 +126,18 @@ export function drawParts(doc, sel = new Set(), hover = null, display = {}, want
     for (const { part } of rounds) {
       const rg = ringOf(n, part);
       if (want.base) base.push({ type: 'Feature', properties: { id: n.id, kind: 'ring', fill: part.fill ? 1 : 0, fc: st.fill.color, fo: st.fill.opacity,
-        ...lineProps(st.stroke, part.strokeColor || st.stroke.color, part.strokeDash || st.stroke.dash) }, geometry: { type: 'Polygon', coordinates: [rg] } });
+        ...lineProps(st.stroke, part.strokeColor || st.stroke.color, part.strokeDash || st.stroke.dash) }, geometry: roundGeometry(part, rg) });
       if (!outer || part.radius > outer.part.radius) outer = { part, rg };
     }
     // its halo round its outermost round part (a point with an outline: round that); its parts dragged
-    if (!mainOutline(n)) mark(n.id, { type: 'Polygon', coordinates: [ccw(outer.rg)] }, { sw: st.stroke.width });
+    if (!mainOutline(n)) mark(n.id, outer.part.kind === 'arc' ? roundGeometry(outer.part, outer.rg) : { type: 'Polygon', coordinates: [ccw(outer.rg)] }, { sw: st.stroke.width });
     if (sel.has(n.id)) {
       // each round part's radius dragged by its handles, named by its place in the list: a circle's at
       // its four cardinal points, a sector's at the middle of its arc
-      const items = rounds.flatMap(({ part, i }) => (part.kind === 'sector' ? [n.bearing] : [0, 90, 180, 270]).map((az) => ({ p: destination(n.position, az, part.radius), role: 'radius', ref: i })));
+      const items = rounds.flatMap(({ part, i }) => (ARCED.has(part.kind) ? [n.bearing] : [0, 90, 180, 270]).map((az) => ({ p: destination(n.position, az, part.radius), role: 'radius', ref: i })));
       // a sector's ends: each moves alone; the stalk's end beyond the outermost arc's middle turns the
       // point (with an outline, the outline's stalk does)
-      const sectors = rounds.filter(({ part }) => part.kind === 'sector');
+      const sectors = rounds.filter(({ part }) => ARCED.has(part.kind)); // an arc's ends as a sector's
       for (const { part, i } of sectors) for (const k of [-0.5, 0.5]) items.push({ p: destination(n.position, n.bearing + k * part.aperture, part.radius), role: 'aperture', ref: `${i}:${k}` });
       if (sectors.length && !mainOutline(n) && mpp) {
         const far = Math.max(...sectors.map(({ part }) => part.radius));
@@ -279,7 +287,7 @@ export function valueFeatures(doc, units = 'km', bearings = false) {
   }
   for (const n of doc.points) {
     if (!showsValues(doc, n) || !isShown(doc, n)) continue;
-    for (const { part } of roundParts(n)) if (part.shown && drawable(n, part.radius)) label(n.id, destination(n.position, part.kind === 'sector' ? n.bearing : 0, part.radius), `r ${fmtDist(part.radius, units)}`, 'bottom');
+    for (const { part } of roundParts(n)) if (part.shown && drawable(n, part.radius)) label(n.id, destination(n.position, ARCED.has(part.kind) ? n.bearing : 0, part.radius), `r ${fmtDist(part.radius, units)}`, 'bottom');
   }
   return out;
 }
@@ -306,8 +314,9 @@ export function exportFeatures(doc, units = 'km') {
       const own = { part_name: part.name, filled: part.fill };
       if (part.radius) {
         const rg = ringOf(n, part);
-        feature({ ...base(part.kind, n), ...own, radius_m: m(part.radius), area_m2: Math.round(areaOf(rg)),
-          ...(part.kind === 'sector' ? { bearing_deg: deg(n.bearing), aperture_deg: deg(part.aperture) } : {}), ...flatten(n.properties) }, { type: 'Polygon', coordinates: [ccw(rg)] });
+        const arc = part.kind === 'arc';
+        feature({ ...base(part.kind, n), ...own, radius_m: m(part.radius), ...(arc ? {} : { area_m2: Math.round(areaOf(rg)) }),
+          ...(ARCED.has(part.kind) ? { bearing_deg: deg(n.bearing), aperture_deg: deg(part.aperture) } : {}), ...flatten(n.properties) }, arc ? roundGeometry(part, rg) : { type: 'Polygon', coordinates: [ccw(rg)] });
       } else {
         const { ring: rg } = outlineOf(n.position, n.bearing, part.length, part.width, part.kind);
         feature({ ...base('shape', n), ...own, outline: part.kind, length_m: m(part.length), width_m: m(part.width), bearing_deg: deg(n.bearing), area_m2: Math.round(areaOf(rg)), ...flatten(n.properties) },

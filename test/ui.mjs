@@ -6,11 +6,12 @@
 //   CHROME=/path/to/chrome npm run ui        Screenshots go to $UI_SHOTS if set.
 import { start } from './browser.mjs';
 
-// phone and tablet are touch devices (pointer: coarse, 44 px targets); desktop has a mouse (36 px)
+// phone and tablet are touch devices (pointer: coarse, 44 px targets); desktop has a mouse (36 px; 28
+// in the Tools panel's inspector and the Elements list)
 const VIEWPORTS = [['phone', 390, 844, true], ['tablet', 820, 1180, true], ['desktop', 1280, 800, false]];
 // overlays that must not collide (screen-space boxes of floating UI)
 const OVERLAYS = {
-  search: '#search', rail: '#rail', zoom: '#zoom', panel: '#panel', legend: '#legends', status: '#status',
+  search: '#search', rail: '#rail', zoom: '#zoom', panel: '#panel', legend: '#legends', status: '#status', strip: '#dstrip', elements: '#elements',
 };
 
 // a drawing as the app saves it (GeoJSON, version 1): a point with two sectors, a rectangle, a line
@@ -40,16 +41,18 @@ for (const [name, width, height, touch] of VIEWPORTS) {
       await page.goto(`${base}#v=5/45/14/0&menu=${typeof menu === 'string' ? 'draw' : menu}&g=base,sea,data&col=waves:height&arr=currents:surface&on=chart,coastline,depth,isobaths,traffic,legend`);
       await page.waitForFunction(() => window.map?.loaded?.(), null, { timeout: 90000 });
       await page.evaluate(async () => { const { addLine } = await import('./draw/document.js'); drawing.change((doc) => addLine(doc, [12, 44], [], [13, 44.5], { name: 'Distance 1', guide: true, look: { text: { values: true } } })); });
-      if (menu === 'draw') await page.click('#dview .drow .dname');
-      if (menu === 'line') await page.click('#dview .drow:has(.kind[title=Line]) .dname');
-      if (menu === 'label') await page.click('#dview .drow:has(.kind[title=Label]) .dname');
+      // from 1024 px wide the list is the Elements panel's (open to start with): its overlaps checked too
+      if (menu === 'draw') await page.click('.dlist .drow .dname');
+      if (menu === 'line') await page.click('.dlist .drow:has(.kind[title=Line]) .dname');
+      if (menu === 'label') await page.click('.dlist .drow:has(.kind[title=Label]) .dname');
       // the inspector's text: no element printed as text ("[object …]")
       if (typeof menu === 'string') check(!(await page.evaluate(() => document.querySelector('.dinspect').textContent.includes('[object'))), `${name}: the ${menu} inspector shows no "[object …]"`);
       await page.mouse.move(width / 2, height / 2); // shows the cursor readout
       await page.waitForTimeout(800);
       if (process.env.UI_SHOTS) await page.screenshot({ path: `${process.env.UI_SHOTS}/${name}-${typeof menu === 'string' ? menu : menu ? 'menu' : 'map'}.png` });
       const r = await page.evaluate(({ OVERLAYS }) => {
-        const MIN = matchMedia('(pointer: coarse)').matches ? 44 : 36;
+        // with a mouse 36 px, but 28 in the column (a grid of cells) and 32 in the rail and the map's controls (from 1024 px wide)
+        const COARSE = matchMedia('(pointer: coarse)').matches, MIN = COARSE ? 44 : 36, minOf = (el) => (COARSE ? MIN : el.closest('.dview, #elements') ? 28 : el.closest('#dstrip, #zoom') && matchMedia('(min-width: 1024px)').matches ? 32 : MIN);
         const seen = (el) => { const b = el.getBoundingClientRect(); return b.width > 0 && b.height > 0 && getComputedStyle(el).visibility !== 'hidden' && el.closest('[hidden]') === null; };
         const boxes = {};
         for (const [k, sel] of Object.entries(OVERLAYS)) {
@@ -66,9 +69,9 @@ for (const [name, width, height, touch] of VIEWPORTS) {
             const x = Math.min(a.right, b.right) - Math.max(a.left, b.left), y = Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top);
             if (x <= 0.5 || y <= 0.5) continue;
             const pair = [keys[i], keys[j]];
-            if (pair.includes('panel')) { // allowed only if the panel is the one on top
+            if (pair.includes('panel') || pair.includes('elements')) { // allowed only if the panel (or the column, from 1024 px wide) is the one on top
               const cx = Math.max(a.left, b.left) + x / 2, cy = Math.max(a.top, b.top) + y / 2;
-              if (document.elementFromPoint(cx, cy)?.closest('#panel')) continue;
+              if (document.elementFromPoint(cx, cy)?.closest('#panel, #elements')) continue;
             }
             overlaps.push(`${pair.join(' × ')} ${Math.round(x)}×${Math.round(y)}`);
           }
@@ -80,7 +83,7 @@ for (const [name, width, height, touch] of VIEWPORTS) {
           if (el.matches('input[type=checkbox], input[type=radio]') && (el.closest('label') || (el.id && document.querySelector(`label[for="${el.id}"]`)))) continue;
           if (el.matches('label') && !el.querySelector('input') && !el.htmlFor) continue; // plain text labels
           const b = el.getBoundingClientRect();
-          if (b.width < MIN - 0.5 || b.height < MIN - 0.5) {
+          if (b.width < minOf(el) - 0.5 || b.height < minOf(el) - 0.5) {
             small.push(`${el.tagName.toLowerCase()}${el.id ? '#' + el.id : ''}${el.className && typeof el.className === 'string' ? '.' + el.className.split(' ')[0] : ''} ${Math.round(b.width)}×${Math.round(b.height)}`);
           }
         }

@@ -9,29 +9,60 @@ Code: `site/draw/` (`panel.js` the panel, `drawing.js` the map side, `snap.js`, 
 
 ## 1. The rail and the panel
 
-- The rail on the right: **Layers**, **Tools**, **Import**, **Export**, **About**. Layers and Tools
-  switch the one side panel. The Tools panel is 400 px wide on a desktop, Layers 340. Addresses with
-  `menu=draw` open Tools.
-- **Import** picks a `.geojson` or `.json` file. A drawing's file (or any GeoJSON) gets a report: what
-  it holds, what was skipped and why, the warnings; **Import** adds it to the drawings in this browser
-  and opens it with its view. A presets file adds its presets instead (§9).
-- **Export** is a menu: **Copy link** (the view and layers, and the display settings: units `u=nm`,
-  bearings `brg=1`; never the drawing), **Picture (PNG)**, **GIS data (ZIP)**, **Drawing (GeoJSON)**
-  (the file, with the view), **Presets (JSON)**.
-- Units (km or NM) are switched beside the scale; bearings beside lengths in the drawing's **Display**
+- **From 1024 px wide**: the drawing is the left frame (below); the map's own controls are a small
+  column at the top right: **find a place** (its field shown while it is used: the lens or /; gone
+  when left), **Layers** (its panel beside the column), **my position**, **north** (only when the map
+  is turned). No zoom buttons: scroll, pinch or a double-click. The bottom row:
+  the credits, then the time shown (a chip while a layer that changes with time is on: a click opens
+  ‹ the hour › and **Now**, and the depth), the cursor's position and the scale.
+- **Narrower**: the rail on the right: **Layers**, **Tools**, **Export**, **About**. Layers and Tools
+  switch the one side panel. Addresses with `menu=draw` open Tools.
+- The view's outputs: **Copy link** (the view and layers, and the display settings: units `u=nm`,
+  bearings `brg=1`; never the drawing), **Picture (PNG)**, **GIS data (ZIP)**; from 1024 px wide in
+  the rail's **☰** (each item says how it went, the menu staying open meanwhile), with **About**;
+  narrower, the **Export** menu.
+- **The drawing's file** goes in and out from the drawings menu (§10, the rail's ☰): **Import…** picks a
+  `.geojson` or `.json` file; **Export drawing (GeoJSON)** (the file, with the view); **Export presets
+  (JSON)**. A file dropped on the map is imported too (the tools turned on). A drawing's file (or any
+  GeoJSON) gets a report: what it holds, what was skipped and why, the warnings; **Import** adds it to
+  the drawings in this browser and opens it with its view. A presets file adds its presets instead (§9).
+- Units (km or NM) are switched by a click on the scale (narrower, also the button beside it); bearings beside lengths in the drawing's **Display**
   (§5). Both apply to every value shown.
 
-The Tools panel, top to bottom: the tools row, the sub-rail of the tool on, the list, a divider
-(dragged, or ↑ ↓ when focused; its place remembered in this browser), the inspector, and a note that
-says for a few seconds what just happened (with **Undo** where it applies).
+**From 1024 px wide** the drawing is the **left frame**, docked to the window's left edge, full height,
+always there; the map's own controls are on the right. The rail is full height and the map's bottom row and legends
+start at its edge; the column, when shown, lies over everything (the map and its bottom row too):
 
-**Compact**: only the tools, the list and the inspector folded away. A tool
+- the **rail**, small icons: **☰** (the drawings in this browser and the drawing's file, §10),
+  **Select** (on when no other tool is; its kinds, a click or an area), **Point**, **Line**,
+  **Shape**, **Label**, **Measure**, **Undo**, **Redo**, and at its foot the column's toggle (or
+  **E**). A tool with kinds has a small corner mark and shows the kind in use; its kinds are a column
+  beside the rail, level with its top, open while the tool is on (Select's while Select area is, or
+  once Select is clicked), over the column's top; they go when the tool ends or another starts;
+- the **column** beside it: the tree (§4) over the inspector (§5), a divider between them (dragged;
+  its place remembered in this browser). Each half has a head: the tree's is the drawing's title
+  (a click shows the drawing in the inspector) and the eye for all; the inspector's says what it
+  shows ("Line · Line 1", "3 elements selected", the drawing's title) with the actions on it, **Zoom
+  to**, **Duplicate**, **Group**, **Delete** (the drawing: Zoom to all of it). A chevron at the end of
+  each head folds that half to its head, the other taking the height (remembered in this browser).
+  The inspector shows what is selected, or the drawing itself with nothing selected. Selecting
+  never shows a hidden column. Under the inspector, a note says for a few seconds what just
+  happened (with **Undo** where it applies).
+
+**Layers** on the right-hand rail opens its panel on the right; the drawing's frame stays.
+
+**Narrower**, the Tools panel holds it all, top to bottom: the tools row, the sub-rail of the tool
+on, the list, a divider (dragged, or ↑ ↓ when focused; its place remembered in this browser), the
+inspector, and the note; its header has **Undo**, **Redo** and the compact button.
+
+**Compact** (narrower than 1024 px): only the tools, the list and the inspector folded away. A tool
 started makes the panel compact and its end makes it whole again (Label keeps it whole: a label's
-text is typed in the inspector); a button switches by hand: whole, in the panel's header beside the
-× (with **Undo** and **Redo**); compact, at the top of the tools.
-From 1024 px wide it is a column beside the rail (**Meas.** for Measure), the tool's kinds in a
-column beside it; narrower, the tools and the kinds rows (each one line, scrolled sideways on a
-phone). Compact, the tools hold everything, in groups set apart by dividers: the button back to the
+text is typed in the inspector); a button switches by hand: whole, in the panel's header; compact,
+at the start of the tools (arrows pointing in: compact; out: whole). A panel's header ends in a
+chevron pointing to the edge it goes to (a sheet's, down). A button pressed (a tool, a kind, a
+choice, the rail's Tools while a tool is on) is blue; magenta is the map's (measurements, the
+search's pin). The tools and the kinds are rows, each one line, scrolled sideways on a
+phone; compact, the tools hold everything, in groups set apart by dividers: the button back to the
 whole panel, the tools that make, Select, Undo and Redo.
 
 **On a phone** the panel is a sheet at one of three heights: compact, half the screen, or full (as
@@ -60,14 +91,15 @@ tool remembers the kind chosen last; its key pressed again, while it is on, move
 |---|---|---|
 | Point | symbol, then the user's presets without extent | a point with a symbol: a marker, the same size at every zoom |
 | Line | none | a line (Guide is a switch on any element, §5) |
-| Shape | circle, rings, sector, rectangle, ellipse, triangle, polygon, aerial vehicle, surface vehicle, underwater vehicle, then the user's presets with extent | see below |
+| Shape | circle, rings, sector, arc, rectangle, ellipse, triangle, polygon, aerial vehicle, surface vehicle, underwater vehicle, then the user's presets with extent | see below |
 | Label | none | a label |
 | Measure | distance, area, ring | a guide showing its values (§3) |
 
 - **Shape**: built-in presets, as the user's are (`place.js`): a circle (1 km), rings (1, 2 and 3 km,
-  the first filled), a sector (three clicks, below), an outline to scale about a centre (100 × 50 m;
-  a triangle 100 m a side); and a polygon (an area, drawn corner by corner). Each is a point with its
-  parts (circles, sectors, outlines) and no symbol, named after what it is ("Circle 2"), the preset
+  the first filled), a sector and an arc (three clicks, below; an arc is a sector's curved edge alone,
+  never filled), an outline to scale (100 × 50 m; a triangle 100 m a side); and a polygon (an area,
+  drawn corner by corner). Each is a point with its parts (circles, sectors, arcs, outlines) and no
+  symbol, named after what it is ("Circle 2"), the preset
   it came from kept as its property `preset` ("Rings").
 
 ### 2.1 Placing and drawing
@@ -77,8 +109,10 @@ tool remembers the kind chosen last; its key pressed again, while it is on, move
   a second step (the stalk beyond a sector's arc or an outline's front, or Bearing in the inspector;
   a circle or rings have no bearing), so that it does not swing while it is sized. The second click sets its largest part's reach, every part scaled with
   it: a circle's radius; rings' outermost (the others at a third and two thirds of it); an outline's
-  front (half its length, its width in proportion: 100 × 50; a triangle equilateral). The second
-  click on the first places the default size. A preset of the user's keeps its size: one click
+  front (half its length, its width in proportion: 100 × 50; a triangle equilateral). A **rectangle**
+  or an **ellipse** is drawn corner to corner instead: the first click one corner of its box, the
+  second the opposite one (**Shift**: a square, a circle, the larger side); it is centred between
+  them. The second click on the first places the default size. A preset of the user's keeps its size: one click
   places it. Exact sizes are typed in the inspector.
 - A tool's button pressed from the keyboard places a point, a shape (at its default size) or a label
   at the map's centre.
@@ -86,8 +120,9 @@ tool remembers the kind chosen last; its key pressed again, while it is on, move
   can attach to ends it there, attached (not on its own start with nothing in between). Enter or a
   double-click ends it at the last vertex, free. Backspace takes back the last vertex (with none, the
   start). The snap marker shows what a click would attach to.
-- **Polygon** (Shape): a click per corner; Enter or a double-click closes it (three corners at least).
-- **Sector** (Shape), in three clicks: the centre; the radius and one edge; the other edge, clockwise.
+- **Polygon** (Shape): a click per corner; a click on its first corner (marked when the pointer is
+  on it), Enter or a double-click closes it (three corners at least).
+- **Sector** and **Arc** (Shape), in three clicks: the centre; the radius and one edge; the other edge, clockwise.
   Esc or **Back** goes one click back. A third click back
   on the first edge makes a full circle.
 - **Label**: a click points a new label at what snapping finds there (a point's centre, a vertex, a
@@ -109,9 +144,8 @@ tool remembers the kind chosen last; its key pressed again, while it is on, move
 Clicks and drags snap to what is drawn within **6 px** on screen. The nearest target of the first
 kind found wins, in this order: a **vertex** (a point's centre, a corner of an outline or of an area,
 a line's vertex or free end), a **crossing** of two edges or legs, an **edge** (of an outline or an
-area, or a line's leg). Hidden elements are not snapped to. The target is marked: a ring on a vertex,
-a cross at a crossing, a dot on an edge. While the Line tool is on, every point and free end is
-ringed, and every vertex with a smaller ring.
+area, or a line's leg). Hidden elements are not snapped to. The target under the pointer is marked
+(nothing else): a ring on a vertex, a cross at a crossing, a dot on an edge.
 
 A line's end attaches to what it snaps to, and follows it from then on (a label's anchor points the
 same way):
@@ -137,21 +171,24 @@ from this: its values are the drawing's own (§2.1, Values while drawing).
 
 ## 4. The list
 
-- One row per element: a visibility box, an icon, the name, a short value, and × to delete. The list
-  is a tree: a group, then its subgroups and members one step further in; a group folds open and
-  closed. At the top, the groups, then the rest.
+- The list's head: from 1024 px wide the drawing's (its title, which a click shows in the inspector;
+  the eye; the fold); narrower, **Elements**. The eye
+  is for every element listed (all shown: a click hides them all; else it shows them all).
+- One row per element: a group's fold, an icon, the name, a short value, and an eye at its end
+  (crossed when hidden; with a mouse, a shown element's eye appears on the row pointed at or
+  selected). The list is a tree: a group, then its subgroups and members one step further in; a
+  group folds open and closed. At the top, the groups, then the rest. Deleting is the inspector's head's
+  or the Delete key's, not the row's.
 - Names and icons say what an element is: a point is a **Point**, **Circle**, **Rings**, **Sector**,
   or its outline's name (**Rectangle**, **Ellipse**…); an area is an **Area**; then **Line**,
   **Label**, **Group**. An unnamed one shows as its kind and place.
 - The value: a shape's size ("shown ×7.0" when drawn enlarged), its first filled round part's radius (and a
   sector's aperture), an area's area, a line's length ("guide" when it is one), a label's text, a
-  group's counts (everything in it, its subgroups' too).
+  group's count of elements (everything in it, its subgroups' too; the whole count in its tooltip).
 - **Select** (the tool, A): drag a box on the map: what lies entirely inside is selected, a point by
   its centre, a shape by its whole outline; Shift adds; Esc or a right-click ends it.
-- The first row, **All**: one box over the rows' own (ticked: every element listed is shown; half:
-  some are): a click shows them all, or hides them all when every one is shown. Every element is
-  listed a step to its right. Past 30 elements a filter appears (names and property values), with
-  **Select all shown** (Shift: adds).
+- Past 30 elements a filter appears (names and property values), with **Select all shown** (Shift:
+  adds).
 - A row selects on the map, and the reverse (the list scrolls to it); hovering a row outlines the
   element. Shift-click selects a range, Ctrl/⌘-click adds or removes. Double-click a name, or F2, to
   rename; ↑ ↓ move the selection.
@@ -162,10 +199,11 @@ It shows what is selected: one element, several, or nothing (the drawing). A fie
 or when it loses focus, one undo step; a value that does not read stays marked and is not applied;
 Esc in a field puts its value back.
 
-**Common parts**, in this order: the header (kind · name, **Zoom to**); **Name**; **Group** (none, or a group,
+**Common parts**, in this order: the header (kind · name, **Zoom to**; from 1024 px wide, the panel's
+inspector's head instead, §1); **Name**; **Group** (none, or a group,
 shown with the groups it is in, "A › B"; a group never offered to itself or a group inside it; **New
 group…**: a group of it in the group it is in); what it is (below); **Look**; then **Guide** (drawn
-faint and dashed, left out of the totals; on points, lines and areas), **Visible**, **Delete**. Near the foot, **Data**: its
+faint and dashed, left out of the totals; on points, lines and areas), **Visible**, **Delete** (from 1024 px wide, the inspector's head's). Near the foot, **Data**: its
 properties, keys and values (a description, a category: properties like any other), a list whose
 empty last row ("add a key…") adds one. Folded while it has nothing of the user's (the arrow by its
 heading opens it); a point placed from a preset says so under it ("from preset Rings").
@@ -189,8 +227,11 @@ lengths, area and perimeter, or radii on the map); **Offset** (lines; §7);
 **Min. size** (shapes: drawn enlarged, dotted, when shorter than this on screen). A field shows what
 they are drawn with; where several differ it says "mixed", and a change writes only that field.
 
-**Rows**: each a label, one value or a pair read as one (latitude · longitude,
-colour · opacity, start · end…), and a last column for × or ↺; a row never wraps. In a value row
+**Rows**: a property grid, ruled across the panel, 28 px with a mouse (44 with a finger): each a
+label, one value or a pair read as one (latitude · longitude, colour · opacity, start · end…), and a
+last column for × or ↺; a row never wraps. A field shows no box until it is pointed at or typed in;
+lists are tables of the same cells. A list longer than 100 rows shows them a page at a time (‹ rows
+1–100 of n ›); Copy and a paste still take every row. In a value row
 ↑ and ↓ nudge a distance, an angle or a number by one unit of its last digit (Shift: ten), each step
 applied.
 
@@ -212,8 +253,8 @@ it.
   closing edge following; its bar: **Insert after** (halfway to the next), **Delete** (while more than
   three are left)).
 - **Line:** **Start** and **End** (attached: what to, and which vertex or edge, with **Attach to…**
-  (the next click on the map chooses again; Esc or a right-click cancels) and **×**, which detaches it: the end stays where it
-  is; free: its position, and **Attach to…**); Length (the drawn line's, curves
+  (the next click on the map chooses again; Esc or a right-click cancels) and a broken link, which detaches it: the end stays
+  where it is; free: its position, and **Attach to…**); Length (the drawn line's, curves
   included) with **Distribute along…** (§6); **Depth profile** (pressed: the depth along
   the line, as the depth shading has it (GEBCO, cut to the coast), sampled at the grid's spacing, at
   most 1,000 places; the shallowest and the deepest; a chart whose place pointed at shows on the map,
@@ -226,7 +267,7 @@ it.
   **Handles** for each vertex's curve (metres east and north, in and out).
 - **Label:** Text, with **Insert** for the live values that apply to what it points at: name, length,
   distance along, bearing, radius, area, perimeter; **Attached to** (a link, which vertex or edge)
-  with **Attach to…** and **×** (detach), as a line's end; Along (typed) for a label on a line, or the
+  with **Attach to…** and the broken link (detach), as a line's end; Along (typed) for a label on a line, or the
   position of a free one; **Leader**
   (Arrow, Dot, Line, None); its Look; Placement and **Reset**.
 - **Group:** the group it is in; Members (its own, and how many groups in it; **Select members**
@@ -237,8 +278,11 @@ it.
   out; past 12, "+N more"), the kinds selected; two points give the distance and bearing between
   them; **Connect…** (two or more points, §6), **Group** (a new group of them, in the nearest group
   they are all in: a subgroup of it; a group among them goes in whole), the group menu, the labels'
-  Leader, one Look for all of them, Visible, **Delete all**.
-- **The drawing** (nothing selected): Title, Description, Author; **Drawings in this browser** (§10);
+  Leader, one Look for all of them, Visible, **Delete all** (from 1024 px wide, Zoom to, Group and
+  Delete are the inspector's head's, §1).
+- **The drawing** (from 1024 px wide, nothing selected, or its title clicked in the tree's head; narrower,
+  nothing selected): its heading is its title (narrower, with the menu of the drawings in this
+  browser, §10); Title, Description, Author;
   **Display**, the drawing's look, which every element takes unless it or a group sets its own:
   Names on the map, Offset (and where Offset is set otherwise, each a link), Min. size; then Bearings beside lengths, for values shown;
   **Totals**, a table in three sections: **Lines** by group (or **By** any property key the drawing
@@ -306,12 +350,19 @@ one end to the other, an outline's ring.
 
 ## 7. On the map
 
-- **Selection:** the one element selected shows its handles, its own stroke untouched (what one
-  aligns to); a point a small white dot at its centre. Among several selected (a group, Select all),
-  each shows such dots at its key points instead of handles: a point's centre, an outline's or an
-  area's corners, a line's ends and vertices. Hovering a row shows a yellow band just outside the
-  element (a point's outermost round part, or its largest outline; both sides of a line; a ring
-  round a point's centre). Selecting never moves the map; Zoom to does.
+- **Marks:** everything that says "this is what you point at, picked, or would hit" is one blue,
+  cased in white so that it shows on chart, sea and satellite; at half strength for hovering, at
+  full for the selection and for targets. What is not made yet (what is being drawn, a form's
+  preview) is dashed and dark; measurements keep magenta, as content.
+- **Selection:** the one element selected shows its handles (white, with a blue rim), its own stroke
+  untouched (what one aligns to); a point a small white dot at its centre; a label a blue rim round
+  its text. Among several selected (a group, Select all), each shows such dots at its key points
+  instead of handles: a point's centre, an outline's or an area's corners, a line's ends and
+  vertices. Hovering an element (on the map or as a row) shows a blue band just outside it (a
+  point's outermost round part, or its largest outline; both sides of a line; a ring round a
+  point's centre; a label's rim). What a click would snap to, and a root or an attachment being
+  picked, is marked in full blue; the Select area box is blue. Selecting never moves the map; Zoom
+  to does.
 - **Clicks:** with no tool on, a click selects the topmost element; the same place again, the next
   one down. Shift or Ctrl/⌘-click adds or removes.
 - **Dragging** (select first): a selected element moves, or several together; labels alone move their
@@ -345,6 +396,7 @@ one end to the other, an outline's ring.
 |---|---|
 | / | search |
 | L, D | Layers, Tools |
+| E | the column (tree and inspector) shown or hidden (from 1024 px wide) |
 | P, G, S, T, M, A | point, line, shape, label, measure, select area |
 | a tool's key again | its next kind |
 | Enter, double-click | finishes |
@@ -370,8 +422,8 @@ element left behind are free. The clipboard is kept in this browser, so it paste
 fill and stroke. A preset with parts joins the Shape sub-rail, after the built-in ones, one without
 joins Point's; it becomes the tool's kind. Placing one makes a point with all of it, named
 after it, with the preset's name as a property. A right-click on it in the sub-rail renames or deletes
-it. Presets live in this browser only, never in a drawing's file; **Export › Presets (JSON)** and
-**Import** move them to another browser (one of the same name is replaced).
+it. Presets live in this browser only, never in a drawing's file; **Export presets (JSON)** and
+**Import…** (the drawing's menu, §10) move them to another browser (one of the same name is replaced).
 
 ## 10. Deleting, and drawings in this browser
 
@@ -381,7 +433,9 @@ it. Presets live in this browser only, never in a drawing's file; **Export › P
 - A group with members asks first: delete the group only (its members and subgroups go to the group
   above it, or to none, with their look), or the group and everything in it.
 - Each drawing is saved as it changes, never sent anywhere; the open one comes back with the page.
-  **Drawings in this browser** lists each (title, last change, size): a click opens it where it was
-  drawn; **+ New** adds an empty one; × deletes for good, asked first.
-- When the browser refuses to save, the drawing's inspector says so (Export › Drawing keeps it as a
+  The rail's **☰** (from 1024 px wide; narrower, the ▾ beside the drawing's title in its heading)
+  opens a menu of the **drawings in this browser**, each with its last change and
+  size: a click opens it where it was drawn; a bin deletes
+  it for good, asked first; **+ New drawing** adds an empty one.
+- When the browser refuses to save, the drawing's inspector says so (Export drawing, in its menu, keeps it as a
   file); when another tab saved the same drawing, it says so, with **Reload**.

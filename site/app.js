@@ -51,6 +51,7 @@ const state = {
   colour: '', arrows: '', // Ocean data: the entry drawing colours, the one drawing arrows ('item:variant', '' for none)
   open: new Set(['base', 'sea']),
   panel: window.innerWidth >= 1200 ? 'layers' : null, // the side panel's view; open beside the map where it leaves room
+  tools: window.innerWidth >= 1024, // the drawing tools on: from 1024 px wide always (the left frame); narrower, the Tools panel
 };
 let view = { zoom: 4, center: [12, 41], bearing: 0 };
 // the display's units and each leg's bearing beside its length (the switch beside the scale, the
@@ -81,6 +82,7 @@ function readHash() {
   }
   if (q.has('g')) state.open = new Set(q.get('g').split(',').filter((g) => GROUPS.some((x) => x.id === g)));
   if (q.has('menu')) state.panel = { 1: 'layers', draw: 'draw' }[q.get('menu') === '1' ? 1 : q.get('menu') === 'draw' ? 'draw' : ''] || null; // menu=1: Layers
+  state.tools = window.innerWidth >= 1024 || state.panel === 'draw'; // from 1024 px wide always
   display.bearings = q.get('brg') === '1';
   if (q.get('u') === 'nm') display.units = 'nm';
 }
@@ -111,6 +113,7 @@ function writeHashNow() {
   if (display.bearings) q.set('brg', '1');
   q.set('g', [...state.open].join(','));
   q.set('menu', state.panel === 'draw' ? 'draw' : state.panel ? '1' : '0');
+  q.delete('tools'); // once written, now the width's
   drawing.saving.viewChanged(); // saved with the drawing, for a page opened without a view
   setHash(q);
 }
@@ -192,6 +195,8 @@ const map = new maplibregl.Map({
 map.touchZoomRotate.disableRotation();
 $('#nostart').remove(); // started (index.html)
 const small = () => window.innerWidth < 720;
+// from 1024 px wide the Tools panel's tools are a strip beside it, its list a panel on the left (draw/panel.js)
+const wide = () => matchMedia('(min-width: 1024px)').matches;
 
 // ---- bottom row: credits; scale note, time shown, cursor position, the scale
 // One scale bar, in the display's units (the switch beside it); the PNG export draws a double
@@ -686,7 +691,7 @@ function renderWhen() {
   shown.textContent = [[day, hr ? d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''].filter(Boolean).join(' '),
     deep ? depthWords(state.depth) : ''].filter(Boolean).join(' · ');
   shown.title = `Time shown: ${d.toLocaleString([], hr ? { dateStyle: 'full', timeStyle: 'short' } : { dateStyle: 'full', timeZone: 'UTC' })}`
-    + `${deep ? `; depth: ${state.depth ? `${state.depth} m below the surface, each model at its level nearest it` : 'the surface'}` : ''}. Set in Layers`;
+    + `${deep ? `; depth: ${state.depth ? `${state.depth} m below the surface, each model at its level nearest it` : 'the surface'}` : ''}. A click: earlier, later`;
 }
 // ---- graticule (WGS 84 lat/lon grid; spacing adapts to the view) -------------
 const STEPS = [30, 20, 10, 5, 2, 1, 30 / 60, 20 / 60, 10 / 60, 5 / 60, 2 / 60, 1 / 60];
@@ -766,8 +771,8 @@ const ICON = {
   png: ['M4 5h16v14H4z', 'm4 17 5-5 4 4 3-3 4 4', 'M17 9.5a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0z'], // a picture
   zip: ['M4 4h16v4H4z', 'M5 8v12h14V8', 'M10 12h4'],
   save: ['M12 4v11', 'm7 10 5 5 5-5', 'M5 20h14'], // down into a tray (Export)
-  upload: ['M12 15V4', 'm7 9 5-5 5 5', 'M5 20h14'], // up out of a tray (Import; the drawing's file goes down into it)
   plus: ['M12 5v14M5 12h14'],
+  hide: ['m9 18 6-6-6-6'], // a chevron to the right: the panel goes to its edge
   minus: ['M5 12h14'],
   compass: [['m12 3 4 9h-8z', '#b42318'], 'm12 21-4-9h8z'],
   locate: ['M19 12a7 7 0 1 1-14 0 7 7 0 0 1 14 0z', 'M12 2v3M12 19v3M2 12h3M19 12h3', ['M14 12a2 2 0 1 1-4 0 2 2 0 0 1 4 0z', 'currentColor']], // a dot in sights
@@ -777,7 +782,6 @@ const ICON = {
   ring: ['M12 20a8 8 0 1 0 0-16 8 8 0 0 0 0 16z', 'M12 12h.01'],
   // the tools: a pencil in front of a ruler, crossed; the ruler stops either side of the pencil
   draw: ['M7 11 2 6l4-4 5 5', 'M13 17l5 5 4-4-5-5', 'm8 4-1.5 1.5M20 16l-1.5 1.5M18 14l-1.5 1.5', 'M16.5 2.5l5 5L9 20l-6.5 1.5L4 15z', 'm14 5 5 5'], // as long as the ruler
-  file: ['M6 3h8l4 4v14H6z', 'M14 3v4h4', 'M11 11.5a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0z', 'M16 16.5a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0z', 'm10.6 12.6 2.8 2.8'], // a page with two nodes joined (the drawing's file)
 };
 // the page's own buttons name their icon: <i data-icon="…">
 for (const el of document.querySelectorAll('[data-icon]')) el.replaceWith(icon(...ICON[el.dataset.icon]));
@@ -994,6 +998,29 @@ function renderStatus() {
 // the units the drawing's lengths and values, its labels and the exports use: one switch beside the scale
 const unitsBtn = $('#units');
 unitsBtn.addEventListener('click', () => setDisplay({ units: display.units === 'km' ? 'nm' : 'km' }));
+// the scale is the units' switch too (from 1024 px wide the only one: the units button goes)
+scaleEl.title = 'Distance units: a click switches km and NM';
+scaleEl.addEventListener('click', () => setDisplay({ units: display.units === 'km' ? 'nm' : 'km' }));
+// the time shown, a chip on the bottom row: a click shows its controls (from 1024 px wide, in a box over
+// it; narrower, Layers, where they are)
+const timePop = h('div', { class: 'timepop', hidden: true });
+document.body.append(timePop);
+const lview = $('#lview');
+function setTimePop(on) {
+  timePop.hidden = !on;
+  shownEl.setAttribute('aria-expanded', String(on));
+  if (on) {
+    timePop.append(when);
+    const r = shownEl.getBoundingClientRect();
+    Object.assign(timePop.style, { right: `${Math.max(8, innerWidth - r.right)}px`, bottom: `${innerHeight - r.top + 6}px` });
+  } else lview.prepend(when);
+}
+Object.assign(shownEl, { tabIndex: 0 });
+shownEl.setAttribute('role', 'button');
+shownEl.addEventListener('click', () => (wide() ? setTimePop(timePop.hidden) : setPanel('layers')));
+shownEl.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); shownEl.click(); } });
+document.addEventListener('pointerdown', (e) => { if (!timePop.hidden && !timePop.contains(e.target) && !shownEl.contains(e.target)) setTimePop(false); });
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !timePop.hidden) { e.stopPropagation(); setTimePop(false); shownEl.focus(); } }, true);
 function renderUnits() {
   const nm = display.units === 'nm';
   unitsBtn.textContent = nm ? 'NM' : 'km';
@@ -1005,8 +1032,14 @@ function renderUnits() {
 
 // ---- the Draw view (draw/panel.js) ------------------------------------------------------------
 const drawPanel = drawView($('#dview'), {
-  drawing, display, setDisplay, map, icon, known: KNOWN, units: () => display.units, isOpen: () => state.panel === 'draw',
+  drawing, display, setDisplay, map, icon, known: KNOWN, units: () => display.units, isOpen: () => state.tools,
   measureIcon: ICON.ruler, measureIcons: (k) => ICON[k], compact: () => compact.on, setCompact: (v) => setCompact(v), free: () => free(), header: $('#panel-actions'),
+  strip: $('#dstrip'), elements: $('#elements'),
+  // from 1024 px wide the ☰ menu holds the view's outputs (the Export menu's own items, each saying how it
+  // went, the menu open meanwhile) and About; given back to the Export menu when it closes
+  menuExtras: (close) => [h('div', { class: 'dsep' }), $('#link'), $('#png'), $('#zip'),
+    h('button', { type: 'button', role: 'menuitem', class: 'mabout', onclick: () => { close(); $('#about').showModal(); showVersion(); } }, 'About')],
+  menuExtrasBack: () => $('#export-menu').append($('#link'), $('#png'), $('#zip')), setTitle: (t) => { if (state.panel === 'draw') $('#panel-title').replaceChildren(t); }, // a text, or the drawings' switcher
   // an imported drawing added to the list and opened, with its view and layers; one of the list opened
   // where it was drawn
   onImport: (doc) => { const v = doc.view; drawing.saving.add(doc); if (v) applyView(v); },
@@ -1019,7 +1052,7 @@ function renderDrawTool() {
   // a tool started makes the Tools panel compact, and it goes back when the tool ends (drawing-ui.md §1
   // §6b); a label's text is typed in the inspector: the Label tool keeps it whole
   const placing = drawing.tool && drawing.tool !== 'label';
-  if (placing && state.panel === 'draw' && !compact.on) setCompact(true, true);
+  if (placing && state.panel === 'draw' && !compact.on && !wide()) setCompact(true, true); // from 1024 px wide the tools are a strip: nothing folds
   else if (!placing && compact.auto) setCompact(false);
 }
 
@@ -1033,8 +1066,10 @@ const VIEWS = { layers: [$('#b-layers'), $('#lview'), 'Layers'], draw: [$('#b-dr
 // fitting: the map itself does not move when the panel opens or closes.
 function free() {
   const p = { top: 60, right: 60, bottom: 60, left: 60 };
-  if (panel.hidden) return p;
-  const r = panel.getBoundingClientRect();
+  // the left frame (from 1024 px wide: the rail and the column), and the panel on the right
+  p.left += Math.max(0, ...['#dstrip', '#elements'].map((s) => $(s)).filter((e) => !e.hidden).map((e) => e.getBoundingClientRect().right));
+  const r = !panel.hidden && panel.getBoundingClientRect();
+  if (!r?.width) return p;
   if (small()) p.bottom += Math.max(0, innerHeight - r.top); else p.right += Math.max(0, innerWidth - r.left);
   return p;
 }
@@ -1043,35 +1078,68 @@ function setCompact(on, auto = false) {
   panel.classList.toggle('compact', on && state.panel === 'draw');
   drawPanel.render('tool');
 }
+// The right-hand slot: Layers, the Tools panel ('draw'), or nothing. The tools (state.tools) are on
+// with the Tools panel; from 1024 px wide they stay on beside Layers, and closing Layers gives the slot
+// back to the Tools panel. Narrower, the slot is the tools' (a sheet on a phone).
 function setPanel(view) {
+  // from 1024 px wide the tools are always on, in the left frame: the right-hand panel is Layers' alone
+  if (wide()) { state.tools = true; if (view === 'draw') view = null; } else state.tools = view === 'draw';
   state.panel = view;
   panel.hidden = !view;
   for (const [v, [btn, el, title]] of Object.entries(VIEWS)) {
-    btn.setAttribute('aria-expanded', String(v === view));
+    if (v === 'layers') { btn.setAttribute('aria-expanded', String(v === view)); $('#b-maplayers').setAttribute('aria-expanded', String(v === view)); }
     el.hidden = v !== view;
     if (v === view) panelTitle.textContent = title;
   }
   document.body.classList.toggle('menu-open', !!view); // phones: the legend makes way for the sheet
   panel.classList.toggle('wide', view === 'draw'); // the Draw view: list and inspector need the room
   panel.classList.toggle('compact', compact.on && view === 'draw');
-  $('#panel-actions').hidden = view !== 'draw'; // Undo, Redo, compact: the Tools panel's
-  if (view !== 'draw') { drawing.stop(); drawPanel.closed(); }
+  $('#panel-actions').hidden = view !== 'draw'; // the Tools panel's actions (Undo, Redo, compact narrower)
+  $('#b-draw').setAttribute('aria-expanded', String(state.tools));
+  if (!state.tools) { drawing.stop(); drawPanel.closed(); }
+  drawPanel.place(); // the strip and the Elements panel with it (from 1024 px wide)
   writeHash();
 }
-for (const [v, [btn]] of Object.entries(VIEWS)) btn.addEventListener('click', () => setPanel(state.panel === v ? null : v));
+// the rail's Tools: the tools on or off (with them, from 1024 px wide, the Elements panel and the
+// inspector); Layers: its panel shown or not. The panel's chevron: Layers closed; the Tools panel
+// (from 1024 px wide) hidden, what is selected staying so, until the next selection
+function setTools(on) {
+  state.tools = on;
+  if (on) setPanel(wide() && state.panel === 'layers' ? 'layers' : 'draw');
+  else { state.tools = false; setPanel(state.panel === 'draw' ? null : state.panel); }
+}
+$('#b-layers').addEventListener('click', () => setPanel(state.panel === 'layers' ? null : 'layers'));
+$('#b-maplayers').addEventListener('click', () => setPanel(state.panel === 'layers' ? null : 'layers'));
+// From 1024 px wide (drawing-ui.md §1) the map's own controls are at the top right: the search behind its
+// lens (shown while it is used: / or the lens; gone when left), Layers, my position, north when turned;
+// the scale switches the units; the time shown is a chip on the bottom row, its controls a click away
+const findBtn = $('#b-find');
+const setFinding = (on) => { document.body.classList.toggle('finding', on); findBtn.setAttribute('aria-expanded', String(on)); if (on) $('#q').focus(); };
+findBtn.addEventListener('click', () => setFinding(!document.body.classList.contains('finding')));
+$('#q').addEventListener('blur', () => setTimeout(() => { if (wide() && !$('#search').contains(document.activeElement)) setFinding(false); }, 250));
+$('#b-draw').addEventListener('click', () => setTools(!state.tools));
 $('#close').addEventListener('click', () => setPanel(null));
+matchMedia('(min-width: 1024px)').addEventListener('change', () => setPanel(state.panel)); // the frame comes or goes
 
-// Export: a menu of the view's link, a picture, GIS data and the drawing's file, each acting at once;
-// the Export button says how it went for a moment ("Copied", "Saving…", "Failed"). Import: a
-// drawing's file, or any GeoJSON (the drawing, with the view that a link cannot carry)
+// Export: a menu of the view's link, a picture and GIS data, each acting at once; the Export button says
+// how it went for a moment ("Copied", "Saving…", "Failed"). The drawing's file goes in and out from its
+// own menu (draw/panel.js); a file dropped on the map is imported: the tools on, the drawing opened
 const exportBtn = $('#export');
 railMenu(exportBtn, $('#export-menu'));
-$('#link').addEventListener('click', () => copyLink(exportBtn));
-$('#png').addEventListener('click', () => exportPng(exportBtn));
-$('#zip').addEventListener('click', () => exportZip(exportBtn));
-$('#save').addEventListener('click', () => drawPanel.save());
-$('#savepresets').addEventListener('click', () => drawPanel.savePresets());
-$('#import').addEventListener('click', () => drawPanel.open());
+// how it went is said on the Export button, or from 1024 px wide on the ☰ menu's item itself
+const sayOn = (item) => (wide() ? item : exportBtn);
+$('#link').addEventListener('click', () => copyLink(sayOn($('#link'))));
+$('#png').addEventListener('click', () => exportPng(sayOn($('#png'))));
+$('#zip').addEventListener('click', () => exportZip(sayOn($('#zip'))));
+const mapBox = map.getContainer();
+mapBox.addEventListener('dragover', (e) => { if (e.dataTransfer?.types.includes('Files')) { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; } });
+mapBox.addEventListener('drop', (e) => {
+  const f = e.dataTransfer?.files?.[0];
+  if (!f) return;
+  e.preventDefault();
+  if (!state.tools) setTools(true);
+  drawPanel.importFile(f);
+});
 async function copyLink(b) {
   writeHashNow(); // the link must be the view as it is now
   try { await navigator.clipboard.writeText(location.href); flash(b, 'Copied'); } catch { prompt('Copy this link', location.href); }
@@ -1135,10 +1203,12 @@ window.addEventListener('keydown', (e) => {
   if (e.ctrlKey || e.metaKey || e.altKey || document.querySelector('dialog[open]') || typing(e.target)) return;
   const k = keyEntry(e.key);
   if (!k?.open && !k?.tool) return;
-  if (k.open === 'search') { e.preventDefault(); q.focus(); }
+  if (k.open === 'search') { e.preventDefault(); if (wide()) setFinding(true); else q.focus(); }
+  else if (k.open === 'elements') { if (!state.tools) setTools(true); if (wide()) drawPanel.toggleElements(); }
+  else if (k.open === 'draw') setTools(!state.tools);
   else if (k.open) setPanel(state.panel === k.open ? null : k.open);
   else {
-    if (state.panel !== 'draw' && !small()) setPanel('draw'); // phones: the sheet makes way for the map
+    if (!state.tools && !small()) setTools(true); // phones: the sheet makes way for the map
     drawPanel.cycle(k.tool[1]); // on, or its next variant
   }
 });

@@ -241,8 +241,14 @@ it.
 - **The drawing** (nothing selected): Title, Description, Author; **Drawings in this browser** (§10);
   **Display**, the drawing's look, which every element takes unless it or a group sets its own:
   Names on the map, Offset (and where Offset is set otherwise, each a link), Min. size; then Bearings beside lengths, for values shown;
-  **Totals** (all, then **By** group or by any property key the drawing uses, one row per value and one
-  for those without it; guides left out; hidden ones counted and said so).
+  **Totals**, a table in three sections: **Lines** by group (or **By** any property key the drawing
+  uses, one row per value and one for those without it), each line listed under its group with its
+  length, but for the lines a connection made, which are summed by what they are (a tree's trunks,
+  root → hub, and branches, hub → point; a chain's root → first point links and its links between
+  points); a group's row folds its lines; then **Areas** (area and perimeter each, and in all) and
+  **Points** (by kind). A name selects the element. **Copy** gives every row tab-separated, in
+  metres, for a spreadsheet. Guides and measurements are left out; hidden elements are counted and
+  said so.
 
 ## 6. Distribute along and Connect: rules
 
@@ -300,10 +306,12 @@ one end to the other, an outline's ring.
 
 ## 7. On the map
 
-- **Selection:** a yellow band just outside an element (a point's outermost round part, or its largest outline),
-  on both sides of a line, clear of its stroke; a ring round a point's centre (a shape with an
-  outline: its halo only). Hovering a row shows
-  the same, lighter. Selecting never moves the map; Zoom to does.
+- **Selection:** the one element selected shows its handles, its own stroke untouched (what one
+  aligns to); a point a small white dot at its centre. Among several selected (a group, Select all),
+  each shows such dots at its key points instead of handles: a point's centre, an outline's or an
+  area's corners, a line's ends and vertices. Hovering a row shows a yellow band just outside the
+  element (a point's outermost round part, or its largest outline; both sides of a line; a ring
+  round a point's centre). Selecting never moves the map; Zoom to does.
 - **Clicks:** with no tool on, a click selects the topmost element; the same place again, the next
   one down. Shift or Ctrl/⌘-click adds or removes.
 - **Dragging** (select first): a selected element moves, or several together; labels alone move their
@@ -311,12 +319,15 @@ one end to the other, an outline's ring.
   puts everything back.
   Dragged positions snap (Alt: free; Shift: 15° steps where there is a leg before).
 - **Handles:**
-  - a **radius** (on each of a point's shown round parts): sets that part's radius only;
+  - a **radius** (a circle's four, at its cardinal points; a sector's one at the middle of its arc):
+    sets that part's radius only;
   - a **sector's two ends**: each moves alone, the other kept, the point's bearing their middle (Shift: 15° steps);
   - the **stalk** beyond a sector's arc, or beyond an outline's front: turns it (its bearing; Shift:
     15° steps);
   - an outline's four **corners**: resize it, the opposite corner kept (Shift keeps proportions, Alt
-    keeps the centre; on a point with other parts, always the centre); outlines drawn enlarged are only moved;
+    keeps the centre; on a point with other parts, always the centre); the middle of each **side**:
+    moves that side alone, the opposite one kept (Alt: the centre kept); outlines drawn enlarged are
+    only moved;
   - a line's **vertices** and **ends**: an end attached to a point's centre moves the point; any other
     end moves itself and attaches where it is dropped; a **+** halfway along a leg adds a vertex;
     with Handles on, each curve handle;

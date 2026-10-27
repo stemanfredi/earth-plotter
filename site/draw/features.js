@@ -60,26 +60,46 @@ const lineProps = (s, colour = s.color, dash = s.dash) => ({ sc: colour, so: s.o
 export function drawParts(doc, sel = new Set(), hover = null, display = {}, want = { base: true, zoom: true, marks: true }) {
   const base = [], zoomed = [], marks = [];
   const markOf = (id) => (!want.marks ? null : sel.has(id) ? 'sel' : hover === id ? 'hover' : null);
-  const mark = (id, geometry, props = {}) => {
+  // What says "selected": the one element selected shows its handles and its own stroke, untouched
+  // (as the drawing tools do: the edge is what one aligns to), a point a small white dot at its
+  // centre; among several selected, each shows such dots at its key points (dots(): a line's ends and
+  // vertices, an area's or an outline's corners), inert, thinned as handles are. The yellow band
+  // along an element is for hovering only.
+  const mark = (id, geometry, props = {}, dots = null) => {
     const kind = markOf(id);
-    if (kind) marks.push({ type: 'Feature', properties: { id, kind, ...props }, geometry });
+    if (!kind) return kind;
+    if (kind === 'sel' && geometry.type !== 'Point') {
+      if (sel.size > 1 && dots) for (const p of thinned(dots())) marks.push({ type: 'Feature', properties: { id, kind }, geometry: { type: 'Point', coordinates: p } });
+    } else marks.push({ type: 'Feature', properties: { id, kind, ...props }, geometry });
     return kind;
   };
+  const midway = (a, b) => { const d = inverse(a, b); return destination(a, d.azi, d.s / 2); };
   // handles, thinned at the map's zoom: one at least HANDLE_GAP px from the last one kept, and the
   // last point always (a line of hundreds of points would be a chain of squares)
   const mpp = display.zoom == null ? 0 : metresPerPixel(display.zoom);
   const midPx = display.midPx ?? 40; // a + halfway only along a leg or edge this long on screen (80 with a finger)
   // Each handle says what dragging it does: role and ref (a part's place in its point's list, an index, a point ID).
   // items: [{ p, role, ref, kind ('handle', 'mid', 'ctrl') }]; thin: a line's points thinned.
-  const handles = (id, items, thin = false) => {
-    if (!sel.has(id)) return;
+  // positions thinned at the map's zoom: one at least HANDLE_GAP px from the last kept, the last always
+  const thinned = (ps) => {
+    if (!mpp) return ps;
+    const out = [];
     let last = null;
-    items.forEach((h, i) => {
-      const m = mercator(h.p);
-      if (thin && mpp && last && i < items.length - 1 && Math.hypot(m[0] - last[0], m[1] - last[1]) / mpp < HANDLE_GAP) return;
+    ps.forEach((p, i) => {
+      const m = mercator(p);
+      if (last && i < ps.length - 1 && Math.hypot(m[0] - last[0], m[1] - last[1]) / mpp < HANDLE_GAP) return;
       last = m;
-      marks.push({ type: 'Feature', properties: { id, kind: h.kind || 'handle', role: h.role, ref: h.ref ?? '' }, geometry: { type: 'Point', coordinates: h.p } });
+      out.push(p);
     });
+    return out;
+  };
+  const handles = (id, items, thin = false) => {
+    if (!sel.has(id) || sel.size !== 1) return; // the one element selected: among several, dots say which, and a drag moves them all
+    const kept = thin ? new Set(thinned(items.map((h) => h.p))) : null;
+    for (const h of items) {
+      if (kept && !kept.has(h.p)) continue;
+      marks.push({ type: 'Feature', properties: { id, kind: h.kind || 'handle', role: h.role, ref: h.ref ?? '' }, geometry: { type: 'Point', coordinates: h.p } });
+    }
   };
   const ground = (lat) => mpp * Math.cos((lat * Math.PI) / 180); // metres a pixel there
   // names shown on the map: as its look says (its own, its groups', the drawing's); drawn by MapLibre,
@@ -104,8 +124,9 @@ export function drawParts(doc, sel = new Set(), hover = null, display = {}, want
     // its halo round its outermost round part (a point with an outline: round that); its parts dragged
     if (!mainOutline(n)) mark(n.id, { type: 'Polygon', coordinates: [ccw(outer.rg)] }, { sw: st.stroke.width });
     if (sel.has(n.id)) {
-      // each round part's radius dragged by its handle, named by its place in the list
-      const items = rounds.map(({ part, i }) => ({ p: destination(n.position, part.kind === 'sector' ? n.bearing : 0, part.radius), role: 'radius', ref: i }));
+      // each round part's radius dragged by its handles, named by its place in the list: a circle's at
+      // its four cardinal points, a sector's at the middle of its arc
+      const items = rounds.flatMap(({ part, i }) => (part.kind === 'sector' ? [n.bearing] : [0, 90, 180, 270]).map((az) => ({ p: destination(n.position, az, part.radius), role: 'radius', ref: i })));
       // a sector's ends: each moves alone; the stalk's end beyond the outermost arc's middle turns the
       // point (with an outline, the outline's stalk does)
       const sectors = rounds.filter(({ part }) => part.kind === 'sector');
@@ -126,7 +147,7 @@ export function drawParts(doc, sel = new Set(), hover = null, display = {}, want
     const st = styleOf(doc, g), rg = pathOf(g.points, true);
     if (want.base) base.push({ type: 'Feature', properties: { id: g.id, kind: 'polygon', fill: 1, fc: st.fill.color, fo: st.fill.opacity, ...lineProps(st.stroke) }, geometry: { type: 'Polygon', coordinates: [rg] } });
     if (want.zoom && named(g)) name(zoomNames, g, { type: 'Point', coordinates: centroid(g.points) }, st.stroke.color, { ctr: 1 }); // with the outlines' names (a centre)
-    if (mark(g.id, { type: 'Polygon', coordinates: [ccw(rg)] }, { sw: st.stroke.width }) && sel.has(g.id)) {
+    if (mark(g.id, { type: 'Polygon', coordinates: [ccw(rg)] }, { sw: st.stroke.width }, () => g.points) && sel.has(g.id)) {
       handles(g.id, g.points.map((p, i) => ({ p, role: 'ppoint', ref: i })), true);
       if (mpp) handles(g.id, g.points.flatMap((a, i) => { const b = g.points[(i + 1) % g.points.length], d = inverse(a, b); return d.s / ground(a[1]) > midPx ? [{ p: destination(a, d.azi, d.s / 2), role: 'pmid', ref: i + 1, kind: 'mid' }] : []; }));
     }
@@ -139,18 +160,20 @@ export function drawParts(doc, sel = new Set(), hover = null, display = {}, want
     const k = enlargement(doc, n, display.zoom), st = styleOf(doc, n);
     const main = outs.reduce((a, b) => (reachOf(b.part) > reachOf(a.part) ? b : a)); // its largest shown, as mainOutline measures
     const corners = [];
-    let halo = null;
+    let halo = null, mainCorners = null;
     for (const { part, i } of outs) {
       const o = outlineOf(n.position, n.bearing, part.length * k, part.width * k, part.kind);
+      if (i === main.i) mainCorners = o.corners;
       if (want.zoom) zoomed.push({ type: 'Feature', properties: { id: n.id, kind: 'shape', fill: part.fill ? 1 : 0, fc: st.fill.color, fo: st.fill.opacity,
         ...lineProps(st.stroke, part.strokeColor || st.stroke.color, k > 1 ? 'dotted' : part.strokeDash || st.stroke.dash), ...(k > 1 ? { enlarged: k } : {}) }, geometry: { type: 'Polygon', coordinates: [o.ring] } });
       if (i === main.i) halo = o.ring;
       corners.push(...o.corners.map((p, c) => ({ p, role: 'corner', ref: `${i}:${c}` })));
+      corners.push(...o.corners.map((p, c) => ({ p: midway(p, o.corners[(c + 1) % 4]), role: 'side', ref: `${i}:${c}` }))); // the middle of each side: that side alone
     }
     if (want.zoom && named(n)) name(zoomNames, n, { type: 'Point', coordinates: n.position }, st.stroke.color, { ctr: 1 });
-    if (mark(n.id, { type: 'Polygon', coordinates: [ccw(halo)] }, { sw: st.stroke.width }) && k === 1) {
-      // corners resize, the stalk's end (beyond the largest's front) rotates (outlines drawn enlarged
-      // are only moved)
+    if (mark(n.id, { type: 'Polygon', coordinates: [ccw(halo)] }, { sw: st.stroke.width }, () => mainCorners) && k === 1) {
+      // corners resize, a side's middle moves that side, the stalk's end (beyond the largest's front)
+      // rotates (outlines drawn enlarged are only moved)
       if (mpp && sel.has(n.id)) {
         const s0 = shapeOf(n, main.i), front = destination(s0.center, s0.bearing, s0.length / 2), tip = rotateHandle(s0, 24 * ground(s0.center[1]));
         marks.push({ type: 'Feature', properties: { id: n.id, kind: 'stalk' }, geometry: { type: 'LineString', coordinates: [front, tip] } });
@@ -176,7 +199,7 @@ export function drawParts(doc, sel = new Set(), hover = null, display = {}, want
       if (named(sg)) name(zoomNames, sg, g, st.color);
       zoomed.push({ type: 'Feature', properties: { id: sg.id, kind: sg.guide ? 'guide' : 'path', off, ...lineProps(st) }, geometry: g });
     }
-    if (mark(sg.id, g, { sw: st.width, off }) && sel.has(sg.id)) {
+    if (mark(sg.id, g, { sw: st.width, off }, () => anchorsOf(doc, sg).map((a) => a.position)) && sel.has(sg.id)) {
       const an = anchorsOf(doc, sg), last = an.length - 1;
       // its ends: one attached to a point's centre moves the point; another (free, or attached to a
       // corner, an edge, a vertex) itself, attached again where it is dropped

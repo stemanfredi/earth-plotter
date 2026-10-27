@@ -5,16 +5,16 @@
 
 import { h, typing as typingIn } from '../dom.js';
 import { FINGER } from './layers.js';
-import { find, elements, groupsOf, membersOf, canHold, label, kindName, pointKind, POINT_KIND_NAME, lookOf, styleOf, lookField, setLook, LOOK_FIELDS, labelColour, addPart, removePart, makePart, followedPart, mainOutline, PART_KINDS, ROUND, SYMBOLS, DASHES, LEADERS, LABEL_OFFSET, makeGroup, setGroup, straighten, isMeasurement, MAX_RADIUS, offsetOf, MAX_OFFSET, MAX_MIN_SIZE, STROKE_WIDTH } from './document.js';
+import { find, elements, groupsOf, membersOf, canHold, label, kindName, pointKind, POINT_KIND_NAME, lookOf, styleOf, lookField, setLook, LOOK_FIELDS, labelColour, addPart, makePart, followedPart, mainOutline, PART_KINDS, ROUND, SYMBOLS, DASHES, LEADERS, LABEL_OFFSET, makeGroup, setGroup, straighten, isMeasurement, MAX_RADIUS, offsetOf, MAX_OFFSET, MAX_MIN_SIZE, STROKE_WIDTH } from './document.js';
 import { parse } from './file.js';
 import { insertCorner, removeCorner, reattach, partName, addVertex, removeVertex, splitKeeping, lineRef, freeRef } from './attach.js';
 import { labelText, labelValues, TOKENS } from './labels.js';
 import { resolve as anchorAt } from './attach.js';
 import { OUTLINES, OUTLINE_NAME, outlineOf, isVehicle } from './outlines.js';
-import { lineTrace, totals, applySmooth, nearestAlong } from './lines.js';
+import { lineTrace, totals, breakdown, applySmooth, nearestAlong } from './lines.js';
 import { profileCsv } from './profile.js';
 import { COPY_RADIUS, distribute, lines, plan, planConnection, makeDistribution, editDistribution, connect, reconnect, unconnect, alongTrace, alongOf,
-  distributions, connections, ruleOf, distributionOf, connectionOn, changedByHand, giveBack, MAX_COPIES, MAX_TREE } from './generator.js';
+  distributions, connections, ruleOf, distributionOf, connectionOn, changedByHand, giveBack, removePartOf, MAX_COPIES, MAX_TREE } from './generator.js';
 import { BUILT_IN, builtInName } from './place.js';
 import { boundsOf, drawable, perimeterOf } from './features.js';
 import { fmtDist, fmtArea, fmtBrg, inverse, areaOf, pathOf, destination } from '../geodesy.js';
@@ -69,7 +69,8 @@ export function drawView(root, ctx) {
   const F = fields({ note, units: ctx.units }), { field } = F; // fields.js: each applies on Enter or when left
   let facts = null; // the totals: computed once per rendering of the list, read by the inspector
   let totalsBy = ''; // the drawing's totals by group (''), or by the values of a property (its key)
-  const computeFacts = () => (facts = { totals: totals(drawing.doc, totalsBy || null) });
+  const totalsFolded = new Set(); // the Totals view's groups folded (by key)
+  const computeFacts = () => (facts = { totals: totals(drawing.doc, totalsBy || null), breakdown: breakdown(drawing.doc, totalsBy || null) });
   const fx = () => facts || computeFacts();
 
   // ---- tools ------------------------------------------------------------------------------
@@ -543,7 +544,7 @@ export function drawView(root, ctx) {
       : Object.assign(pair(dist(i, 'length', `Part ${i + 1} length`), '×', dist(i, 'width', `Part ${i + 1} ${WIDTH_NAME[part.kind] || 'width'}`)),
         { title: `Its area: ${fmtArea(areaOf(outlineOf(el.position, el.bearing, part.length, part.width, part.kind).ring), u)}` }));
     const kind = (part, i) => select(`Part ${i + 1} kind`, PART_KINDS.map((k) => [k, PART_NAME[k]]), part.kind, (v) => drawing.change((d) => { const x = find(d, id).el; x.parts[i] = asKind(x.parts[i], v); reattach(d, id); }));
-    const removeAt = (i) => drawing.change((d) => { removePart(find(d, id).el, i); reattach(d, id); });
+    const removeAt = (i) => drawing.change((d) => { removePartOf(d, id, i); reattach(d, id); });
     const table = listGrid({ name: `${id}:parts`,
       columns: [{ head: '', width: 22, frozen: true, cls: 'num' }, { head: 'Kind', width: 108, frozen: true }, { head: 'Size', width: 176, title: 'A radius (a sector: and its aperture), or a length × a width' },
         { head: 'Fill', width: 52 }, { head: 'Shown', width: 52 }, { head: '', width: 52, title: 'Its own stroke' }, { head: 'Name', width: 110 }],
@@ -1130,14 +1131,10 @@ export function drawView(root, ctx) {
     const m = drawing.doc.meta;
     const meta = (key, aria, area) => F.text(() => m[key], (v) => drawing.change((doc) => { doc.meta[key] = v; }), aria, area ? 2 : 0);
     const n = drawElements().length;
-    const t = fx().totals, u = ctx.units();
-    const tot = (b) => countOf(b, u) || 'nothing';
     const groupName = (gid) => (gid ? groupPath(drawing.doc.groups.find((g) => g.id === gid)) : 'Not grouped');
     const keys = [...new Set(elements(drawing.doc).flatMap((x) => x.el.properties.map((p) => p.key)))].sort((a, b) => a.localeCompare(b));
     if (totalsBy && !keys.includes(totalsBy)) { totalsBy = ''; computeFacts(); } // its key gone
     const by = select('Totals by', [['', 'group'], ...keys.map((k) => [k, k])], totalsBy || '', (v) => { totalsBy = v; computeFacts(); renderInspector(); });
-    const rows = totalsBy ? [...fx().totals.values].sort(([a], [b]) => (!a) - (!b) || a.localeCompare(b)).map(([v, b]) => [v ? `“${v}”` : `No ${totalsBy}`, b])
-      : t.groups.size > 1 ? [...t.groups].map(([gid, b]) => [groupName(gid), b]) : [];
     const offsetElsewhere = elements(drawing.doc).filter((x) => x.el.look.offset != null); // where Offset is set on an element or a group
     return [h('div', { class: 'fhead' }, h('h2', {}, 'Drawing'), n ? h('button', { type: 'button', class: 'small', onclick: () => showOnMap(new Set(elements(drawing.doc).map((x) => x.el.id))) }, 'Zoom to') : null),
       row('Title', meta('title', 'Title')), row('Description', meta('description', 'Description', true)), row('Author', meta('author', 'Author')),
@@ -1145,15 +1142,62 @@ export function drawView(root, ctx) {
       lookBlock([{ kind: 'drawing', el: drawing.doc }], ['text.name', 'offset', 'minSize'], 'Display', [
         offsetElsewhere.length ? h('p', { class: 'note' }, 'Offset also set on ', ...offsetElsewhere.map((x) => link(x.el.id))) : null,
         row('Bearings', check('beside lengths', ctx.display.bearings, (v) => ctx.setDisplay({ bearings: v }), { title: 'Each leg\'s bearing (°T) beside its length, where values are shown' }))]),
-      n ? h('div', { class: 'fblock' }, h('h3', {}, 'Totals'),
-        keys.length ? row('By', by) : null,
-        h('table', { class: 'vtable totals' }, h('tbody', {},
-          h('tr', { class: 'all' }, h('td', {}, 'All'), h('td', {}, tot(t.all))),
-          rows.map(([name, b]) => h('tr', {}, h('td', {}, name), h('td', {}, tot(b)))))),
-        h('p', { class: 'note' }, 'Guides and measurements are left out; lines running together each count.')) : null,
+      n ? totalsBlock(keys.length ? by : null, groupName) : null,
       drawing.saving.failed ? h('p', { class: 'note warn' }, 'This browser does not let the drawing be saved (storage full or turned off): Export › Drawing (GeoJSON) keeps it as a file.') : null,
       drawing.saving.otherTab ? h('p', { class: 'note warn' }, 'The drawing was changed in another tab. Saving here replaces that version. ', h('button', { type: 'button', class: 'small', onclick: () => location.reload() }, 'Reload')) : null,
       h('p', { class: 'note' }, 'Drawings stay in this browser, saved as you go; nothing is sent anywhere. Export › Drawing (GeoJSON) writes one as a file, with the view, to share or keep it: links do not carry drawings.')];
+  }
+  // The Totals view (docs/drawing-ui.md §5): the lines by group (or by a property's values), each
+  // listed under its group, those a connection made summed by what they are (trunks and branches; a
+  // chain's root links and the links between points); the areas; the points by kind. A group's rows
+  // fold; Copy gives every row tab-separated, in metres, for a spreadsheet
+  const MADE_PART = { trunk: 'trunks, root → hub', branch: 'branches, hub → point', 'root link': 'root → first point', link: 'between points' };
+  function totalsBlock(by, groupName) {
+    const b = fx().breakdown, u = ctx.units(), doc = drawing.doc;
+    // a group holding a connection: its pattern and roots beside the name (two are both "Connection")
+    const made = (k) => { const c = k && connections(doc).find((x) => x.groupId === k); return c ? ` (${c.pattern}, from ${c.roots.map((r) => label('point', now(r.id))).join(', ')})` : ''; };
+    const keyName = (k) => (totalsBy ? (k ? `“${k}”` : `No ${totalsBy}`) : groupName(k) + made(k));
+    const td = (x, cls = '') => h('td', { class: cls }, x), num = (x) => td(x, 'num');
+    // a row that acts (folds a group, selects an element): the whole row the target, by pointer or keys
+    const acts = (cls, title, fn, ...cells) => h('tr', { class: `${cls} acts`, role: 'button', tabindex: 0, title, onclick: fn, onkeydown: (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fn(); } } }, ...cells);
+    const sec = (title, ...heads) => h('tr', { class: 'sec' }, td(title), ...heads.map((x) => num(x)));
+    const rows = [], copy = []; // copy: [section, group, name, count, length m, area m², perimeter m]
+    const nameOf = (kind, id) => label(kind, find(doc, id).el);
+    const lineRows = [...b.lines.rows].sort((p, q) => (!p.key) - (!q.key) || keyName(p.key).localeCompare(keyName(q.key)));
+    const one = lineRows.length === 1 && !lineRows[0].key && !totalsBy; // nothing grouped: no group rows (by a property, the row says "No …")
+    if (b.lines.count) {
+      rows.push(sec('Lines', '', 'Length'));
+      for (const r of lineRows) {
+        const folded = totalsFolded.has(r.key), g = one ? '' : keyName(r.key);
+        if (!one) {
+          rows.push(acts('grp', folded ? 'Show its lines' : 'Fold its lines', () => { totalsFolded[folded ? 'delete' : 'add'](r.key); renderInspector(); }, td(`${folded ? '▸' : '▾'} ${g}`), num(plural(r.count, 'line')), num(fmtDist(r.length, u))));
+          copy.push(['Lines', g, '', r.count, r.length, '', '']);
+        }
+        for (const p of r.parts) { if (!folded) rows.push(h('tr', { class: one ? 'part top' : 'part' }, td(MADE_PART[p.part]), num(plural(p.count, 'line')), num(fmtDist(p.length, u)))); copy.push(['Lines', g, MADE_PART[p.part], p.count, p.length, '', '']); }
+        for (const l of r.lines) { if (!folded) rows.push(acts(one ? 'item top' : 'item', 'Select it', () => drawing.select([l.id]), td(nameOf('line', l.id)), td(''), num(fmtDist(l.length, u)))); copy.push(['Lines', g, nameOf('line', l.id), 1, l.length, '', '']); }
+      }
+      rows.push(h('tr', { class: 'all' }, td('All lines'), num(plural(b.lines.count, 'line')), num(fmtDist(b.lines.length, u))));
+      copy.push(['Lines', '', 'All lines', b.lines.count, b.lines.length, '', '']);
+    }
+    if (b.areas.count) {
+      rows.push(sec('Areas', 'Area', 'Perimeter'));
+      for (const a of b.areas.rows) { rows.push(acts('item top', 'Select it', () => drawing.select([a.id]), td(nameOf('area', a.id)), num(fmtArea(a.area, u)), num(fmtDist(a.perimeter, u)))); copy.push(['Areas', '', nameOf('area', a.id), 1, '', a.area, a.perimeter]); }
+      rows.push(h('tr', { class: 'all' }, td('All areas'), num(fmtArea(b.areas.area, u)), num(fmtDist(b.areas.perimeter, u))));
+      copy.push(['Areas', '', 'All areas', b.areas.count, '', b.areas.area, b.areas.perimeter]);
+    }
+    if (b.points.count) {
+      rows.push(sec('Points', '', ''));
+      for (const [k, c] of [...b.points.kinds].sort((p, q) => q[1] - p[1])) { const name = totalsBy ? keyName(k) : POINT_KIND_NAME[k] ?? OUTLINE_NAME[k] ?? k; rows.push(h('tr', { class: 'item top' }, td(name), num(String(c)), td(''))); copy.push(['Points', '', name, c, '', '', '']); }
+      rows.push(h('tr', { class: 'all' }, td('All points'), num(String(b.points.count)), td('')));
+      copy.push(['Points', '', 'All points', b.points.count, '', '', '']);
+    }
+    const hidden = b.lines.hidden || b.areas.hidden || b.points.hidden;
+    const head = ['Section', totalsBy ? totalsBy : 'Group', 'Name', 'Count', 'Length (m)', 'Area (m²)', 'Perimeter (m)'];
+    const r1 = (v) => (typeof v === 'number' ? String(Math.round(v * 1000) / 1000) : v);
+    return h('div', { class: 'fblock' }, h('h3', {}, 'Totals', copyBtn(() => [head, copy.map((c) => c.map(r1))])),
+      by ? row('By', by) : null,
+      h('table', { class: 'vtable totals' }, h('tbody', {}, rows)),
+      h('p', { class: 'note' }, `Guides and measurements are left out; lines running together each count${hidden ? '; hidden ones are counted' : ''}.`));
   }
   function renderInspector() {
     // a field being edited is applied first, to the element it belongs to

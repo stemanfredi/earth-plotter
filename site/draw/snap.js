@@ -8,11 +8,11 @@
 import { inverse, destination } from '../geodesy.js';
 import { nearestOnSegment } from '../geo.js';
 import { verticesOf } from './attach.js';
-import { anchorsOf, lineTrace } from './lines.js';
+import { lineTrace, steps } from './lines.js';
 import { isShown, KIND } from './document.js';
 
 export const RADIUS = 6; // px
-export const STEP = 15; // degrees: Shift's steps
+const STEP = 15; // degrees: Shift's steps
 
 // where the screen segments a–b and c–d cross, strictly inside both, or null
 function crossing(a, b, c, d) {
@@ -58,17 +58,15 @@ export function snapAt(doc, p, view, { ids = null, exclude = new Set(), radius =
       for (const key of ['start', 'end']) if (!el[key].element) vertex(el[key].position, { end: { lineId: el.id, key } });
       // its legs, as drawn (a curve's samples), each sample segment knowing its leg and how far along it
       if (!edgesOf(el)) continue;
-      const tr = lineTrace(doc, el);
-      let along = 0;
+      const tr = lineTrace(doc, el), { from } = steps(tr.coords);
       for (let i = 1; i < tr.coords.length; i++) {
-        const a = tr.coords[i - 1], b = tr.coords[i], s = inverse(a, b).s, start = along;
+        const a = tr.coords[i - 1], b = tr.coords[i], start = from[i - 1], s = from[i] - start;
         edge(a, b, (t) => {
           const d = start + t * s;
           let k = tr.legs.length - 1;
           while (k > 0 && tr.at[k] > d + 1e-6) k--;
           return { element: el.id, edge: k, at: +Math.min(1, Math.max(0, tr.legs[k] ? (d - tr.at[k]) / tr.legs[k] : 0)).toFixed(6) };
         }, el.id);
-        along += s;
       }
     }
   }
@@ -113,5 +111,3 @@ export function neighbours(positions, k) {
   if (k > 0) return { from: positions[k - 1], prev: positions[k - 2] ?? null };
   return { from: positions[1] ?? null, prev: positions[2] ?? null };
 }
-// a line's positions, start to end (its anchors)
-export const positionsOf = (doc, line) => anchorsOf(doc, line).map((a) => a.position);

@@ -1,23 +1,23 @@
-// The Tools panel (docs/drawing-ui.md): the placing tools, the list of the
+// The drawing's left frame (docs/drawing-ui.md): the rail of the tools, and the column: the tree of the
 // drawing's elements, and under it the inspector, which shows what is selected (or, with nothing
 // selected, the drawing itself) and edits it with fields. Fields apply on Enter or when they lose
 // focus, one undo step each.
 
-import { h, typing as typingIn } from '../dom.js';
+import { h, svg, typing, NARROW, store } from '../dom.js';
+import { popup } from '../menu.js';
 import { FINGER } from './layers.js';
-import { find, elements, groupsOf, membersOf, canHold, label, kindName, pointKind, POINT_KIND_NAME, lookOf, styleOf, lookField, setLook, LOOK_FIELDS, labelColour, addPart, makePart, followedPart, mainOutline, PART_KINDS, ROUND, ARCED, SYMBOLS, DASHES, LEADERS, LABEL_OFFSET, makeGroup, setGroup, straighten, isMeasurement, MAX_RADIUS, offsetOf, MAX_OFFSET, MAX_MIN_SIZE, STROKE_WIDTH } from './document.js';
+import { find, elements, groupsOf, membersOf, canHold, label, kindName, pointKind, POINT_KIND_NAME, lookOf, styleOf, lookField, setLook, LOOK_FIELDS, labelColour, addPart, makePart, followedPart, mainOutline, PART_KINDS, ROUND, ARCED, SYMBOLS, DASHES, LEADERS, LABEL_OFFSET, makeGroup, setGroup, moveBefore, moveStep, straighten, isMeasurement, MAX_RADIUS, offsetOf, MAX_OFFSET, MAX_MIN_SIZE, STROKE_WIDTH, OUTLINES } from './document.js';
 import { parse } from './file.js';
-import { insertCorner, removeCorner, reattach, partName, addVertex, removeVertex, splitKeeping, lineRef, freeRef } from './attach.js';
+import { insertCorner, removeCorner, reattach, partName, addVertex, removeVertex, splitKeeping, lineRef, freeRef, resolve, along } from './attach.js';
 import { labelText, labelValues, TOKENS } from './labels.js';
-import { resolve as anchorAt } from './attach.js';
-import { OUTLINES, OUTLINE_NAME, outlineOf, isVehicle } from './outlines.js';
-import { lineTrace, totals, breakdown, applySmooth, nearestAlong } from './lines.js';
+import { OUTLINE_NAME, outlineOf, isVehicle } from './outlines.js';
+import { lineTrace, totals, breakdown, applySmooth, nearestAlong, positionsOf } from './lines.js';
 import { profileCsv } from './profile.js';
 import { COPY_RADIUS, distribute, lines, plan, planConnection, makeDistribution, editDistribution, connect, reconnect, unconnect, alongTrace, alongOf,
   distributions, connections, ruleOf, distributionOf, connectionOn, changedByHand, giveBack, removePartOf, MAX_COPIES, MAX_TREE } from './generator.js';
 import { BUILT_IN, builtInName } from './place.js';
-import { boundsOf, drawable, perimeterOf } from './features.js';
-import { fmtDist, fmtArea, fmtBrg, inverse, areaOf, pathOf, destination } from '../geodesy.js';
+import { boundsOf, drawable } from './features.js';
+import { inverse, areaOf, pathOf, destination, perimeterOf } from '../geodesy.js';
 import { moved } from './drag.js';
 import { norm360 } from '../geo.js';
 import { fields, choice, select, check } from '../fields.js';
@@ -25,6 +25,7 @@ import { keyOf, mac, MOD } from '../keys.js';
 import { loadPresets, savePresets, presetOf, presetsFile, readPresets } from './presets.js';
 import { listGrid } from './grid.js';
 import { rowsText, placesOf, placesAfterPaste } from './paste.js';
+import { fmtArea, fmtBrg, fmtDist } from '../format.js';
 
 const FILTER_FROM = 30; // the filter field appears past this many elements
 // what a total counts: "15 points, 10 with radii · 3 lines, 12.4 km · 2 areas"
@@ -36,11 +37,10 @@ const KIND_ICON = {
   label: ['M10 4h10v7H10z', 'M10 11 4 19'], // a text box and its leader
   area: ['M4 4h3M10 4h4M17 4h3v3M20 10v4M20 17v3h-3M14 20h-4M7 20H4v-3M4 14v-4M4 7V4'], // a dashed box: Select area
 };
-// the panels' and the actions' icons (as Lucide's): the Elements panel, Zoom to, Duplicate, Group,
-// Delete, Detach, shown and hidden
+// the column's and the actions' icons (as Lucide's): the column, Zoom to, Duplicate, Group, Delete,
+// Detach, shown and hidden
 const UI_ICON = {
   elements: ['M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z', 'M9 3v18'],
-  panel: ['M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z', 'M15 3v18'], // the panel on the right
   zoom: ['M3 7V5a2 2 0 0 1 2-2h2', 'M17 3h2a2 2 0 0 1 2 2v2', 'M21 17v2a2 2 0 0 1-2 2h-2', 'M7 21H5a2 2 0 0 1-2-2v-2', 'M12 9v6', 'M9 12h6'],
   duplicate: ['M10 8h10a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H10a2 2 0 0 1-2-2V10a2 2 0 0 1 2-2z', 'M4 16a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2'],
   group: ['M3 7h7l2 2h9v10H3z', 'M12 11v6', 'M9 14h6'],
@@ -48,10 +48,8 @@ const UI_ICON = {
   detach: ['m18.84 12.25 1.72-1.71a5 5 0 0 0-7.07-7.07l-1.72 1.71', 'm5.17 11.75-1.71 1.71a5 5 0 0 0 7.07 7.07l1.71-1.71', 'M8 2v3', 'M2 8h3', 'M16 19v3', 'M19 16h3'],
   eye: ['M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z', 'M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6z'],
   hidden: ['M10.7 5.1A10.4 10.4 0 0 1 12 5c6.5 0 10 7 10 7a13.2 13.2 0 0 1-1.7 2.7', 'M6.6 6.6A13.5 13.5 0 0 0 2 12s3.5 7 10 7a9.7 9.7 0 0 0 5.4-1.6', 'M14.1 14.1a3 3 0 1 1-4.2-4.2', 'M2 2l20 20'],
-  // a panel collapsed (arrows in) or made whole (arrows out); a menu below
-  collapse: ['m14 10 7-7', 'M20 10h-6V4', 'm3 21 7-7', 'M4 14h6v6'], expand: ['M15 3h6v6', 'm21 3-7 7', 'm3 21 7-7', 'M9 21H3v-6'],
-  chevron: ['m6 9 6 6 6-6'], left: ['m15 18-6-6 6-6'],
-  tree: ['M3 5h4', 'M3 12h4', 'M10 5h11', 'M10 12h11', 'M13 19h8', 'M7 5v12a2 2 0 0 0 2 2h1'], // a tree's nodes (as Lucide's list-tree)
+  // a fold's
+  chevron: ['m6 9 6 6 6-6'],
 };
 // what each kind of point and shape looks like (the sub-rails, the list): those round a centre have it
 // marked, the outlines not
@@ -75,14 +73,13 @@ const SYMBOL_ICON = { diamond: ['m12 4 8 8-8 8-8-8z'], square: ['M6 6h12v12H6z']
 const SELECT_ICON = { click: ['M5 3l14 8-6 2-2 6z'], area: KIND_ICON.area }; // an arrow; a dashed box
 const SYMBOL_TITLE = { diamond: 'Diamond', square: 'Square', triangle: 'Triangle', dot: 'Dot', none: 'None' };
 const SPLIT_KEY = 'charts.drawing.split';
-const ELEMENTS_KEY = 'charts.drawing.elements'; // the column open ('1') or not, from 1024 px wide
+const ELEMENTS_KEY = 'charts.drawing.elements'; // the column open ('1') or not
 const FOLDS_KEY = 'charts.drawing.folds'; // the column's halves folded: { list, insp }
-const WIDE = typeof matchMedia === 'function' ? matchMedia('(min-width: 1024px)') : { matches: false, addEventListener() {} }; // the strip and the Elements panel
 const WIDTH_NAME = { 'aerial-vehicle': 'Span', 'surface-vehicle': 'Beam', 'underwater-vehicle': 'Diameter' }; // a shape's width, as said of each outline
 
-// root: the view's element. ctx: { drawing, map, icon, units() ('km' | 'nm'), known, isOpen() (the
-// Tools panel shown), onImport(doc, report) (applies an imported document),
-// download(text, name) }
+// root: the column's content. ctx: { drawing, map, icon, units() ('km' | 'nm'), known, strip (the rail),
+// elements (the column), columnShown(), menuExtras(close) (the ☰ menu's foot), onImport(doc, report)
+// (applies an imported document), openDrawing(id), download(text, name), profile(trace) }
 export function drawView(root, ctx) {
   const { drawing, map, icon } = ctx;
   let anchor = null; // the row a Shift-click range starts from
@@ -96,9 +93,9 @@ export function drawView(root, ctx) {
   const fx = () => facts || computeFacts();
 
   // ---- tools ------------------------------------------------------------------------------
-  // The row (drawing-ui.md §2): Point, Line, Shape, Label, Measure, then Undo and Redo. A tool
-  // with variants shows them in a sub-rail under the row; it remembers the one chosen last, and its
-  // key pressed again moves to the next (app.js).
+  // The rail (drawing-ui.md §2): Select, Point, Line, Shape, Label, Measure, then Undo and Redo. A tool
+  // with variants shows them in its sub-rail; it remembers the one chosen last, and its key pressed
+  // again moves to the next (app.js).
   drawing.presets = loadPresets();
   const TOOLS = { point: ['Point', 'Place points: click on the map'], line: ['Line', 'Draw a line: click its start, its bends, then a point, a corner, an edge or a vertex to end there (attached), or Enter'],
     shape: ['Shape', 'Place a shape of the outline chosen, or draw a polygon'], label: ['Label', 'Place a label: click a point, a shape, an area or a line to point at it, or anywhere for free text'],
@@ -116,11 +113,11 @@ export function drawView(root, ctx) {
     measure: [['ruler', 'Distance: a line showing its lengths'], ['area', 'Area: a polygon showing its area and perimeter'], ['ring', 'Ring: a circle showing its radius']],
     select: [['click', `Select: a click on an element (Shift, ${MOD}: add or remove)`], ['area', 'Select area: drag a box on the map (A)']],
   })[tool] || [];
-  // Select (from 1024 px wide, the rail's first tool): on when no other is; its kinds, a click or an area
+  // Select (the rail's first tool): on when no other is; its kinds, a click or an area
   const current = (tool) => (tool === 'select' ? (drawing.button === 'area' ? 'area' : 'click') : drawing.variant[tool]);
   // a tool's button pressed: on, or off when it is on; pressed with the keyboard (no pointer), a point,
   // a shape or a label placed at the map's centre, for its fields
-  // From 1024 px wide a tool's kinds are a column beside the rail, open while the tool is on (Select's
+  // A tool's kinds are a column beside the rail, open while the tool is on (Select's
   // while Select area is, or once Select is clicked); the tool's button shows the kind in use
   // (drawing-ui.md §1)
   let kindsOf = null; // 'select': Select's kinds opened by its button, no tool on
@@ -145,28 +142,16 @@ export function drawView(root, ctx) {
     if (!on || vs.length < 2) return press(tool);
     choose(tool, vs[(vs.indexOf(current(tool)) + 1) % vs.length]);
   }
-  const toolBtns = Object.entries(TOOLS).map(([k, [text, title]]) => h('button', { type: 'button', 'data-tool': k, 'aria-pressed': 'false', title: `${title} (${keyOf(k)})`,
-    onclick: (e) => press(k, e) }, icon(...(k === 'measure' ? ctx.measureIcon : KIND_ICON[k])),
-  k === 'measure' ? [h('span', { class: 'long' }, text), h('span', { class: 'short' }, 'Meas.')] : text)); // the compact column's label: short
+  // the rail's tools (Select area is Select's kind: its key, A, and its sub-rail)
+  const toolBtns = Object.entries(TOOLS).filter(([k]) => k !== 'area').map(([k, [text, title]]) => h('button', { type: 'button', 'data-tool': k, 'aria-pressed': 'false', 'aria-label': text, title: `${title} (${keyOf(k)})`,
+    onclick: (e) => press(k, e) }, icon(...(k === 'measure' ? ctx.measureIcon : KIND_ICON[k]))));
   const undoBtn = h('button', { type: 'button', class: 'urbtn', 'aria-label': 'Undo', title: `Undo (${MOD} Z)`, onclick: () => drawing.undo() }, icon('M9 14 4 9l5-5', 'M4 9h10a6 6 0 0 1 0 12h-3'));
   const redoBtn = h('button', { type: 'button', class: 'urbtn', 'aria-label': 'Redo', title: `Redo (${MOD} Shift Z)`, onclick: () => drawing.redo() }, icon('m15 14 5-5-5-5', 'M20 9H10a6 6 0 0 0 0 12h3'));
-  // the panel compact (only the tools, drawing-ui.md §1) or whole
-  const compactBtn = h('button', { type: 'button', class: 'urbtn cbtn', onclick: () => ctx.setCompact(!ctx.compact()) });
-  // Where Undo, Redo and the compact button are: whole, in the panel's header (ctx.header), beside its
-  // ×; compact (no header), in the tools' column, the compact button first (drawing-ui.md §1). The
-  // tools: what makes, then (after a divider) Select area.
   const sep = () => h('span', { class: 'tsep', 'aria-hidden': 'true' });
-  const toolsRow = h('div', { class: 'tools2' });
-  function placeControls(c) {
-    const makes = toolBtns.filter((b) => b.dataset.tool !== 'area'), select = toolBtns.find((b) => b.dataset.tool === 'area');
-    if (c) { toolsRow.replaceChildren(compactBtn, sep(), ...makes, sep(), select, sep(), undoBtn, redoBtn); ctx.header?.replaceChildren(); }
-    else { toolsRow.replaceChildren(...makes, sep(), select); ctx.header?.replaceChildren(undoBtn, redoBtn, sep(), compactBtn); }
-  }
-  placeControls(false);
   const subrail = h('div', { class: 'subrail', role: 'group', hidden: true });
-  // the rail's own (from 1024 px wide): ☰, the drawings and the file; Select; the column's toggle
+  // the rail's own: ☰, the drawings and the file; Select; the column's toggle
   const fileBtn = h('button', { type: 'button', class: 'filebtn', 'aria-label': 'File', 'aria-haspopup': 'menu', 'aria-expanded': 'false',
-    title: 'The drawings in this browser, and the file: New, Import, Export', onclick: () => (drawingsMenu.hidden ? openDrawingsMenu(fileBtn) : closeDrawingsMenu()) }, icon('M4 6h16', 'M4 12h16', 'M4 18h16'));
+    title: 'The drawings in this browser, and the file: New, Import, Export', onclick: () => toggleDrawings(fileBtn) }, icon('M4 6h16', 'M4 12h16', 'M4 18h16'));
   const selectBtn = h('button', { type: 'button', class: 'selbtn haskinds', 'aria-label': 'Select', title: `Select: a click on an element, or (its kinds) an area (A)`,
     onclick: () => { kindsOf = 'select'; if (drawing.button && drawing.button !== 'area') drawing.stop(); else renderTools(); } });
   const colToggle = h('button', { type: 'button', class: 'etoggle coltoggle', 'aria-label': 'The tree and the inspector', title: 'The tree and the inspector: shown or hidden (E)',
@@ -183,6 +168,7 @@ export function drawView(root, ctx) {
     snap: h('button', { type: 'button', title: 'Snap to what is drawn; off: placed exactly where tapped (Alt)', onclick: () => { drawing.snapOff = !drawing.snapOff; renderTools(); } }, 'Snap'),
   };
   const touchbar = h('div', { class: 'touchbar', role: 'group', 'aria-label': 'Actions' }, Object.values(touch));
+  document.body.append(touchbar); // over the map, at its foot: the column may be closed
   function renderTouch() {
     const sel = drawing.sel.size > 0, tool = !!drawing.tool;
     touch.done.hidden = !(['line', 'polygon'].includes(drawing.tool) && drawing.draft);
@@ -193,7 +179,7 @@ export function drawView(root, ctx) {
     touchbar.hidden = Object.values(touch).every((b) => b.hidden);
   }
   function renderSubrail() {
-    const tool = kindsOf || (WIDE.matches && drawing.button === 'area' ? 'select' : drawing.button);
+    const tool = kindsOf || (drawing.button === 'area' ? 'select' : drawing.button);
     const vs = variants(tool);
     subrail.hidden = vs.length < 2;
     subrail.setAttribute('aria-label', `${TOOLS[tool]?.[0] ?? ''}: what it makes`);
@@ -203,8 +189,9 @@ export function drawView(root, ctx) {
         onclick: () => choose(tool, v), oncontextmenu: preset ? (e) => { e.preventDefault(); presetMenu(name); } : null },
       preset ? h('span', { class: 'initials' }, name.slice(0, 2)) : icon(...((tool === 'select' && SELECT_ICON[v]) || POINT_ICON[v] || ctx.measureIcons?.(v) || KIND_ICON.point)));
     }));
-    // where the row scrolls sideways (phones): the kind in use in sight
-    subrail.querySelector('[aria-pressed="true"]')?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
+    // level with its tool's button, within the window
+    const from = tool === 'select' ? selectBtn : toolBtns.find((x) => x.dataset.tool === tool);
+    subrail.style.top = from && !subrail.hidden ? `${Math.max(0, Math.min(from.offsetTop - 5, innerHeight - subrail.offsetHeight - 6))}px` : '';
   }
   // a preset of the user's: renamed, or deleted
   async function presetMenu(name) {
@@ -225,48 +212,41 @@ export function drawView(root, ctx) {
   const filterInput = h('input', { type: 'search', placeholder: 'Filter by name or value', 'aria-label': 'Filter the list', oninput: (e) => { filter = e.target.value; renderList(); } });
   const selectShown = h('button', { type: 'button', class: 'small', title: 'Select every element the filter leaves in the list (Shift: add to the selection)',
     onclick: (e) => drawing.select(shown().map((x) => x.el.id), e.shiftKey ? 'add' : 'replace') }, 'Select all shown');
-  // the list's first row, All: one box over the rows' own (shown or not), every element a step to its
-  // right; above the list, past FILTER_FROM elements, the filter and Select all shown
+  // An eye for all of xs() (what: what they are, for its label): every one shown, a click hides them
+  // all; some or none, a click shows them all. render() when they change.
   const showAll = (v, xs) => drawing.change((doc) => { for (const x of xs) find(doc, x.el.id).el.visible = v; });
-  // A box for all of xs() shown: ticked when every one is, empty when none is, half when some are; a
-  // click shows them all, or hides them all when every one is shown
-  const allBox = (xs, aria) => {
-    const box = h('input', { type: 'checkbox', 'aria-label': aria, onchange: () => { const all = xs(); showAll(!all.every((x) => x.el.visible), all); } });
-    box.render = () => { const all = xs(), on = all.filter((x) => x.el.visible).length; box.checked = !!all.length && on === all.length; box.indeterminate = on > 0 && on < all.length; };
-    queueMicrotask(box.render); // once what it counts can be read (the list's, while the panel is still being built)
-    return h('label', { class: 'dvis', title: 'Show all, or hide all when every one is shown' }, box);
+  const eyeFor = (xs, what) => {
+    const b = h('button', { type: 'button', class: 'deye', onclick: () => { const all = xs(); showAll(!all.every((x) => x.el.visible), all); } });
+    b.render = () => {
+      const all = xs(), on = all.filter((x) => x.el.visible).length, every = !!all.length && on === all.length;
+      b.setAttribute('aria-pressed', on && !every ? 'mixed' : String(every));
+      b.setAttribute('aria-label', `${every ? 'Hide' : 'Show'} all ${what}`);
+      b.title = every ? 'All shown: click to hide them all' : on ? 'Some hidden: click to show them all' : 'All hidden: click to show them all';
+      b.replaceChildren(icon(...(every ? UI_ICON.eye : UI_ICON.hidden)));
+    };
+    return b;
   };
-  // the list's head: its name, one eye for every element listed (shown: a click hides them all; else
-  // shows them all), and from 1024 px wide the Elements panel's toggle
+  // the list's head: the drawing's title, the eye for every element listed, its fold; above the list, past FILTER_FROM elements, the filter and
+  // Select all shown
   const listed = () => (filter ? shown() : drawElements());
-  const eyeAll = h('button', { type: 'button', class: 'deye', onclick: () => { const all = listed(); showAll(!all.every((x) => x.el.visible), all); } });
-  function renderEyeAll() {
-    const all = listed(), on = all.filter((x) => x.el.visible).length, every = !!all.length && on === all.length;
-    eyeAll.setAttribute('aria-pressed', on && !every ? 'mixed' : String(every));
-    eyeAll.setAttribute('aria-label', every ? 'Hide all listed' : 'Show all listed');
-    eyeAll.title = every ? 'All shown: click to hide them all' : on ? 'Some hidden: click to show them all' : 'All hidden: click to show them all';
-    eyeAll.replaceChildren(icon(...(every ? UI_ICON.eye : UI_ICON.hidden)));
-  }
+  const eyeAll = eyeFor(listed, 'listed');
   const filterRow = h('div', { class: 'dfilter' }, filterInput, selectShown);
   // the hover ends when the pointer leaves the list: a row rebuilt under it never says it was left
   const list = h('ul', { class: 'dlist', 'aria-label': 'Elements', onpointerleave: () => drawing.setHover(null) });
-  // The Elements panel (from 1024 px wide, drawing-ui.md §1): the tree, its head the drawing's: its title
-  // From 1024 px wide (drawing-ui.md §1) the drawing is the left frame's: the rail, and beside it the
-  // column, the tree over the inspector, shown or hidden by the rail's toggle (and E); either half
+  // The column (drawing-ui.md §1), the tree over the inspector, shown or hidden by the rail's toggle (and E); either half
   // folds to its head (each remembered in this browser). The inspector shows what is selected, or the
   // drawing itself with nothing selected.
-  let elementsOpen = true;
-  try { elementsOpen = localStorage.getItem(ELEMENTS_KEY) !== '0'; } catch { /* only a convenience */ }
+  let elementsOpen = !NARROW.matches && store.get(ELEMENTS_KEY) !== '0'; // on a phone: closed to start with
   function setElements(v) {
     elementsOpen = v;
-    try { localStorage.setItem(ELEMENTS_KEY, v ? '1' : '0'); } catch { /* only a convenience */ }
+    store.set(ELEMENTS_KEY, v ? '1' : '0');
+    if (v) ctx.columnShown?.();
     place();
   }
-  const folds = { list: false, insp: false };
-  try { Object.assign(folds, JSON.parse(localStorage.getItem(FOLDS_KEY) || '{}')); } catch { /* only a convenience */ }
+  const folds = { list: false, insp: false, ...store.json(FOLDS_KEY) };
   const foldBtn = (half, what) => h('button', { type: 'button', class: 'etoggle fold', 'aria-label': `Fold the ${what}`, title: 'Fold or open', onclick: () => {
     folds[half] = !folds[half];
-    try { localStorage.setItem(FOLDS_KEY, JSON.stringify(folds)); } catch { /* only a convenience */ }
+    store.set(FOLDS_KEY, JSON.stringify(folds));
     place();
   } }, icon(...UI_ICON.chevron));
   const docTitle = h('button', { type: 'button', class: 'dtitle', title: 'The drawing: its title, its display, its totals', onclick: () => drawing.select([]) });
@@ -274,6 +254,7 @@ export function drawView(root, ctx) {
   const listHead = h('div', { class: 'dlisthead' });
   const listBox = h('div', { class: 'dlistbox' }, listHead, filterRow, list);
   // the inspector's head: what it shows, the actions on it (renderHead), its fold
+  let title = ''; // what the inspector shows, said in its head (set by the inspector built)
   const inspTitle = h('span', { class: 'ititle' }), inspActs = h('span', { class: 'iacts' });
   const inspHead = h('div', { class: 'dinsphead' }, inspTitle, inspActs, inspFold);
 
@@ -325,7 +306,7 @@ export function drawView(root, ctx) {
   // or hidden); selected by a click (Ctrl/⌘: adds or removes), outlined on the map while the pointer is
   // over it
   function elementRow({ id, icon, kindIcon, title, name, value = '', valueTitle, visible, selected }, on, more = {}) {
-    return h('li', { class: `drow${selected ? ' sel' : ''}${visible ? '' : ' dim'}${more.classes ? ` ${more.classes}` : ''}`, 'data-id': id,
+    return h('li', { class: `drow${selected ? ' sel' : ''}${visible ? '' : ' dim'}${more.classes ? ` ${more.classes}` : ''}`, 'data-id': id, draggable: 'true',
       onpointerenter: () => on.hover(id), onpointerleave: () => on.hover(null) },
     more.fold || h('span', { class: 'dfold none', 'aria-hidden': 'true' }),
     h('span', { class: 'kind', title }, icon(...kindIcon)),
@@ -352,10 +333,30 @@ export function drawView(root, ctx) {
     const rows = shown();
     filterRow.hidden = drawElements().length <= FILTER_FROM && !filter; // nothing to show above the list: no room taken
     list.replaceChildren(...rows.map(rowOf));
-    renderEyeAll();
+    eyeAll.render();
     docTitle.textContent = drawing.doc.meta.title || 'Untitled drawing';
     if (!rows.length) list.append(h('li', { class: 'empty' }, filter ? 'Nothing matches the filter.' : 'Nothing drawn yet: pick a tool, then click on the map.'));
   }
+  // A row dragged (drawing-ui.md §4): dropped on a group's row, into that group; on a row of its
+  // kind, just before it (the drawing order: the first on top) and in its group; on another, in its
+  // group. One undo step.
+  let dragged = null;
+  const dropOn = (e) => { const r = e.target.closest?.('.drow[data-id]'); return r && dragged && r.dataset.id !== dragged ? r : null; };
+  list.addEventListener('dragstart', (e) => { dragged = e.target.closest?.('.drow')?.dataset.id ?? null; if (dragged) e.dataTransfer.effectAllowed = 'move'; });
+  list.addEventListener('dragover', (e) => { const r = dropOn(e); if (!r) return; e.preventDefault(); for (const x of list.querySelectorAll('.drop')) if (x !== r) x.classList.remove('drop'); r.classList.add('drop'); });
+  list.addEventListener('dragleave', (e) => e.target.closest?.('.drow')?.classList.remove('drop'));
+  list.addEventListener('dragend', () => { dragged = null; for (const x of list.querySelectorAll('.drop')) x.classList.remove('drop'); });
+  list.addEventListener('drop', (e) => {
+    const r = dropOn(e);
+    if (!r) return;
+    e.preventDefault();
+    const id = dragged, t = find(drawing.doc, r.dataset.id), x = find(drawing.doc, id);
+    drawing.change((doc) => {
+      if (t.kind === 'group') setGroup(doc, id, t.el.id);
+      else if (t.kind === x.kind) moveBefore(doc, id, t.el.id);
+      else setGroup(doc, id, t.el.groupId ?? null);
+    });
+  });
   function clickRow(id, e) {
     // a range starts from the row last clicked, or else from the last element selected (on the map)
     if (!anchor || !drawing.sel.has(anchor)) anchor = [...drawing.sel].at(-1) ?? null;
@@ -405,32 +406,33 @@ export function drawView(root, ctx) {
     note(`Deleted ${what}${freed ? `; ${plural(freed, 'line')} attached to it now end${freed === 1 ? 's' : ''} where ${freed === 1 ? 'it' : 'they'} did` : ''}`, true);
   }
 
-  // a question in a dialog: resolves to the chosen button's value, or null (Cancel, Esc)
+  // A dialog: its title, its body (body(done): what it shows; done(value) answers), its buttons
+  // ([value, text], the last the main one; a value may be a function, read when chosen), then cancel's
+  // (Cancel, Esc), then a note. Resolves to the value chosen, or null.
   const askDialog = h('dialog', { class: 'dreport', 'aria-labelledby': 'dask-title' });
   document.body.append(askDialog);
-  function ask(title, text, buttons) {
+  function dialog(title, body, buttons, cancel = 'Cancel', foot = null) {
     return new Promise((resolve) => {
       let answer = null;
-      askDialog.replaceChildren(h('h2', { id: 'dask-title' }, title), h('p', {}, text),
-        h('div', { class: 'fbuttons' }, buttons.map(([v, t], i) => h('button', { type: 'button', class: i === buttons.length - 1 ? 'done' : '', onclick: () => { answer = v; askDialog.close(); } }, t)),
-          h('button', { type: 'button', onclick: () => askDialog.close() }, 'Cancel')));
+      const done = (v) => { answer = v; askDialog.close(); };
+      askDialog.replaceChildren(h('h2', { id: 'dask-title' }, title), body(done),
+        h('div', { class: 'fbuttons' }, buttons.map(([v, t], i) => h('button', { type: 'button', class: i === buttons.length - 1 ? 'done' : '', onclick: () => done(typeof v === 'function' ? v() : v) }, t)),
+          h('button', { type: 'button', onclick: () => askDialog.close() }, cancel)), foot);
       askDialog.addEventListener('close', () => resolve(answer), { once: true });
       askDialog.showModal();
     });
   }
-
-  // a text asked for in a dialog: resolves to it, or null (Cancel, Esc)
+  // a question: resolves to the chosen button's value, or null
+  const ask = (title, text, buttons) => dialog(title, () => h('p', {}, text), buttons);
+  // a text asked for: resolves to it, or null
   function askText(title, what, value = '') {
-    return new Promise((resolve) => {
-      let answer = null;
-      const input = h('input', { type: 'text', value, 'aria-label': what, onkeydown: (e) => { if (e.key === 'Enter') { e.preventDefault(); answer = input.value; askDialog.close(); } } });
-      askDialog.replaceChildren(h('h2', { id: 'dask-title' }, title), h('p', {}, h('label', {}, `${what} `, input)),
-        h('div', { class: 'fbuttons' }, h('button', { type: 'button', class: 'done', onclick: () => { answer = input.value; askDialog.close(); } }, 'OK'),
-          h('button', { type: 'button', onclick: () => askDialog.close() }, 'Cancel')));
-      askDialog.addEventListener('close', () => resolve(answer), { once: true });
-      askDialog.showModal();
-      input.select();
-    });
+    const input = h('input', { type: 'text', value, 'aria-label': what });
+    const asked = dialog(title, (done) => {
+      input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); done(input.value); } });
+      return h('p', {}, h('label', {}, `${what} `, input));
+    }, [[() => input.value, 'OK']]);
+    input.select();
+    return asked;
   }
 
   // ---- the note: what just happened, for a few seconds -----------------------------------------
@@ -467,13 +469,15 @@ export function drawView(root, ctx) {
   const angleField = (get, apply, aria, lo, hi, wrap) => F.angle(get, apply, aria, { lo, hi, wrap });
   const segOf = (aria, options, current, pick) => choice(aria, options, () => current, pick);
 
-  // The look of xs ({ kind, el }, one or several; the drawing: { kind: 'drawing', el: doc }): each
-  // field what they are drawn with (document.js lookOf: their own value, else their groups', else
-  // the drawing's), "mixed" where they differ; a change sets their own value, ↺ takes it back. Only
-  // the fields their kinds have (a line no fill, a label its text, a shape its minimum size); fields:
-  // those to show, else all of those.
+  // The look of xs ({ kind, el }, one or several; a group: everything in it; the drawing: { kind:
+  // 'drawing', el: doc }): each field what they are drawn with (document.js lookOf: their own value,
+  // else the drawing's), "mixed" where they differ; a change sets it on each of them, ↺ takes it back.
+  // A group has no look of its own: it reaches its members. Only the fields their kinds have (a line
+  // no fill, a label its text, a shape its minimum size); fields: those to show, else all of those.
   function lookBlock(xs, fields = null, title = 'Look', extra = []) {
     const doc = drawing.doc;
+    xs = [...new Map(xs.flatMap((x) => (x.kind === 'group' ? membersOf(doc, x.el.id, true).filter((m) => m.kind !== 'group') : [x])).map((x) => [x.el.id ?? 'drawing', x])).values()];
+    if (!xs.length && !extra.length) return null; // an empty group
     const has = (x, f) => (x.kind === 'drawing' || LOOK_FIELDS[x.kind].includes(f)) && (f !== 'minSize' || x.kind !== 'point' || !!mainOutline(x.el));
     const shown = (f) => (!fields || fields.includes(f)) && xs.some((x) => has(x, f));
     const looks = xs.map((x) => (x.kind === 'label' ? { ...lookOf(doc, x.el), text: { ...lookOf(doc, x.el).text, color: labelColour(doc, x.el) } } : lookOf(doc, x.el)));
@@ -481,7 +485,7 @@ export function drawView(root, ctx) {
     const target = (d, x) => (x.kind === 'drawing' ? d : find(d, x.el.id).el);
     // live: shown as it changes (a colour being picked), the undo step made when it is set
     const put = (f, v, live = false) => (live ? drawing.preview : drawing.change).call(drawing, (d) => { for (const x of xs) if (has(x, f)) setLook(target(d, x), f, v); });
-    const above = xs.some((x) => x.el.groupId) ? 'the group\'s' : xs.some((x) => x.kind === 'drawing') ? 'the default' : 'the drawing\'s';
+    const above = xs.some((x) => x.kind === 'drawing') ? 'the default' : 'the drawing\'s';
     const back = (...fs) => (xs.some((x) => fs.some((f) => has(x, f) && lookField(x.el.look, f) !== undefined))
       ? h('button', { type: 'button', class: 'x', title: `Back to ${above}`, 'aria-label': `${fs[0]} back to ${above}`,
         onclick: () => drawing.change((d) => { for (const x of xs) for (const f of fs) if (has(x, f)) setLook(target(d, x), f, undefined); }) }, '↺') : null);
@@ -502,7 +506,6 @@ export function drawView(root, ctx) {
         h('tr', {}, h('th', {}, 'Fill'), h('td', {}, ...colour('fill.color', 'Fill colour')), h('td', {}, num('fill.opacity', 'Fill opacity', 0, 1)), h('td'), h('td'), h('td', {}, back('fill.color', 'fill.opacity'))),
         h('tr', {}, h('th', {}, 'Stroke'), h('td', {}, ...colour('stroke.color', 'Stroke colour')), h('td', {}, num('stroke.opacity', 'Stroke opacity', 0, 1)),
           h('td', {}, num('stroke.width', 'Stroke width (px)', ...STROKE_WIDTH)), h('td', {}, dashSelect()), h('td', {}, back('stroke.color', 'stroke.opacity', 'stroke.width', 'stroke.dash')))));
-    const group = xs.length === 1 && (xs[0].kind === 'group' || xs[0].kind === 'drawing');
     const dash = same('stroke.dash');
     return h('div', { class: 'fblock' }, h('h3', {}, title),
       both ? matrix() : null,
@@ -512,7 +515,7 @@ export function drawView(root, ctx) {
       shown('text.color') ? row('Text colour', pair(colour('text.color', 'Text colour'), 'on',
         segOf('Background', [['halo', 'Halo', 'A white halo round the letters'], ['box', 'Box', 'A white box with a border in the text\'s colour']], same('text.background'), (v) => put('text.background', v))),
       back('text.color', 'text.background')) : null,
-      shown('text.name') ? tick('text.name', group || xs.length > 1 ? 'Names on map' : 'Name on map', 'Names are left out where they would collide; zooming in shows them') : null,
+      shown('text.name') ? tick('text.name', xs.length > 1 || xs[0].kind === 'drawing' ? 'Names on map' : 'Name on map', 'Names are left out where they would collide; zooming in shows them') : null,
       shown('text.values') ? tick('text.values', 'Show values', 'Values on the map: each leg\'s length, an area\'s area and perimeter, each radius') : null,
       shown('offset') ? row('Offset', F.number(() => same('offset'), (v) => put('offset', v), 'Offset (px)', { min: -MAX_OFFSET, max: MAX_OFFSET, placeholder: 'mixed', bad: `pixels from −${MAX_OFFSET} to ${MAX_OFFSET}`,
         title: 'Drawn this many pixels beside its line, to the right of its direction (negative: left), as GIS tools offset a line: display only, lengths stay real' }), h('span', { class: 'funit' }, 'px'), back('offset')) : null,
@@ -526,10 +529,8 @@ export function drawView(root, ctx) {
     const doc = drawing.doc;
     const gs = ids.map((id) => find(doc, id)?.el.groupId ?? null), same = gs.every((g) => g === gs[0]) ? gs[0] : undefined;
     const fits = doc.groups.filter((g) => ids.every((id) => canHold(doc, g.id, id)));
-    return row('Group', select('Group', [['', 'none'], ...fits.map((g) => [g.id, groupPath(g)]), ['+', 'New group…']], same === undefined ? null : same ?? '', (v) => {
-      const gid = v || null;
-      if (gid === '+') { let g; drawing.change((d) => { g = makeGroup(d, ids); }); drawing.select([g.id]); return; }
-      drawing.change((d) => { for (const id of ids) setGroup(d, id, gid); });
+    return row('Group', select('Group', [['', 'none'], ...fits.map((g) => [g.id, groupPath(g)])], same === undefined ? null : same ?? '', (v) => {
+      drawing.change((d) => { for (const id of ids) setGroup(d, id, v || null); });
     }));
   }
 
@@ -562,24 +563,20 @@ export function drawView(root, ctx) {
         actions: (i) => ({ label: el.properties[i].key, buttons: [act('Delete', 'Take this property away (Ctrl/⌘ Delete)', () => removeAt(i))] }),
         keys: { remove: removeAt } }) : null);
   }
-  // every inspector's top: the header (kind · name, Zoom to), its name, the group it is in
+  // every inspector's top (its title, kind · name, in the head): the rule that made it, its name, the
+  // group it is in
   const commonTop = (kind, id) => {
     const el = now(id);
-    return [
-      h('div', { class: 'fhead' }, h('h2', {}, kindTitle(kind, el), ' · ', label(kind, el)),
-        h('button', { type: 'button', class: 'small', title: 'Fit the map to it', onclick: () => showOnMap(new Set([id])) }, 'Zoom to')),
-      ...(ruleRow(id) ?? []), row('Name', textField(id, 'name', 'Name')), groupRow([id]),
-    ];
+    title = `${kindTitle(kind, el)} · ${label(kind, el)}`;
+    return [...(ruleRow(id) ?? []), row('Name', textField(id, 'name', 'Name')), groupRow([id])];
   };
-  // and its foot: its data, Guide, Visible and Delete
+  // and its foot: its data, Guide and Visible (Delete: in the head)
   const commonBottom = (kind, id) => {
     const el = now(id);
     // Guide (supporting geometry: faint, out of the totals): a measurement is a guide showing its
     // values; unticking Guide makes it part of the drawing
     const flags = ['point', 'line', 'area'].includes(kind) ? [check('Guide', el.guide, (v) => set(id, (x) => { x.guide = v; }), { title: 'Supporting geometry: drawn faint and dashed, left out of the totals' })] : [];
-    return [dataBlock(id), h('div', { class: 'frow fend' }, ...flags,
-      check('Visible', el.visible, (v) => set(id, (x) => { x.visible = v; })),
-      h('button', { type: 'button', class: 'danger', onclick: () => del([id]) }, `Delete ${kindTitle(kind, el).toLowerCase()}`))];
+    return [dataBlock(id), flags.length ? h('div', { class: 'frow fend' }, ...flags) : null];
   };
 
   // A point's parts, each named by its place in the list: its kind (changing it keeps its reach), its
@@ -650,7 +647,7 @@ export function drawView(root, ctx) {
     const el = now(id);
     const parts = [...commonTop('point', id), coordFields(id, 'position'),
       row('Bearing', angleField(() => now(id).bearing, (v) => set(id, (x) => { x.bearing = v; }), 'Bearing (degrees true): where its outlines face, and its sectors'), h('span', { class: 'funit' }, '°T')),
-      row('Symbol', segOf('Symbol (the same size on screen at every zoom)', SYMBOLS.map((sy) => [sy, sy === 'none' ? '∅' : icon(...SYMBOL_ICON[sy]), SYMBOL_TITLE[sy]]), el.symbol, (sy) => set(id, (x) => { x.symbol = sy; }))),
+      mainOutline(el) ? null : row('Symbol', segOf('Symbol (the same size on screen at every zoom)', SYMBOLS.map((sy) => [sy, sy === 'none' ? '∅' : icon(...SYMBOL_ICON[sy]), SYMBOL_TITLE[sy]]), el.symbol, (sy) => set(id, (x) => { x.symbol = sy; }))),
       partsBlock(id),
       el.parts.length ? row('', h('button', { type: 'button', class: 'small', title: 'Copies placed round one of its parts: a circle\'s whole round, a sector\'s arc, an outline; they follow it, and can be connected to roots',
         onclick: () => openDistribution({ element: id, part: null }) }, 'Distribute along…')) : null,
@@ -678,7 +675,7 @@ export function drawView(root, ctx) {
     const el = now(id), u = ctx.units(), n = el.points.length;
     const corner = (i, axis) => F.coord(axis, () => now(id).points[i][axis === 'lat' ? 1 : 0],
       (v) => set(id, (x) => { const q = x.points[i]; x.points[i] = axis === 'lat' ? [q[0], v] : [v, q[1]]; }), `Corner ${i + 1} ${axis === 'lat' ? 'latitude' : 'longitude'}`);
-    const insertAt = (i) => drawing.change((doc) => { const x = find(doc, id).el, q = x.points[i], r = x.points[(i + 1) % x.points.length], d = inverse(q, r); insertCorner(doc, x, i + 1, destination(q, d.azi, d.s / 2)); });
+    const insertAt = (i) => drawing.change((doc) => { const x = find(doc, id).el, q = x.points[i], r = x.points[(i + 1) % x.points.length]; insertCorner(doc, x, i + 1, along(q, r, 0.5)); });
     const drop = (i) => { if (n > 3) drawing.change((doc) => removeCorner(doc, find(doc, id).el, i)); };
     const pg = paged(`${id}:corners`, n), abs = (r) => pg.rows[r];
     const table = listGrid({ name: pg.name,
@@ -707,8 +704,8 @@ export function drawView(root, ctx) {
       onclick: () => { if (drawing.repointing?.id === id && drawing.repointing.key === key) drawing.cancelRepoint(); else drawing.startRepoint(id, key); renderInspector(); } }, 'Attach to…');
     if (!on) { const [, lat, , lon] = F.position(() => now(id)[key].position, (q) => set(id, (x) => { x[key] = { position: q, element: null }; })); return [row(text, pair(lat, '·', lon)), row('', attach)]; }
     // attached: what to (and where on it), Attach to…; × detaches it (it stays where it is)
-    return row(text, link(on.el.id), partName(r) ? h('span', { class: 'funit' }, partName(r)) : null, attach,
-      h('button', { type: 'button', class: 'x', title: 'Detach: keep it where it is, no longer following what it is attached to', 'aria-label': `Detach ${text.toLowerCase()}`, onclick: () => set(id, (x) => { x[key] = freeRef(x[key]); }) }, icon(...UI_ICON.detach)));
+    return [row(text, link(on.el.id), partName(r) ? h('span', { class: 'funit' }, partName(r)) : null,
+      h('button', { type: 'button', class: 'x', title: 'Detach: keep it where it is, no longer following what it is attached to', 'aria-label': `Detach ${text.toLowerCase()}`, onclick: () => set(id, (x) => { x[key] = freeRef(x[key]); }) }, icon(...UI_ICON.detach))), row('', attach)];
   }
 
   // a label: its text (with live values), what it points at, its leader and its look
@@ -717,7 +714,7 @@ export function drawView(root, ctx) {
     radius: ['radius', 'The point\'s filled radius'], area: ['area', 'The area of the area or shape'], perimeter: ['perimeter', 'The perimeter of the area or shape'] };
   function labelInspector(id) {
     const doc = drawing.doc, el = now(id), u = ctx.units();
-    const at = anchorAt(doc, el.anchor), values = labelValues(doc, el.anchor, u);
+    const at = resolve(doc, el.anchor), values = labelValues(doc, el.anchor, u);
     const text = h('textarea', { rows: 3, 'aria-label': 'Text', class: 'ltext' }, el.text);
     text.addEventListener('input', () => drawing.previewLabels((d) => { find(d, id).el.text = text.value; })); // seen on the map as it is typed
     text.addEventListener('change', () => set(id, (x) => { x.text = text.value; }));
@@ -729,15 +726,15 @@ export function drawView(root, ctx) {
     const tokens = TOKENS.filter((k) => values[k] !== undefined);
     // on a line: how far along it, typed (the leg there, and where on it)
     const onLine = at?.element?.kind === 'line' && at.along !== undefined;
-    const alongRow = onLine ? row('Along', F.dist(() => at.along, (m) => drawing.change((d) => { const a = find(d, id).el; a.anchor = lineRef(d, find(d, a.anchor.element).el, m); }), 'Distance along', { zero: true }),
-      h('span', { class: 'funit', title: 'From its start' }, `of ${fmtDist(at.length, u)}`)) : null;
+    const alongRow = onLine ? row('Along', F.dist(() => at.along, (m) => drawing.change((d) => { const a = find(d, id).el; a.anchor = lineRef(d, find(d, a.anchor.element).el, m); }), 'Distance along', { zero: true,
+      title: `From its start, of ${fmtDist(at.length, u)}` })) : null;
     return [...commonTop('label', id),
       row('Text', text),
       tokens.length ? row('', ...tokens.map((k) => h('button', { type: 'button', class: 'small', title: `Insert, a live value: ${TOKEN_TEXT[k][1].toLowerCase()} (it follows edits and the units)`, onclick: () => insert(`{${k}}`) }, `+ ${TOKEN_TEXT[k][0]}`))) : null,
       ...[refRow(el.anchor.element ? 'Attached to' : 'Position', id, 'anchor')].flat(), alongRow,
       leaderRow([item(id)]), lookBlock([item(id)]),
-      row('Placement', h('span', { class: 'fvalue' }, `${el.offset[0]}, ${el.offset[1]} px from its point`),
-        h('button', { type: 'button', class: 'small', title: 'Back to where a new label goes', onclick: () => set(id, (x) => { x.offset = x.anchor.element ? [...LABEL_OFFSET] : [0, 0]; }) }, 'Reset')),
+      row('Placement', h('span', { class: 'fvalue', title: 'Pixels from its point: drag its text on the map' }, `${el.offset[0]}, ${el.offset[1]} px`),
+        h('button', { type: 'button', class: 'x', title: 'Back to where a new label goes', 'aria-label': 'Placement back to where a new label goes', onclick: () => set(id, (x) => { x.offset = x.anchor.element ? [...LABEL_OFFSET] : [0, 0]; }) }, '↺')),
       ...commonBottom('label', id)];
   }
 
@@ -755,9 +752,8 @@ export function drawView(root, ctx) {
   // (the legs after it keep their lengths and bearings); a line's end attached stays attached.
   const legOf = (ps, k) => { const g = inverse(ps[k - 1], ps[k]); return { s: g.s, azi: norm360(g.azi) }; };
   const legTo = (ps, k, { s: len, azi }) => { const g = legOf(ps, k); return destination(ps[k - 1], azi ?? g.azi, len ?? g.s); };
-  const linePlaces = (x) => [x.start.position, ...x.vertices.map((v) => v.position), x.end.position];
   function setLineLeg(x, k, v) {
-    const ps = linePlaces(x), from = ps[k], to = legTo(ps, k, v);
+    const ps = positionsOf(x), from = ps[k], to = legTo(ps, k, v);
     for (let j = k; j < ps.length; j++) {
       const q = moved(ps[j], from, to);
       if (j <= x.vertices.length) x.vertices[j - 1].position = q; else if (!x.end.element) x.end.position = q;
@@ -811,8 +807,7 @@ export function drawView(root, ctx) {
   const profiles = new Map(); // line id → { key (its trace), prof (null while being read), failed }
   const profileShown = new Set();
   let profileCursor = null; // (d: metres along, or null) → the chart's cursor there
-  const SVG = 'http://www.w3.org/2000/svg', W = 360, H = 110;
-  const svg = (tag, attrs = {}) => { const e = document.createElementNS(SVG, tag); for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v); return e; };
+  const W = 360, H = 110;
   // depths as said: metres below the surface, positive
   const fmtDepth = (z) => (z >= -1 ? 'under 1 m' : `${Math.floor(-z)} m`);
   function profileBlock(id) {
@@ -884,10 +879,9 @@ export function drawView(root, ctx) {
     };
     const at = line.at;
     const endOf = (e) => (e.element ? link(e.element) : h('span', { class: 'funit' }, 'free'));
-    const leg = (k) => legFields(id, linePlaces, k, setLineLeg, 'Leg');
+    const leg = (k) => legFields(id, positionsOf, k, setLineLeg, 'Leg');
     const insertAfter = (i) => drawing.change((doc) => {
-      const x = find(doc, id).el, ps = [x.start.position, ...x.vertices.map((v) => v.position), x.end.position];
-      const a = ps[i + 1], b = ps[i + 2];
+      const x = find(doc, id).el, ps = positionsOf(x), a = ps[i + 1], b = ps[i + 2];
       addVertex(doc, x, i + 1, [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2]); // what points at its vertices and edges stays where it is
     });
     const coord = (i, axis) => F.coord(axis, () => now(id).vertices[i].position[axis === 'lat' ? 1 : 0],
@@ -901,14 +895,14 @@ export function drawView(root, ctx) {
       return [lat, lon];
     };
     const pasteLine = (r, text) => pastePlaces(id, r, text, (d, x, from, places) => {
-      const ps = linePlaces(x), locked = new Set([...(x.start.element ? [0] : []), ...(x.end.element ? [ps.length - 1] : [])]);
+      const ps = positionsOf(x), locked = new Set([...(x.start.element ? [0] : []), ...(x.end.element ? [ps.length - 1] : [])]);
       const res = placesAfterPaste(ps, from, places, locked), q = res.places;
       if (!x.start.element) x.start.position = q[0];
       x.vertices = q.slice(1, -1).map((pos, i) => (x.vertices[i] ? { ...x.vertices[i], position: pos } : { position: pos, handleIn: null, handleOut: null, name: '', properties: [] }));
       if (!x.end.element) x.end.position = q.at(-1);
       return res;
     });
-    const vertexRows = () => { const x = now(id), ps = linePlaces(x), t = lineTrace(drawing.doc, x).at;
+    const vertexRows = () => { const x = now(id), ps = positionsOf(x), t = lineTrace(drawing.doc, x).at;
       return [['#', 'Lat', 'Lon', 'Leg m', 'Brg °', 'Name', 'Along m'], ps.map((q, i) => { const g = i ? legOf(ps, i) : null; return [i === 0 ? 'start' : i === ps.length - 1 ? 'end' : i, q[1], q[0], g ? +g.s.toFixed(3) : '', g ? +g.azi.toFixed(1) : '', x.vertices[i - 1]?.name ?? '', +(t[i] || 0).toFixed(3)]; })]; };
     const removeAt = (i) => drawing.change((doc) => removeVertex(doc, find(doc, id).el, i));
     const splitAt = (i) => { let p; drawing.change((d) => { p = splitKeeping(d, id, i); }); note(`Split: both parts attached to ${label('point', p)}`); };
@@ -934,13 +928,13 @@ export function drawView(root, ctx) {
     const off = el.look.offset ?? null, offNow = offsetOf(drawing.doc, el);
     return [...commonTop('line', id),
       ...[refRow('Start', id, 'start'), refRow('End', id, 'end')].flat(),
-      row('Length', h('span', { class: 'fvalue' }, fmtDist(line.length, u)),
-        h('button', { type: 'button', class: 'small', title: 'Copies placed along this line, every so far or so many, which then follow it; they can be connected to roots', onclick: () => openDistribution({ element: id, part: null }) }, 'Distribute along…')),
-      offNow && off == null ? h('p', { class: 'note' }, `Drawn ${Math.abs(offNow)} px to the ${offNow > 0 ? 'right' : 'left'} of its line, an Offset it inherits. Its length is the real one.`) : null,
+      row('Length', h('span', { class: 'fvalue' }, fmtDist(line.length, u))),
+      offNow && off == null ? h('p', { class: 'note' }, `Drawn ${Math.abs(offNow)} px to the ${offNow > 0 ? 'right' : 'left'} of its line, the drawing's Offset. Its length is the real one.`) : null,
       drawing.inflatedIds().includes(id) ? h('p', { class: 'note' }, 'Drawn bowed, its connection\'s Inflate. Its length is the real one.') : null,
       profileBlock(id),
-      row('Curve', h('span', { class: 'fvalue' }, el.mode === 'auto' ? 'smooth, follows its vertices' : 'as stored')),
-      row('', h('button', { type: 'button', class: 'small', title: 'Curve smoothly through its bends; the curve then follows them (it replaces handles typed)', disabled: !el.vertices.length, onclick: async () => {
+      row('Curve', h('span', { class: 'fvalue' }, el.mode === 'auto' ? 'smooth' : 'as drawn')),
+      row('', h('button', { type: 'button', class: 'small', title: 'Copies placed along this line, every so far or so many, which then follow it; they can be connected to roots', onclick: () => openDistribution({ element: id, part: null }) }, 'Distribute along…'),
+        h('button', { type: 'button', class: 'small', title: 'Curve smoothly through its bends; the curve then follows them (it replaces handles typed)', disabled: !el.vertices.length, onclick: async () => {
           const typed = el.mode === 'fixed' && [el.startHandle, el.endHandle, ...el.vertices.flatMap((v) => [v.handleIn, v.handleOut])].some(Boolean);
           if (typed && !await ask('Smooth', 'Smoothing replaces the handles you typed with its own. The vertices stay.', [['yes', 'Smooth']])) return;
           set(id, (x) => { x.mode = 'auto'; applySmooth(drawing.doc, x); });
@@ -956,11 +950,11 @@ export function drawView(root, ctx) {
     const doc = drawing.doc, u = ctx.units();
     const direct = membersOf(doc, id), subs = direct.filter((x) => x.kind === 'group').length;
     const below = membersOf(doc, id, true).filter((x) => x.kind !== 'group'); // everything in it, its subgroups' too
-    const t = fx().totals.groups.get(id);
+    const t = fx().totals.groups.get(id), shownEye = eyeFor(() => membersOf(drawing.doc, id, true), 'members');
+    shownEye.render();
     return [...commonTop('group', id),
-      row('Members', h('span', { class: 'fvalue' }, [`${direct.length - subs}`, subs ? plural(subs, 'group') : ''].filter(Boolean).join(' · ')),
-        h('button', { type: 'button', class: 'small', title: 'Everything in it, its groups\' too', disabled: !below.length, onclick: () => drawing.select(below.map((x) => x.el.id)) }, 'Select members')),
-      direct.length ? row('Shown', allBox(() => membersOf(drawing.doc, id, true), 'Members shown')) : null,
+      row('Members', h('span', { class: 'fvalue' }, [`${direct.length - subs}`, subs ? plural(subs, 'group') : ''].filter(Boolean).join(' · ')), direct.length ? shownEye : null),
+      row('', h('button', { type: 'button', class: 'small', title: 'Everything in it, its groups\' too', disabled: !below.length, onclick: () => drawing.select(below.map((x) => x.el.id)) }, 'Select members')),
       t ? row('Totals', h('span', { class: 'fvalue' }, countOf(t, u))) : null,
       lookBlock([item(id)]), ...commonBottom('group', id)];
   }
@@ -985,27 +979,22 @@ export function drawView(root, ctx) {
   function severalInspector(xs) {
     const counts = {};
     for (const x of xs) counts[x.kind] = (counts[x.kind] || 0) + 1;
-    const vis = xs.every((x) => x.el.visible) ? true : xs.every((x) => !x.el.visible) ? false : null;
-    const ids = xs.map((x) => x.el.id), members = ids;
+    const ids = xs.map((x) => x.el.id);
     const pointIds = xs.filter((x) => x.kind === 'point').map((x) => x.el.id);
     // two points: how far apart, and the bearing from the first to the second
     const between = xs.length === 2 && xs.every((x) => x.kind === 'point') ? inverse(xs[0].el.position, xs[1].el.position) : null;
-    return [h('div', { class: 'fhead' }, h('h2', {}, `${xs.length} elements selected`),
-      h('button', { type: 'button', class: 'small', onclick: () => showOnMap(new Set(ids)) }, 'Zoom to')),
-    chips(xs),
+    title = `${xs.length} elements selected`;
+    return [chips(xs),
     h('p', { class: 'note' }, Object.entries(counts).map(([k, n]) => plural(n, kindName(k).toLowerCase())).join(', ')),
     between ? row('Distance', h('span', { class: 'fvalue' }, fmtDist(between.s, ctx.units()))) : null,
     between ? row('Bearing', h('span', { class: 'fvalue', title: `From ${label(xs[0].kind, xs[0].el)}` }, fmtBrg(between.azi))) : null,
-    h('div', { class: 'frow fbuttons' },
-      pointIds.length > 1 ? h('button', { type: 'button', title: 'Join these points to roots with straight lines: trees through hubs, or chains', onclick: () => openConnect(pointIds) }, 'Connect…') : null,
-      h('button', { type: 'button', class: 'nowide', title: 'A new group of these, in the group they are in', onclick: () => groupThem(members) }, 'Group')),
-    groupRow(members),
+    pointIds.length > 1 ? h('div', { class: 'frow fbuttons' },
+      h('button', { type: 'button', title: 'Join these points to roots with straight lines: trees through hubs, or chains', onclick: () => openConnect(pointIds) }, 'Connect…')) : null,
+    groupRow(ids),
     xs.some((x) => x.kind === 'label') ? leaderRow(xs.filter((x) => x.kind === 'label')) : null,
     lookBlock(xs),
-    h('div', { class: 'frow fend' }, check('Visible', vis, (v) => drawing.change((doc) => { for (const id of ids) find(doc, id).el.visible = v; })),
-      h('button', { type: 'button', class: 'danger', onclick: () => del(ids) }, 'Delete all'))];
+  ];
   }
-
 
   const treesOf = (c, n) => `${n} ${c.pattern === 'chain' ? 'chain' : 'tree'}${n === 1 ? '' : 's'}`;
   const copies = (n) => `${n} ${n === 1 ? 'copy' : 'copies'}`;
@@ -1028,9 +1017,9 @@ export function drawView(root, ctx) {
     const inflate = c && c.pattern === 'tree' ? row('Inflate', pair(h('input', { type: 'range', min: 0, max: 100, step: 5, value: Math.round(c.inflate * 100), 'aria-label': 'Inflate (%)',
       title: 'Its trees drawn bowed: each branch away from the fan\'s middle direction, the trunk arriving along it. Display only: lengths stay real',
       oninput: (e) => { setInflate(+e.target.value / 100, true); pct.textContent = `${e.target.value} %`; }, onchange: (e) => setInflate(+e.target.value / 100) }), pct)) : null;
-    return [row('Made by', h('span', { class: 'fvalue', title: text }, text),
-      h('button', { type: 'button', class: 'small', title: 'Its settings: the same number of copies moves them, another makes them anew', disabled: a && !along, onclick: () => (a ? openDistribution(a.along, a) : openConnect(c.pointIds, c)) }, 'Edit…')),
-    row('', h('button', { type: 'button', class: 'small', title: 'Everything it made', onclick: all }, 'Select all')), inflate];
+    return [row('Made by', h('span', { class: 'fvalue', title: text }, text)),
+      row('', h('button', { type: 'button', class: 'small', title: 'Its settings: the same number of copies moves them, another makes them anew', disabled: a && !along, onclick: () => (a ? openDistribution(a.along, a) : openConnect(c.pointIds, c)) }, 'Edit…'),
+        h('button', { type: 'button', class: 'small', title: 'Everything it made', onclick: all }, 'Select all')), inflate];
   }
 
   // ---- the tools' forms (generator.js): Distribute along a line or an arc, connected to roots or not;
@@ -1138,7 +1127,7 @@ export function drawView(root, ctx) {
       con.pattern === 'tree' ? row('Min. branch', F.dist(() => con.minBranch, (m) => { con.minBranch = m; redo(); }, 'Shortest branch', { zero: true,
         title: 'Each hub at least this far from its points and from its root. 0: where the lines are shortest, on a point if need be' })) : null,
       h('div', { class: 'fblock' }, h('h3', {}, `Roots (${c.roots.length})`),
-        h('p', { class: 'note' }, 'Where the lines start: anywhere. Click the map to add one there (a new point, made with the rest), or click a point to use it; click again, or ×, to drop it. Roots are ringed. A weight above 1 pulls groups to that root.'),
+        h('p', { class: 'note' }, 'Click the map for a new root, or a point to use it; again, or ×, drops it. A weight above 1 pulls groups to it.'),
         names.map((name, k) => h('div', { class: 'frow' }, k < con.roots.length ? link(con.roots[k].id) : h('span', { class: 'fvalue' }, `${name}: ${con.newRoots[k - con.roots.length][1].toFixed(5)}, ${con.newRoots[k - con.roots.length][0].toFixed(5)}`),
           h('span', { class: 'funit' }, 'weight'), weight(k),
           h('button', { type: 'button', class: 'x', 'aria-label': `Drop ${name}`, onclick: drop(k) }, '×')))),
@@ -1167,12 +1156,11 @@ export function drawView(root, ctx) {
     };
     const reach = dform.copy ? Math.max(...dform.copy.parts.map((q) => q.radius ?? q.length / 2)) : null;
     const arc = along.kind === 'point';
-    return [h('div', { class: 'fhead' }, h('h2', {}, editing ? 'Edit, distributed along ' : 'Distribute along ', label(along.kind, along.el))),
-      h('p', { class: 'note' }, arc ? `Copies round one of its parts, clockwise (${closed ? 'the whole of it, a circle from its bearing' : 'a sector\'s arc, from one end to the other'}); they follow it when it moves, turns or changes (one moved by hand stops following).`
-        : 'Copies along this line, which they then follow when it is edited (one moved by hand stops following).'),
+    title = `${editing ? 'Edit, distributed along' : 'Distribute along'} ${label(along.kind, along.el)}`;
+    return [
       arc && along.el.parts.length > 1 ? row('Part', select('Part', along.el.parts.map((part, i) => [i, `${i + 1} · ${PART_NAME[part.kind]}${part.name ? ` ${part.name}` : ''}`]), dform.part ?? followedPart(along.el), (v) => { dform.part = +v; redo(); })) : null,
-      row('By', pair(segOf('Points by', [['spacing', 'Spacing'], ['count', 'Count']], dform.by, (v) => { dform.by = v; redo(); }), '',
-        dform.by === 'spacing' ? dist('spacing', 'Spacing', false) : F.number(() => dform.count, (v) => { dform.count = v; redo(); }, 'Count', { whole: true, above: true, max: MAX_COPIES }))),
+      row('By', segOf('Points by', [['spacing', 'Spacing'], ['count', 'Count']], dform.by, (v) => { dform.by = v; redo(); })),
+      dform.by === 'spacing' ? row('Spacing', dist('spacing', 'Spacing', false)) : row('Count', F.number(() => dform.count, (v) => { dform.count = v; redo(); }, 'Count', { whole: true, above: true, max: MAX_COPIES })),
       distributionCapped() ? h('p', { class: 'note warn' }, `At most ${MAX_COPIES.toLocaleString('en')} copies: the spacing would give more`) : null,
       closed ? null : row('Margins', pair(dist('startMargin', 'Start margin', true), '·', dist('endMargin', 'End margin', true))),
       row('Offset', pair(dist('offset', 'Offset', true), '', select('Side', [['left', arc ? 'Out' : 'Left'], ['right', arc ? 'In' : 'Right'], ['alternate', 'Alternate']], dform.side, (v) => { dform.side = v; redo(); }))),
@@ -1209,9 +1197,8 @@ export function drawView(root, ctx) {
     const doc = drawing.doc;
     const editing = form.connectionId && connections(doc).find((c) => c.id === form.connectionId);
     const c = connectPlan();
-    return [h('div', { class: 'fhead' }, h('h2', {}, editing ? 'Connect again' : 'Connect', ` ${plural(c.positions.length, 'point')}`)),
-      editing ? h('p', { class: 'note warn' }, 'Its lines and hubs are made again (its points and roots stay). Changes made to those by hand are lost; Undo brings them back.') : null,
-      h('p', { class: 'note' }, 'Straight lines from roots to the points, attached to them: Tree, through a hub (which then follows its points); Chain, point to point. The points, in the order selected, are cut into groups, each to the root it is cheapest from.'),
+    title = `${editing ? 'Connect again' : 'Connect'} ${plural(c.positions.length, 'point')}`;
+    return [editing ? h('p', { class: 'note warn' }, 'Its lines and hubs are made again; changes made to those by hand are lost (Undo brings them back).') : null,
       ...connectRows(c),
       formButtons(editing ? 'Connect again' : 'Connect', c.plan, () => {
         let r;
@@ -1234,16 +1221,15 @@ export function drawView(root, ctx) {
     const keys = [...new Set(elements(drawing.doc).flatMap((x) => x.el.properties.map((p) => p.key)))].sort((a, b) => a.localeCompare(b));
     if (totalsBy && !keys.includes(totalsBy)) { totalsBy = ''; computeFacts(); } // its key gone
     const by = select('Totals by', [['', 'group'], ...keys.map((k) => [k, k])], totalsBy || '', (v) => { totalsBy = v; computeFacts(); renderInspector(); });
-    const offsetElsewhere = elements(drawing.doc).filter((x) => x.el.look.offset != null); // where Offset is set on an element or a group
-    return [h('div', { class: 'fhead' }, h('h2', {}, switcher()), n ? h('button', { type: 'button', class: 'small', onclick: () => showOnMap(new Set(elements(drawing.doc).map((x) => x.el.id))) }, 'Zoom to') : null),
-      row('Title', meta('title', 'Title')), row('Description', meta('description', 'Description', true)), row('Author', meta('author', 'Author')),
+    const offsetElsewhere = elements(drawing.doc).filter((x) => x.el.look?.offset != null); // where Offset is set on an element
+    title = 'Drawing'; // its title: the tree's head
+    return [row('Title', meta('title', 'Title')), row('Description', meta('description', 'Description', true)), row('Author', meta('author', 'Author')),
       lookBlock([{ kind: 'drawing', el: drawing.doc }], ['text.name', 'offset', 'minSize'], 'Display', [
         offsetElsewhere.length ? h('p', { class: 'note' }, 'Offset also set on ', ...offsetElsewhere.map((x) => link(x.el.id))) : null,
         row('Bearings', check('beside lengths', ctx.display.bearings, (v) => ctx.setDisplay({ bearings: v }), { title: 'Each leg\'s bearing (°T) beside its length, where values are shown' }))]),
-      n ? totalsBlock(keys.length ? by : null, groupName) : null,
-      drawing.saving.failed ? h('p', { class: 'note warn' }, 'This browser does not let the drawing be saved (storage full or turned off): Export drawing (GeoJSON), in the menu beside its title, keeps it as a file.') : null,
-      drawing.saving.otherTab ? h('p', { class: 'note warn' }, 'The drawing was changed in another tab. Saving here replaces that version. ', h('button', { type: 'button', class: 'small', onclick: () => location.reload() }, 'Reload')) : null,
-      h('p', { class: 'note' }, 'Drawings stay in this browser, saved as you go; nothing is sent anywhere. Export drawing (GeoJSON), in the menu beside its title, writes it as a file, with the view, to share or keep it: links do not carry drawings.')];
+      n > 1 ? totalsBlock(keys.length ? by : null, groupName) : null,
+      drawing.saving.failed ? h('p', { class: 'note warn' }, 'This browser does not let the drawing be saved (storage full or turned off): Export drawing (GeoJSON), in the drawings menu, keeps it as a file.') : null,
+      drawing.saving.otherTab ? h('p', { class: 'note warn' }, 'The drawing was changed in another tab. Saving here replaces that version. ', h('button', { type: 'button', class: 'small', onclick: () => location.reload() }, 'Reload')) : null];
   }
   // The Totals view (docs/drawing-ui.md §5): the lines by group (or by a property's values), each
   // listed under its group, those a connection made summed by what they are (trunks and branches; a
@@ -1311,12 +1297,10 @@ export function drawView(root, ctx) {
     inspector.scrollTop = top;
     renderHead(xs);
   }
-  // From 1024 px wide the panel's title row is the inspector's (drawing-ui.md §5): what it shows (its
-  // heading), then Zoom to, Duplicate, Group and Delete for the selection (with nothing selected,
-  // Zoom to all of it; none while a form is open). Narrower, the panel's own: Tools, Undo, Redo.
+  // The inspector's head (drawing-ui.md §5): what it shows, then Zoom to, Duplicate, Group and Delete
+  // for the selection (with nothing selected, Zoom to all of it; none while a form is open).
   function renderHead(xs = drawing.selected()) {
-    if (!WIDE.matches) return;
-    inspTitle.textContent = !form && !xs.length ? drawing.doc.meta.title || 'Untitled drawing' : inspector.querySelector('.fhead h2')?.textContent || '';
+    inspTitle.textContent = title;
     const ids = xs.map((x) => x.el.id), every = ids.length ? ids : elements(drawing.doc).map((x) => x.el.id);
     const act = (paths, aria, title, run) => h('button', { type: 'button', class: 'hact', 'aria-label': aria, title, onclick: run }, icon(...paths));
     inspActs.replaceChildren(...(form ? [] : [
@@ -1339,18 +1323,16 @@ export function drawView(root, ctx) {
     const title = drawing.doc.meta.title.normalize('NFKD').replace(/[^\w\- ]+/g, '').trim().replace(/\s+/g, '-').slice(0, 60) || 'chart';
     ctx.download(text, `${title}-${when}.geojson`);
   }
-  // The drawing's heading: its title, a switcher whose menu lists the drawings in this browser (the one
-  // open marked; each opened where it was drawn, or deleted for good, asked first) and + New
+  // The drawings menu (the rail's ☰): the drawings in this browser (the one open marked; each opened
+  // where it was drawn, or deleted for good, asked first), + New, the file in and out, the view's outputs
   const drawingsMenu = h('div', { class: 'dmenu', role: 'menu', 'aria-label': 'Drawings in this browser', hidden: true });
   document.body.append(drawingsMenu);
-  let switchBtn = null; // the button the menu was opened from
-  function switcher() {
-    const b = h('button', { type: 'button', class: 'dswitch', 'aria-haspopup': 'menu', 'aria-expanded': 'false', title: 'The drawings in this browser: open another, or a new one',
-      onclick: () => (drawingsMenu.hidden ? openDrawingsMenu(b) : closeDrawingsMenu()) }, h('span', {}, drawing.doc.meta.title || 'Untitled drawing'), icon(...UI_ICON.chevron));
-    return b;
-  }
+  const drawings = popup(drawingsMenu, { choose: false, // the view's outputs say how they went in it, open meanwhile
+    place: (b) => { const r = b.getBoundingClientRect(); Object.assign(drawingsMenu.style, { top: `${r.bottom + 4}px`, left: `${Math.max(8, Math.min(r.left, innerWidth - 360))}px` }); },
+  });
+  const toggleDrawings = (b) => (drawingsMenu.hidden ? openDrawingsMenu(b) : drawings.close());
+  const closeDrawingsMenu = () => drawings.close();
   function openDrawingsMenu(from) {
-    switchBtn = from;
     const kb = (n) => (n < 1024 ? `${n} B` : `${(n / 1024).toFixed(n < 10240 ? 1 : 0)} KB`);
     const when = (t) => new Date(t).toLocaleString([], { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
     const del = async (x) => {
@@ -1371,20 +1353,9 @@ export function drawView(root, ctx) {
       h('button', { type: 'button', role: 'menuitem', title: 'A drawing\'s file, any GeoJSON, or a presets file: a drawing is added to these and opened; presets join the Point and Shape tools', onclick: pick(() => fileInput.click()) }, 'Import…'),
       h('button', { type: 'button', role: 'menuitem', title: 'This drawing, with the view and layers, as a GeoJSON file to share or keep', onclick: pick(exportFile) }, 'Export drawing (GeoJSON)'),
       h('button', { type: 'button', role: 'menuitem', title: 'Your presets (the Point and Shape tools\' own) as a small file, to import them in another browser', onclick: pick(() => ctx.download(presetsFile(drawing.presets), 'presets.json')) }, 'Export presets (JSON)')),
-    ...(WIDE.matches ? ctx.menuExtras?.(closeDrawingsMenu) ?? [] : [])); // from 1024 px wide: the view's outputs and About too
-    const r = switchBtn.getBoundingClientRect();
-    Object.assign(drawingsMenu.style, { top: `${r.bottom + 4}px`, left: `${Math.max(8, Math.min(r.left, innerWidth - 360))}px` });
-    drawingsMenu.hidden = false;
-    switchBtn.setAttribute('aria-expanded', 'true');
-    drawingsMenu.querySelector('[role=menuitem]')?.focus();
+    ...ctx.menuExtras(closeDrawingsMenu)); // the view's outputs and About
+    drawings.open(from, true);
   }
-  function closeDrawingsMenu() {
-    if (!drawingsMenu.hidden && WIDE.matches) ctx.menuExtrasBack?.();
-    drawingsMenu.hidden = true;
-    switchBtn?.setAttribute('aria-expanded', 'false');
-  }
-  document.addEventListener('pointerdown', (e) => { if (!drawingsMenu.hidden && !drawingsMenu.contains(e.target) && !switchBtn?.contains(e.target)) closeDrawingsMenu(); });
-  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !drawingsMenu.hidden) { e.stopPropagation(); closeDrawingsMenu(); switchBtn?.focus(); } }, true);
   function newDrawing() {
     drawing.saving.add();
     note('New drawing');
@@ -1407,18 +1378,13 @@ export function drawView(root, ctx) {
       .map(([k, xs]) => [k, xs.filter((x) => !isMeasurement(doc, x)).length]).filter(([, n]) => n).map(([k, n]) => plural(n, k)) : [];
     const measured = doc ? elements(doc).filter((x) => isMeasurement(doc, x.el)).length : 0;
     if (measured) counts.push(plural(measured, 'measurement'));
-    const replaced = doc?.view ? ['its view and layers'] : [];
-    askDialog.replaceChildren(...[
-      h('h2', { id: 'dask-title' }, doc ? `Import ${f.name}` : 'Not imported'),
-      doc ? h('p', {}, counts.length ? `It holds ${counts.join(', ')}.` : 'It holds no elements.', replaced.length ? ` ${replaced.join(' and ').replace(/^i/, 'I')} will replace the current ones.` : '') : h('p', {}, report.refused),
+    const body = () => h('div', {},
+      doc ? h('p', {}, counts.length ? `It holds ${counts.join(', ')}.` : 'It holds no elements.', doc.view ? ' Its view and layers will replace the current ones.' : '') : h('p', {}, report.refused),
       report.skipped.length ? [h('h3', {}, `Skipped (${report.skipped.length})`), list(report.skipped.map((s) => `${s.kind}${s.id ? ` ${s.id}` : ''}: ${s.reason}`))] : null,
-      report.warnings.length ? [h('h3', {}, `Warnings (${report.warnings.length})`), list(report.warnings)] : null,
-      h('div', { class: 'fbuttons' },
-        doc ? h('button', { type: 'button', class: 'done', onclick: () => { askDialog.close(); ctx.onImport(doc, report); } }, 'Import') : null,
-        h('button', { type: 'button', onclick: () => askDialog.close() }, doc ? 'Cancel' : 'Close')),
-      doc ? h('p', { class: 'note' }, 'It is added to the drawings in this browser and opened; this one stays in the list.') : null,
-    ].flat().filter(Boolean));
-    askDialog.showModal();
+      report.warnings.length ? [h('h3', {}, `Warnings (${report.warnings.length})`), list(report.warnings)] : null);
+    const go = await dialog(doc ? `Import ${f.name}` : 'Not imported', body, doc ? [[true, 'Import']] : [], doc ? 'Cancel' : 'Close',
+      doc ? h('p', { class: 'note' }, 'It is added to the drawings in this browser and opened; this one stays in the list.') : null);
+    if (go) ctx.onImport(doc, report);
   }
 
   // ---- the divider between list and inspector ----------------------------------------------------
@@ -1426,9 +1392,9 @@ export function drawView(root, ctx) {
   const setSplit = (px) => {
     const v = Math.round(Math.max(80, Math.min(px, root.clientHeight - 160)));
     root.style.setProperty('--dlist-h', `${v}px`);
-    try { localStorage.setItem(SPLIT_KEY, String(v)); } catch { /* only a convenience */ }
+    store.set(SPLIT_KEY, String(v));
   };
-  try { const v = +localStorage.getItem(SPLIT_KEY); if (v > 0) root.style.setProperty('--dlist-h', `${v}px`); } catch { /* only a convenience */ }
+  if (+store.get(SPLIT_KEY) > 0) root.style.setProperty('--dlist-h', `${+store.get(SPLIT_KEY)}px`);
   divider.addEventListener('pointerdown', (e) => {
     const y0 = e.clientY, h0 = listBox.offsetHeight;
     divider.setPointerCapture(e.pointerId);
@@ -1440,56 +1406,36 @@ export function drawView(root, ctx) {
     if (e.key === 'ArrowUp' || e.key === 'ArrowDown') { e.preventDefault(); setSplit(listBox.offsetHeight + (e.key === 'ArrowUp' ? -24 : 24)); }
   });
 
-  // From 1024 px wide (drawing-ui.md §1): the tools in a strip beside the panel (the Elements toggle
-  // first, Undo and Redo last, a tool's kinds opening to its left), the list in the Elements panel on
-  // the left, the panel the inspector only; both shown while the Tools panel is. Narrower: all in the
-  // panel, the list above the inspector. fileInput: the rail's Import.
-  const home = root.parentElement; // the Tools panel, narrower than 1024 px
+  // The drawing's left frame (drawing-ui.md §1): the rail (ctx.strip) and the column (ctx.elements, root
+  // in it), the tree over the inspector, each half folding to its head.
+  const makes = toolBtns.filter((b) => b.dataset.tool !== 'measure'), measure = toolBtns.find((b) => b.dataset.tool === 'measure');
+  ctx.strip.replaceChildren(fileBtn, sep(), selectBtn, sep(), ...makes, sep(), measure, sep(), undoBtn, redoBtn, h('span', { class: 'grow' }), colToggle, subrail);
+  listHead.replaceChildren(docTitle, eyeAll, listFold);
+  root.replaceChildren(listBox, divider, inspHead, inspector, noteEl, fileInput);
   function place() {
-    const wide = WIDE.matches, open = ctx.isOpen();
-    if (wide) {
-      const makes = toolBtns.filter((b) => !['area', 'measure'].includes(b.dataset.tool)), measure = toolBtns.find((b) => b.dataset.tool === 'measure');
-      ctx.strip?.replaceChildren(fileBtn, sep(), selectBtn, sep(), ...makes, sep(), measure, sep(), undoBtn, redoBtn, h('span', { class: 'grow' }), colToggle, subrail);
-      listHead.replaceChildren(docTitle, eyeAll, listFold);
-      root.replaceChildren(listBox, divider, inspHead, inspector, noteEl, touchbar, fileInput);
-      if (ctx.elements && root.parentElement !== ctx.elements) ctx.elements.append(root);
-      root.hidden = false;
-    } else {
-      delete compactBtn.dataset.c; // its icon and title set again (renderTools)
-      placeControls(ctx.compact());
-      listHead.replaceChildren(h('h2', {}, 'Elements'), eyeAll);
-      root.replaceChildren(toolsRow, touchbar, subrail, listBox, divider, inspector, noteEl, fileInput);
-      if (root.parentElement !== home) home.append(root);
-    }
-    root.classList.toggle('nolist', wide && folds.list);
-    root.classList.toggle('noinsp', wide && folds.insp && !folds.list); // one half open at least
+    root.classList.toggle('nolist', folds.list);
+    root.classList.toggle('noinsp', folds.insp && !folds.list); // one half open at least
     listFold.setAttribute('aria-expanded', String(!folds.list));
     inspFold.setAttribute('aria-expanded', String(!(folds.insp && !folds.list)));
-    if (ctx.strip) ctx.strip.hidden = !(wide && open);
-    if (ctx.elements) ctx.elements.hidden = !(wide && open && elementsOpen);
-    // the frame's width: the bottom row, the legends and the search start after it (style.css --frame)
-    document.body.style.setProperty('--frame', `${wide && open ? (elementsOpen ? 345 : 45) : 0}px`);
-    renderHead();
+    ctx.elements.hidden = !elementsOpen;
     renderTools();
   }
-  WIDE.addEventListener('change', () => { if (WIDE.matches && ctx.compact()) ctx.setCompact(false); place(); });
-  renderList(); // the Elements panel's head with the drawing's title
+  renderList(); // the tree's head with the drawing's title
   place();
 
-  // ---- keys, while the Tools panel is open -----------------------------------------------------
+  // ---- keys ----------------------------------------------------------------------------------
   window.addEventListener('keydown', (e) => {
-    // while the Tools panel is open
-    if (!ctx.isOpen() || document.querySelector('dialog[open]')) return;
-    const typing = typingIn(e.target); // a box ticked is no typing: the keys stay the drawing's
+    if (document.querySelector('dialog[open]')) return;
+    const typed = typing(e.target); // a box ticked is no typing: the keys stay the drawing's
     const mod = e.ctrlKey || e.metaKey;
     if (mod && !e.altKey && (e.key === 'z' || e.key === 'Z' || e.key === 'y')) {
-      if (typing) return; // the field's own undo
+      if (typed) return; // the field's own undo
       e.preventDefault();
       if (e.key === 'y' || e.shiftKey) drawing.redo(); else drawing.undo();
       return;
     }
     // copy, paste, duplicate (Ctrl/⌘ C, V, D): the selection's elements, not text being typed
-    if (mod && !e.altKey && !typing && ['c', 'v', 'd'].includes(e.key.toLowerCase())) {
+    if (mod && !e.altKey && !typed && ['c', 'v', 'd'].includes(e.key.toLowerCase())) {
       const k = e.key.toLowerCase();
       if (k === 'c' && !drawing.sel.size) return; // nothing selected: the page's own copy
       e.preventDefault();
@@ -1497,10 +1443,17 @@ export function drawView(root, ctx) {
       if (n) note(`${k === 'c' ? 'Copied' : k === 'v' ? 'Pasted' : 'Duplicated'}: ${plural(n, 'element')}`, k !== 'c');
       return;
     }
+    // the drawing order: Ctrl/⌘ ] one step up (drawn above), [ one step down, among its kind in its group
+    if (mod && !typed && (e.key === ']' || e.key === '[') && drawing.sel.size) {
+      e.preventDefault();
+      const dir = e.key === ']' ? -1 : 1, ids = shown().map((x) => x.el.id).filter((id) => drawing.sel.has(id));
+      drawing.change((doc) => { for (const id of dir < 0 ? ids : ids.reverse()) moveStep(doc, id, dir); });
+      return;
+    }
     // deleting: Delete; on a Mac, whose delete key is Backspace, ⌘-Backspace as in the Finder. Never
     // Backspace alone, which takes back a point while drawing (here and in Measure)
-    if (!typing && (e.key === 'Delete' || (mac && e.metaKey && e.key === 'Backspace')) && drawing.sel.size) { e.preventDefault(); del([...drawing.sel]); return; }
-    if (typing || mod || e.altKey || !ctx.isOpen()) return;
+    if (!typed && (e.key === 'Delete' || (mac && e.metaKey && e.key === 'Backspace')) && drawing.sel.size) { e.preventDefault(); del([...drawing.sel]); return; }
+    if (typed || mod || e.altKey) return;
     const ids = shown().map((x) => x.el.id); // the tools' keys: app.js, from anywhere
     if ((e.key === 'ArrowDown' || e.key === 'ArrowUp') && ids.length && !e.target.closest('.ddivider')) {
       e.preventDefault();
@@ -1520,8 +1473,8 @@ export function drawView(root, ctx) {
     colToggle.setAttribute('aria-pressed', String(elementsOpen));
     for (const b of toolBtns) {
       b.setAttribute('aria-pressed', String(on === b.dataset.tool));
-      // from 1024 px wide, a tool with kinds shows the one in use (a preset of the user's: the tool's own)
-      const k = b.dataset.tool, v = variants(k).length > 1 && WIDE.matches ? current(k) : null;
+      // a tool with kinds shows the one in use (a preset of the user's: the tool's own)
+      const k = b.dataset.tool, v = variants(k).length > 1 ? current(k) : null;
       const paths = (v && (POINT_ICON[v] || ctx.measureIcons?.(v))) || (k === 'measure' ? ctx.measureIcon : KIND_ICON[k]);
       if (b.dataset.shows !== String(v)) { b.dataset.shows = String(v); b.querySelector('svg')?.replaceWith(icon(...paths)); }
       b.classList.toggle('haskinds', variants(k).length > 1);
@@ -1529,14 +1482,6 @@ export function drawView(root, ctx) {
     undoBtn.disabled = !drawing.undos.length;
     redoBtn.disabled = !drawing.redos.length;
     renderTouch();
-    const c = ctx.compact();
-    if (!WIDE.matches && compactBtn.dataset.c !== String(c)) {
-      compactBtn.dataset.c = String(c);
-      placeControls(c);
-      compactBtn.setAttribute('aria-label', c ? 'The whole panel' : 'Only the tools');
-      compactBtn.title = c ? 'The whole panel: the list and the inspector' : 'Only the tools: the map as large as it can be (it goes back when the tool ends)';
-      compactBtn.replaceChildren(icon(...(c ? UI_ICON.expand : UI_ICON.collapse))); // arrows out: whole; in: compact
-    }
     renderSubrail();
   }
   return {
@@ -1545,7 +1490,7 @@ export function drawView(root, ctx) {
       if (what === 'draft') return renderTouch();
       if (what === 'area') { // a Select drag ended: say what it did, even when nothing was inside
         const n = drawing.sel.size;
-        note(n ? `${n} element${n > 1 ? 's' : ''} selected` : 'Nothing lies entirely inside the rectangle');
+        note(n ? `${plural(n, 'element')} selected` : 'Nothing lies entirely inside the rectangle');
       }
       if (what === 'zoom') { // what an enlarged outline says, without rebuilding the fields (one may be being typed in)
         for (const row of list.querySelectorAll('.drow')) { const x = find(drawing.doc, row.dataset.id); if (x?.kind === 'point' && mainOutline(x.el)) row.querySelector('.val').textContent = value('point', x.el); }
@@ -1567,9 +1512,7 @@ export function drawView(root, ctx) {
     },
     importFile, // a file dropped on the map (app.js)
     press, cycle, // the tools' keys (app.js)
-    place, // the Tools panel opened or closed (app.js)
     toggleElements: () => setElements(!elementsOpen), // its key (app.js)
-    // the panel closed: nothing it started goes on picking on the map (the form's roots, Attach to…)
-    closed() { if (form) { closeForm(); renderInspector(); } if (drawing.repointing) drawing.cancelRepoint(); },
+    setColumn: (v) => { if (v !== elementsOpen) setElements(v); }, // shown or not (app.js: on a phone, Layers opened)
   };
 }

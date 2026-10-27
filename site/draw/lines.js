@@ -4,8 +4,8 @@
 // Mercator), its handles ground metres [east, north] at their anchor. Lengths are always geodesic: a
 // curve's, the sum over close samples of it. Pure: no map, no DOM.
 
-import { densify, inverse, destination, areaOf, pathOf, perimeterOf } from '../geodesy.js';
-import { mercator, unmercator, D2R, nearestOnSegment, unrollTo as near } from '../geo.js';
+import { densify, inverse, destination, areaOf, pathOf, perimeterOf, lengthOf } from '../geodesy.js';
+import { mercator, unmercator, D2R, nearestOnSegment, unrollTo } from '../geo.js';
 import { isShown, groupsOf, roundParts, pointKind } from './document.js';
 
 const TOL = 1e-4; // a curve is sampled finer until its length changes by less than this, relative
@@ -16,17 +16,20 @@ const scale = (lat) => 1 / Math.cos(lat * D2R);
 
 // The anchors of a line: [{ position, hIn, hOut }], from its start to its end (an attached end where
 // what it is attached to is: attach.js refreshAttached keeps it there).
-export function anchorsOf(doc, line) {
+export function anchorsOf(line) {
   return [{ position: line.start.position, hIn: null, hOut: line.startHandle },
     ...line.vertices.map((v) => ({ position: v.position, hIn: v.handleIn, hOut: v.handleOut })),
     { position: line.end.position, hIn: line.endHandle, hOut: null }];
 }
 
+// a line's positions, start to end (its anchors')
+export const positionsOf = (line) => [line.start.position, ...line.vertices.map((v) => v.position), line.end.position];
+
 // One leg a → b: its points (both ends included, longitudes continuous from a's) and its length.
 export function leg(a, b) {
-  const q = near(a.position, b.position);
+  const q = unrollTo(a.position, b.position);
   if (!a.hOut && !b.hIn) {
-    const pts = densify(a.position, q).map((p) => near(a.position, p));
+    const pts = densify(a.position, q).map((p) => unrollTo(a.position, p));
     pts[0] = a.position; // the anchors exactly, not as computed back
     pts[pts.length - 1] = q;
     return { pts, length: inverse(a.position, q).s };
@@ -42,22 +45,21 @@ export function leg(a, b) {
   for (;;) {
     const next = [];
     for (let i = 0; i <= n; i++) next.push(i === 0 ? a.position : i === n ? q : at(i / n));
-    let len = 0;
-    for (let i = 1; i < next.length; i++) len += inverse(next[i - 1], next[i]).s;
+    const len = lengthOf(next);
     const done = Math.abs(len - length) <= TOL * len || n >= MAX_SAMPLES;
     pts = next;
     length = len;
     if (done) break;
     n *= 2;
   }
-  return { pts: pts.map((p, i) => (i ? near(pts[i - 1], p) : p)), length };
+  return { pts: pts.map((p, i) => (i ? unrollTo(pts[i - 1], p) : p)), length };
 }
 
 // A line's trace: { coords, length, at (distance from the start at each anchor), legs (lengths) },
 // cached by what it depends on (the anchors), so an unchanged line is not computed again.
 const cache = new Map();
 export function lineTrace(doc, line) {
-  const anchors = anchorsOf(doc, line);
+  const anchors = anchorsOf(line);
   const key = JSON.stringify(anchors);
   const hit = cache.get(line.id);
   if (hit && hit.key === key) return hit.line;
@@ -65,7 +67,7 @@ export function lineTrace(doc, line) {
   let length = 0;
   for (let i = 0; i < anchors.length - 1; i++) {
     const l = leg(anchors[i], anchors[i + 1]);
-    const pts = coords.length ? l.pts.map((p) => near(coords[coords.length - 1], p)) : l.pts;
+    const pts = coords.length ? l.pts.map((p) => unrollTo(coords[coords.length - 1], p)) : l.pts;
     coords.push(...(i ? pts.slice(1) : pts));
     length += l.length;
     legs.push(l.length);
@@ -77,16 +79,27 @@ export function lineTrace(doc, line) {
   return trace;
 }
 
+// A polyline's steps' geodesics and their distances from its start, once per coords (a trace's are cached).
+const stepsOf = new WeakMap();
+export function steps(coords) {
+  let x = stepsOf.get(coords);
+  if (!x) {
+    const legs = [], from = [0];
+    for (let i = 1; i < coords.length; i++) { legs.push(inverse(coords[i - 1], coords[i])); from.push(from[i - 1] + legs[i - 1].s); }
+    stepsOf.set(coords, x = { legs, from });
+  }
+  return x;
+}
 // Positions along a line (its coords, a geodesic polyline) at distances: [{ position, azi }], azi the
 // line's direction there.
 export function pointsAlong(coords, distances) {
-  const legs = [];
-  for (let i = 1; i < coords.length; i++) legs.push(inverse(coords[i - 1], coords[i]));
+  const { legs, from } = steps(coords);
   const out = [];
-  let i = 0, start = 0;
   for (const d of distances) {
-    while (i < legs.length - 1 && start + legs[i].s < d) { start += legs[i].s; i++; }
     if (!legs.length) { out.push({ position: coords[0], azi: 0 }); continue; }
+    let lo = 0, hi = legs.length - 1; // the last step starting before d
+    while (lo < hi) { const m = (lo + hi + 1) >> 1; if (from[m] < d) lo = m; else hi = m - 1; }
+    const i = lo, start = from[i];
     const p = destination(coords[i], legs[i].azi, Math.max(0, d - start));
     out.push({ position: p, azi: inverse(p, coords[i + 1]).s > 0.01 ? inverse(p, coords[i + 1]).azi : legs[i].azi });
   }
@@ -95,10 +108,10 @@ export function pointsAlong(coords, distances) {
 // The distance along a line (coords) of its point nearest to p, measured in the projection (as on
 // screen): metres from its start.
 export function nearestAlong(coords, p) {
-  const P = mercator(near(coords[0], p));
+  const P = mercator(unrollTo(coords[0], p));
   let best = Infinity, at = 0, along = 0;
   for (let i = 1; i < coords.length; i++) {
-    const s = inverse(coords[i - 1], coords[i]).s, { t, d } = nearestOnSegment(mercator(coords[i - 1]), mercator(near(coords[i - 1], coords[i])), P);
+    const s = inverse(coords[i - 1], coords[i]).s, { t, d } = nearestOnSegment(mercator(coords[i - 1]), mercator(unrollTo(coords[i - 1], coords[i])), P);
     if (d < best) { best = d; at = along + t * s; }
     along += s;
   }
@@ -134,12 +147,12 @@ export function totals(doc, by = null) {
 // 'branch' (hub → point), 'root link' (a chain's, root → its first point), 'link' (point → point); by
 // line ID
 export function madeLines(doc) {
-  const out = new Map();
+  const out = new Map(), byId = new Map(doc.lines.map((s) => [s.id, s]));
   for (const c of doc.rules) {
     if (c.kind !== 'connect') continue;
     const roots = new Set(c.roots.map((r) => r.id)), tree = c.pattern !== 'chain';
     for (const id of c.created) {
-      const s = doc.lines.find((x) => x.id === id);
+      const s = byId.get(id);
       if (!s) continue;
       const atRoot = roots.has(s.start.element) || roots.has(s.end.element);
       out.set(id, { connection: c, part: tree ? (atRoot ? 'trunk' : 'branch') : (atRoot ? 'root link' : 'link') });
@@ -147,7 +160,7 @@ export function madeLines(doc) {
   }
   return out;
 }
-export const PART_ORDER = ['trunk', 'branch', 'root link', 'link'];
+const PART_ORDER = ['trunk', 'branch', 'root link', 'link'];
 
 // The drawing's lengths and counts laid out for the Totals view (docs/drawing-ui.md §5): the lines
 // by group (or by the values of property `by`), each line listed under its group but for those a
@@ -195,10 +208,10 @@ export function breakdown(doc, by = null) {
 // handle's end, a third of the leg. Returned as the line's handle fields, in ground metres. A
 // line without vertices stays as it is: straight, a geodesic.
 export function smooth(doc, line) {
-  const anchors = anchorsOf(doc, line);
+  const anchors = anchorsOf(line);
   if (anchors.length < 3) return { startHandle: line.startHandle, endHandle: line.endHandle, vertices: line.vertices.map((v) => ({ handleIn: v.handleIn, handleOut: v.handleOut })) };
   const ps = [anchors[0].position];
-  for (const a of anchors.slice(1)) ps.push(near(ps[ps.length - 1], a.position));
+  for (const a of anchors.slice(1)) ps.push(unrollTo(ps[ps.length - 1], a.position));
   const M = ps.map(mercator);
   const sub = (a, b) => [a[0] - b[0], a[1] - b[1]], len = (v) => Math.hypot(v[0], v[1]);
   const unit = (v) => { const l = len(v); return l ? [v[0] / l, v[1] / l] : [0, 0]; };

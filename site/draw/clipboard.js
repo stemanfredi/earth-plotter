@@ -6,6 +6,8 @@
 // too. Pure, but for the storage (guarded).
 
 import { find, elements, membersOf, newId, idsOf, KIND, nextName } from './document.js';
+import { unrollTo } from '../geo.js';
+import { store } from '../dom.js';
 
 const KEY = 'charts.clipboard';
 const clone = (x) => structuredClone(x);
@@ -22,8 +24,8 @@ export function copyOf(doc, ids) {
   const items = elements(doc).filter((x) => want.has(x.el.id)).map(({ kind, el }) => ({ kind, el: clone(el) }));
   return { items };
 }
-export function keep(clip) { try { localStorage.setItem(KEY, JSON.stringify(clip)); } catch { /* the copy stays in this page */ } }
-export function kept() { try { const v = JSON.parse(localStorage.getItem(KEY)); return Array.isArray(v?.items) ? v : null; } catch { return null; } }
+export const keep = (clip) => store.set(KEY, JSON.stringify(clip)); // not kept: the copy stays in this page
+export function kept() { const v = store.json(KEY); return Array.isArray(v?.items) ? v : null; }
 
 // every position an element has (to move it), as [object, key] pairs
 function places(kind, el) {
@@ -37,7 +39,7 @@ function places(kind, el) {
 export function centreOf(clip) {
   const pts = clip.items.flatMap(({ kind, el }) => places(kind, el).map(([o, k]) => o[k]));
   if (!pts.length) return null;
-  const xs = pts.map((p) => p[0]), ys = pts.map((p) => p[1]);
+  const xs = pts.map((p) => unrollTo(pts[0], p)[0]), ys = pts.map((p) => p[1]);
   return [(Math.min(...xs) + Math.max(...xs)) / 2, (Math.min(...ys) + Math.max(...ys)) / 2];
 }
 // "Point 4" → "Point"; a name with no number of its own is its own base

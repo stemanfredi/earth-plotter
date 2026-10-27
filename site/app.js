@@ -1,7 +1,7 @@
 import * as maplibregl from './vendor/maplibre-gl.mjs';
 import mlcontour from './vendor/maplibre-contour.mjs';
 import { GROUPS, ITEMS, GIBS, DEM_TILES, DEM_SEA_MAX, DEPTH_SOURCES, DEM_LAND_MAX, OMT_TILEJSON, isobathSteps, DEPTH_SCHEMES, NO_DEPTH, DENSITY, ESRI_META, esriAttribution, gibsTiles, gibsDomainUrl, domainEnd, densityTiles, CMEMS, CMEMS_DEPTHS, drawsOf, CLASS_LEGENDS, CLASS_LABELS, EMODNET_DEPTH_STOPS, SEAGRASS } from './catalog.js';
-import { buildStyle, depthRamp, OPACITY_PROP, SEA_PICTURES, LOCATION_LAYERS } from './style.js';
+import { buildStyle, depthRamp, OPACITY_PROP, SEA_PICTURES, LOCATION_LAYERS, INK } from './style.js';
 import { cmemsTile, partTimes, partLevels, domainOf, cmemsLegend } from './cmems.js';
 import { workerClipper } from './clip.js';
 import { drawRamp, drawColormap, drawClasses, wmsClasses } from './legend.js';
@@ -13,12 +13,12 @@ import { drawView } from './draw/panel.js';
 import { profileOf } from './draw/profile.js';
 import { isShown } from './draw/document.js';
 import { circle } from './geodesy.js';
-import { norm360, tileXY, TILE } from './geo.js';
-import { FETCH, memo, fetchOk, lru } from './net.js';
-import { $, h, typing } from './dom.js';
+import { norm360, tileXY, TILE, D2R } from './geo.js';
+import { fetchOk, lru } from './net.js';
+import { $, h, svg, typing, NARROW } from './dom.js';
 import { choice } from './fields.js';
 import { keyEntry, openKey, keyList } from './keys.js';
-import { railMenu } from './menu.js';
+import { popup } from './menu.js';
 import { search } from './search.js';
 import { gisExport } from './gis.js';
 import { chartCanvas, chartPng } from './png.js';
@@ -50,8 +50,7 @@ const state = {
   period: Object.fromEntries(Object.entries(DENSITY).map(([id, d]) => [id, d.defaultPeriod])), // density datasets
   colour: '', arrows: '', // Ocean data: the entry drawing colours, the one drawing arrows ('item:variant', '' for none)
   open: new Set(['base', 'sea']),
-  panel: window.innerWidth >= 1200 ? 'layers' : null, // the side panel's view; open beside the map where it leaves room
-  tools: window.innerWidth >= 1024, // the drawing tools on: from 1024 px wide always (the left frame); narrower, the Tools panel
+  layers: window.innerWidth >= 1200, // the Layers panel open: by default where it leaves room
 };
 let view = { zoom: 4, center: [12, 41], bearing: 0 };
 // the display's units and each leg's bearing beside its length (the switch beside the scale, the
@@ -81,8 +80,7 @@ function readHash() {
     if (Object.hasOwn(DENSITY, k) && DENSITY[k].periods.includes(val)) state.period[k] = val;
   }
   if (q.has('g')) state.open = new Set(q.get('g').split(',').filter((g) => GROUPS.some((x) => x.id === g)));
-  if (q.has('menu')) state.panel = { 1: 'layers', draw: 'draw' }[q.get('menu') === '1' ? 1 : q.get('menu') === 'draw' ? 'draw' : ''] || null; // menu=1: Layers
-  state.tools = window.innerWidth >= 1024 || state.panel === 'draw'; // from 1024 px wide always
+  if (q.has('menu')) state.layers = q.get('menu') === '1'; // menu=1: Layers open
   display.bearings = q.get('brg') === '1';
   if (q.get('u') === 'nm') display.units = 'nm';
 }
@@ -112,8 +110,7 @@ function writeHashNow() {
   if (display.units !== 'km') q.set('u', display.units);
   if (display.bearings) q.set('brg', '1');
   q.set('g', [...state.open].join(','));
-  q.set('menu', state.panel === 'draw' ? 'draw' : state.panel ? '1' : '0');
-  q.delete('tools'); // once written, now the width's
+  q.set('menu', state.layers ? '1' : '0');
   drawing.saving.viewChanged(); // saved with the drawing, for a page opened without a view
   setHash(q);
 }
@@ -160,16 +157,13 @@ maplibregl.addProtocol('cmems', cmemsTile);
 maplibregl.addProtocol('gebco-tid', tidTile);
 // seagrass tiles (tools/seagrass.mjs) exist only where there is seagrass: its index lists them, and
 // a tile not listed is empty, asked of nobody (a 404 would be logged as an error)
-let seagrassIndex; // promise of zoom → Set of x · 2^z + y
-const seagrassTiles = () => (seagrassIndex ||= fetch(`${SEAGRASS}/index.json`, FETCH)
-  .then((r) => { if (!r.ok) throw new Error(`seagrass index: HTTP ${r.status}`); return r.json(); })
-  .then(({ tiles }) => Object.fromEntries(Object.entries(tiles).map(([z, xy]) => [z, new Set(xy.filter((_, k) => !(k % 2)).map((x, k) => x * 2 ** z + xy[2 * k + 1]))])))
-  .catch((e) => { seagrassIndex = null; throw e; }));
+const seagrassIndex = lru(1); // promise of zoom → Set of x · 2^z + y
+const seagrassTiles = () => seagrassIndex('index', () => fetchOk(`${SEAGRASS}/index.json`).then((r) => r.json())
+  .then(({ tiles }) => Object.fromEntries(Object.entries(tiles).map(([z, xy]) => [z, new Set(xy.filter((_, k) => !(k % 2)).map((x, k) => x * 2 ** z + xy[2 * k + 1]))]))));
 maplibregl.addProtocol('seagrass', async ({ url }, ac) => {
   const [z, x, y] = url.slice('seagrass://'.length).split('/').map(Number);
   if (!(await seagrassTiles())[z]?.has(x * 2 ** z + y)) return { data: new ArrayBuffer(0) };
-  const r = await fetch(`${SEAGRASS}/${z}/${x}/${y}.pbf`, { ...FETCH, signal: ac.signal });
-  if (!r.ok) throw new Error(`seagrass: HTTP ${r.status}`);
+  const r = await fetchOk(`${SEAGRASS}/${z}/${x}/${y}.pbf`, { signal: ac.signal });
   return { data: await r.arrayBuffer() };
 });
 const contourOpts = { contourLayer: 'contours', elevationKey: 'ele', levelKey: 'level', extent: 4096, buffer: 1 };
@@ -194,9 +188,6 @@ const map = new maplibregl.Map({
 });
 map.touchZoomRotate.disableRotation();
 $('#nostart').remove(); // started (index.html)
-const small = () => window.innerWidth < 720;
-// from 1024 px wide the Tools panel's tools are a strip beside it, its list a panel on the left (draw/panel.js)
-const wide = () => matchMedia('(min-width: 1024px)').matches;
 
 // ---- bottom row: credits; scale note, time shown, cursor position, the scale
 // One scale bar, in the display's units (the switch beside it); the PNG export draws a double
@@ -228,12 +219,10 @@ credits.addEventListener('click', (e) => {
 // credits on the left; the scale note, time shown, cursor position and scale on the right (not for
 // navigation: About and the exports say it)
 statusEl.append(credits, h('div', { class: 'readout' }, scaleNoteEl, shownEl, posEl, scaleEl));
-// the panel, zoom buttons and legends sit above the bottom row, whose height follows its credits
+// the legends sit above the bottom row, whose height follows its credits
 new ResizeObserver(() => { document.documentElement.style.setProperty('--status-h', `${statusEl.offsetHeight}px`); snapLegends(); }).observe(statusEl);
 
-// ---- zoom and compass (the compass only appears when the map is rotated) -------------------
-$('#zoom-in').addEventListener('click', () => map.zoomIn());
-$('#zoom-out').addEventListener('click', () => map.zoomOut());
+// ---- the compass (it only appears when the map is rotated) -------------------------------------
 const compass = $('#compass');
 compass.addEventListener('click', () => map.resetNorth());
 function renderCompass() {
@@ -279,8 +268,6 @@ if (!('geolocation' in navigator)) locate.hidden = true;
 locate.addEventListener('click', () => setLocating(!locating()));
 document.addEventListener('visibilitychange', () => { if (locating()) watchLocation(document.visibilityState === 'visible'); });
 
-// the Tools panel compact: only its tools (drawing-ui.md §1); auto: made so by a tool started
-const compact = { on: false, auto: false };
 function setDisplay(changes) {
   Object.assign(display, changes);
   renderUnits();
@@ -309,7 +296,6 @@ function viewOf() {
 function applyView(v) {
   const q = new URLSearchParams(location.hash.slice(1));
   viewToAddress(v, q);
-  q.set('menu', 'draw');
   drawing.saving.now();
   setHash(q);
   location.reload();
@@ -333,9 +319,6 @@ function viewToAddress(v, q) {
 const drawing = new Drawing(map, {
   known: KNOWN, getView: viewOf, units: () => display.units, bearings: () => display.bearings,
   onChange: (what) => {
-    if (what === 'tool') renderDrawTool();
-    // phones: something selected on the map while only the tools show: the sheet to half, for its fields
-    if (what === 'sel' && small() && compact.on && !drawing.tool && drawing.sel.size) setSheet('half');
     if (what === 'drag') return; // what is dragged shows its values on the map
     if (what === 'draft') return drawPanel.render('draft'); // the touch row's Done
     drawPanel.render(what);
@@ -393,8 +376,8 @@ const LIGHT_HALO = 'rgba(255,255,255,0.9)', DARK_HALO = 'rgba(8,16,24,0.85)';
 const ATLAS_SPLIT_M = 2000;
 const byDepth = (shallow, deep, at = ATLAS_SPLIT_M) => ['step', ['abs', ['get', 'ele']], shallow, at, deep];
 const ISOBATH_INK = {
-  picture: { line: 'rgba(43,58,70,0.7)', text: '#2b3a46', halo: LIGHT_HALO },
-  emodnet: { line: byDepth('rgba(43,58,70,0.7)', '#ffffff', 1000), text: byDepth('#2b3a46', '#ffffff', 1000), halo: byDepth(LIGHT_HALO, DARK_HALO, 1000) },
+  picture: { line: 'rgba(43,58,70,0.7)', text: INK, halo: LIGHT_HALO },
+  emodnet: { line: byDepth('rgba(43,58,70,0.7)', '#ffffff', 1000), text: byDepth(INK, '#ffffff', 1000), halo: byDepth(LIGHT_HALO, DARK_HALO, 1000) },
   sat: { line: '#bfe0ff', text: '#cfe6ff', halo: DARK_HALO },
   atlas: { line: byDepth('#22436a', '#ffffff'), text: byDepth('#22436a', '#ffffff'), halo: byDepth(LIGHT_HALO, 'rgba(20,45,80,0.85)') },
   nautical: { line: '#3d6a91', text: '#3d6a91', halo: LIGHT_HALO },
@@ -449,8 +432,7 @@ async function creditEsri() {
   if (esriCredited || !(state.on.has('sat') && state.variant.sat === 'esri')) return;
   esriCredited = true;
   try {
-    const r = await fetch(ESRI_META, FETCH);
-    const text = r.ok && (await r.json()).copyrightText;
+    const text = (await (await fetchOk(ESRI_META)).json()).copyrightText;
     if (!text) return;
     const src = map.getSource('esri');
     src.attribution = esriAttribution(text);
@@ -471,9 +453,9 @@ async function creditEsri() {
 
 // NASA publishes each layer after its own delay (true colour within a day): GIBS says the newest
 // date of the layer shown, the last day the map's time can take while it is on
-const gibsEnd = Object.create(null); // GIBS key → promise of its newest date, or null if unknown
+const gibsEnd = lru(Infinity); // GIBS key → promise of its newest date, or null if unknown
 function latestGibs(key) {
-  return memo(gibsEnd, key, () => fetchOk(gibsDomainUrl(key, shiftDay(today(), -60), today())).then((r) => r.text()).then(domainEnd)).catch(() => null);
+  return gibsEnd(key, () => fetchOk(gibsDomainUrl(key, shiftDay(today(), -60), today())).then((r) => r.text()).then(domainEnd)).catch(() => null);
 }
 
 // Copernicus: each dataset at its own step for the hour shown, its time resolution (cmems.js draws
@@ -489,10 +471,10 @@ async function cmemsDrawn(id, at) {
 // a classed layer's classes, from its services' JSON legends (legend.js wmsClasses): a class drawn
 // by several (an area, and a point where it is too small) once, with its fill and its symbol; the
 // symbols loaded as pictures (one that does not load is left out, its class kept)
-const classLegends = Object.create(null), icons = Object.create(null); // keyed by URLs: no prototype to reach
-const iconOf = (url) => memo(icons, url, () => fetchOk(url).then((r) => r.blob()).then(createImageBitmap));
+const classLegends = lru(Infinity), icons = lru(Infinity);
+const iconOf = (url) => icons(url, () => fetchOk(url).then((r) => r.blob()).then(createImageBitmap));
 function classesOf(urls) {
-  return memo(classLegends, urls.join(' '), async () => {
+  return classLegends(urls.join(' '), async () => {
     const all = (await Promise.all(urls.map((url) => fetchOk(url).then((r) => r.json()).then(wmsClasses)))).flat();
     const byLabel = new Map();
     for (const c of all) {
@@ -698,7 +680,7 @@ const STEPS = [30, 20, 10, 5, 2, 1, 30 / 60, 20 / 60, 10 / 60, 5 / 60, 2 / 60, 1
 function updateGraticule() {
   if (!state.on.has('graticule')) return;
   const b = map.getBounds();
-  const span = Math.max(b.getNorth() - b.getSouth(), (b.getEast() - b.getWest()) * Math.cos((map.getCenter().lat * Math.PI) / 180));
+  const span = Math.max(b.getNorth() - b.getSouth(), (b.getEast() - b.getWest()) * Math.cos(map.getCenter().lat * D2R));
   const step = STEPS.find((s) => span / s >= 3) || STEPS[STEPS.length - 1];
   const f = [];
   const s = Math.max(-85, b.getSouth()), n = Math.min(85, b.getNorth());
@@ -752,36 +734,22 @@ function itemStatus(id) {
 }
 
 // ---- small builders ---------------------------------------------------------
-const SVG_NS = 'http://www.w3.org/2000/svg';
 // a 20 px line icon from SVG path data; a path given as [d, colour] is filled in that colour
-function icon(...paths) {
-  const s = document.createElementNS(SVG_NS, 'svg');
-  for (const [k, v] of Object.entries({ viewBox: '0 0 24 24', width: 20, height: 20, 'aria-hidden': 'true', fill: 'none', stroke: 'currentColor', 'stroke-width': 1.8, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' })) s.setAttribute(k, v);
-  for (const d of paths) {
-    const p = document.createElementNS(SVG_NS, 'path');
-    if (Array.isArray(d)) { p.setAttribute('d', d[0]); p.setAttribute('fill', d[1]); p.setAttribute('stroke', d[1]); } else p.setAttribute('d', d);
-    s.append(p);
-  }
-  return s;
-}
+const icon = (...paths) => svg('svg', { viewBox: '0 0 24 24', width: 20, height: 20, 'aria-hidden': 'true', fill: 'none', stroke: 'currentColor', 'stroke-width': 1.8, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' },
+  paths.map((d) => (Array.isArray(d) ? svg('path', { d: d[0], fill: d[1], stroke: d[1] }) : svg('path', { d }))));
 const ICON = {
   search: ['M11 18a7 7 0 1 0 0-14 7 7 0 0 0 0 14z', 'm20 20-4-4'],
   layers: ['M12 3 3 8l9 5 9-5-9-5z', 'm3 13 9 5 9-5'],
   link: ['M10 14a4 4 0 0 0 6 0l3-3a4 4 0 0 0-6-6l-1 1', 'M14 10a4 4 0 0 0-6 0l-3 3a4 4 0 0 0 6 6l1-1'],
   png: ['M4 5h16v14H4z', 'm4 17 5-5 4 4 3-3 4 4', 'M17 9.5a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0z'], // a picture
   zip: ['M4 4h16v4H4z', 'M5 8v12h14V8', 'M10 12h4'],
-  save: ['M12 4v11', 'm7 10 5 5 5-5', 'M5 20h14'], // down into a tray (Export)
-  plus: ['M12 5v14M5 12h14'],
   hide: ['m9 18 6-6-6-6'], // a chevron to the right: the panel goes to its edge
-  minus: ['M5 12h14'],
   compass: [['m12 3 4 9h-8z', '#b42318'], 'm12 21-4-9h8z'],
   locate: ['M19 12a7 7 0 1 1-14 0 7 7 0 0 1 14 0z', 'M12 2v3M12 19v3M2 12h3M19 12h3', ['M14 12a2 2 0 1 1-4 0 2 2 0 0 1 4 0z', 'currentColor']], // a dot in sights
   info: ['M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18z', 'M12 11v5', 'M12 8h.01'],
   ruler: ['M3 17 17 3l4 4L7 21z', 'm7 13 2 2M10 10l2 2M13 7l2 2'],
   area: ['m12 3 8 6-3 11H7L4 9z'],
   ring: ['M12 20a8 8 0 1 0 0-16 8 8 0 0 0 0 16z', 'M12 12h.01'],
-  // the tools: a pencil in front of a ruler, crossed; the ruler stops either side of the pencil
-  draw: ['M7 11 2 6l4-4 5 5', 'M13 17l5 5 4-4-5-5', 'm8 4-1.5 1.5M20 16l-1.5 1.5M18 14l-1.5 1.5', 'M16.5 2.5l5 5L9 20l-6.5 1.5L4 15z', 'm14 5 5 5'], // as long as the ruler
 };
 // the page's own buttons name their icon: <i data-icon="…">
 for (const el of document.querySelectorAll('[data-icon]')) el.replaceWith(icon(...ICON[el.dataset.icon]));
@@ -995,51 +963,43 @@ function renderStatus() {
 }
 
 // ---- the distance units for the whole app ----------------------------------------------------
-// the units the drawing's lengths and values, its labels and the exports use: one switch beside the scale
-const unitsBtn = $('#units');
-unitsBtn.addEventListener('click', () => setDisplay({ units: display.units === 'km' ? 'nm' : 'km' }));
-// the scale is the units' switch too (from 1024 px wide the only one: the units button goes)
+// the units the drawing's lengths and values, its labels and the exports use: a click on the scale
+// switches them
 scaleEl.title = 'Distance units: a click switches km and NM';
 scaleEl.addEventListener('click', () => setDisplay({ units: display.units === 'km' ? 'nm' : 'km' }));
-// the time shown, a chip on the bottom row: a click shows its controls (from 1024 px wide, in a box over
-// it; narrower, Layers, where they are)
-const timePop = h('div', { class: 'timepop', hidden: true });
-document.body.append(timePop);
-const lview = $('#lview');
-function setTimePop(on) {
-  timePop.hidden = !on;
-  shownEl.setAttribute('aria-expanded', String(on));
-  if (on) {
-    timePop.append(when);
+// the time shown, a chip on the bottom row: a click shows its controls in a box over it
+const timePop = $('#timepop');
+const timeBox = popup(timePop, {
+  place: () => {
     const r = shownEl.getBoundingClientRect();
     Object.assign(timePop.style, { right: `${Math.max(8, innerWidth - r.right)}px`, bottom: `${innerHeight - r.top + 6}px` });
-  } else lview.prepend(when);
-}
+  },
+});
 Object.assign(shownEl, { tabIndex: 0 });
 shownEl.setAttribute('role', 'button');
-shownEl.addEventListener('click', () => (wide() ? setTimePop(timePop.hidden) : setPanel('layers')));
+shownEl.addEventListener('click', (e) => timeBox.toggle(shownEl, e));
 shownEl.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); shownEl.click(); } });
-document.addEventListener('pointerdown', (e) => { if (!timePop.hidden && !timePop.contains(e.target) && !shownEl.contains(e.target)) setTimePop(false); });
-document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !timePop.hidden) { e.stopPropagation(); setTimePop(false); shownEl.focus(); } }, true);
 function renderUnits() {
-  const nm = display.units === 'nm';
-  unitsBtn.textContent = nm ? 'NM' : 'km';
-  unitsBtn.setAttribute('aria-label', nm ? 'Distance units: nautical miles' : 'Distance units: kilometres');
-  unitsBtn.title = nm ? 'Distances in nautical miles: click for kilometres' : 'Distances in kilometres: click for nautical miles';
-  scale.setUnit(nm ? 'nautical' : 'metric');
+  scale.setUnit(display.units === 'nm' ? 'nautical' : 'metric');
   scaleUnits();
 }
 
-// ---- the Draw view (draw/panel.js) ------------------------------------------------------------
+// ---- the view's outputs, in the drawing's ☰ menu: each says how it went on itself ("Copied",
+// "Saving…", "Failed"), the menu open meanwhile
+const output = (id, iconName, text, title, run) => h('button', { type: 'button', role: 'menuitem', id, title, onclick: (e) => run(e.currentTarget) }, icon(...ICON[iconName]), h('span', {}, text));
+const outputs = [output('link', 'link', 'Copy link', 'Copy a link to this exact view', (b) => copyLink(b)),
+  output('png', 'png', 'Picture (PNG)', 'Download the view as a picture', (b) => exportPng(b)),
+  output('zip', 'zip', 'GIS data (ZIP)', 'Download the view as GIS data: a georeferenced picture, GeoJSON, GeoTIFF', (b) => exportZip(b))];
+
+// ---- the drawing (draw/panel.js): the rail and the column, on the left ---------------------------
 const drawPanel = drawView($('#dview'), {
-  drawing, display, setDisplay, map, icon, known: KNOWN, units: () => display.units, isOpen: () => state.tools,
-  measureIcon: ICON.ruler, measureIcons: (k) => ICON[k], compact: () => compact.on, setCompact: (v) => setCompact(v), free: () => free(), header: $('#panel-actions'),
-  strip: $('#dstrip'), elements: $('#elements'),
-  // from 1024 px wide the ☰ menu holds the view's outputs (the Export menu's own items, each saying how it
-  // went, the menu open meanwhile) and About; given back to the Export menu when it closes
-  menuExtras: (close) => [h('div', { class: 'dsep' }), $('#link'), $('#png'), $('#zip'),
+  drawing, display, setDisplay, map, icon, known: KNOWN, units: () => display.units,
+  measureIcon: ICON.ruler, measureIcons: (k) => ICON[k], free: () => free(), strip: $('#dstrip'), elements: $('#elements'),
+  // the column shown: on a phone, Layers makes way for it (one at a time)
+  columnShown: () => { if (NARROW.matches) setLayers(false); },
+  // the ☰ menu's foot: the view's outputs and About
+  menuExtras: (close) => [h('div', { class: 'dsep' }), ...outputs,
     h('button', { type: 'button', role: 'menuitem', class: 'mabout', onclick: () => { close(); $('#about').showModal(); showVersion(); } }, 'About')],
-  menuExtrasBack: () => $('#export-menu').append($('#link'), $('#png'), $('#zip')), setTitle: (t) => { if (state.panel === 'draw') $('#panel-title').replaceChildren(t); }, // a text, or the drawings' switcher
   // an imported drawing added to the list and opened, with its view and layers; one of the list opened
   // where it was drawn
   onImport: (doc) => { const v = doc.view; drawing.saving.add(doc); if (v) applyView(v); },
@@ -1047,97 +1007,39 @@ const drawPanel = drawView($('#dview'), {
   download: (text, name, type = 'application/geo+json') => download(new Blob([text], { type }), name),
   profile: (trace) => profileFor(trace),
 });
-function renderDrawTool() {
-  $('#b-draw').classList.toggle('active', !!drawing.tool);
-  // a tool started makes the Tools panel compact, and it goes back when the tool ends (drawing-ui.md §1
-  // §6b); a label's text is typed in the inspector: the Label tool keeps it whole
-  const placing = drawing.tool && drawing.tool !== 'label';
-  if (placing && state.panel === 'draw' && !compact.on && !wide()) setCompact(true, true); // from 1024 px wide the tools are a strip: nothing folds
-  else if (!placing && compact.auto) setCompact(false);
-}
 
-// ---- side panel, link and PNG, about -----------------------------------------------------
-// One side panel; the Layers and Measure buttons switch what it shows, and the button of the
-// view already shown closes it. It keeps its place and size, so nothing overlaps.
-const panel = $('#panel'), panelTitle = $('#panel-title');
-const VIEWS = { layers: [$('#b-layers'), $('#lview'), 'Layers'], draw: [$('#b-draw'), $('#dview'), 'Tools'] };
+// ---- Layers, find a place, about -----------------------------------------------------------------
+// Layers: a panel docked on the right, over the map (drawing-ui.md §1)
+const panel = $('#panel');
 // The padding that keeps what the map is fitted to (Zoom to, a place found) in the part not under the
-// panel: on a phone above the sheet, elsewhere left of the panel; 60 px of margin all round. Only for
-// fitting: the map itself does not move when the panel opens or closes.
+// left frame or Layers; 60 px of margin all round. Only for fitting: the map itself does not move.
 function free() {
   const p = { top: 60, right: 60, bottom: 60, left: 60 };
-  // the left frame (from 1024 px wide: the rail and the column), and the panel on the right
   p.left += Math.max(0, ...['#dstrip', '#elements'].map((s) => $(s)).filter((e) => !e.hidden).map((e) => e.getBoundingClientRect().right));
-  const r = !panel.hidden && panel.getBoundingClientRect();
-  if (!r?.width) return p;
-  if (small()) p.bottom += Math.max(0, innerHeight - r.top); else p.right += Math.max(0, innerWidth - r.left);
+  if (!panel.hidden) p.right += Math.max(0, innerWidth - panel.getBoundingClientRect().left);
   return p;
 }
-function setCompact(on, auto = false) {
-  Object.assign(compact, { on, auto: on && auto });
-  panel.classList.toggle('compact', on && state.panel === 'draw');
-  drawPanel.render('tool');
-}
-// The right-hand slot: Layers, the Tools panel ('draw'), or nothing. The tools (state.tools) are on
-// with the Tools panel; from 1024 px wide they stay on beside Layers, and closing Layers gives the slot
-// back to the Tools panel. Narrower, the slot is the tools' (a sheet on a phone).
-function setPanel(view) {
-  // from 1024 px wide the tools are always on, in the left frame: the right-hand panel is Layers' alone
-  if (wide()) { state.tools = true; if (view === 'draw') view = null; } else state.tools = view === 'draw';
-  state.panel = view;
-  panel.hidden = !view;
-  for (const [v, [btn, el, title]] of Object.entries(VIEWS)) {
-    if (v === 'layers') { btn.setAttribute('aria-expanded', String(v === view)); $('#b-maplayers').setAttribute('aria-expanded', String(v === view)); }
-    el.hidden = v !== view;
-    if (v === view) panelTitle.textContent = title;
-  }
-  document.body.classList.toggle('menu-open', !!view); // phones: the legend makes way for the sheet
-  panel.classList.toggle('wide', view === 'draw'); // the Draw view: list and inspector need the room
-  panel.classList.toggle('compact', compact.on && view === 'draw');
-  $('#panel-actions').hidden = view !== 'draw'; // the Tools panel's actions (Undo, Redo, compact narrower)
-  $('#b-draw').setAttribute('aria-expanded', String(state.tools));
-  if (!state.tools) { drawing.stop(); drawPanel.closed(); }
-  drawPanel.place(); // the strip and the Elements panel with it (from 1024 px wide)
+function setLayers(on) {
+  state.layers = on;
+  panel.hidden = !on;
+  $('#b-layers').setAttribute('aria-expanded', String(on));
+  if (on && NARROW.matches) drawPanel.setColumn(false); // on a phone: one at a time
   writeHash();
 }
-// the rail's Tools: the tools on or off (with them, from 1024 px wide, the Elements panel and the
-// inspector); Layers: its panel shown or not. The panel's chevron: Layers closed; the Tools panel
-// (from 1024 px wide) hidden, what is selected staying so, until the next selection
-function setTools(on) {
-  state.tools = on;
-  if (on) setPanel(wide() && state.panel === 'layers' ? 'layers' : 'draw');
-  else { state.tools = false; setPanel(state.panel === 'draw' ? null : state.panel); }
-}
-$('#b-layers').addEventListener('click', () => setPanel(state.panel === 'layers' ? null : 'layers'));
-$('#b-maplayers').addEventListener('click', () => setPanel(state.panel === 'layers' ? null : 'layers'));
-// From 1024 px wide (drawing-ui.md §1) the map's own controls are at the top right: the search behind its
-// lens (shown while it is used: / or the lens; gone when left), Layers, my position, north when turned;
-// the scale switches the units; the time shown is a chip on the bottom row, its controls a click away
+$('#b-layers').addEventListener('click', () => setLayers(!state.layers));
+$('#close').addEventListener('click', () => setLayers(false));
+// find a place: the search field behind its lens, shown while it is used (the lens, or /); gone when left
 const findBtn = $('#b-find');
 const setFinding = (on) => { document.body.classList.toggle('finding', on); findBtn.setAttribute('aria-expanded', String(on)); if (on) $('#q').focus(); };
 findBtn.addEventListener('click', () => setFinding(!document.body.classList.contains('finding')));
-$('#q').addEventListener('blur', () => setTimeout(() => { if (wide() && !$('#search').contains(document.activeElement)) setFinding(false); }, 250));
-$('#b-draw').addEventListener('click', () => setTools(!state.tools));
-$('#close').addEventListener('click', () => setPanel(null));
-matchMedia('(min-width: 1024px)').addEventListener('change', () => setPanel(state.panel)); // the frame comes or goes
+$('#q').addEventListener('blur', () => setTimeout(() => { if (!$('#search').contains(document.activeElement)) setFinding(false); }, 250));
 
-// Export: a menu of the view's link, a picture and GIS data, each acting at once; the Export button says
-// how it went for a moment ("Copied", "Saving…", "Failed"). The drawing's file goes in and out from its
-// own menu (draw/panel.js); a file dropped on the map is imported: the tools on, the drawing opened
-const exportBtn = $('#export');
-railMenu(exportBtn, $('#export-menu'));
-// how it went is said on the Export button, or from 1024 px wide on the ☰ menu's item itself
-const sayOn = (item) => (wide() ? item : exportBtn);
-$('#link').addEventListener('click', () => copyLink(sayOn($('#link'))));
-$('#png').addEventListener('click', () => exportPng(sayOn($('#png'))));
-$('#zip').addEventListener('click', () => exportZip(sayOn($('#zip'))));
 const mapBox = map.getContainer();
 mapBox.addEventListener('dragover', (e) => { if (e.dataTransfer?.types.includes('Files')) { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; } });
 mapBox.addEventListener('drop', (e) => {
   const f = e.dataTransfer?.files?.[0];
   if (!f) return;
   e.preventDefault();
-  if (!state.tools) setTools(true);
   drawPanel.importFile(f);
 });
 async function copyLink(b) {
@@ -1155,7 +1057,6 @@ function flash(b, text, title = '', ms = 1200) {
   b.flashTimer = setTimeout(() => { b.querySelector('span').textContent = own.label; b.title = own.title; }, ms);
 }
 const about = $('#about');
-$('#b-about').addEventListener('click', () => { about.showModal(); showVersion(); });
 // the version published: version.json, written by the deploy (ci.yml); none on a development copy.
 // { commit, date }, or null
 async function published() {
@@ -1197,55 +1098,23 @@ $('#issue').addEventListener('click', (e) => {
 });
 about.querySelector('[data-close]').addEventListener('click', () => about.close());
 
-// the single keys (keys.js), from anywhere: search, a panel, or a tool, which opens its panel
-// (draw/drawing.js handles the keys of what is being drawn; draw/panel.js the Tools panel's own)
+// the single keys (keys.js), from anywhere: search, Layers, the column, or a tool
+// (draw/drawing.js handles the keys of what is being drawn; draw/panel.js the drawing's own)
 window.addEventListener('keydown', (e) => {
   if (e.ctrlKey || e.metaKey || e.altKey || document.querySelector('dialog[open]') || typing(e.target)) return;
   const k = keyEntry(e.key);
   if (!k?.open && !k?.tool) return;
-  if (k.open === 'search') { e.preventDefault(); if (wide()) setFinding(true); else q.focus(); }
-  else if (k.open === 'elements') { if (!state.tools) setTools(true); if (wide()) drawPanel.toggleElements(); }
-  else if (k.open === 'draw') setTools(!state.tools);
-  else if (k.open) setPanel(state.panel === k.open ? null : k.open);
-  else {
-    if (!state.tools && !small()) setTools(true); // phones: the sheet makes way for the map
-    drawPanel.cycle(k.tool[1]); // on, or its next variant
-  }
+  if (k.open === 'search') { e.preventDefault(); setFinding(true); }
+  else if (k.open === 'elements') drawPanel.toggleElements();
+  else if (k.open === 'layers') setLayers(!state.layers);
+  else drawPanel.cycle(k.tool[1]); // on, or its next variant
 });
 // the tooltips and About say the keys
 $('#about .keys').replaceChildren(...keyList());
 $('#b-layers').title = `Layers (${openKey('layers')})`;
-$('#b-draw').title = `Tools: draw and measure: points, lines, shapes, labels, measurements (${openKey('draw')})`;
+findBtn.title = `Find a place (${openKey('search')})`;
 
-// phones: the panel is a sheet, at one of three heights (drawing-ui.md §1): compact (the Tools
-// panel's tools only), half the screen, or full (as tall as its content, up to 85%). Its handle dragged
-// up or down moves one height; down from the lowest closes it. Layers has no compact height.
-const handle = h('div', { class: 'handle', 'aria-hidden': 'true' });
-panel.prepend(handle);
-const sheetOf = () => (compact.on && state.panel === 'draw' ? 'compact' : panel.classList.contains('half') ? 'half' : 'full');
-function setSheet(to) {
-  if (to === 'compact') return setCompact(true);
-  panel.classList.toggle('half', to === 'half');
-  if (compact.on) setCompact(false);
-}
-handle.addEventListener('pointerdown', (e) => {
-  const y0 = e.clientY;
-  handle.setPointerCapture(e.pointerId);
-  panel.classList.add('dragging');
-  const move = (ev) => { panel.style.transform = `translateY(${Math.max(0, ev.clientY - y0)}px)`; };
-  const up = (ev) => {
-    handle.removeEventListener('pointermove', move);
-    panel.classList.remove('dragging');
-    panel.style.transform = '';
-    const dy = ev.clientY - y0, at = sheetOf(), lowest = state.panel === 'draw' ? 'compact' : 'half';
-    if (dy > 60) { if (at === lowest) setPanel(null); else setSheet(at === 'full' ? 'half' : 'compact'); }
-    else if (dy < -40) setSheet(at === 'compact' ? 'half' : 'full');
-  };
-  handle.addEventListener('pointermove', move);
-  handle.addEventListener('pointerup', up, { once: true });
-});
-
-const q = search(map, maplibregl.Marker, free); // the search box: / goes to it
+search(map, maplibregl.Marker, free); // the search box (find a place)
 
 // ---- depth at a point: a click on the sea says its depth and where it comes from --------------
 // As the depth shading has it (the sea's clipped tile: GEBCO, cut to the OSM coastline, the
@@ -1289,7 +1158,7 @@ function scaleVariation() {
 }
 function scaleNote() {
   const v = scaleVariation();
-  scaleNoteEl.textContent = v > NOTE_AT ? `scale varies ${(v * 100).toFixed(0)}%${small() ? '' : ' across the view'}` : ''; // short on a phone: one line
+  scaleNoteEl.textContent = v > NOTE_AT ? `scale varies ${(v * 100).toFixed(0)}%${NARROW.matches ? '' : ' across the view'}` : ''; // short on a phone: one line
 }
 
 // ---- credits, and the exports (PNG: png.js; GIS: below) ----------------------------------------
@@ -1437,7 +1306,7 @@ map.on('load', () => {
   renderMenu();
   renderUnits();
   ready = true;
-  setPanel(state.panel); // also writes the URL, now with everything applied
+  setLayers(state.layers); // also writes the URL, now with everything applied
   scaleNote();
   scaleUnits();
   renderCompass();

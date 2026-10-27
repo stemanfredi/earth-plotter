@@ -8,12 +8,11 @@
 // app's). Drawings of another format version are not read. Pure: no map, no DOM.
 
 import { FORMAT, VERSION, KINDS, KIND, SYMBOLS, LEADERS, LABEL_OFFSET,
-  emptyDoc, newId } from './document.js';
+  emptyDoc, newId, columnsOf } from './document.js';
 import { ID, isObj, fin, Skip, time, text, properties, flag, position, angle, handle, ownStyle, look, parts, readView } from './check.js';
-import { resolve as anchorAt } from './attach.js';
-import { targetPosition } from './attach.js';
-import { columnsOf } from './document.js';
+import { resolve, targetPosition } from './attach.js';
 import { groupSizeOf } from './generator.js';
+import { positionsOf } from './lines.js';
 
 const SIDES = ['left', 'right', 'alternate'];
 const MAX_LABEL_OFFSET = 2000; // px: a label's text from its anchor
@@ -85,7 +84,7 @@ function read(raw, app, known, now, report) {
         if (!isObj(x)) c.skip('not an object');
         const id = typeof x.id === 'string' && ID.test(x.id) && !taken.has(x.id) ? x.id : c.skip('no valid ID');
         taken.add(id);
-        return { ...commonOf(x, c), id, groupId: typeof x.groupId === 'string' ? x.groupId : null, look: look(x.look, c) };
+        return { ...commonOf(x, c), id, groupId: typeof x.groupId === 'string' ? x.groupId : null }; // a group has no look: its members' own
       });
       if (g) doc.groups.push(g);
     }
@@ -203,7 +202,8 @@ function read(raw, app, known, now, report) {
   // a connection's lines once said what they were in a property "part"; that is worked out now
   for (const r of doc.rules) {
     if (r.kind !== 'connect') continue;
-    for (const s of doc.lines) if (r.created.includes(s.id)) s.properties = s.properties.filter((p) => p.key !== 'part' || !['trunk', 'branch', 'chain'].includes(p.value));
+    const made = new Set(r.created);
+    for (const s of doc.lines) if (made.has(s.id)) s.properties = s.properties.filter((p) => p.key !== 'part' || !['trunk', 'branch', 'chain'].includes(p.value));
   }
   return doc;
 }
@@ -370,7 +370,7 @@ function feature(doc, kind, el) {
     Object.assign(mine, lean({ symbol: el.symbol, bearing: r4(el.bearing) }, { symbol: 'none', bearing: 0 }));
     if (el.parts.length) mine.parts = el.parts.map(partOut);
   } else if (kind === 'line') {
-    geometry = { type: 'LineString', coordinates: [el.start.position, ...el.vertices.map((v) => v.position), el.end.position].map(pos) };
+    geometry = { type: 'LineString', coordinates: positionsOf(el).map(pos) };
     const vs = el.vertices.map((v) => lean({ handleIn: hdl(v.handleIn), handleOut: hdl(v.handleOut), name: v.name, properties: v.properties.map((p) => ({ ...p })) }, VERTEX_D));
     Object.assign(mine, lean({ start: endOut(el.start), end: endOut(el.end), startHandle: hdl(el.startHandle), endHandle: hdl(el.endHandle), mode: el.mode },
     { start: null, end: null, startHandle: null, endHandle: null, mode: 'fixed' }));
@@ -381,7 +381,7 @@ function feature(doc, kind, el) {
     geometry = { type: 'Polygon', coordinates: [[...pts, pts[0]].map(pos)] };
     if (cw) mine.reversed = true;
   } else {
-    const at = anchorAt(doc, el.anchor);
+    const at = resolve(doc, el.anchor);
     geometry = { type: 'Point', coordinates: pos(at ? at.position : el.anchor.position ?? [0, 0]) };
     Object.assign(mine, lean({ text: el.text, anchor: endOut(el.anchor),
       offset: [r3(el.offset[0]), r3(el.offset[1])], leader: el.leader }, { text: '', anchor: null, offset: LABEL_OFFSET, leader: 'arrow' }));
@@ -400,8 +400,8 @@ export function toFile(doc) {
       data: v.data && { colour: v.data.colour && { ...v.data.colour }, arrows: v.data.arrows && { ...v.data.arrows }, time: v.data.time, depth: v.data.depth },
       units: v.units, bearings: v.bearings === true }, VIEW_D) : null,
     look: lookOut(doc.look ?? {}),
-    groups: doc.groups.map((g) => lean({ id: g.id, groupId: g.groupId, name: g.name, properties: g.properties.map((p) => ({ ...p })), visible: g.visible,
-      look: lookOut(g.look) }, { groupId: null, name: '', properties: [], visible: true, look: {} })),
+    groups: doc.groups.map((g) => lean({ id: g.id, groupId: g.groupId, name: g.name, properties: g.properties.map((p) => ({ ...p })), visible: g.visible },
+      { groupId: null, name: '', properties: [], visible: true })),
     rules: doc.rules.map((a) => (a.kind === 'distribute'
       ? lean({ ...a, along: { element: a.along.element, ...(a.along.part != null ? { part: a.along.part } : {}) }, spacing: a.spacing == null ? null : r3(a.spacing), radius: a.radius == null ? null : r3(a.radius),
         aperture: a.aperture == null ? null : r4(a.aperture), startMargin: r3(a.startMargin), endMargin: r3(a.endMargin), offset: r3(a.offset),

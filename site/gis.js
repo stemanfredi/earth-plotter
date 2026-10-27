@@ -10,7 +10,7 @@ import { viewFeatures } from './vector.js';
 import { exportFeatures } from './draw/features.js';
 import { lineTrace } from './draw/lines.js';
 import { mercator } from './geo.js';
-import { memo } from './net.js';
+import { lru } from './net.js';
 import { h } from './dom.js';
 import { chartCanvas, chartPng, pngOf } from './png.js';
 
@@ -54,8 +54,8 @@ export function gisExport({ map, layersOf, kindOf, drawing, display, profiled, c
   const featureCollection = (name, features) => `${JSON.stringify({ type: 'FeatureCollection', name, features })}\n`;
 
   // polygon-clipping (vector.js) loads on the first ZIP export, not with the page (site/vendor/)
-  const libs = {};
-  const polygonClipping = () => memo(libs, 'polygon-clipping', () => new Promise((resolve, reject) => {
+  const libs = lru(Infinity);
+  const polygonClipping = () => libs('polygon-clipping', () => new Promise((resolve, reject) => {
     document.head.append(h('script', { src: 'vendor/polygon-clipping.umd.min.js', onload: () => resolve(globalThis.polygonClipping),
       onerror: (e) => { e.target.remove(); reject(new Error('polygon-clipping did not load')); } }));
   }));
@@ -71,8 +71,10 @@ export function gisExport({ map, layersOf, kindOf, drawing, display, profiled, c
       const vectors = [];
       for (const it of layers) {
         const fs = viewFeatures(vectorPieces(it.id), corners, clipping);
-        if (fs.length) vectors.push({ key: `vector/${it.id}`, title: it.label, file: `vector/${it.id}.geojson`, data: featureCollection(it.label, fs), n: fs.length, how: 'clipped to the view' });
-        if (fs.length) it.assets.push(`vector/${it.id}`); // in item.json: the assets that hold this layer as data (keyed by path: a layer may be called chart, as the overview is)
+        if (fs.length) {
+          vectors.push({ key: `vector/${it.id}`, title: it.label, file: `vector/${it.id}.geojson`, data: featureCollection(it.label, fs), n: fs.length, how: 'clipped to the view' });
+          it.assets.push(`vector/${it.id}`); // in item.json: the assets that hold this layer as data (keyed by path: a layer may be called chart, as the overview is)
+        }
       }
       const left = []; // what could not be read: the rest is saved, the button says what is missing
       // raster/<key>.tif for each elevation grid an item drawn reads

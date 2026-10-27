@@ -2,7 +2,7 @@
 // Marker) wires the page's search box (#q) and its results; it returns the box.
 import { $, h } from './dom.js';
 import { dm, parseLatLon } from './format.js';
-import { FETCH } from './net.js';
+import { fetchOk } from './net.js';
 import { HOSTS } from './hosts.js';
 
 // Text that can only be coordinates, complete or not: digits with signs, separators, degree, minute
@@ -66,8 +66,7 @@ export function search(map, Marker, free) {
     const c = map.getCenter(); // results near the view come first; rounded, the view is not sent exactly
     const url = `${PHOTON}?${new URLSearchParams({ q: text, limit: 12, lang: 'en', lat: c.lat.toFixed(1), lon: c.lng.toFixed(1) })}`;
     try {
-      const r = await fetch(url, { signal: searchCtl.signal, ...FETCH });
-      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const r = await fetchOk(url, { signal: searchCtl.signal });
       // the same name, kind and town once (a port's ferry terminals); the sea's first, seven shown
       const seen = new Set();
       const place = (f) => Array.isArray(f?.geometry?.coordinates) && f.geometry.coordinates.length === 2 && f.geometry.coordinates.every(Number.isFinite) && f.properties;
@@ -103,10 +102,20 @@ export function search(map, Marker, free) {
     if (e.key === 'ArrowDown') { e.preventDefault(); setActive(active + 1); }
     else if (e.key === 'ArrowUp') { e.preventDefault(); setActive(active - 1); }
     else if (e.key === 'Enter') { e.preventDefault(); if (hits[active]?.go) choose(active); }
-    else if (e.key === 'Escape') { if (!results.hidden) hideResults(); else { q.value = ''; qClear.hidden = true; pin?.remove(); pin = null; q.blur(); } }
+    else if (e.key === 'Escape') { if (!results.hidden) hideResults(); else { clear(); q.blur(); } }
   });
   q.addEventListener('focus', () => { if (q.value.trim() && hits.length) showResults(hits); });
   q.addEventListener('blur', () => setTimeout(hideResults, 150));
-  qClear.addEventListener('click', () => { q.value = ''; qClear.hidden = true; hideResults(); pin?.remove(); pin = null; q.focus(); });
+  // the box emptied: a search under way or waiting goes too, else its results would come back
+  function clear() {
+    clearTimeout(searchTimer);
+    searchCtl?.abort();
+    q.value = '';
+    qClear.hidden = true;
+    hideResults();
+    pin?.remove();
+    pin = null;
+  }
+  qClear.addEventListener('click', () => { clear(); q.focus(); });
   return q;
 }

@@ -1,5 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { near } from './helpers.mjs';
 
 const { anchorsOf, lineTrace, leg, pointsAlong, nearestAlong, totals, smooth, applySmooth, refreshAuto } = await import('../../site/draw/lines.js');
 const { emptyDoc, addPoint, addDot, addShape, addLine, addArea, makeGroup, splitLine, remove, makePart } = await import('../../site/draw/document.js');
@@ -7,7 +8,6 @@ const { settleGeometry } = await import('../../site/draw/store.js');
 const { inverse } = await import('../../site/geodesy.js');
 const { mercator } = await import('../../site/geo.js');
 
-const near = (a, b, tol, what) => assert.ok(Math.abs(a - b) <= tol, `${what}: ${a} vs ${b}`);
 // a line from start to end (positions or point IDs) through vertices, in a new document unless one is given
 const lineOf = (start, vertices, end, opts = {}, doc = emptyDoc(0)) => ({ doc, line: addLine(doc, start, vertices, end, opts) });
 
@@ -27,10 +27,10 @@ test('straight legs: the same length as the ruler over the same points', () => {
 });
 
 test('anchors: the start, each vertex and the end, with their handles', () => {
-  const { doc, line } = lineOf([12, 40], [[12.1, 40.05]], [12.2, 40], { startHandle: [10, 0], endHandle: [-10, 0] });
+  const { line } = lineOf([12, 40], [[12.1, 40.05]], [12.2, 40], { startHandle: [10, 0], endHandle: [-10, 0] });
   line.vertices[0].handleIn = [-5, 0];
   line.vertices[0].handleOut = [5, 1];
-  assert.deepEqual(anchorsOf(doc, line), [
+  assert.deepEqual(anchorsOf(line), [
     { position: [12, 40], hIn: null, hOut: [10, 0] },
     { position: [12.1, 40.05], hIn: [-5, 0], hOut: [5, 1] },
     { position: [12.2, 40], hIn: [-10, 0], hOut: null }]);

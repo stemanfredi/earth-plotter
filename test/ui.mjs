@@ -7,11 +7,11 @@
 import { start } from './browser.mjs';
 
 // phone and tablet are touch devices (pointer: coarse, 44 px targets); desktop has a mouse (36 px; 24
-// in the panels, 28 in the bar, 32 in the map's controls)
+// in the panels, 28 in the bar, 32 in the map's controls and the search bar)
 const VIEWPORTS = [['phone', 390, 844, true], ['tablet', 820, 1180, true], ['desktop', 1280, 800, false]];
 // overlays that must not collide (screen-space boxes of floating UI)
 const OVERLAYS = {
-  search: '#search', zoom: '#zoom', legend: '#legends', status: '#status', bar: '#bar', side: '#side', props: '#props',
+  search: '#search', controls: '#mapctl', legend: '#legends', touch: '.touchbar', note: '.dnote', status: '#status', bar: '#bar', side: '#side', props: '#props',
 };
 
 // a drawing as the app saves it (GeoJSON, version 1): a point with two sectors, a rectangle, a line
@@ -42,14 +42,14 @@ for (const [name, width, height, touch] of VIEWPORTS) {
       await page.waitForFunction(() => window.map?.loaded?.(), null, { timeout: 90000 });
       await page.evaluate(async () => { const { addLine } = await import('./draw/document.js'); drawing.change((doc) => addLine(doc, [12, 44], [], [13, 44.5], { name: 'Distance 1', guide: true, look: { text: { values: true } } })); });
       // the left panel (on a phone closed to start with): open on Elements; an element (or the drawing)
-      // selected, its properties shown (on a phone from the touch row, in place of the tree)
+      // selected, its properties shown (on a phone in place of the tree)
       if (typeof menu === 'string' && await page.locator('#side').isHidden()) await page.click('#bar .pleft');
       if (typeof menu === 'string') await page.click('.tabs [data-tab=elements]');
       if (menu === 'drawing') await page.click('.droot .dname');
       if (menu === 'draw') await page.click('.dlist .drow .dname');
       if (menu === 'line') await page.click('.dlist .drow:has(.kind[title=Line]) .dname');
       if (menu === 'label') await page.click('.dlist .drow:has(.kind[title=Label]) .dname');
-      if (await page.locator('.touchbar button:has-text("Properties")').isVisible()) await page.click('.touchbar button:has-text("Properties")');
+      if (['drawing', 'draw', 'line', 'label'].includes(menu) && await page.locator('#props').isHidden()) await page.keyboard.press('i');
       // the inspector's text: no element printed as text ("[object …]")
       if (typeof menu === 'string') check(!(await page.evaluate(() => document.querySelector('.dinspect').textContent.includes('[object'))), `${name}: the ${menu} inspector shows no "[object …]"`);
       await page.mouse.move(width / 2, height / 2); // shows the cursor readout
@@ -57,7 +57,7 @@ for (const [name, width, height, touch] of VIEWPORTS) {
       if (process.env.UI_SHOTS) await page.screenshot({ path: `${process.env.UI_SHOTS}/${name}-${typeof menu === 'string' ? menu : menu ? 'menu' : 'map'}.png` });
       const r = await page.evaluate(({ OVERLAYS }) => {
         // with a mouse 36 px, but 24 in the panels (grids of rows), 28 in the bar, 32 in the map's controls
-        const COARSE = matchMedia('(pointer: coarse)').matches, MIN = COARSE ? 44 : 36, minOf = (el) => (COARSE ? MIN : el.closest('#side, #props') ? 24 : el.closest('#bar') ? 28 : el.closest('#zoom') ? 32 : MIN);
+        const COARSE = matchMedia('(pointer: coarse)').matches, MIN = COARSE ? 44 : 36, minOf = (el) => (COARSE ? MIN : el.closest('#side, #props') ? 24 : el.closest('#bar') ? 28 : el.closest('#mapctl, #search') ? 32 : MIN);
         const seen = (el) => { const b = el.getBoundingClientRect(); return b.width > 0 && b.height > 0 && getComputedStyle(el).visibility !== 'hidden' && el.closest('[hidden]') === null; };
         const boxes = {};
         for (const [k, sel] of Object.entries(OVERLAYS)) {

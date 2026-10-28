@@ -5,7 +5,7 @@
 // The marks of interaction (drawing-ui.md §7), one blue cased in white, seen on chart, sea and
 // satellite: hovered at half strength; selected, and what a click would hit, at full. What is not made
 // yet (being drawn, a form's preview) is dashed and dark (DRAFT). Measurements keep magenta: content.
-const MARK = '#1c7ed6', MARK_CASE = '#ffffff', HOVER = 0.5, DRAFT = '#1f2c36';
+const MARK = '#1c7ed6', MARK_CASE = '#ffffff', HOVER = 0.7, DRAFT = '#1f2c36'; // HOVER: every hover mark's strength (band, ring, label)
 
 // the symbols and the label box, added to the map once its style is loaded
 export function addIcons(map) {
@@ -82,9 +82,9 @@ const fillLayer = (kind, source) => ({
 });
 // the hover band, never on the element's own stroke, clear of it by 3 px: outside a polygon's outline
 // (negative offset: the left of a counter-clockwise ring, its outside on screen), on both sides of a
-// line: the mark's blue on its white casing
+// line: one line of the mark's blue (no casing: it read as white lines either side of it)
 const BAND = 2;
-const HALO = [['case', MARK_CASE, BAND + 2, HOVER], ['line', MARK, BAND, HOVER]];
+const HALO = [['line', MARK, BAND, HOVER]];
 const haloLayers = (geom, sides, parts) => sides.flatMap((side) => parts.map(([part, colour, width, opacity]) => ({
   id: `draw-mark-${part}-${geom.toLowerCase()}${sides.length > 1 ? (side > 0 ? '-r' : '-l') : ''}`, type: 'line', source: 'drawover',
   filter: ['all', ['==', ['get', 'kind'], 'hover'], ['==', ['geometry-type'], geom]],
@@ -131,6 +131,12 @@ export const DRAW_LAYERS = [
   { id: 'draw-snapto', type: 'circle', source: 'drawover', filter: ['in', ['get', 'kind'], ['literal', ['snapvertex', 'snapedge']]],
     paint: { 'circle-radius': ['match', ['get', 'kind'], 'snapvertex', 8, 4], 'circle-color': MARK, 'circle-opacity': ['match', ['get', 'kind'], 'snapvertex', 0, 1],
       'circle-stroke-color': ['match', ['get', 'kind'], 'snapvertex', MARK, MARK_CASE], 'circle-stroke-width': ['match', ['get', 'kind'], 'snapvertex', 3, 1.5] } },
+  // the place of the row current in Properties' table (a line's point, an area's corner): ringed, as a
+  // mark (not in the exports)
+  { id: 'draw-mark-placeline', type: 'line', source: 'drawover', filter: ['==', ['get', 'kind'], 'placeline'], layout: { 'line-join': 'round' },
+    paint: { 'line-color': MARK, 'line-width': 4, 'line-opacity': 0.7 } }, // a part's row: the part drawn over
+  { id: 'draw-mark-place', type: 'circle', source: 'drawover', filter: ['==', ['get', 'kind'], 'place'],
+    paint: { 'circle-radius': 11, 'circle-opacity': 0, 'circle-stroke-color': MARK, 'circle-stroke-width': 3 } },
   { id: 'draw-snapcross', type: 'symbol', source: 'drawover', filter: ['==', ['get', 'kind'], 'snapcrossing'],
     layout: { 'icon-image': 'draw-plus', 'icon-rotate': 45, 'icon-size': 1.4, 'icon-allow-overlap': true, 'icon-ignore-placement': true },
     paint: { 'icon-color': MARK, 'icon-halo-color': MARK_CASE, 'icon-halo-width': 2 } },

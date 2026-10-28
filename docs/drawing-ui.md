@@ -14,10 +14,14 @@ Code: `site/frame.js` the frame; `site/draw/`: `panel.js` the inspector, `tree.j
 One layout at every width (`site/frame.js`).
 
 - **The bar**, across the top: **☰** (the drawings in this browser, the drawing's file, the view's
-  outputs, About), the left panel's toggle, **Select**, **Point**, **Line**, **Shape**, **Label**,
-  **Measure**, **Undo**, **Redo**; at its end **find a place** (the lens or /) and the
-  **Properties** toggle. A tool with kinds shows the one in use and a corner mark; its kinds are a
-  row under its button while it is on.
+  outputs, About), the left panel's toggle; **Undo**, **Redo** (history, not tools); **Select** and
+  **Box select**; **Point**, **Line**, **Shape**, **Label**; **Measure**; at its end **find a place**
+  (the lens or /) and the **Properties** toggle. With a mouse and room (a window from 1,100 px), a
+  tool's kinds are buttons in the bar in its place (Shape's ten), each the tool on with that kind.
+  Otherwise the tool's one button shows the kind in use and a corner mark; its kinds are a row under
+  it as it goes on, shut once one is picked or the map is clicked. Its key again: the next kind.
+- **Box select** (B): the next drag on the map, a mouse's or a finger's, draws a box; what lies
+  inside is selected, then Select again. A drag with Select moves the map; Shift-drag is the box too.
 - **The left panel**: tabs **Elements** (the tree, §4) and **Layers** (`menu=1` in the address).
   Its toggle, **E** and **L** open it on a tab, or close it when it shows that tab. At first it is
   open on Layers.
@@ -28,26 +32,29 @@ One layout at every width (`site/frame.js`).
 - Each panel is as wide as dragged at its inner edge (left 200–480 px, right 260–600; a
   double-click: 260 and 320); widths, the tab and the switch are remembered in this browser. Where
   both would leave less than 480 px of map, Properties, while shown, takes the room and the left
-  panel comes back after.
-- **The map's controls**, bottom right: my position, north (only when turned); no zoom buttons.
+  panel comes back after; the first time in a visit a note says so, and the left's toggle (or E, L)
+  then brings it back, Properties off.
+- **The map's foot**: one strip above the bottom row, between the panels (a phone: above its sheet).
+  At its left, stacked: the note, the legends, the touch row; at its right **the map's controls**: my
+  position, north (only when turned); no zoom buttons. Nothing else sits there, so nothing overlaps.
   The bottom row between the panels: credits, the time shown (a chip: ‹ hour ›, **Now**, the
   depth), the cursor's position, the scale (a click switches km and NM).
 - **Copy link** carries the view, the layers and the display settings (`u=nm`, `brg=1`), never the
   drawing. The drawing goes out as a file (**Export drawing (GeoJSON)**, with the view) and comes in
   by **Import…** or a file dropped on the map, after a report (what it holds, what was skipped and
   why); a presets file adds its presets (§9).
-- A note at the map's foot says for a few seconds what just happened (with **Undo** where it
+- The note (the foot's top) says for a few seconds what just happened (with **Undo** where it
   applies).
 
 **On a phone** (under 720 px) the bar holds ☰, the left panel's toggle and the tools; Undo and
 Properties are in the touch row, find a place with the map's controls. The panels are one bottom
-sheet at a time (half the screen; as tall as its grip is dragged, closed when dragged to the bottom).
+sheet at a time (half the screen; as tall as its grip is dragged, short of the bar, the map's foot and
+some map; closed when dragged to the bottom).
 Both start closed. Zoom to and a place found are fitted to the map the bar and the panels leave.
 
 **With a finger**: a row over the map's foot: **Done** (a line, polygon or measurement being drawn),
 **Back** (one level, as Esc), **Delete** and **Duplicate** (a selection), **Snap** (a tool on; off
-places exactly where tapped, as Alt), **Undo** (a phone), **Properties** (a selection, Properties
-off). Handles are 14 px, grabbed within 22 px; snapping reaches 16 px; a + only on legs over 80 px; a
+places exactly where tapped, as Alt), **Undo** and **Properties** (a phone: a selection, Properties off). Handles are 14 px, grabbed within 22 px; snapping reaches 16 px; a + only on legs over 80 px; a
 second finger during a drag puts it back and lets the map pinch.
 
 **Colours and sizes**: pressed is blue, a panel shown pale blue, magenta the map's own (measurements,
@@ -80,12 +87,13 @@ off. Its key works from anywhere; again, while it is on, it moves to its next ki
 - **Sector**: the centre; the radius and one edge; the other edge, clockwise (back on the first: a
   circle). Esc goes one click back.
 - **Label**: points at what snapping finds (else an area's centre, a place on a line), or is free
-  text where clicked; its text selected, ready to type.
+  text where clicked; its text selected, ready to type. It has no name of its own: the tree and
+  Properties show it by its text as it reads (a name typed wins).
 - What is drawn or dragged shows its values on the map (legs, total, area, radius). Exact lengths and
-  bearings are typed afterwards, in the vertex and corner tables (§5).
+  bearings are typed afterwards, in the points' and corners' tables (§5).
 - **Shift**: 15° steps from the leg before (from north for the first). **Alt**: nothing snapped or
   attached.
-- **Esc** or a right-click steps back one level: what is half drawn, else what was measured, else the
+- **Esc** or a right-click steps back one level: what is half drawn, else the
   tool, else Attach to… waiting, else the selection.
 
 ### 2.2 Snapping and attaching
@@ -103,16 +111,17 @@ edit of what it is on keeps it on the nearest vertex or edge.
 
 ## 3. Measure
 
-Measure measures without drawing: a click per point, snapped; each leg and the total shown. Enter or
-a double-click ends it; a click on its first point closes it (area and perimeter). It stays on the
-map, a card at the map's foot saying it, until Esc, the next measurement or the tool's end. **Keep**
-puts it in the drawing as a line "Distance 1" or an area: a guide showing its values, magenta and
-dashed; unticking Guide makes it part of the drawing.
+Measure: a click per point, snapped; each leg and the total shown. Enter or a double-click ends it; a
+click on its first point closes it (area and perimeter). What it measured goes in the drawing,
+selected, as a line "Distance 1" or an area: a guide showing its values, magenta and dashed. Saved,
+printed and exported with the drawing; Delete (or Undo) removes it; unticking Guide makes it part of
+the drawing.
 
 ## 4. The tree
 
-- Its first row is the drawing: its title (a click shows it in Properties, turning them on), how many
-  elements it holds, and an eye for everything listed.
+- Its first row is the drawing: its title ("Untitled drawing" while it has none; a click selects it:
+  Properties, when on, show it; a double-click renames it, as in the ☰ menu), how many elements it
+  holds, and an eye for everything listed.
 - Then groups first, what is in each one step further in (a group folds), then the rest. A row: the
   element's icon (a point by what it looks like), its name (else its kind and place), a short value
   (size, radius, length, area, text, a group's count), its eye.
@@ -120,8 +129,8 @@ dashed; unticking Guide makes it part of the drawing.
   dragged onto a group goes into it; onto a row of its kind, before it and into its group; onto
   another, into its group. Ctrl/⌘ ] and [ move the selection a step up or down among its kind.
 - Selecting: a click (Shift: a range; Ctrl/⌘: add or remove), ↑ ↓, or on the map (the tree follows);
-  hovering a row outlines its element. **Shift-drag** on the map, no tool on, adds what lies entirely
-  inside the box. Past 30 elements a filter appears (names and property values), with **Select all
+  hovering a row outlines its element. **Box select** (or Shift-drag) on the map adds what lies
+  entirely inside the box. Past 30 elements a filter appears (names and property values), with **Select all
   shown**. Double-click a name, or F2, renames.
 
 ## 5. Properties
@@ -131,27 +140,48 @@ two points, **Connect…**), a group, or the drawing (title, description, author
 drawing's look; **Totals** by group or by a property, Copy). A field applies on Enter or when left,
 one undo step; a value that does not read stays marked and is not applied; Esc puts it back. ↑ ↓
 nudge a number by its last digit (Shift: ten). Distances show to the decimetre (m), the metre (km) or
-about 2 m (NM); what is typed is kept as typed.
+about 2 m (NM); what is typed is kept as typed. Properties is updated in place as the drawing changes
+(a field being typed in keeps its text and the focus; Tab and a click go where they go), and
+follows a drag on the map as it moves.
 
 - **Rows**: a label, one value or a pair (latitude · longitude, colour · opacity), and a last column
   for an action (detach, attach, ↺); actions of a value are buttons in a row under it.
-- **Lists** (parts, vertices, corners, data): their first columns stay as the rest scrolls sideways;
-  the row clicked is current, its actions under the list and on keys (Insert, Ctrl/⌘ Delete); ↑ ↓
-  and Enter keep the column. Past 100 rows, a page at a time. **Copy** gives every row,
-  tab-separated, for a spreadsheet. Typed in a table, a leg's or edge's length and bearing move that
-  place and those after it together (an attached end stays attached).
+- **Lists** (parts, a line's points, an area's corners, data): a long one scrolls in its own box,
+  its head kept; its first column stays as the rest scrolls sideways. The row clicked is current, its
+  actions in a bar over the list and on keys (Insert, Ctrl/⌘ Delete); ↑ ↓ and Enter keep the column.
+  Past 100 rows, a page at a time. **Copy** gives every row, tab-separated, for a spreadsheet.
+  Numbers are right-aligned, of one width, with fixed decimals: degrees to 6 (a decimetre),
+  distances in the column's unit (km or NM, in its head) to 3, bearings to 1.
+- **A line's points**, 1 (its start) to N (its end): Lat, Lon; the **leg** from the point before,
+  its length and bearing (typed: that point alone moves, the legs either side of it change); **Along**,
+  from the start; a vertex's name. An end attached shows what to, its leg as it is; its row's bar has
+  **Attach to…** (pressed while the next click chooses) and **Detach** (it stays where it is). An
+  area's **corners** the same, 1 to n, corner 1's edge from the last. The row current is ringed on
+  the map; a point pressed on the map makes its row current, on its page.
 - **The look's cascade:** an element's own value, else the drawing's Display, else the default; **↺**
   gives a field back. Where several differ a field says "mixed" and a change writes only that field.
   A group is only who is in it: joining or leaving changes nothing of an element; its Look sets each
   member. A hidden group hides everything in it. **Min. size** is the drawing's only: shapes shorter
   than it on screen are drawn enlarged, dotted.
-- A line's **Start** and **End**, a row each: what it is attached to with the broken link (detach,
-  it stays where it is), or its position; at the row's end **Attach to…**, pressed while the next
-  click chooses. **Legs**: straight, or smooth (a curve through the vertices, following them).
+- A line's **Path**: straight, or smooth (a curve through the vertices, following them).
   **Depth profile**: the depth along it from the depth shading's grid (at most 1,000 places), its
   extremes, a chart linked to the map both ways, its length along the seabed, CSV.
-- A point's **Parts** are its own: circles, sectors, outlines, each with Fill, Shown and a name.
+- A point's **Parts** are its own: circles, sectors, outlines; a table of Kind, **Size** (a radius, an
+  outline's length), **Across** (a sector's aperture in °, an outline's width), Fill, Shown and a name.
+  One way to add one: the table's empty last row. The row current draws its part over on the map; a
+  part's handle pressed on the map makes its row current. All parts share the point's Bearing (a
+  sector centred on it, an outline facing it). **Distribute along…** goes round the part whose row
+  is current (the form can choose another).
   **Data**: its properties as keys and values, folded while it has none of the user's.
+- A **label**: its text, with value codes ({name}, {along}…: **+ name** and the like insert them) and,
+  while it has any, what it **reads** under it; **Attached to** what and where (a line's point or leg,
+  an area's or outline's corner or edge, as the tables number them), or its **Position**; **Along**, on
+  a line; **Text offset**, where its text was dragged to (↺: back); **Leader**, when attached. Look:
+  text size, colour, background (halo or box).
+- A **group**: **In group** (the group it is in, as every element's), **Members** as the tree counts
+  them (everything in it, its subgroups' too) and its subgroups, with an eye for all of them;
+  **Select members**; **Totals** as the drawing's, its members only, by subgroup (Copy); **Look ·
+  sets each member** (a group has no look of its own).
 - **Guide** (points, lines, areas): faint and dashed, left out of the totals.
 
 ## 6. Distribute along and Connect: rules
@@ -215,7 +245,7 @@ from its bearing, a sector's arc, an outline's ring) opens a form in Properties:
 | I | Properties on or off |
 | P, G, S, T, M | point, line, shape, label, measure |
 | a tool's key again | its next kind |
-| Shift-drag | a box: what lies inside added to the selection |
+| B, Shift-drag | Box select: a box, what lies inside added to the selection |
 | Enter, double-click | finishes |
 | Backspace | takes back a point |
 | Esc, right-click | steps back one level |

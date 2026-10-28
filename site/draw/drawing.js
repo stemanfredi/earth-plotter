@@ -1,6 +1,6 @@
 // The drawing on the map: the document being edited (store.js: undo, selection), drawn in the
 // layers of layers.js from features.js and labels.js, with the placing tools, clicks, hit testing,
-// dragging and the Select area tool; saved in this browser as it changes (saving.js).
+// dragging and the box (Shift-drag); saved in this browser as it changes (saving.js).
 
 import { emptyDoc, addPoint, addLine, addLabel, addArea, find, elements, isShown, nextName, makePart, KIND, LABEL_OFFSET, lookOf, setLook, offsetOf, mainOutline, MAX_RADIUS } from './document.js';
 import { typing } from '../dom.js';
@@ -14,7 +14,7 @@ import { addIcons, measureText, HIT_LAYERS, MARK_LAYERS, HANDLE_LAYERS, CURSOR, 
 import { drawParts, enlargement, zoomDependent, GEOMETRY, shapeOf, valueFeatures, ringOf } from './features.js';
 import { lineTrace, nearestAlong, positionsOf } from './lines.js';
 import { labelFeatures } from './labels.js';
-import { inverse, cornersOf, pathOf, sector, circle, areaOf } from '../geodesy.js';
+import { inverse, cornersOf, pathOf, sector, circle } from '../geodesy.js';
 import { snapAt, stepped, neighbours, RADIUS as SNAP_RADIUS } from './snap.js';
 import { attachTo, insertCorner, addVertex, refNear, lineRef, resolve } from './attach.js';
 import { copyOf, paste, centreOf } from './clipboard.js';
@@ -53,10 +53,11 @@ export class Drawing extends DrawStore {
     this.areaEvents(map);
     this.keyEvents(map);
     this.drag = null; // a drag under way: { id, role, ref, start, orig (the document before), moved }
+    this.boxNext = false; // Box select on: the next drag on the map draws the box (boxSelect)
     this.repointing = null; // { id, key }: what the next click attaches a label's anchor or a line's end to (its inspector's Attach to…)
     this.picking = null; // the Connect form: what a click on the map picks (roots)
     this.marksOn = true;
-    // what each tool with kinds makes (its sub-rail; drawing-ui.md §2): Point a symbol or a preset
+    // what each tool with kinds makes (its row of kinds; drawing-ui.md §2): Point a symbol or a preset
     // of the user's with only a symbol; Shape a circle, rings, a sector (three clicks), an outline, a
     // polygon or a preset with extent (a line is a line: Guide is its switch); Measure a distance (a
     // line), an area (a polygon) or a ring (a circle), each a guide showing its values
@@ -83,6 +84,7 @@ export class Drawing extends DrawStore {
   changed() { this.render(); this.saving.soon(); this.onChange('doc'); }
   selectionChanged() {
     if (this.repointing && !this.sel.has(this.repointing.id)) this.cancelRepoint();
+    this.placeMark = this.placeKey = null;
     this.renderMarks();
     this.onChange('sel');
   }
@@ -124,6 +126,9 @@ export class Drawing extends DrawStore {
       for (const q of this.picked || []) over.push({ type: 'Feature', properties: { kind: 'pick' }, geometry: { type: 'Point', coordinates: q } });
       // where a click or a drag would snap: a ring on a vertex, a cross at a crossing, a dot on an edge
       if (this.snapMark) over.push({ type: 'Feature', properties: { kind: `snap${this.snapMark.kind}` }, geometry: { type: 'Point', coordinates: this.snapMark.position } });
+      // the place of the row current in Properties' table (a line's point, an area's corner): ringed
+      if (this.placeMark) over.push(this.placeMark.line ? { type: 'Feature', properties: { kind: 'placeline' }, geometry: { type: 'LineString', coordinates: this.placeMark.line } }
+        : { type: 'Feature', properties: { kind: 'place' }, geometry: { type: 'Point', coordinates: this.placeMark } });
       set('drawover', over);
       this.renderLabels();
     }
@@ -201,7 +206,7 @@ export class Drawing extends DrawStore {
     }
     if (this.tool === 'point' || this.tool === 'shape') { this.snapFor(e.point, e.originalEvent); this.renderMarks(); return; } // where a click would place it
     if (this.snapMark && !this.drag) { this.snapMark = null; this.renderMarks(); }
-    if (this.repointing) { this.map.getCanvas().style.cursor = 'crosshair'; return; }
+    if (this.repointing || this.boxNext) { this.map.getCanvas().style.cursor = 'crosshair'; return; }
     // picking roots (the form's Connect): over a point, it is taken (or dropped); elsewhere, a new
     // root is placed there
     if (this.picking && !this.tool) { this.map.getCanvas().style.cursor = this.pointAt(e.point) ? 'pointer' : 'crosshair'; return; }
@@ -218,13 +223,22 @@ export class Drawing extends DrawStore {
   }
 
   // ---- what the panel sets ------------------------------------------------------------------
+  // what the row current in Properties' table is, marked on the map: a place (a position: ringed), a
+  // part ({ line: its outline's coordinates }: drawn over), or null: none
+  markPlace(p) {
+    const key = p ? JSON.stringify(p) : null;
+    if (key === this.placeKey) return;
+    this.placeKey = key;
+    this.placeMark = p;
+    this.renderMarks();
+  }
   // what the next click on the map attaches (Attach to…): a label's anchor (key 'anchor'), a line's
   // start or end; or nothing
   startRepoint(id, key = 'anchor') { this.repointing = { id, key }; this.map.getCanvas().style.cursor = 'crosshair'; }
   cancelRepoint() { this.repointing = null; this.map.getCanvas().style.cursor = ''; }
   // what a click on the map picks while the generator's form is open (fn(nodeId, position)), or null
   setPicking(fn) { this.picking = fn; if (!fn && !this.tool) this.map.getCanvas().style.cursor = ''; }
-  // a tool's variant chosen (its sub-rail): the tool on with it
+  // a tool's variant chosen (its row of kinds): the tool on with it
   setVariant(button, v) {
     this.variant[button] = v;
     this.start(button);
@@ -235,6 +249,7 @@ export class Drawing extends DrawStore {
   // ---- tools -----------------------------------------------------------------------------
   start(tool) {
     if (this.tool) this.stop();
+    this.boxNext = false;
     clearTimeout(this.dblZoom); // stop()'s, which would turn it on again after this
     const v = this.variant[tool];
     this.pressed = tool;
@@ -249,7 +264,6 @@ export class Drawing extends DrawStore {
     this.tool = null;
     this.pressed = null;
     this.draft = null;
-    this.measurement = null;
     this.renderMarks();
     this.map.getCanvas().style.cursor = '';
     this.dblZoom = setTimeout(() => this.map.doubleClickZoom.enable(), 0);
@@ -389,12 +403,12 @@ export class Drawing extends DrawStore {
   }
   // Measure (drawing-ui.md §3): a click a point, snapped (the leg's length and the total shown as it
   // is drawn); Enter or a double-click ends it, a click on its first point closes it (its area and
-  // perimeter). What is measured stays on the map, not in the drawing, until Esc, the next
-  // measurement or the tool's end; Keep makes it a guide showing its values.
+  // perimeter). What is measured goes in the drawing as a measurement (a guide showing its values),
+  // selected: saved and printed with it, deleted as anything else.
   measureClick(point, e) {
     if (this.closesPolygon(point)) return this.finishMeasure(true);
     const p = this.snapFor(point, e, this.lastLeg()).position;
-    if (!this.draft) { this.measurement = null; this.draft = { pts: [] }; }
+    if (!this.draft) this.draft = { pts: [] };
     const last = this.draft.pts.at(-1);
     if (!last || last[0] !== p[0] || last[1] !== p[1]) this.draft.pts.push(p);
     this.renderMarks();
@@ -404,33 +418,17 @@ export class Drawing extends DrawStore {
     const pts = this.draft?.pts ?? [];
     if (pts.length < (closed ? 3 : 2)) return;
     this.draft = null;
-    this.measurement = { pts, closed };
-    this.renderMarks();
-    this.onChange('measured');
-  }
-  // what was measured: { closed, length (a closed one's: its perimeter), legs, area }, or null
-  measured() {
-    const m = this.measurement;
-    if (!m) return null;
-    const ring = m.closed ? pathOf(m.pts, true) : m.pts;
-    return { closed: m.closed, length: ring.slice(1).reduce((t, q, i) => t + inverse(ring[i], q).s, 0), legs: ring.length - 1, area: m.closed ? areaOf(ring) : null };
-  }
-  keepMeasurement() {
-    const m = this.measurement;
-    if (!m) return;
     let el;
-    this.change((doc) => { el = m.closed ? addArea(doc, m.pts, guideWithValues()) : addLine(doc, m.pts[0], m.pts.slice(1, -1), m.pts.at(-1), { ...guideWithValues(), name: nextName(doc, 'line', 'Distance') }); });
-    this.clearMeasurement();
+    this.change((doc) => { el = closed ? addArea(doc, pts, guideWithValues()) : addLine(doc, pts[0], pts.slice(1, -1), pts.at(-1), { ...guideWithValues(), name: nextName(doc, 'line', 'Distance') }); });
     this.select([el.id]);
+    this.onChange('draft');
   }
-  clearMeasurement() { this.measurement = null; this.renderMarks(); this.onChange('measured'); }
   // the keys' (keyEvents): Enter or a double-click ends the line, polygon or measurement being drawn;
-  // Esc drops it, or else what was measured, or else ends the tool
+  // Esc drops it, or else ends the tool
   finish() { if (this.tool === 'line') this.finishLine(); else if (this.tool === 'polygon') this.finishPolygon(); else if (this.tool === 'measure') this.finishMeasure(); }
   escape() {
     if (this.tool === 'sector' && this.draft?.pts.length) return this.undoPoint(); // one click back
     if (this.draft && (this.draft.start || this.draft.pts.length)) this.cancelDraft();
-    else if (this.measurement) this.clearMeasurement();
     else this.stop();
   }
   finishesOnDoubleClick() { return ['line', 'polygon', 'measure'].includes(this.tool); }
@@ -520,11 +518,10 @@ export class Drawing extends DrawStore {
     const pts = [...d.pts, ...(this.cursor ? [this.cursor.p] : [])];
     return { pts };
   }
-  // the measurement being drawn, to the cursor, or the one made: { pts, closed }, or null
+  // the measurement being drawn, to the cursor: { pts, closed }, or null
   draftMeasure() {
-    if (this.tool !== 'measure') return null;
-    if (this.draft) return { pts: [...this.draft.pts, ...(this.cursor ? [this.cursor.p] : [])], closed: false };
-    return this.measurement ?? null;
+    if (this.tool !== 'measure' || !this.draft) return null;
+    return { pts: [...this.draft.pts, ...(this.cursor ? [this.cursor.p] : [])], closed: false };
   }
   // the line being drawn, to the cursor: its points
   draftLine() {
@@ -558,7 +555,7 @@ export class Drawing extends DrawStore {
       ...this.draft.pts.map((c) => ({ type: 'Feature', properties: { kind: 'draftpt' }, geometry: { type: 'Point', coordinates: c } }))];
     const m = this.draftMeasure();
     if (m) return [{ type: 'Feature', properties: { kind: 'draft' }, geometry: { type: 'LineString', coordinates: m.closed ? pathOf(m.pts, true) : m.pts } },
-      ...(this.draft?.pts ?? m.pts).map((c) => ({ type: 'Feature', properties: { kind: 'draftpt' }, geometry: { type: 'Point', coordinates: c } }))];
+      ...this.draft.pts.map((c) => ({ type: 'Feature', properties: { kind: 'draftpt' }, geometry: { type: 'Point', coordinates: c } }))];
     if (this.tool !== 'line') return [];
     const l = this.draftLine(), f = [];
     if (!l) return f;
@@ -609,6 +606,11 @@ export class Drawing extends DrawStore {
       const pt = at(e), h = this.handleAt(pt);
       const grab = h || (this.hitAt(pt, 3).some((id) => this.sel.has(id)) ? { role: 'move' } : null);
       if (!grab) return;
+      // a line's point, an area's corner or a point's part (a handle of it) pressed: its row in
+      // Properties' table made current (place: the element and the row's index, a line's start 0)
+      const index = h?.role === 'vertex' ? +h.ref + 1 : h?.role === 'end' ? (+h.ref ? find(this.doc, h.id)?.el.vertices.length + 1 : 0) : h?.role === 'ppoint' ? +h.ref
+        : ['radius', 'aperture', 'corner', 'side'].includes(h?.role) ? parseInt(h.ref, 10) : null;
+      if (index != null) { this.place = { id: h.id, index }; this.onChange('place'); }
       map.dragPan.disable();
       const ll = map.unproject([pt.x, pt.y]);
       this.drag = { ...grab, start: [ll.lng, ll.lat], from: pt, orig: JSON.stringify(this.doc), moved: false, pointer: e.pointerId };
@@ -662,6 +664,7 @@ export class Drawing extends DrawStore {
       if (this.drag) return this.cancelDrag();
       if (this.repointing) { this.cancelRepoint(); return this.onChange('sel'); }
       if (this.tool) return this.escape();
+      if (this.boxNext) return this.boxSelect(false);
       this.select([]);
     };
     let right = null;
@@ -774,6 +777,14 @@ export class Drawing extends DrawStore {
     for (const n of doc.points) if (acc.points.has(n.id)) n.position = mv(n.position);
   }
 
+  // Box select (Select's other kind, B): the next drag on the map, a mouse's or a finger's, draws the
+  // box (as Shift-drag does), then back to Select; on: false puts it off
+  boxSelect(on) {
+    if (on && this.tool) this.stop();
+    this.boxNext = on;
+    this.map.getCanvas().style.cursor = on ? 'crosshair' : '';
+    this.onChange('tool');
+  }
   // ---- box select: Shift-drag a box with no tool on, what lies inside added to the selection -------
   areaEvents(map) {
     const box = document.createElement('div');
@@ -785,7 +796,7 @@ export class Drawing extends DrawStore {
     map.boxZoom.disable(); // Shift-drag is the box's, not the map's box zoom
     // first (capture, after a drag's): Shift pressed on the map with no tool, not on what a drag takes
     map.getCanvasContainer().addEventListener('pointerdown', (e) => {
-      if (this.tool || this.drag || !e.shiftKey || e.button !== 0 || e.ctrlKey || e.metaKey) return;
+      if (this.tool || this.drag || !(e.shiftKey || this.boxNext) || e.button !== 0 || e.ctrlKey || e.metaKey) return;
       map.dragPan.disable();
       from = at(e);
       Object.assign(box.style, { left: `${from.x}px`, top: `${from.y}px`, width: '0px', height: '0px' });
@@ -802,6 +813,7 @@ export class Drawing extends DrawStore {
       from = null;
       box.hidden = true;
       map.dragPan.enable();
+      if (this.boxNext) this.boxSelect(false); // one box, then Select again
       if (Math.abs(p.x - a.x) < 3 && Math.abs(p.y - a.y) < 3) return; // a click, not a drag
       this.select(this.inside([Math.min(a.x, p.x), Math.min(a.y, p.y), Math.max(a.x, p.x), Math.max(a.y, p.y)]), 'add');
       this.onChange('area');
@@ -847,5 +859,5 @@ export class Drawing extends DrawStore {
 }
 
 const ALL_PARTS = { base: true, zoom: true, marks: true }, MARKS_ONLY = { marks: true };
-const guideWithValues = () => ({ guide: true, look: { text: { values: true } } }); // what Measure's Keep makes; how what is drawn shows its values
+const guideWithValues = () => ({ guide: true, look: { text: { values: true } } }); // what Measure makes; how what is drawn shows its values
 

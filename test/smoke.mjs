@@ -269,17 +269,14 @@ await section('Copernicus layers, the time line, About, the manifest, my locatio
   check(!shownText.startsWith('Today') && cmHash.includes(`t=${new Date(ahead).toISOString().slice(0, 13)}`), `a time picked on the time line is drawn, shown beside the coordinates and kept in the link (${shownText})`);
   const cmAgain = await open(cmHash);
   check((await cmAgain.evaluate(() => document.querySelector('#when input').value)) === aLocal, 'the link reopens at that time');
-  await cm.click('#when [data-step="1"]');
-  await cm.waitForTimeout(500);
-  check((await cm.evaluate(() => location.hash)).includes(`t=${new Date(ahead + 36e5).toISOString().slice(0, 13)}`), 'the later button steps one hour');
   // a day typed key by key passes through years 0002, 0020, 0202: none of them is taken
   await cm.focus('#when input');
   await cm.keyboard.type(`${aLocal.slice(5, 7)}${aLocal.slice(8, 10)}${aLocal.slice(0, 4)}`); // en-US field: mm dd yyyy first
   await cm.waitForTimeout(500);
   check(/t=20\d\d-/.test(await cm.evaluate(() => location.hash)), 'a day typed key by key never jumps to a year before 2000');
-  await cm.click('#when [data-now]');
+  await cm.fill('#when input', await cm.evaluate(() => { const d = new Date(), p = (n) => String(n).padStart(2, '0'); return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:00`; }));
   await cm.waitForTimeout(500);
-  check((await cm.evaluate(() => document.querySelector('#shown').textContent)).startsWith('Today'), 'Now goes back to now');
+  check((await cm.evaluate(() => document.querySelector('#shown').textContent)).startsWith('Today'), 'now typed in the field goes back to today');
   // About, the bar's ⓘ
   await cm.click('#bar .aboutbtn');
   check(await cm.evaluate(() => document.querySelector('#about').open), 'the About button opens About');
@@ -493,7 +490,7 @@ await section('the depth on a click', async () => {
     return dp.evaluate(() => document.querySelector('.depthpop .maplibregl-popup-content > div')?.textContent || '');
   };
   const sea = await at(8.3, 43.9), land = await at(8.0, 44.2);
-  check(/^\d+ mGEBCO 2026 · (surveyed|estimated|other grids, unknown)$/.test(sea) && !land && !dp.errors.length, `a click on the sea gives its depth and source (${sea}); on land, nothing ${dp.errors.join(' | ')}`);
+  check(/^\d+ m\d+°[\d.]+′[NS] \d+°[\d.]+′[EW]GEBCO 2026 · (surveyed|estimated|other grids, unknown)$/.test(sea) && !land && !dp.errors.length, `a click on the sea gives its depth, the place and the source (${sea}); on land, nothing ${dp.errors.join(' | ')}`);
   // isobaths over the shading take its colours up to its last zoom, then the style's blue again
   const ink = await dp.evaluate(() => [map.getPaintProperty('isobaths', 'line-color'), map.getStyle().layers.find((l) => l.id === 'depth').maxzoom]);
   check(Array.isArray(ink[0]) && ink[0][0] === 'step' && ink[0][3] === ink[1] && ink[0][4] === '#335f97', `isobaths: the shading's colours up to zoom ${ink[1]}, its deepest blue above (${JSON.stringify(ink[0]).slice(0, 80)})`);
@@ -763,7 +760,7 @@ await section('the drawing', async () => {
   // the group above in Properties: its members counted as the tree does, its totals as a table
   await dw.evaluate((t) => drawing.select([t]), top);
   const gprops = await dw.evaluate((t) => [document.querySelector('.dinspect .frow:has(.flabel) .fvalue')?.textContent ?? '', document.querySelector(`.dlist [data-id="${t}"] .val`)?.textContent ?? '',
-    !!document.querySelector('.dinspect .vtable.totals'), [...document.querySelectorAll('.dinspect h3')].map((x) => x.textContent).join()], top);
+    !!document.querySelector('.dinspect .lgrid.plain[data-grid$="totals"]'), [...document.querySelectorAll('.dinspect h3')].map((x) => x.textContent).join()], top);
   check(gprops[0].split(' ')[0] === gprops[1].split(' ')[0] && / · 1 subgroup$/.test(gprops[0]) && gprops[2] && /Look · sets each member/.test(gprops[3]),
     `group: its members as the tree counts them, and its subgroups (${gprops[0]}; tree ${gprops[1]}); its totals a table; its Look said to set each member (${gprops[3]})`);
   await dw.evaluate((id) => drawing.remove([id]), nested?.id);
@@ -789,7 +786,7 @@ await section('the drawing', async () => {
   const gsp = dw.locator('input[aria-label=Spacing]');
   await gsp.fill('2 km');
   await gsp.press('Enter');
-  await dw.click('.dinspect label:has-text("Connect to roots") input');
+  await dw.click('.dinspect input[aria-label="Connect to roots"]');
   await dw.mouse.click(DX + 420, 700); // the circle's centre: a root (a click on a point uses it)
   const mb = dw.locator('input[aria-label="Shortest branch"]'); // Tree: each branch at least this long
   await mb.fill('300 m');
@@ -1012,7 +1009,7 @@ await section('the drawing', async () => {
   await val.press('Enter');
   await dw.click('.droot .dname');
   await dw.selectOption('.dinspect select[aria-label="Totals by"]', 'kind');
-  const byKind = await dw.evaluate(() => [...document.querySelectorAll('.dinspect .vtable.totals td:first-child')].map((td) => td.textContent));
+  const byKind = await dw.evaluate(() => [...document.querySelectorAll('.dinspect .lgrid.plain td:first-child')].map((td) => td.textContent));
   check(byKind.some((t) => t.endsWith('“x”')) && byKind.some((t) => t.endsWith('No kind')), `drawing: a property added in Data, the totals by its key (${byKind.join(', ')})`);
   const pointed = await dw.evaluate(async () => { const { resolve } = await import('./draw/attach.js'); return resolve(drawing.doc, drawing.doc.labels[0].anchor).position; });
   await dw.evaluate((id) => drawing.remove([id]), nid);
@@ -1115,7 +1112,7 @@ await section('the drawing', async () => {
   // Properties updated in place (dom.js morph): Tab, or a click into another field, from a field just
   // applied lands there; the same in a list
   const fl = await dw.evaluate(async () => { const { addLine } = await import('./draw/document.js'); let l; drawing.change((d) => { l = addLine(d, [12.0, 40.3], [[12.05, 40.32]], [12.1, 40.3]); }); drawing.select([l.id]); return l.id; });
-  const focused = () => dw.evaluate(() => document.activeElement?.getAttribute('aria-label'));
+  const focused = () => dw.evaluate(() => document.activeElement?.closest('[aria-label]')?.getAttribute('aria-label'));
   await dw.click('.dinspect input[aria-label="Name"]');
   await dw.keyboard.type('Q');
   await dw.keyboard.press('Tab');
@@ -1131,7 +1128,7 @@ await section('the drawing', async () => {
   await dw.keyboard.type('40.33');
   await dw.keyboard.press('Tab');
   const inList = await focused();
-  check(afterTab === 'In group' && clicked === 2 && inList === 'Point 2 longitude', `Properties in place: Tab from a field applied (${afterTab}), a click into the next (Offset ${clicked}), Tab in a list (${inList})`);
+  check(afterTab === 'Path' && clicked === 2 && inList === 'Point 2 longitude', `Properties in place: Tab from a field applied (${afterTab}), a click into the next (Offset ${clicked}), Tab in a list (${inList})`);
   await dw.evaluate((id) => drawing.remove([id]), fl);
   check(!dw.errors.length, `drawing: no errors ${dw.errors.join(' | ')}`);
   await dw.close();

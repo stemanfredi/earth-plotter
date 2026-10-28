@@ -1,13 +1,15 @@
 // The panels' fields (Tools, Layers). A field applies on Enter or when it loses focus, never
 // on each key; a value it cannot read stays marked, is not applied, and note() says why; Esc puts
 // back what it showed and leaves it. A read gives the value to apply, or undefined: not valid (null
-// is a value: "none", "the default").
+// is a value: "none", "the default"). A distance's, an angle's or a coordinate's get() null (several
+// elements that differ): the field empty, "mixed" its placeholder.
 
 import { h } from './dom.js';
 import { parseCoord, parseDist, distText, UNIT_M } from './format.js';
 import { MAX_LAT, norm360 } from './geo.js';
 
 const num = (t) => Number(t.replace(',', '.').trim());
+const UNIT_TEXT = { m: 'm', km: 'km', nm: 'NM' };
 // A number in a text stepped by one unit of its last decimal place (a whole: by 1), ten with big, its
 // unit kept ("1.2 km" ↑ "1.3 km"); lo: the least it may be. null: no number there.
 export function stepped(text, up, big, lo = -Infinity) {
@@ -67,33 +69,37 @@ export function fields({ note, units }) {
   // a distance in the display units (a suffix may say another: 500 m, 1.2 NM). zero: 0 allowed;
   // check(m): an error text, or null; in: a unit of its own ('km', 'nm'), its number alone shown to the
   // metre (a table's column, its unit in the head)
+  // The number alone is shown; its unit is beside it (the field's unitText(): the panel's row says
+  // it), or in a table's head
   const dist = (get, put, aria, { zero = false, check = () => null, in: fixed = null, ...attrs } = {}) => {
     let unit;
-    return field(() => { if (fixed) { unit = fixed; return (get() / UNIT_M[fixed]).toFixed(3); } const t = distText(get(), units()); unit = t.unit; return zero && !get() ? '0' : t.text; }, (t) => {
+    const input = field(() => { const v = get(); if (v == null) { unit = fixed || (units() === 'nm' ? 'nm' : 'km'); return ''; } if (fixed) { unit = fixed; return (v / UNIT_M[fixed]).toFixed(3); } const t = distText(v, units()); unit = t.unit; return zero && !v ? '0' : `${t.value}`; }, (t) => {
       const m = zero && t.trim() === '0' ? 0 : parseDist(t, unit);
       return m === null || (zero ? m < 0 : m <= 0) || check(m) ? undefined : m;
     }, put, { 'aria-label': aria, class: 'dist', nudge: (t, up, big) => stepped(t, up, big, 0), bad: zero ? 'a distance, 0 or more, with m, km or NM' : 'a distance above 0, with m, km or NM',
-      title: 'A distance: 500 m, 1.2 km, 0.8 NM (no unit: the one shown)', ...attrs });
+      title: 'In the unit beside it, or with one', placeholder: 'mixed', ...attrs });
+    input.unitText = () => UNIT_TEXT[unit];
+    return input;
   };
   // degrees: wrap (a bearing: any number, read modulo 360), else strictly between lo and hi; fixed:
   // its decimals always shown (a table's column)
-  const angle = (get, put, aria, { lo = 0, hi = 360, wrap = true, fixed = null } = {}) => field(() => (fixed == null ? `${+get().toFixed(4)}` : get().toFixed(fixed)), (t) => {
+  const angle = (get, put, aria, { lo = 0, hi = 360, wrap = true, fixed = null } = {}) => field(() => { const v = get(); return v == null ? '' : fixed == null ? `${+v.toFixed(4)}` : v.toFixed(fixed); }, (t) => {
     const v = num(t.replace('°', ''));
     if (t.trim() === '' || !Number.isFinite(v)) return undefined;
     if (wrap) return norm360(v);
     return v > lo && v < hi ? v : undefined;
-  }, put, { 'aria-label': aria, class: 'angle', inputmode: 'decimal', nudge: (t, up, big) => { const v = num(t.replace('°', '')); return Number.isFinite(v) ? `${+(v + (up ? 1 : -1) * (big ? 10 : 1)).toFixed(4)}` : null; }, bad: wrap ? 'degrees' : `degrees between ${lo} and ${hi}` });
+  }, put, { 'aria-label': aria, class: 'angle', inputmode: 'decimal', placeholder: 'mixed', nudge: (t, up, big) => { const v = num(t.replace('°', '')); return Number.isFinite(v) ? `${+(v + (up ? 1 : -1) * (big ? 10 : 1)).toFixed(4)}` : null; }, bad: wrap ? 'degrees' : `degrees between ${lo} and ${hi}` });
   // one coordinate (axis 'lat' or 'lon'): decimal degrees, degrees and minutes, DMS, a hemisphere letter;
   // fixed: its decimals always shown (a table's column: 6, a decimetre)
-  const coord = (axis, get, put, aria = axis === 'lat' ? 'Latitude' : 'Longitude', fixed = null) => field(() => (fixed == null ? `${+get().toFixed(7)}` : get().toFixed(fixed)), (t) => {
+  const coord = (axis, get, put, aria = axis === 'lat' ? 'Latitude' : 'Longitude', fixed = null) => field(() => { const v = get(); return v == null ? '' : fixed == null ? `${+v.toFixed(7)}` : v.toFixed(fixed); }, (t) => {
     const v = parseCoord(t, axis);
     return v === null || (axis === 'lat' && Math.abs(v) > MAX_LAT) ? undefined : v;
-  }, put, { 'aria-label': aria, class: 'coord', bad: axis === 'lat' ? 'a latitude between −85.05 and 85.05 (N or S)' : 'a longitude between −180 and 180 (E or W)',
-    title: 'Decimal degrees, degrees and minutes (37 17.48N) or DMS' });
-  // a position [lon, lat]: its latitude, then its longitude, each applied alone
-  const position = (get, put, aria = '') => [
-    h('span', { class: 'funit' }, 'Lat'), coord('lat', () => get()[1], (v) => put([get()[0], v]), `${aria}Latitude`.trim()),
-    h('span', { class: 'funit' }, 'Lon'), coord('lon', () => get()[0], (v) => put([v, get()[1]]), `${aria}Longitude`.trim())];
+  }, put, { 'aria-label': aria, class: 'coord', placeholder: 'mixed', bad: axis === 'lat' ? 'a latitude between −85.05 and 85.05 (N or S)' : 'a longitude between −180 and 180 (E or W)',
+    title: 'Degrees, or 37 17.48N' });
+  // a position [lon, lat]: its latitude, then its longitude, each applied alone (fixed: decimals shown)
+  const position = (get, put, aria = '', fixed = null) => [
+    h('span', { class: 'funit' }, 'Lat'), coord('lat', () => get()[1], (v) => put([get()[0], v]), `${aria}Latitude`.trim(), fixed),
+    h('span', { class: 'funit' }, 'Lon'), coord('lon', () => get()[0], (v) => put([v, get()[1]]), `${aria}Longitude`.trim(), fixed)];
   // a number in a range (pixels, a count): empty → null when allowed; whole: integers only
   const number = (get, put, aria, { min = 0, max = Infinity, above = false, empty = false, whole = false, bad, ...attrs } = {}) => field(() => { const v = get(); return v == null ? '' : `${v}`; }, (t) => {
     if (!t.trim()) return empty ? null : undefined;

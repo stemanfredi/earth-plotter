@@ -217,6 +217,8 @@ new ResizeObserver(() => { document.documentElement.style.setProperty('--status-
 // ---- the compass (it only appears when the map is rotated) -------------------------------------
 const compass = $('#compass');
 compass.addEventListener('click', () => map.resetNorth());
+$('#zoom-in').addEventListener('click', () => map.zoomIn());
+$('#zoom-out').addEventListener('click', () => map.zoomOut());
 function renderCompass() {
   const b = map.getBearing();
   compass.hidden = Math.abs(b) < 0.5;
@@ -606,11 +608,10 @@ function setTime(t) {
 // ---- the map's settings: the time and the depth, for every layer that uses them -------------
 // Set on one line at the head of the Layers panel, read beside the coordinates. The time is a
 // datetime-local field in local time, on the hour (step 3600 s), within the times every layer on
-// has (min, max: the browser's calendar greys out the rest, the field's tooltip names them);
-// ‹ › step an hour (the finest step on), or a day when only daily layers are on, and stop at
-// those times; Now goes to now, or as near as they reach. Every layer draws the time shown at its
-// own time resolution: that hour, the 3-hour step holding it, that day.
-const when = $('#when'), whenIn = $('input', when), stepBtns = when.querySelectorAll('[data-step]'), depthSel = $('.depthsel', when), shown = shownEl;
+// has (min, max: the browser's calendar greys out the rest, the field's tooltip names them); the
+// chip opens the calendar itself. Every layer draws the time shown at its own time resolution:
+// that hour, the 3-hour step holding it, that day.
+const when = $('#when'), whenIn = $('input', when), depthSel = $('.depthsel', when), shown = shownEl;
 const pad = (n) => String(n).padStart(2, '0');
 const depthWords = (d) => (d ? `${d} m deep` : 'surface'); // each model at its level nearest the depth chosen
 const fmtDate = (t) => new Date(t).toLocaleDateString([], { day: 'numeric', month: 'short', year: 'numeric' });
@@ -639,9 +640,6 @@ whenIn.addEventListener('input', () => {
   const v = whenIn.validity;
   if (!(v.valueMissing || v.badInput || v.rangeUnderflow || v.rangeOverflow)) setTime(new Date(whenIn.value).getTime());
 });
-// by the clock, not the field's wall time: an hour is an hour across a change to summer time
-for (const b of stepBtns) b.addEventListener('click', () => setTime(state.time + b.dataset.step * (hourly() ? 36e5 : 864e5)));
-$('[data-now]', when).addEventListener('click', () => setTime(Date.now()));
 $('select', depthSel).append(...CMEMS_DEPTHS.map((d) => h('option', { value: d }, d ? `${d} m` : 'Surface')));
 $('select', depthSel).addEventListener('change', (e) => setDepth(+e.target.value));
 function renderWhen() {
@@ -655,7 +653,6 @@ function renderWhen() {
   whenIn.max = local(range[1]);
   whenIn.title = `Data: ${fmtDate(range[0])} – ${fmtDate(range[1])}`;
   if (document.activeElement !== whenIn) whenIn.value = local(state.time); // not while a time is typed in it
-  for (const b of stepBtns) b.title = `${b.dataset.step < 0 ? 'Earlier' : 'Later'}: one ${hr ? 'hour' : 'day'}`;
   depthSel.hidden = !deep;
   $('select', depthSel).value = state.depth;
   // beside the coordinates: "Today 18:00 · 100 m deep" (each model at its level nearest the depth
@@ -667,7 +664,7 @@ function renderWhen() {
   shown.textContent = [[day, hr ? d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''].filter(Boolean).join(' '),
     deep ? depthWords(state.depth) : ''].filter(Boolean).join(' · ');
   shown.title = `Time shown: ${d.toLocaleString([], hr ? { dateStyle: 'full', timeStyle: 'short' } : { dateStyle: 'full', timeZone: 'UTC' })}`
-    + `${deep ? `; depth: ${state.depth ? `${state.depth} m below the surface, each model at its level nearest it` : 'the surface'}` : ''}. A click: earlier, later`;
+    + `${deep ? `; depth: ${state.depth ? `${state.depth} m below the surface, each model at its level nearest it` : 'the surface'}` : ''}. A click: the calendar`;
 }
 // ---- graticule (WGS 84 lat/lon grid; spacing adapts to the view) -------------
 const STEPS = [30, 20, 10, 5, 2, 1, 30 / 60, 20 / 60, 10 / 60, 5 / 60, 2 / 60, 1 / 60];
@@ -733,6 +730,7 @@ const icon = (...paths) => svg('svg', { viewBox: '0 0 24 24', width: 20, height:
   paths.map((d) => (Array.isArray(d) ? svg('path', { d: d[0], fill: d[1], stroke: d[1] }) : svg('path', { d }))));
 const ICON = {
   search: ['M11 18a7 7 0 1 0 0-14 7 7 0 0 0 0 14z', 'm20 20-4-4'],
+  plus: ['M12 5v14', 'M5 12h14'], minus: ['M5 12h14'],
   link: ['M10 14a4 4 0 0 0 6 0l3-3a4 4 0 0 0-6-6l-1 1', 'M14 10a4 4 0 0 0-6 0l-3 3a4 4 0 0 0 6 6l1-1'],
   png: ['M4 5h16v14H4z', 'm4 17 5-5 4 4 3-3 4 4', 'M17 9.5a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0z'], // a picture
   zip: ['M4 4h16v4H4z', 'M5 8v12h14V8', 'M10 12h4'],
@@ -962,7 +960,8 @@ function renderStatus() {
 // switches them
 scaleEl.title = 'Distance units: a click switches km and NM';
 scaleEl.addEventListener('click', () => setDisplay({ units: display.units === 'km' ? 'nm' : 'km' }));
-// the time shown, a chip on the bottom row: a click shows its controls in a box over it
+// the time shown, a chip on the bottom row: a click opens the field's calendar (the field itself in a
+// box over the chip, with the depth select when a depth layer is on, for a browser without a picker)
 const timePop = $('#timepop');
 const timeBox = popup(timePop, {
   place: () => {
@@ -972,7 +971,7 @@ const timeBox = popup(timePop, {
 });
 Object.assign(shownEl, { tabIndex: 0 });
 shownEl.setAttribute('role', 'button');
-shownEl.addEventListener('click', (e) => timeBox.toggle(shownEl, e));
+shownEl.addEventListener('click', (e) => { timeBox.toggle(shownEl, e); if (!timePop.hidden) { try { whenIn.showPicker(); } catch { /* no picker here: the field is open */ } } });
 shownEl.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); shownEl.click(); } });
 function renderUnits() {
   scale.setUnit(display.units === 'nm' ? 'nautical' : 'metric');
@@ -1099,7 +1098,7 @@ search(map, maplibregl.Marker, free); // the search box (find a place)
 
 // ---- depth at a point: a click on the sea says its depth and where it comes from --------------
 // As the depth shading has it (the sea's clipped tile: GEBCO, cut to the OSM coastline, the
-// Caspian from its own surface), rounded towards shallower (16.6 m reads 16 m); while the depth
+// Caspian from its own surface), rounded towards shallower (16.6 m reads 16 m), the place beside it; while the depth
 // shading or the isobaths are on, and not while measuring (a click there adds a point)
 const depthPopup = new maplibregl.Popup({ className: 'depthpop', maxWidth: '240px', focusAfterOpen: false });
 // The depth profiles read (a line's Depth profile pressed), by trace: the GIS export's seabed lengths
@@ -1123,8 +1122,8 @@ map.on('click', async (e) => {
   if (!Number.isFinite(v)) { depthPopup.remove(); return; } // land, a lake, inland water: no depth here
   const source = DEPTH_SOURCES.find(({ codes: [a, b] }) => code >= a && code <= b);
   // −1: shallower than 1 m, or sea the data calls dry (clip.js)
-  const depth = v >= -1 ? 'Shallow: under 1 m, or not known' : `${Math.floor(-v)} m`;
-  depthPopup.setLngLat(e.lngLat).setDOMContent(h('div', {}, h('b', {}, depth),
+  const depth = v >= -1 ? 'Under 1 m' : `${Math.floor(-v)} m`;
+  depthPopup.setLngLat(e.lngLat).setDOMContent(h('div', {}, h('b', {}, depth), h('span', { class: 'at' }, `${dm(lat, 'N', 'S')} ${dm(((lng + 540) % 360) - 180, 'E', 'W')}`),
     h('small', {}, ['GEBCO 2026', source?.label.toLowerCase()].filter(Boolean).join(' · ')))).addTo(map);
 });
 // cursor position readout

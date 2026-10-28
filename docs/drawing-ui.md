@@ -38,16 +38,18 @@ One layout at every width (`site/frame.js`).
   panel comes back after; the first time in a visit a note says so, and Layers or Elements (or L,
   E) then brings it back, Properties off.
 - **The map's foot**: one strip above the bottom row, between the panels (a phone: above its sheet).
-  At its left, stacked: the note, the legends, the touch row; at its right **the map's controls**: my
-  position, north (only when turned); no zoom buttons. Nothing else sits there, so nothing overlaps.
-  The bottom row between the panels: credits, the time shown (a chip: ‹ hour ›, **Now**, the
-  depth), the cursor's position, the scale (a click switches km and NM).
+  At its left, stacked: the legends, the touch row; at its right **the map's controls**: my
+  position, zoom in and out, north (only when turned). Nothing else sits there, so nothing overlaps.
+  The bottom row between the panels: credits, the time shown (a chip: a click opens its calendar,
+  and the depth when a layer has one), the cursor's position, the scale (a click switches km and NM).
 - **Copy link** carries the view, the layers and the display settings (`u=nm`, `brg=1`), never the
   drawing. The drawing goes out as a file (**Download** › **Drawing (GeoJSON)**, with the view) and
   comes in by **Open a file…** or a file dropped on the map, after a report (what it holds, what was skipped and
   why); a presets file adds its presets (§9).
-- The note (the foot's top) says for a few seconds what just happened (with **Undo** where it
-  applies).
+- **The note**, a chip under the bar at the centre, says for a few seconds what the screen cannot
+  show: a value not applied and why, a file not read, what was copied, why a click or a box did
+  nothing, a root not used, a panel that made way. What is visible (a deletion, a copy selected, a
+  rule's result) is not said.
 
 **On a phone** (under 720 px) the bar holds **☰** (Open's menu with Download's, Copy link and About),
 Layers, Elements and the tools; Select (Back), Box, Undo and Properties are in the touch row, find
@@ -63,7 +65,7 @@ second finger during a drag puts it back and lets the map pinch.
 
 **Colours and sizes**: pressed is blue, a panel shown pale blue, magenta the map's own (measurements,
 the search's pin). With a mouse the bar is 35 px (28 px buttons), rows 24 px, heads 30 px; with a
-finger every target is 44 px. Text: 11, 12, 13, 14, 16 px.
+finger every target is 44 px. Text: 11, 12, 13, 14, 16 px (a × glyph 18 or 20).
 
 ## 2. Tools
 
@@ -139,53 +141,74 @@ the drawing.
 
 ## 5. Properties
 
-It shows one element, several (their count, chips, one Look for all, the distance and bearing between
-two points, **Connect…**), a group, or the drawing (title, description, author; **Display**, the
-drawing's look; **Totals** by group or by a property, Copy). A field applies on Enter or when left,
-one undo step; a value that does not read stays marked and is not applied; Esc puts it back. ↑ ↓
-nudge a number by its last digit (Shift: ten). Distances show to the decimetre (m), the metre (km) or
-about 2 m (NM); what is typed is kept as typed. Properties is updated in place as the drawing changes
-(a field being typed in keeps its text and the focus; Tab and a click go where they go), and
-follows a drag on the map as it moves.
+It shows one element, several (its head counts them by kind; what they share, set on all at once;
+one Look for all; how far apart two points are, and the bearing from the first to the second;
+**Connect…**), a group, or the drawing (title, description, author;
+**Display**, the drawing's look; **Totals** by group or by a property, Copy). A field applies on Enter
+or when left, one undo step; a value that does not read stays marked and is not applied; Esc puts it
+back. ↑ ↓ nudge a number by its last digit (Shift: ten). Distances show to the decimetre (m), the
+metre (km) or about 2 m (NM); what is typed is kept as typed. Properties is updated in place as the
+drawing changes (a field being typed in keeps its text and the focus; Tab and a click go where they
+go), and follows a drag on the map as it moves.
+
+One grammar, top to bottom: what it is (the rule that made it, its name), its geometry, its lists,
+its **actions** (one row of buttons: Edit… and Select all for what a rule made, Distribute along…,
+Save as preset…, Select members, Connect…), its **Look**, then its foot (**In group**, **Guide**,
+**Data**). Every number is 12 px, of one width; a unit stands beside its value in grey (a distance
+field shows its number, its unit next to it or in the column's head: typed with another unit, it is
+read in that one).
 
 - **Rows**: a label, one value or a pair (latitude · longitude, colour · opacity), and a last column
-  for an action (detach, attach, ↺); actions of a value are buttons in a row under it.
-- **Lists** (parts, a line's points, an area's corners, data): a long one scrolls in its own box,
-  its head kept; its first column stays as the rest scrolls sideways. The row clicked is current, its
-  actions in a bar over the list and on keys (Insert, Ctrl/⌘ Delete); ↑ ↓ and Enter keep the column.
-  Past 100 rows, a page at a time. **Copy** gives every row, tab-separated, for a spreadsheet.
-  Numbers are right-aligned, of one width, with fixed decimals: degrees to 6 (a decimetre),
-  distances in the column's unit (km or NM, in its head) to 3, bearings to 1.
+  for an action (detach, attach, ↺). A box ticked is a row like any other.
+- **Lists** (parts, a line's points, an area's corners, data, the totals, a connection's roots): one
+  kind of table, none wider than the panel's 320 px. A long one scrolls in its own box, its head
+  kept. The row clicked is current, its
+  actions (and what did not fit the columns) in a bar over the list, shown only then, and on keys
+  (Insert, Ctrl/⌘ Delete); ↑ ↓ and Enter keep the column. Past 100 rows, a page at a time. **Copy**
+  gives every row, tab-separated, for a spreadsheet. Numbers are right-aligned, with fixed decimals:
+  degrees to 6 (a decimetre), distances in the column's unit (km or NM, in its head) to 3, bearings
+  to 1.
+- **Sections** have the heads of Layers' groups, the arrow at the right where one folds: **Data**, open while it has properties of the user's;
+  **Depth profile**, read when opened; **Totals**, open to start with.
 - **A line's points**, 1 (its start) to N (its end): Lat, Lon; the **leg** from the point before,
-  its length and bearing (typed: that point alone moves, the legs either side of it change); **Along**,
-  from the start; a vertex's name. An end attached shows what to, its leg as it is; its row's bar has
-  **Attach to…** (pressed while the next click chooses) and **Detach** (it stays where it is). An
-  area's **corners** the same, 1 to n, corner 1's edge from the last. The row current is ringed on
-  the map; a point pressed on the map makes its row current, on its page.
+  its length and bearing (typed: that point alone moves, the legs either side of it change). The row
+  current says how far **along** the line its point is and holds a vertex's name. An end attached
+  shows what to, its leg as it is; its row's bar has **Attach to…** (pressed while the next click
+  chooses) and **Detach** (it stays where it is). An area's **corners** the same, 1 to n, corner 1's
+  edge from the last. The row current is ringed on the map; a point pressed on the map makes its row
+  current, on its page.
+- **What several share** (two or more selected, or a group's members under **Each member**): every
+  row two or more of them have, "mixed" where they differ; a value set there goes to each that has
+  it. Points: Position each axis alone (a latitude typed puts them all on that parallel, their
+  longitudes kept), Bearing, Symbol (those without an outline), and their **Parts** part by part,
+  every row two or more points have: its kind (changed, each keeps its reach), size (each round
+  part's radius and each outline's length at once), across (a sector's aperture, an outline's width,
+  each where two or more have one), fill. Lines: Path. Points, lines and areas: Guide. Labels: Leader.
 - **The look's cascade:** an element's own value, else the drawing's Display, else the default; **↺**
-  gives a field back. Where several differ a field says "mixed" and a change writes only that field.
-  A group is only who is in it: joining or leaving changes nothing of an element; its Look sets each
-  member. A hidden group hides everything in it. **Min. size** is the drawing's only: shapes shorter
-  than it on screen are drawn enlarged, dotted.
+  gives a field back. Fill and Stroke are rows (a colour, its opacity in %), Width (px) and Dash
+  their own. Where several differ a field says "mixed" and a change writes only that field. A group
+  is only who is in it: joining or leaving changes nothing of an element; its Look sets each member.
+  A hidden group hides everything in it. **Min. size** is the drawing's only: shapes shorter than it
+  on screen are drawn enlarged, dotted.
 - A line's **Path**: straight, or smooth (a curve through the vertices, following them).
   **Depth profile**: the depth along it from the depth shading's grid (at most 1,000 places), its
   extremes, a chart linked to the map both ways, its length along the seabed, CSV.
 - A point's **Parts** are its own: circles, sectors, outlines; a table of Kind, **Size** (a radius, an
-  outline's length), **Across** (a sector's aperture in °, an outline's width), Fill, Shown and a name.
-  One way to add one: the table's empty last row. The row current draws its part over on the map; a
-  part's handle pressed on the map makes its row current. All parts share the point's Bearing (a
-  sector centred on it, an outline facing it). **Distribute along…** goes round the part whose row
-  is current (the form can choose another).
-  **Data**: its properties as keys and values, folded while it has none of the user's.
+  outline's length), **Across** (a sector's aperture in °, an outline's width) and Fill; the row
+  current has its name and **Shown** in the bar. One way to add one: the table's empty last row. The
+  row current draws its part over on the map; a part's handle pressed on the map makes its row
+  current. All parts share the point's Bearing (a sector centred on it, an outline facing it).
+  **Distribute along…** goes round the part whose row is current (the form can choose another).
+  **Data**: its properties as keys and values.
 - A **label**: its text, with value codes ({name}, {along}…: **+ name** and the like insert them) and,
   while it has any, what it **reads** under it; **Attached to** what and where (a line's point or leg,
   an area's or outline's corner or edge, as the tables number them), or its **Position**; **Along**, on
   a line; **Text offset**, where its text was dragged to (↺: back); **Leader**, when attached. Look:
   text size, colour, background (halo or box).
-- A **group**: **In group** (the group it is in, as every element's), **Members** as the tree counts
-  them (everything in it, its subgroups' too) and its subgroups, with an eye for all of them;
-  **Select members**; **Totals** as the drawing's, its members only, by subgroup (Copy); **Look ·
-  sets each member** (a group has no look of its own).
+- A **group**: **Members** as the tree counts them (everything in it, its subgroups' too) and its
+  subgroups, with an eye for all of them; **Totals** as the drawing's, its members only, by subgroup
+  (Copy); **Select members**; **Look · sets each member** (a group has no look of its own); its foot
+  as every element's.
 - **Guide** (points, lines, areas): faint and dashed, left out of the totals.
 
 ## 6. Distribute along and Connect: rules
@@ -276,7 +299,7 @@ live in this browser only; **Download** › **Presets (JSON)** and **Open a file
 
 ## 10. Deleting, and drawings in this browser
 
-- Delete goes at once, the note offering **Undo**. Lines attached to what goes stay, their ends free
+- Delete goes at once (Undo brings it back). Lines attached to what goes stay, their ends free
   where they were; labels on it stay, free. A group with members asks first: the group only (what is
   in it goes to the group above), or everything in it.
 - Each drawing is saved as it changes, never sent anywhere; the open one comes back with the page.

@@ -98,15 +98,12 @@ await section('URL state, Link, Measure, a bad link', async () => {
   await p.waitForTimeout(200); // the values drawn
   const liveValues = await p.evaluate(() => map.querySourceFeatures('drawvalue').length);
   await p.mouse.dblclick(420, 340);
-  await p.evaluate(() => drawing.setVariant('measure', 'ring'));
-  await p.mouse.click(500, 300);
-  await p.mouse.click(560, 300);
   await p.keyboard.press('Escape');
   await p.waitForTimeout(400);
   const kinds = (await p.evaluate(() => [...document.querySelectorAll('.dlist .drow .dname')].map((l) => l.textContent.split(' ')[0]))).sort().join();
   const measured = await p.evaluate(async () => { const { elements, isMeasurement } = await import('./draw/document.js'); return [elements(drawing.doc).filter((x) => isMeasurement(drawing.doc, x.el)).length, map.querySourceFeatures('drawvalue').map((f) => f.properties.label)]; });
-  check(kinds === 'Distance,Ring' && measured[0] === 2 && measured[1].some((t) => /NM$/.test(t)) && liveValues > 0,
-    `Measure: a distance and a ring, guides showing their values in NM, the leg's length shown while drawing (${kinds}; ${measured[1].join(' | ')}; ${liveValues} live)`);
+  check(kinds === 'Distance' && measured[0] === 1 && measured[1].some((t) => /NM$/.test(t)) && liveValues > 0,
+    `Measure: a distance, a guide showing its values in NM, the leg's length shown while drawing (${kinds}; ${measured[1].join(' | ')}; ${liveValues} live)`);
   await p.evaluate(() => map.jumpTo({ center: [12, 41], zoom: 6 }));
   await exportItem(p, 'link');
   const link = await p.evaluate(() => navigator.clipboard.readText());
@@ -508,7 +505,7 @@ await section('the drawing', async () => {
   const measuredOf = (fc) => (fc?.features || []).filter((f) => own(f)?.guide && own(f)?.look?.text?.values);
   await dw.keyboard.press('s'); // the Shape tool, a circle (its first kind)
   const sub = await dw.locator('.subrail button').evaluateAll((bs) => bs.map((b) => b.getAttribute('aria-label')));
-  check(sub.join() === 'Circle,Rings,Sector,Arc,Rectangle,Ellipse,Triangle,Polygon,Aerial vehicle,Surface vehicle,Underwater vehicle',
+  check(sub.join() === 'Circle,Rings,Sector,Rectangle,Ellipse,Triangle,Polygon,Aerial vehicle,Surface vehicle,Underwater vehicle',
     `tools: Shape's kinds, round a centre first, then the outlines, then the vehicles (${sub})`);
   // from 1024 px wide: the rail docked at the left edge, the tool's kinds a column beside it, nothing
   // folded away; the column (tree over inspector) open, hidden by the rail's toggle, back with E; the
@@ -669,14 +666,14 @@ await section('the drawing', async () => {
   const painted = await dw.evaluate(() => map.querySourceFeatures('drawzoom').filter((f) => f.properties.kind === 'path').map((f) => f.properties.off));
   check(before === 0 && offset.join() === '2,-8,-8,4' && painted.includes(-8),
     `drawing: Offset off until set (${before}); −8 px on the two lines selected (${offset.slice(0, 3)}), their lengths still counted (${offset[3]} lines), carried to the map (${painted})`);
-  await dw.keyboard.press('a'); // Select area, a kind of Select
-  await dw.mouse.move(DX + 150, 250);
+  await dw.mouse.move(DX + 150, 250); // a box: Shift-drag on the map
+  await dw.keyboard.down('Shift');
   await dw.mouse.down();
   await dw.mouse.move(DX + 700, 600, { steps: 5 });
   await dw.mouse.up();
-  await dw.keyboard.press('Escape');
+  await dw.keyboard.up('Shift');
   await dw.click('.dinsphead button[aria-label=Group]'); // the title row's Group
-  check(await dw.evaluate(() => drawing.doc.groups.length === 1 && drawing.doc.lines.every((s) => s.groupId === drawing.doc.groups[0].id)), 'drawing: Select area, then a group of everything in it');
+  check(await dw.evaluate(() => drawing.doc.groups.length === 1 && drawing.doc.lines.every((s) => s.groupId === drawing.doc.groups[0].id)), 'drawing: a box (Shift-drag), then a group of everything in it');
   // two of its lines grouped: a subgroup of it, one step further in the list; deleted alone, its lines
   // back in the group above
   const top = await dw.evaluate(() => { drawing.select(drawing.doc.lines.slice(0, 2).map((s) => s.id)); return drawing.doc.groups[0].id; });
@@ -818,7 +815,7 @@ await section('the drawing', async () => {
   const square = await boxOf([DX + 300, 560], [DX + 380, 600]);
   check(sized[0] === 0 && Math.abs(sized[1] - sized[3]) < 2 && Math.abs(sized[2] - sized[4]) < 2 && Math.abs(sized[5] - DX - 340) <= 1 && Math.abs(sized[6] - 480) <= 1 && square[1] === square[2] && Math.abs(square[1] - square[4]) < 2,
     `shapes: a rectangle corner to corner, facing north, centred between them; Shift a square (${sized.map((v) => Math.round(v))}; ${square.slice(1, 3).map(Math.round)})`);
-  // a polygon closed by a click on its first corner; an arc in three clicks: open, never filled
+  // a polygon closed by a click on its first corner; a sector in three clicks
   await dw.keyboard.press('Escape');
   await dw.evaluate(() => { drawing.variant.shape = 'polygon'; });
   await dw.keyboard.press('s');
@@ -826,15 +823,15 @@ await section('the drawing', async () => {
   for (const [x, y] of [[450, 450], [520, 450], [500, 520], [451, 451]]) await dw.mouse.click(DX + x, y);
   const closed = await dw.evaluate(() => [drawing.doc.areas.length, drawing.doc.areas.at(-1)?.points.length, !!drawing.draft]);
   await dw.keyboard.press('Escape');
-  await dw.evaluate(() => { drawing.variant.shape = 'arc'; });
+  await dw.evaluate(() => { drawing.variant.shape = 'sector'; });
   await dw.keyboard.press('s');
   for (const [x, y] of [[600, 450], [600, 400], [650, 450]]) await dw.mouse.click(DX + x, y);
   await dw.waitForTimeout(300);
-  const arc = await dw.evaluate(() => { const x = drawing.doc.points.at(-1); return [x.parts.map((q) => [q.kind, q.fill, Math.round(q.aperture)].join(':')).join(), x.name.split(' ')[0],
+  const sec = await dw.evaluate(() => { const x = drawing.doc.points.at(-1); return [x.parts.map((q) => [q.kind, q.fill, Math.round(q.aperture)].join(':')).join(), x.name.split(' ')[0],
     map.querySourceFeatures('draw').filter((f) => f.properties.id === x.id && f.properties.kind === 'ring').map((f) => f.geometry.type)[0]]; });
   await dw.keyboard.press('Escape');
-  check(closed.join() === `${areasBefore + 1},3,false` && arc[0] === 'arc:false:90' && arc[1] === 'Arc' && arc[2] === 'LineString',
-    `shapes: a polygon closed on its first corner (${closed}); an arc in three clicks, open and unfilled (${arc})`);
+  check(closed.join() === `${areasBefore + 1},3,false` && sec[0] === 'sector:true:90' && sec[1] === 'Sector' && sec[2] === 'Polygon',
+    `shapes: a polygon closed on its first corner (${closed}); a sector in three clicks (${sec})`);
   await dw.evaluate(() => drawing.remove([drawing.doc.points.at(-1).id, drawing.doc.areas.at(-1).id])); // the checks after these find the drawing as it was
   await dw.keyboard.press('Escape');
   await dw.keyboard.press('Escape');
@@ -974,25 +971,11 @@ await section('the drawing', async () => {
   const partsNow = await dw.evaluate((id) => drawing.doc.points.find((x) => x.id === id).parts.map((q) => q.kind).join(), pid);
   check(movedTo === 'Leg 2 length' && vertsLeft === 0 && partsNow === 'circle,rectangle',
     `list grids: ↓ to the next row (${movedTo}); the row's bar deletes its vertex (${vertsLeft} left); a part added from the empty row (${partsNow})`);
-  // copy and paste of rows: three places pasted at the line's start (a vertex added, one undo step);
-  // its Copy gives them back; pasted onto a line with an attached end, the paste stops before it
+  // a list's Copy: its rows, tab-separated, a header first
   await dw.evaluate((id) => drawing.select([id]), legIds[0]);
-  const pasteInto = (aria, text) => dw.evaluate(([a, t]) => {
-    const input = document.querySelector(`.dinspect input[aria-label="${a}"]`), dt = new DataTransfer();
-    dt.setData('text/plain', t);
-    input.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }));
-  }, [aria, text]);
-  const undosBefore = await dw.evaluate(() => drawing.undos.length);
-  await pasteInto('Start Latitude', '41.1\t13.1\n41.2\t13.2\n41.3\t13.3');
-  const pasted = await dw.evaluate(([id, u]) => { const l = drawing.doc.lines.find((x) => x.id === id); return [l.start.position, ...l.vertices.map((v) => v.position), l.end.position].map((q) => q.join(' ')).join(' | ') + ` · ${drawing.undos.length - u}`; }, [legIds[0], undosBefore]);
   await dw.click('.dinspect .fblock:has(h3:has-text("Vertices")) button:has-text("Copy")');
   const copied = await dw.evaluate(() => navigator.clipboard.readText());
-  check(pasted === '13.1 41.1 | 13.2 41.2 | 13.3 41.3 · 1' && /^#\tLat\tLon/.test(copied) && copied.includes('41.2\t13.2'),
-    `copy and paste: three places pasted, one undo step (${pasted}); Copy gives the rows (${copied.split('\n')[2]})`);
-  const attLine = await dw.evaluate(async () => { const { addLine, addPoint } = await import('./draw/document.js'); let l; drawing.change((d) => { const p = addPoint(d, [13.5, 41.5]); l = addLine(d, [13.4, 41.4], [], p.id); }); drawing.select([l.id]); return l.id; });
-  await pasteInto('Start Latitude', '41.0\t13.0\n41.05\t13.05\n41.1\t13.1');
-  const stopped = await dw.evaluate((id) => { const l = drawing.doc.lines.find((x) => x.id === id); return [l.start.position.join(' '), l.vertices.length, !!l.end.element].join(' · '); }, attLine);
-  check(stopped === '13 41 · 0 · true', `copy and paste: a paste stops before an attached end (${stopped})`);
+  check(/^#\tLat\tLon/.test(copied) && /\nstart\t/.test(copied) && /\nend\t/.test(copied), `a list's Copy gives its rows (${copied.split('\n')[1]})`);
   // a line's depth profile: read when asked, the chart drawn, its length along the seabed longer
   const deepLine = await dw.evaluate(async () => { const { addLine } = await import('./draw/document.js'); let l; drawing.change((d) => { l = addLine(d, [12.0, 40.2], [], [12.3, 40.2]); }); drawing.select([l.id]); return l.id; });
   await dw.click('.dinspect button:has-text("Depth profile")');

@@ -3,7 +3,7 @@
 // (file.js). Pure: no map, no DOM.
 
 import { MAX_LAT, norm360 } from '../geo.js';
-import { DEFAULT_STYLE, MAX_OFFSET, MAX_MIN_SIZE, STROKE_WIDTH, DASHES, MAX_RADIUS, LABEL_SIZES, BACKGROUNDS, ROUND, ARCED, PART_KINDS, isoNow } from './document.js';
+import { DEFAULT_STYLE, MAX_OFFSET, MAX_MIN_SIZE, STROKE_WIDTH, DASHES, MAX_RADIUS, LABEL_SIZES, BACKGROUNDS, ROUND, PART_KINDS, isoNow } from './document.js';
 
 export const ID = /^[A-Za-z0-9_-]{1,64}$/;
 const COLOUR = /^#[0-9a-fA-F]{6}$/;
@@ -69,11 +69,6 @@ export function minSize(v, c, what) {
   c.warn(`${what}: not a number of pixels ≥ 0, ignored`);
   return null;
 }
-export function handle(h, c, what) {
-  if (h === undefined || h === null) return null;
-  if (!Array.isArray(h) || h.length < 2 || !fin(h[0]) || !fin(h[1])) { c.warn(`${what}: not [east, north], ignored`); return null; }
-  return [h[0], h[1]];
-}
 // a sector's aperture (degrees, above 0 and below 360), or null: circles (360 or more: circles, warned)
 export function aperture(a, c) {
   if (a === undefined || a === null) return null;
@@ -114,8 +109,9 @@ export function ownStyle(s, c, fill) {
   return out;
 }
 // A look as the file has it (an element's own, the drawing's): what it sets, each value
-// checked; what is not valid is left out (warned). fill: whether it can have one (a line cannot).
-export function look(l, c, fill = true) {
+// checked; what is not valid is left out (warned). fill: whether it can have one (a line cannot);
+// drawing: the drawing's (its minimum display size).
+export function look(l, c, fill = true, drawing = false) {
   if (l === undefined || l === null) return {};
   if (!isObj(l)) { c.warn('look: not an object, ignored'); return {}; }
   const out = ownStyle({ fill: l.fill, stroke: l.stroke }, c, fill);
@@ -133,7 +129,7 @@ export function look(l, c, fill = true) {
   }
   const a = offset(l.offset, c);
   if (a !== null) out.offset = a;
-  if (l.minSize != null) { const m = minSize(l.minSize, c, 'look minSize'); if (m !== null) out.minSize = m; }
+  if (drawing && l.minSize != null) { const m = minSize(l.minSize, c, 'look minSize'); if (m !== null) out.minSize = m; }
   return out;
 }
 // a point's parts (document.js makePart), each named by its place in the list (part 1, 2…)
@@ -147,15 +143,12 @@ export function parts(list, c) {
     const bad = !isObj(r) ? 'not an object' : !PART_KINDS.includes(r.kind) ? `unknown kind "${String(r.kind).slice(0, 20)}"`
       : round ? (!size(r.radius) ? 'radius not between 0 and 10 000 km' : null) : !size(r.length) || !size(r.width) ? 'length or width not above 0' : null;
     if (bad) { c.warn(`part ${n} skipped: ${bad}`); return; }
-    const part = { kind: r.kind, fill: r.fill !== false, shown: r.shown !== false, name: text(r.name, c, `part ${n} name`),
-      strokeColor: r.strokeColor == null ? null : colour(r.strokeColor, null, c, `part ${n} stroke colour`),
-      strokeDash: r.strokeDash == null ? null : DASHES.includes(r.strokeDash) ? r.strokeDash : (c.warn(`part ${n}: unknown dash, the point's used`), null) };
+    const part = { kind: r.kind, fill: r.fill !== false, shown: r.shown !== false, name: text(r.name, c, `part ${n} name`) };
     if (round) part.radius = r.radius; else { part.length = r.length; part.width = r.width; }
-    if (ARCED.has(r.kind)) {
+    if (r.kind === 'sector') {
       const a = aperture(r.aperture, c);
-      if (a === null) { part.kind = 'circle'; if (r.aperture == null) c.warn(`part ${n}: a${r.kind === 'arc' ? 'n arc' : ' sector'} with no aperture; a circle`); } else part.aperture = a;
+      if (a === null) { part.kind = 'circle'; if (r.aperture == null) c.warn(`part ${n}: a sector with no aperture; a circle`); } else part.aperture = a;
     }
-    if (part.kind === 'arc') part.fill = false;
     out.push(part);
   });
   return out;

@@ -137,7 +137,7 @@ Only the element's **own** values are written here: a value it takes from the dr
 | `group` | the ID of its group, at most one |
 | `visible` | `false`: hidden. Hidden elements are not drawn and not exported to GIS data, but they are in the file. A hidden group hides its members. |
 | `guide` | supporting geometry: drawn faint and dashed in one colour, left out of totals (not on labels). A guide showing its values is a **measurement**. |
-| `look` | the rest of its own look (§6), what no common style name holds: the stroke's `dash`, `text`, `offset`, `minSize` |
+| `look` | the rest of its own look (§6), what no common style name holds: the stroke's `dash`, `text`, `offset` |
 | `properties` | the user's properties as `[{ "key", "value" }]`. Written only when a key had to be renamed as a column; the reader then takes this list rather than the columns. |
 
 ## 6. The look, the cascade, parts
@@ -161,7 +161,7 @@ How an element is drawn is its **look**: one object, every field optional where 
 | `text.values` | its values drawn on the map: a line's legs, an area's area and perimeter, a point's round parts' radii |
 | `text.size`, `text.color`, `text.background` | a label's text: `"small"`, `"medium"` or `"large"`; its colour; `"halo"` or `"box"` |
 | `offset` | Offset: a line drawn this many pixels beside its geometry, to the right of its direction (negative: the left), −50 to 50; 0: on it. Display only, as QGIS offsets a line symbol. |
-| `minSize` | screen pixels, 0–200: an outline whose long side is shorter than this on screen is drawn enlarged (display only, dotted); 0: always real size. The drawing's counts twice for a vehicle. |
+| `minSize` | screen pixels, 0–200: an outline whose long side is shorter than this on screen is drawn enlarged (display only, dotted); 0: always real size. The drawing's only. |
 
 Where it is written: an element's colours, opacities and stroke width as the common style names
 (§5), the rest in its `charts.look`; the drawing's in `charts.look` (§3). Only what each sets itself.
@@ -189,19 +189,18 @@ element. Editing a group's look in the panel sets the value on each element in i
 A point's parts (`charts.parts`), a list of entries, each drawn to scale about it:
 
 ```json
-{ "kind": "sector", "radius": 5000, "aperture": 90, "fill": true, "shown": true, "name": "", "strokeColor": null, "strokeDash": null }
+{ "kind": "sector", "radius": 5000, "aperture": 90, "fill": true, "shown": true, "name": "" }
 ```
 
 | Field | Notes |
 |---|---|
-| `kind` | `"circle"`, `"sector"`, `"arc"` (a sector's curved edge alone: never filled, `fill` read as false), or an outline (§7.5) |
-| `radius` | a circle's, a sector's and an arc's, metres, above 0 and below 10 000 km |
-| `aperture` | a sector's and an arc's, degrees (above 0, below 360), centred on the point's `bearing`. Missing, or 360 or more: a circle (warning, but for exactly 360). |
+| `kind` | `"circle"`, `"sector"`, or an outline (§7.5) |
+| `radius` | a circle's and a sector's, metres, above 0 and below 10 000 km |
+| `aperture` | a sector's, degrees (above 0, below 360), centred on the point's `bearing`. Missing, or 360 or more: a circle (warning, but for exactly 360). |
 | `length`, `width` | an outline's, metres, above 0: along the point's bearing and across it |
 | `fill` | `false`: drawn as an outline only. Default `true`. |
 | `shown` | `false`: kept but not drawn. Default `true`. |
 | `name` | free text |
-| `strokeColor`, `strokeDash` | `null`: the point's stroke |
 
 A part has no ID: it is named by its place in the list, from 1 ("part 2" in the report); references
 name it from 0 (§7.4). A point keeps at most 100 parts (warning). An entry of an unknown kind, or whose size is not a distance in range, is
@@ -256,27 +255,24 @@ two of these.
   "kind": "line",
   "start": { "element": "a" },
   "end": { "element": "s", "vertex": 2 },
-  "startHandle": null,
-  "endHandle": [120, -40],
-  "vertices": [ { "handleIn": null, "handleOut": null, "name": "bend 1", "properties": [] } ],
-  "mode": "fixed"
+  "smooth": true,
+  "vertices": [ { "name": "bend 1", "properties": [] } ]
 }
 ```
 
 | Field | Notes |
 |---|---|
 | `start`, `end` | what each end is attached to (§7.4); missing: a free end, where the geometry says |
-| `startHandle` | the handle leaving the start; `endHandle` the handle arriving at the end |
-| `vertices` | one entry per interior position of the geometry, in order: `handleIn` and `handleOut` (arriving at and leaving that vertex), and an optional `name` and `properties` (`[{ key, value }]`). Vertices have no ID. Written only when one of them has something; matched to the positions by order. |
-| handle | `[east, north]` in metres on the ground at its anchor, or `null` |
-| `mode` | `"fixed"`: never changed by the app. `"auto"`: its handles are worked out again after every change (Smooth, `site/draw/lines.js`). |
+| `smooth` | `true`: a smooth curve through its vertices; missing or `false`: straight legs |
+| `vertices` | one entry per interior position of the geometry, in order: an optional `name` and `properties` (`[{ key, value }]`). Vertices have no ID. Written only when one of them has something; matched to the positions by order. |
 
-**Legs.** A leg without handles is the **geodesic** between its two anchors (as the ruler draws it).
-A leg with a handle is a cubic Bézier in the map's projection (Web Mercator); a `null` handle on it
-counts as `[0, 0]`. Handles are ground metres, scaled to the projection at their anchor. Lengths are
-always geodesic: a curve's is summed over close samples of it until the sum settles. A curve is the
-line itself: its length, the values shown and the GIS export are the curve's. Lengths are never
-stored.
+**Legs.** A straight line's legs are the **geodesics** between its anchors (as the ruler draws
+them). A smooth line's (with at least one vertex) are cubic Béziers in the map's projection (Web
+Mercator) whose handles are worked out from the anchors (Catmull-Rom: at a vertex parallel to the
+chord between its neighbours, a third of each leg; `site/draw/lines.js`), so the curve follows its
+vertices. Lengths are always geodesic: a curve's is summed over close samples of it until the sum
+settles. A curve is the line itself: its length, the values shown and the GIS export are the
+curve's. Lengths are never stored.
 
 The geometry holds the vertices only: other tools show a curved line straight through its vertices,
 and its legs straight in longitude and latitude (§13).
@@ -311,7 +307,7 @@ An outline part (§6) of a point: `kind` one of `"rectangle"`, `"triangle"`, `"e
 `bearing`, `width` (above 0) across it. Each kind is a fixed silhouette stretched to them; its points
 are geodesic destinations from the centre and its edges geodesics. The triangle is isosceles, its
 apex at the front. Drawn small, a point's outlines are enlarged together, by what its largest needs to
-reach the minimum display size; a vehicle's to twice it.
+reach the minimum display size.
 
 ### 7.6 Area
 
@@ -344,8 +340,7 @@ A `Point` geometry where the label points, with `"kind": "label"`:
   side it is on); `{along}` (the distance along its line); `{bearing}` (the side's or leg's);
   `{radius}` (a point's filled radius); `{area}`, `{perimeter}` (an area's, a shape's outline's).
 - **`offset`:** the text's centre, in screen pixels from the anchor (x right, y down; ±2000).
-- **`leader`:** `"arrow"`, `"dot"`, `"line"` or `"none"`: a line from the text to the anchor, and
-  how it ends.
+- **`leader`:** `"arrow"` (a line from the text to the anchor, an arrow head there) or `"none"`.
 - **`look`:** its text's `size` (`"small"`, `"medium"` or `"large"`: 11, 13, 16 px), `color` (set
   nowhere: the drawing's, else the default) and `background` (`"halo"` or `"box"`), as
   any look (§6).
@@ -396,7 +391,7 @@ or point (or its part) is gone, or all of whose copies are, is dropped.
 
 ```json
 {
-  "id": "c1", "kind": "connect", "groupId": "g7", "pattern": "tree", "groupSize": "auto", "minBranch": 200, "inflate": 0.5,
+  "id": "c1", "kind": "connect", "groupId": "g7", "pattern": "tree", "groupSize": "auto", "minBranch": 200,
   "roots": [ { "id": "o1", "weight": 2 } ], "pointIds": ["p20", "p21", "p22"],
   "hubs": [ { "pointId": "h1", "pointIds": ["p20", "p21", "p22"], "rootId": "o1", "pos": [12.45, 41.85] } ],
   "created": ["h1", "l40", "l41", "l42", "l43"]
@@ -409,7 +404,6 @@ or point (or its part) is gone, or all of whose copies are, is dropped.
 | `pattern` | `"tree"`: root → hub → each point; `"chain"`: root → the nearer end point → the next … Anything else is read as `"tree"`. |
 | `groupSize` | points at most per tree or chain (an integer; a tree's at most 32), or `"auto"`: any size (a tree of up to 32) |
 | `minBranch` | a tree's shortest branch, metres (0 when absent): every hub at least this far from its points and from its root |
-| `inflate` | 0–1 (0 when absent): its trees drawn bowed, display only (§7 of the interface): each branch bowed away from its hub's dominant direction (the mean of its branches') by its angle from it, the trunk arriving along it; at 1, a branch square to it bows by a quarter of its length |
 | `roots` | the points the lines start from, each `{ "id", "weight" }`; `weight` above 0 (missing: 1, which is not written) |
 | `pointIds` | the points connected, in the order they are cut into groups |
 | `hubs` | each hub made: its point, its tree's points and root, where it was last put |
@@ -432,11 +426,11 @@ it.
 
 - Every value equal to its default (§16) is left out, and an object when nothing in it differs: a
   point that is only an ID and a position is written as `"charts": { "kind": "point" }`.
-- Rounding: positions 7 decimals (about 1 cm); metres (radii, outline sizes, handles, margins,
+- Rounding: positions 7 decimals (about 1 cm); metres (radii, outline sizes, margins,
   offsets, a distribution's `spacing` and `radius`) 3; angles (bearings, apertures, the view's zoom) 4;
   opacities and widths 3; an edge's `at` 6; a copy's `t` 9.
   The reader takes any precision.
-- The text is indented JSON, each position and handle on one line.
+- The text is indented JSON, each position on one line.
 - A drawing read back is the same drawing (tested in `test/unit/draw-document.test.mjs`).
 
 ## 10. In the browser
@@ -608,15 +602,13 @@ What a value is when the file leaves it out. Writing it with this value means th
 | group | `name`; `properties`; `visible` | `""`; `[]`; `true` |
 | group | `groupId` | `null` (at the top) |
 | part | `fill`; `shown`; `name` | `true`; `true`; `""` |
-| part | `strokeColor`, `strokeDash` | `null`: the point's |
 | point | `bearing` | `0` |
 | point | `symbol` | `"none"`; `"diamond"` for a feature without `charts` |
 | point | `parts` | `[]` |
 | line | `start`, `end` | free |
-| line | `startHandle`, `endHandle` | `null` |
 | line | `vertices` | each `{}` |
-| vertex | `handleIn`, `handleOut`; `name`; `properties` | `null`; `""`; `[]` |
-| line | `mode` | `"fixed"` |
+| vertex | `name`; `properties` | `""`; `[]` |
+| line | `smooth` | `false` |
 | area | `reversed` | `false` |
 | label | `text` | `""` |
 | label | `anchor` | none: free, at the geometry |
@@ -629,6 +621,6 @@ What a value is when the file leaves it out. Writing it with this value means th
 | distribute | `spacing`, `count` | `null` |
 | distribute | `startMargin`, `endMargin`, `offset`; `side`; `radius`; `aperture`; `preset`; `copy`; `points` | `0`; `"left"`; `null` (500 m when made again); `null`; `null` (a circle); `null`; `[]` |
 | distribute point | `left` | `false` |
-| connect | `groupId`; `pattern`; `groupSize`; `minBranch`; `inflate` | `null`; `"tree"`; `"auto"`; `0`; `0` |
+| connect | `groupId`; `pattern`; `groupSize`; `minBranch` | `null`; `"tree"`; `"auto"`; `0` |
 | connect | `roots`, `pointIds`, `hubs`, `created` | `[]` |
 | connect root | `weight` | `1` |

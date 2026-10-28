@@ -27,12 +27,10 @@ function takeFocus(name, from) {
 }
 
 // A list grid. name: what keeps its state (the element's id and the list's); columns: [{ head,
-// width (px), frozen, title, cls, paste (several rows pasted into one of its cells go to
-// paste(row, text) rather than into the cell) }]; rows: [{ cells: [node], cls, sub (a node on a row of its own
-// under it, across the whole row, kept in sight as the grid scrolls sideways) }]; add: the cells of the empty last row (typing
-// in it adds one), or null; actions(i): { label, buttons } for row i, or null; keys: { insert(i),
+// width (px), frozen, title, cls }]; rows: [{ cells: [node], cls }]; add: the cells of the empty
+// last row (typing in it adds one), or null; actions(i): { label, buttons } for row i, or null; keys: { insert(i),
 // remove(i) }.
-export function listGrid({ name, columns, rows, add = null, actions = () => null, keys = {}, paste = null }) {
+export function listGrid({ name, columns, rows, add = null, actions = () => null, keys = {} }) {
   const st = stateOf(name);
   if (st.current != null && st.current >= rows.length) st.current = null;
   // the frozen columns' offsets, from the left
@@ -60,7 +58,6 @@ export function listGrid({ name, columns, rows, add = null, actions = () => null
     const tr = h('tr', { 'data-r': i, class: [r.cls, st.current === i ? 'cur' : ''].filter(Boolean).join(' ') || null, onfocusin: () => markCurrent(i), onpointerdown: () => markCurrent(i) },
       ...r.cells.map((kids, k) => cell('td', k, kids)));
     body.append(tr);
-    if (r.sub) body.append(h('tr', { class: 'lsub' }, h('td', { colspan: columns.length }, h('div', { class: 'lsubin' }, r.sub))));
   });
   if (add) body.append(h('tr', { 'data-r': rows.length, class: 'ladd' }, ...add.map((kids, k) => cell('td', k, kids))));
   const table = h('table', { class: 'lgrid', 'data-grid': name },
@@ -84,16 +81,6 @@ export function listGrid({ name, columns, rows, add = null, actions = () => null
     st.focus = { row: to, col };
     if (e.key !== 'Enter') e.target.dispatchEvent(new Event('change')); // applied (Enter: by the field itself)
     requestAnimationFrame(() => takeFocus(name, e.target)); // on the grid as built again, or this one
-  });
-  // several rows pasted (lines, or cells split by tabs) into a cell of a pasting column: to paste();
-  // one value is typed in as usual
-  table.addEventListener('paste', (e) => {
-    const tr = e.target.closest('tr[data-r]'), col = tr ? [...tr.children].indexOf(e.target.closest('td')) : -1;
-    if (!paste || col < 0 || !columns[col]?.paste) return;
-    const text = e.clipboardData?.getData('text/plain') ?? '';
-    if (!/\n\s*\S/.test(text.trim()) && !/\t/.test(text)) return;
-    e.preventDefault();
-    paste(+tr.dataset.r, text);
   });
   showBar();
   return h('div', { class: 'lgridbox' }, h('div', { class: 'lscroll' }, table), bar);

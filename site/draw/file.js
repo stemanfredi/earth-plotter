@@ -3,13 +3,12 @@
 // and areas). Each element is a Feature with its real geometry; the user's properties and the common
 // style names (stroke, fill…) are its properties; what is the app's own is under one key, "charts";
 // the drawing's view, look, groups and rules are a member "charts" of the collection.
-// Legs are geodesics or Bézier curves (other tools draw them straight in longitude and latitude, the
-// curves straight through their vertices: the geometry holds the vertices, the handles are the
-// app's). Drawings of another format version are not read. Pure: no map, no DOM.
+// Legs are geodesics, or a smooth curve through the vertices (other tools draw them straight in
+// longitude and latitude: the geometry holds the vertices, "smooth" is the app's). Drawings of another format version are not read. Pure: no map, no DOM.
 
 import { FORMAT, VERSION, KINDS, KIND, SYMBOLS, LEADERS, LABEL_OFFSET,
   emptyDoc, newId, columnsOf } from './document.js';
-import { ID, isObj, fin, Skip, time, text, properties, flag, position, angle, handle, ownStyle, look, parts, readView } from './check.js';
+import { ID, isObj, fin, Skip, time, text, properties, flag, position, angle, ownStyle, look, parts, readView } from './check.js';
 import { resolve, targetPosition } from './attach.js';
 import { groupSizeOf } from './generator.js';
 import { positionsOf } from './lines.js';
@@ -78,7 +77,7 @@ function read(raw, app, known, now, report) {
       doc.meta = { title: text(m.title, c, 'title'), description: text(m.description, c, 'description'), author: text(m.author, c, 'author') };
     }
     if (app.view != null) doc.view = readView(app.view, known, ctx('view'));
-    doc.look = look(app.look, ctx('look'));
+    doc.look = look(app.look, ctx('look'), true, true);
     for (const x of Array.isArray(app.groups) ? app.groups : []) {
       const g = attempt('group', x?.id, (c) => {
         if (!isObj(x)) c.skip('not an object');
@@ -191,7 +190,7 @@ function read(raw, app, known, now, report) {
       }
       taken.add(x.id);
       return { id: x.id, kind: 'connect', groupId: ref(x.groupId), pattern: x.pattern === 'chain' ? 'chain' : 'tree', groupSize: groupSizeOf(x.groupSize, x.pattern === 'chain' ? 'chain' : 'tree'),
-        minBranch: Number.isFinite(x.minBranch) && x.minBranch > 0 ? x.minBranch : 0, inflate: fin(x.inflate) && x.inflate > 0 ? Math.min(1, x.inflate) : 0, pointIds: idList(x.pointIds),
+        minBranch: Number.isFinite(x.minBranch) && x.minBranch > 0 ? x.minBranch : 0, pointIds: idList(x.pointIds),
         roots: Array.isArray(x.roots) ? x.roots.filter((r) => isObj(r) && ref(r.id)).map((r) => ({ id: r.id, weight: fin(r.weight) && r.weight > 0 ? r.weight : 1 })) : [],
         hubs: Array.isArray(x.hubs) ? x.hubs.filter((b) => isObj(b) && ref(b.pointId) && ref(b.rootId) && Array.isArray(b.pointIds) && pair(b.pos))
           .map((b) => ({ pointId: b.pointId, pointIds: idList(b.pointIds), rootId: b.rootId, pos: [b.pos[0], b.pos[1]] })) : [],
@@ -260,13 +259,11 @@ const READ = {
     const pts = coords.map((q, k) => coord(q, c, `position ${k + 1}`));
     const meta = Array.isArray(mine.vertices) ? mine.vertices : [];
     const s = { ...x, start: { position: pts[0], element: null }, end: { position: pts.at(-1), element: null },
-      startHandle: handle(mine.startHandle, c, 'startHandle'), endHandle: handle(mine.endHandle, c, 'endHandle'),
+      smooth: flag(mine.smooth, c, 'smooth'),
       vertices: pts.slice(1, -1).map((position, k) => {
         const v = isObj(meta[k]) ? meta[k] : {};
-        return { position, handleIn: handle(v.handleIn, c, `vertex ${k + 1} handleIn`), handleOut: handle(v.handleOut, c, `vertex ${k + 1} handleOut`),
-          name: text(v.name, c, `vertex ${k + 1} name`), properties: properties(v.properties, c) };
-      }),
-      mode: mine.mode === 'auto' ? 'auto' : 'fixed' };
+        return { position, name: text(v.name, c, `vertex ${k + 1} name`), properties: properties(v.properties, c) };
+      }) };
     // its ends attached: { element, vertex | edge and at } (attach.js)
     for (const end of ['start', 'end']) {
       const v = unpack(mine[end]), to = refIn(v);
@@ -302,7 +299,6 @@ const READ = {
 
 const r7 = (v) => +v.toFixed(7), r3 = (v) => +v.toFixed(3), r4 = (v) => +v.toFixed(4);
 const pos = (p) => [r7(p[0]), r7(p[1])];
-const hdl = (h) => (h ? [r3(h[0]), r3(h[1])] : null);
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 // o without the fields equal to their defaults d; an object field against an object default field by
 // field, left out when nothing in it differs
@@ -315,12 +311,12 @@ function lean(o, d) {
   return out;
 }
 const partOut = (r) => lean({ kind: r.kind, radius: r.radius && r3(r.radius), aperture: r.aperture && r4(r.aperture), length: r.length && r3(r.length), width: r.width && r3(r.width),
-  fill: r.fill, shown: r.shown, name: r.name, strokeColor: r.strokeColor, strokeDash: r.strokeDash },
-{ radius: undefined, aperture: undefined, length: undefined, width: undefined, fill: true, shown: true, name: '', strokeColor: null, strokeDash: null });
+  fill: r.fill, shown: r.shown, name: r.name },
+{ radius: undefined, aperture: undefined, length: undefined, width: undefined, fill: true, shown: true, name: '' });
 const VIEW_D = { center: null, zoom: null, bearing: 0, layers: null, data: null, units: 'km', bearings: false };
-const VERTEX_D = { handleIn: null, handleOut: null, name: '', properties: [] };
+const VERTEX_D = { name: '', properties: [] };
 const DISTRIBUTE_D = { groupId: null, copiesId: null, spacing: null, count: null, startMargin: 0, endMargin: 0, offset: 0, side: 'left', radius: null, aperture: null, preset: null, copy: null };
-const CONNECTION_D = { groupId: null, pattern: 'tree', groupSize: 'auto', minBranch: 0, inflate: 0, hubs: [] };
+const CONNECTION_D = { groupId: null, pattern: 'tree', groupSize: 'auto', minBranch: 0, hubs: [] };
 
 // the user's properties as GIS columns (features.js), their keys checked against the file's own
 const columns = (list) => columnsOf(list, RESERVED);
@@ -371,9 +367,9 @@ function feature(doc, kind, el) {
     if (el.parts.length) mine.parts = el.parts.map(partOut);
   } else if (kind === 'line') {
     geometry = { type: 'LineString', coordinates: positionsOf(el).map(pos) };
-    const vs = el.vertices.map((v) => lean({ handleIn: hdl(v.handleIn), handleOut: hdl(v.handleOut), name: v.name, properties: v.properties.map((p) => ({ ...p })) }, VERTEX_D));
-    Object.assign(mine, lean({ start: endOut(el.start), end: endOut(el.end), startHandle: hdl(el.startHandle), endHandle: hdl(el.endHandle), mode: el.mode },
-    { start: null, end: null, startHandle: null, endHandle: null, mode: 'fixed' }));
+    const vs = el.vertices.map((v) => lean({ name: v.name, properties: v.properties.map((p) => ({ ...p })) }, VERTEX_D));
+    Object.assign(mine, lean({ start: endOut(el.start), end: endOut(el.end), smooth: el.smooth },
+    { start: null, end: null, smooth: false }));
     if (vs.some((v) => Object.keys(v).length)) mine.vertices = vs;
   } else if (kind === 'area') {
     // counter-clockwise, as RFC 7946 asks; a ring stored clockwise is written reversed, and says so
@@ -407,11 +403,11 @@ export function toFile(doc) {
         aperture: a.aperture == null ? null : r4(a.aperture), startMargin: r3(a.startMargin), endMargin: r3(a.endMargin), offset: r3(a.offset),
         copy: a.copy && { symbol: a.copy.symbol, parts: a.copy.parts.map(partOut) },
         points: a.points.map((f) => ({ pointId: f.pointId, t: +f.t.toFixed(9), ...(f.left ? { left: true } : {}), pos: pos(f.pos) })) }, DISTRIBUTE_D)
-      : lean({ ...a, inflate: r3(a.inflate), roots: a.roots.map((r) => (r.weight === 1 ? { id: r.id } : { id: r.id, weight: +r.weight.toPrecision(6) })), pointIds: [...a.pointIds], hubs: a.hubs.map((b) => ({ ...b, pointIds: [...b.pointIds], pos: pos(b.pos) })), created: [...a.created] }, CONNECTION_D))),
+      : lean({ ...a, roots: a.roots.map((r) => (r.weight === 1 ? { id: r.id } : { id: r.id, weight: +r.weight.toPrecision(6) })), pointIds: [...a.pointIds], hubs: a.hubs.map((b) => ({ ...b, pointIds: [...b.pointIds], pos: pos(b.pos) })), created: [...a.created] }, CONNECTION_D))),
   }, { meta: {}, view: null, look: {}, groups: [], rules: [] });
   return { type: 'FeatureCollection', charts: app, features: KINDS.filter((k) => k !== 'group').flatMap((k) => doc[KIND[k].list].map((el) => feature(doc, k, el))) };
 }
-// The file's text: indented JSON, with each pair of numbers (a position, a handle) on one line. Only
+// The file's text: indented JSON, with each pair of numbers (a position) on one line. Only
 // the indentation's line breaks are matched: a string never holds one (JSON writes it \n).
 export function serialise(doc) {
   return `${JSON.stringify(toFile(doc), null, 2).replace(/\[\n\s*(-?[\d.e+-]+),\n\s*(-?[\d.e+-]+)\n\s*\]/g, '[$1, $2]')}\n`;

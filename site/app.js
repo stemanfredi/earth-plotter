@@ -11,7 +11,6 @@ import { DRAW_LAYERS } from './draw/layers.js';
 import { savedView } from './draw/saving.js';
 import { drawView } from './draw/panel.js';
 import { profileOf } from './draw/profile.js';
-import { isShown } from './draw/document.js';
 import { circle } from './geodesy.js';
 import { norm360, tileXY, TILE, D2R } from './geo.js';
 import { fetchOk, lru } from './net.js';
@@ -748,8 +747,6 @@ const ICON = {
   locate: ['M19 12a7 7 0 1 1-14 0 7 7 0 0 1 14 0z', 'M12 2v3M12 19v3M2 12h3M19 12h3', ['M14 12a2 2 0 1 1-4 0 2 2 0 0 1 4 0z', 'currentColor']], // a dot in sights
   info: ['M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18z', 'M12 11v5', 'M12 8h.01'],
   ruler: ['M3 17 17 3l4 4L7 21z', 'm7 13 2 2M10 10l2 2M13 7l2 2'],
-  area: ['m12 3 8 6-3 11H7L4 9z'],
-  ring: ['M12 20a8 8 0 1 0 0-16 8 8 0 0 0 0 16z', 'M12 12h.01'],
 };
 // the page's own buttons name their icon: <i data-icon="…">
 for (const el of document.querySelectorAll('[data-icon]')) el.replaceWith(icon(...ICON[el.dataset.icon]));
@@ -994,7 +991,7 @@ const outputs = [output('link', 'link', 'Copy link', 'Copy a link to this exact 
 // ---- the drawing (draw/panel.js): the rail and the column, on the left ---------------------------
 const drawPanel = drawView($('#dview'), {
   drawing, display, setDisplay, map, icon, known: KNOWN, units: () => display.units,
-  measureIcon: ICON.ruler, measureIcons: (k) => ICON[k], free: () => free(), strip: $('#dstrip'), elements: $('#elements'),
+  measureIcon: ICON.ruler, free: () => free(), strip: $('#dstrip'), elements: $('#elements'),
   // the column shown: on a phone, Layers makes way for it (one at a time)
   columnShown: () => { if (NARROW.matches) setLayers(false); },
   // the ☰ menu's foot: the view's outputs and About
@@ -1067,17 +1064,6 @@ async function published() {
     return /^[0-9a-f]{40}$/.test(v?.commit) ? v : null;
   } catch { return null; }
 }
-// the version this page is: the commit the deploy wrote into it (ci.yml; empty on a development copy,
-// which never checks). When the page comes back into view (an installed app is often left open for
-// days), a newer one published is said, with Reload: at most every 10 minutes
-const loaded = document.querySelector('meta[name="version"]')?.content || null;
-let lastCheck = Date.now();
-document.addEventListener('visibilitychange', async () => {
-  if (!loaded || document.visibilityState !== 'visible' || Date.now() - lastCheck < 600000) return;
-  lastCheck = Date.now();
-  const now = await published();
-  if (now && now.commit !== loaded) $('#update').hidden = false;
-});
 for (const b of document.querySelectorAll('[data-reload]')) b.addEventListener('click', () => location.reload());
 let versionShown = false;
 async function showVersion() {
@@ -1259,9 +1245,7 @@ function snapshot(src) {
     timeText: !timed ? '' : hr ? new Date(t).toLocaleString([], { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', timeZoneName: 'short' })
       : new Date(t).toLocaleDateString([], { dateStyle: 'medium', timeZone: 'UTC' }),
     depthText: depth == null ? '' : depthWords(depth),
-    // drawn shapes too small to see, drawn enlarged: the picture says they are not to scale
-    drawText: [drawing.doc.points.some((pt) => isShown(drawing.doc, pt) && drawing.enlargement(pt) > 1) ? 'small shapes shown enlarged, not to scale' : '',
-      drawing.offset().length ? 'lines drawn offset, not to scale' : '', drawing.inflatedIds().length ? 'lines drawn bowed, not to scale' : ''].filter(Boolean).join(' · '),
+    drawText: drawing.offset().length ? 'lines drawn offset, not to scale' : '',
     // for files read elsewhere: in UTC
     dataText: !timed ? '' : `data ${hr ? `at ${new Date(t).toISOString().slice(0, 16).replace('T', ' ')} UTC` : `of ${dayOf(t)} (UTC)`}${depth == null ? '' : `, ${depthWords(depth)}`}`,
   };

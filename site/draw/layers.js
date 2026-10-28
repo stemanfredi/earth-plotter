@@ -80,13 +80,6 @@ const fillLayer = (kind, source) => ({
   layout: { 'fill-sort-key': Z },
   paint: { 'fill-color': ['get', 'fc'], 'fill-opacity': ['get', 'fo'] },
 });
-// Areas each drawn whole, its fill then its outline (as drawing tools and GIS draw a feature), in a pair
-// of layers of its own: slot k the k-th area from the top (features.js slot), its pair just under the
-// one above (drawing.js adds them as areas are added). Past AREA_SLOTS areas the rest share one pair,
-// under them (an outline there may show over another's fill).
-export const AREA_SLOTS = 250;
-export const slotLayers = (k) => [fillLayer('polygon', 'draw'), lineLayer('polygon', 'draw')].map((l) => ({ ...l, id: `${l.id}-${k}`, filter: ['all', l.filter, ['==', ['get', 'slot'], k]] }));
-const shared = (l) => ({ ...l, filter: ['all', l.filter, ['!', ['has', 'slot']]] });
 // the hover band, never on the element's own stroke, clear of it by 3 px: outside a polygon's outline
 // (negative offset: the left of a counter-clockwise ring, its outside on screen), on both sides of a
 // line: the mark's blue on its white casing
@@ -105,7 +98,7 @@ export const FINGER = typeof matchMedia === 'function' && matchMedia('(pointer: 
 const HANDLE_SIZE = FINGER ? 1.75 : 1;
 export const DRAW_LAYERS = [
   fillLayer('ring', 'draw'), lineLayer('ring', 'draw'),
-  shared(fillLayer('polygon', 'draw')), shared(lineLayer('polygon', 'draw')), // the areas past the slots (theirs come here, above)
+  fillLayer('polygon', 'draw'), lineLayer('polygon', 'draw'),
   // under the lines: the lines' click targets, invisible
   { id: 'draw-linehit', type: 'line', source: 'drawzoom', filter: ['==', ['get', 'kind'], 'linehit'], paint: { 'line-width': 10, 'line-opacity': 0, 'line-offset': OFF } },
   lineLayer('guide', 'drawzoom'), lineLayer('path', 'drawzoom'),
@@ -126,14 +119,11 @@ export const DRAW_LAYERS = [
     paint: { 'icon-color': DRAFT, 'icon-opacity': 0.6 } },
   { id: 'draw-pick', type: 'circle', source: 'drawover', filter: ['==', ['get', 'kind'], 'pick'],
     paint: { 'circle-radius': 11, 'circle-opacity': 0, 'circle-stroke-color': MARK, 'circle-stroke-width': 3 } },
-  // while a line is selected: a + halfway along its legs, its Bézier handles; a rectangle's rotate stalk
+  // while a line is selected: a + halfway along its legs; a rectangle's rotate stalk
   { id: 'draw-stalk', type: 'line', source: 'drawover', filter: ['==', ['get', 'kind'], 'stalk'], paint: { 'line-color': MARK, 'line-width': 1.5 } },
-  { id: 'draw-ctrlline', type: 'line', source: 'drawover', filter: ['==', ['get', 'kind'], 'ctrlline'], paint: { 'line-color': MARK, 'line-width': 1, 'line-dasharray': [2, 2] } },
   { id: 'draw-mid', type: 'symbol', source: 'drawover', filter: ['==', ['get', 'kind'], 'mid'],
     layout: { 'icon-image': 'draw-plus', 'icon-allow-overlap': true, 'icon-ignore-placement': true },
     paint: { 'icon-color': MARK, 'icon-halo-color': MARK_CASE, 'icon-halo-width': 1.5 } },
-  { id: 'draw-ctrl', type: 'circle', source: 'drawover', filter: ['==', ['get', 'kind'], 'ctrl'],
-    paint: { 'circle-radius': 5, 'circle-color': '#ffffff', 'circle-stroke-color': MARK, 'circle-stroke-width': 1.5 } },
   // the line being drawn (Line tool)
   { id: 'draw-draft', type: 'line', source: 'drawover', filter: ['==', ['get', 'kind'], 'draft'], layout: { 'line-join': 'round' },
     paint: { 'line-color': DRAFT, 'line-width': 2, 'line-dasharray': [3, 2] } },
@@ -164,7 +154,7 @@ export const DRAW_LAYERS = [
   { id: 'draw-leader', type: 'line', source: 'drawlabel', filter: ['==', ['get', 'kind'], 'leader'], layout: { 'line-cap': 'round' },
     paint: { 'line-color': ['get', 'c'], 'line-width': 1.25 } },
   { id: 'draw-lend', type: 'symbol', source: 'drawlabel', filter: ['==', ['get', 'kind'], 'lend'],
-    layout: { 'icon-image': ['match', ['get', 'end'], 'arrow', 'draw-arrow', 'draw-centre'], 'icon-rotate': ['get', 'rot'], 'icon-rotation-alignment': 'viewport',
+    layout: { 'icon-image': 'draw-arrow', 'icon-rotate': ['get', 'rot'], 'icon-rotation-alignment': 'viewport',
       'icon-allow-overlap': true, 'icon-ignore-placement': true },
     paint: { 'icon-color': ['get', 'c'] } },
   // a label selected or hovered: the mark's rim round its text or its box (hidden with the other marks)
@@ -191,7 +181,7 @@ export const DRAW_LAYERS = [
 ];
 // what a click can hit, topmost first (drawing-ui.md §5): symbols, outlines, lines, areas, rings
 export const HIT_LAYERS = DRAW_LAYERS.filter((l) => /^draw-(symbol|shape|polygon|path|guide|linehit|ring|label-text)/.test(l.id)).map((l) => l.id).reverse();
-export const MARK_LAYERS = DRAW_LAYERS.filter((l) => /^draw-(mark|handle|stalk|ctrl|mid|lhandle)/.test(l.id)).map((l) => l.id);
+export const MARK_LAYERS = DRAW_LAYERS.filter((l) => /^draw-(mark|handle|stalk|mid|lhandle)/.test(l.id)).map((l) => l.id);
 // what a press can grab, and the cursor over each
 export const HANDLE_LAYERS = ['draw-ctrl', 'draw-handle', 'draw-mid', 'draw-lhandle'];
-export const CURSOR = { move: 'move', point: 'grab', end: 'grab', vertex: 'grab', mid: 'copy', ctrl: 'grab', radius: 'ew-resize', aperture: 'ew-resize', corner: 'nwse-resize', side: 'ew-resize', rotate: 'crosshair', anchor: 'grab', ppoint: 'grab', pmid: 'copy' };
+export const CURSOR = { move: 'move', point: 'grab', end: 'grab', vertex: 'grab', mid: 'copy', radius: 'ew-resize', aperture: 'ew-resize', corner: 'nwse-resize', side: 'ew-resize', rotate: 'crosshair', anchor: 'grab', ppoint: 'grab', pmid: 'copy' };

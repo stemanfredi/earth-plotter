@@ -4,22 +4,18 @@
 
 import { circle, sector, cornersOf, reachesPole, ccw, areaOf, destination, inverse, pathOf, perimeterOf } from '../geodesy.js';
 
-import { styleOf, lookOf, minSizeOf, offsetOf, isShown, elements, groupsOf, centroid, roundParts, outlineParts, mainOutline, reachOf, ARCED, columnsOf } from './document.js';
-import { mercator, unmercator, unrollTo, metresPerPixel, D2R } from '../geo.js';
+import { styleOf, lookOf, minSizeOf, offsetOf, isShown, elements, groupsOf, centroid, roundParts, outlineParts, mainOutline, reachOf, columnsOf } from './document.js';
+import { mercator, unrollTo, metresPerPixel, D2R } from '../geo.js';
 import { rotateHandle } from './drag.js';
-import { lineTrace, anchorsOf, pointsAlong } from './lines.js';
-import { inflated } from './inflate.js';
+import { lineTrace, anchorsOf, positionsOf, pointsAlong } from './lines.js';
 import { labelText } from './labels.js';
 import { resolve, along } from './attach.js';
-import { outlineOf, isVehicle, VEHICLE_MIN_FACTOR } from './outlines.js';
+import { outlineOf } from './outlines.js';
 import { fmtArea, fmtBrg, fmtDist } from '../format.js';
-import { AREA_SLOTS } from './layers.js';
 
 // a round part's polygon about its point: a circle, or a sector centred on the point's bearing
 export const ringOf = (p, part) => (part.kind === 'sector' ? sector(p.position, part.radius, p.bearing, part.aperture)
-  : part.kind === 'arc' ? sector(p.position, part.radius, p.bearing, part.aperture).slice(1, -1) : circle(p.position, part.radius)); // an arc: open, its edge alone
-// a round part's geometry: a ring (a polygon), an arc a line
-const roundGeometry = (part, rg) => (part.kind === 'arc' ? { type: 'LineString', coordinates: rg } : { type: 'Polygon', coordinates: [rg] });
+  : circle(p.position, part.radius));
 // whether a point's radius can be drawn: a circle reaching a pole cannot be a polygon
 export const drawable = (p, r) => !reachesPole(p.position, r);
 // a point's outline part (i: its place; none: its largest) as a shape: { center, bearing, length,
@@ -27,13 +23,12 @@ export const drawable = (p, r) => !reachesPole(p.position, r);
 export const shapeOf = (p, i = mainOutline(p)?.i) => { const o = p.parts[i]; return { center: p.position, bearing: p.bearing, length: o.length, width: o.width, outline: o.kind }; };
 
 // How much larger than their real size a point's outlines are drawn at map zoom: 1 when its largest's
-// long side is at least its minimum display size on screen (its look's: its own, else
-// the drawing's, twice it for a vehicle, whose silhouette needs more room to be read), more when
-// shorter; all its outlines by the same. Display only: lengths, totals and exports use the real sizes.
+// long side is at least the drawing's minimum display size on screen, more when shorter; all its
+// outlines by the same. Display only: lengths, totals and exports use the real sizes.
 export function enlargement(doc, p, zoom) {
   const o = mainOutline(p)?.part;
   if (!o) return 1;
-  const m = minSizeOf(doc, p), min = m.own ? m.px : m.px * (isVehicle(o.kind) ? VEHICLE_MIN_FACTOR : 1);
+  const min = minSizeOf(doc);
   if (!min || zoom == null) return 1;
   const px = Math.max(o.length, o.width) / metresPerPixel(zoom, p.position[1]);
   return px < min ? min / px : 1;
@@ -57,10 +52,9 @@ const lineProps = (s, colour = s.color, dash = s.dash) => ({ sc: colour, so: s.o
 // hover band just outside the outline (a point: its outermost round part, or its largest outline),
 // drawn offset by half the stroke's width and a gap (sw), its ring counter-clockwise so that "outside"
 // is one side; handles at the points a drag grabs; a ring around a point's centre.
-// display: { zoom, ctrl }: an outline too small to see at that zoom is drawn enlarged, dotted
+// display: { zoom }: an outline too small to see at that zoom is drawn enlarged, dotted
 // (it is not to scale); without a zoom, everything at real size. A line with an Offset carries it
-// (off, px): MapLibre draws it beside its geometry (layers.js), display only; a connection's lines
-// inflated are drawn bowed (inflate.js), display only too. want: the parts to make (the others come back empty).
+// (off, px): MapLibre draws it beside its geometry (layers.js), display only. want: the parts to make (the others come back empty).
 export function drawParts(doc, sel = new Set(), hover = null, display = {}, want = { base: true, zoom: true, marks: true }) {
   const base = [], zoomed = [], marks = [];
   const markOf = (id) => (!want.marks ? null : sel.has(id) ? 'sel' : hover === id ? 'hover' : null);
@@ -129,18 +123,18 @@ export function drawParts(doc, sel = new Set(), hover = null, display = {}, want
     for (const { part } of rounds) {
       const rg = ringOf(n, part);
       if (want.base) base.push({ type: 'Feature', properties: { id: n.id, kind: 'ring', z: Z.get(n.id), fill: part.fill ? 1 : 0, fc: st.fill.color, fo: st.fill.opacity,
-        ...lineProps(st.stroke, part.strokeColor || st.stroke.color, part.strokeDash || st.stroke.dash) }, geometry: roundGeometry(part, rg) });
+        ...lineProps(st.stroke) }, geometry: { type: 'Polygon', coordinates: [rg] } });
       if (!outer || part.radius > outer.part.radius) outer = { part, rg };
     }
     // its halo round its outermost round part (a point with an outline: round that); its parts dragged
-    if (!mainOutline(n)) mark(n.id, outer.part.kind === 'arc' ? roundGeometry(outer.part, outer.rg) : { type: 'Polygon', coordinates: [ccw(outer.rg)] }, { sw: st.stroke.width });
+    if (!mainOutline(n)) mark(n.id, { type: 'Polygon', coordinates: [ccw(outer.rg)] }, { sw: st.stroke.width });
     if (sel.has(n.id)) {
       // each round part's radius dragged by its handles, named by its place in the list: a circle's at
       // its four cardinal points, a sector's at the middle of its arc
-      const items = rounds.flatMap(({ part, i }) => (ARCED.has(part.kind) ? [n.bearing] : [0, 90, 180, 270]).map((az) => ({ p: destination(n.position, az, part.radius), role: 'radius', ref: i })));
+      const items = rounds.flatMap(({ part, i }) => (part.kind === 'sector' ? [n.bearing] : [0, 90, 180, 270]).map((az) => ({ p: destination(n.position, az, part.radius), role: 'radius', ref: i })));
       // a sector's ends: each moves alone; the stalk's end beyond the outermost arc's middle turns the
       // point (with an outline, the outline's stalk does)
-      const sectors = rounds.filter(({ part }) => ARCED.has(part.kind)); // an arc's ends as a sector's
+      const sectors = rounds.filter(({ part }) => part.kind === 'sector');
       for (const { part, i } of sectors) for (const k of [-0.5, 0.5]) items.push({ p: destination(n.position, n.bearing + k * part.aperture, part.radius), role: 'aperture', ref: `${i}:${k}` });
       if (sectors.length && !mainOutline(n) && mpp) {
         const far = Math.max(...sectors.map(({ part }) => part.radius));
@@ -156,8 +150,7 @@ export function drawParts(doc, sel = new Set(), hover = null, display = {}, want
   for (const g of doc.areas) {
     if (!isShown(doc, g) || (!want.base && !want.zoom && !markOf(g.id))) continue;
     const st = styleOf(doc, g), rg = pathOf(g.points, true);
-    const slot = doc.areas.length - Z.get(g.id); // its place from the top: its own layers (layers.js slotLayers)
-    if (want.base) base.push({ type: 'Feature', properties: { id: g.id, kind: 'polygon', z: Z.get(g.id), ...(slot < AREA_SLOTS ? { slot } : {}), fill: 1, fc: st.fill.color, fo: st.fill.opacity, ...lineProps(st.stroke) }, geometry: { type: 'Polygon', coordinates: [rg] } });
+    if (want.base) base.push({ type: 'Feature', properties: { id: g.id, kind: 'polygon', z: Z.get(g.id), fill: 1, fc: st.fill.color, fo: st.fill.opacity, ...lineProps(st.stroke) }, geometry: { type: 'Polygon', coordinates: [rg] } });
     if (want.zoom && named(g)) name(zoomNames, g, { type: 'Point', coordinates: centroid(g.points) }, st.stroke.color, { ctr: 1 }); // with the outlines' names (a centre)
     if (mark(g.id, { type: 'Polygon', coordinates: [ccw(rg)] }, { sw: st.stroke.width }, () => g.points) && sel.has(g.id)) {
       handles(g.id, g.points.map((p, i) => ({ p, role: 'ppoint', ref: i })), true);
@@ -177,7 +170,7 @@ export function drawParts(doc, sel = new Set(), hover = null, display = {}, want
       const o = outlineOf(n.position, n.bearing, part.length * k, part.width * k, part.kind);
       if (i === main.i) mainCorners = o.corners;
       if (want.zoom) zoomed.push({ type: 'Feature', properties: { id: n.id, kind: 'shape', z: Z.get(n.id), fill: part.fill ? 1 : 0, fc: st.fill.color, fo: st.fill.opacity,
-        ...lineProps(st.stroke, part.strokeColor || st.stroke.color, k > 1 ? 'dotted' : part.strokeDash || st.stroke.dash), ...(k > 1 ? { enlarged: k } : {}) }, geometry: { type: 'Polygon', coordinates: [o.ring] } });
+        ...lineProps(st.stroke, st.stroke.color, k > 1 ? 'dotted' : st.stroke.dash), ...(k > 1 ? { enlarged: k } : {}) }, geometry: { type: 'Polygon', coordinates: [o.ring] } });
       if (i === main.i) halo = o.ring;
       corners.push(...o.corners.map((p, c) => ({ p, role: 'corner', ref: `${i}:${c}` })));
       corners.push(...o.corners.map((p, c) => ({ p: along(p, o.corners[(c + 1) % 4], 0.5), role: 'side', ref: `${i}:${c}` }))); // the middle of each side: that side alone
@@ -196,8 +189,6 @@ export function drawParts(doc, sel = new Set(), hover = null, display = {}, want
   }
   // lines: a guide dashed and faint, the others solid; every visible line also has an invisible stroke
   // wide enough to click. A line's halo is on both sides of it.
-  let bowed = null; // the lines drawn bowed: computed once, if needed
-  const bowedNow = () => (bowed ??= inflated(doc));
   for (const sg of doc.lines) {
     if (!isShown(doc, sg)) continue;
     const st = styleOf(doc, sg).stroke;
@@ -205,14 +196,14 @@ export function drawParts(doc, sel = new Set(), hover = null, display = {}, want
     if (want.base && wants(sg)) for (const v of sg.vertices) if (v.name.trim()) baseNames.push({ type: 'Feature', properties: { id: sg.id, kind: 'name', nm: v.name, c: st.color, vx: 1 }, geometry: { type: 'Point', coordinates: v.position } });
     if (!want.zoom && !markOf(sg.id)) continue;
     const line = lineTrace(doc, sg), off = offsetOf(doc, sg);
-    const g = { type: 'LineString', coordinates: bowedNow().get(sg.id) || line.coords }; // drawn bowed, or where it is
+    const g = { type: 'LineString', coordinates: line.coords };
     if (want.zoom) {
       zoomed.push({ type: 'Feature', properties: { id: sg.id, kind: 'linehit', off }, geometry: g });
       if (named(sg)) name(zoomNames, sg, g, st.color);
       zoomed.push({ type: 'Feature', properties: { id: sg.id, kind: sg.guide ? 'guide' : 'path', z: Z.get(sg.id), off, ...lineProps(st) }, geometry: g });
     }
-    if (mark(sg.id, g, { sw: st.width, off }, () => anchorsOf(sg).map((a) => a.position)) && sel.has(sg.id)) {
-      const an = anchorsOf(sg), last = an.length - 1;
+    if (mark(sg.id, g, { sw: st.width, off }, () => positionsOf(sg)) && sel.has(sg.id)) {
+      const an = positionsOf(sg).map((position) => ({ position })), last = an.length - 1;
       // its ends: one attached to a point's centre moves the point; another (free, or attached to a
       // corner, an edge, a vertex) itself, attached again where it is dropped
       const centre = (e) => e.element && e.edge == null && e.vertex == null;
@@ -226,18 +217,6 @@ export function drawParts(doc, sel = new Set(), hover = null, display = {}, want
           if (d.s / ground(a[1]) > midPx) mids.push({ p: destination(a, d.azi, d.s / 2), role: 'mid', ref: i, kind: 'mid' });
         }
         handles(sg.id, mids);
-      }
-      // its Bézier handles, while the inspector shows them: a circle on a line from its point
-      if (display.ctrl) {
-        const at = (p, h) => { const m = mercator(p), c = Math.cos(p[1] * D2R); return unmercator([m[0] + h[0] / c, m[1] + h[1] / c]); };
-        an.forEach((a, i) => {
-          for (const [h, which] of [[a.hIn, 'in'], [a.hOut, 'out']]) {
-            if (!h) continue;
-            const q = at(a.position, h);
-            marks.push({ type: 'Feature', properties: { id: sg.id, kind: 'ctrlline' }, geometry: { type: 'LineString', coordinates: [a.position, q] } });
-            handles(sg.id, [{ p: q, role: 'ctrl', ref: `${which}:${i}`, kind: 'ctrl' }]);
-          }
-        });
       }
     }
   }
@@ -262,7 +241,7 @@ export function drawFeatures(doc, sel = new Set(), hover = null, display = {}) {
 }
 // whether anything drawn changes with the zoom: an outline that may be drawn enlarged
 export function zoomDependent(doc) {
-  return doc.points.some((p) => mainOutline(p) && isShown(doc, p) && minSizeOf(doc, p).px > 0);
+  return doc.points.some((p) => mainOutline(p) && isShown(doc, p)) && minSizeOf(doc) > 0;
 }
 // whether an element shows its values (its look's)
 const showsValues = (doc, el) => lookOf(doc, el).text.values;
@@ -291,7 +270,7 @@ export function valueFeatures(doc, units = 'km', bearings = false) {
   }
   for (const n of doc.points) {
     if (!showsValues(doc, n) || !isShown(doc, n)) continue;
-    for (const { part } of roundParts(n)) if (part.shown && drawable(n, part.radius)) label(n.id, destination(n.position, ARCED.has(part.kind) ? n.bearing : 0, part.radius), `r ${fmtDist(part.radius, units)}`, 'bottom');
+    for (const { part } of roundParts(n)) if (part.shown && drawable(n, part.radius)) label(n.id, destination(n.position, part.kind === 'sector' ? n.bearing : 0, part.radius), `r ${fmtDist(part.radius, units)}`, 'bottom');
   }
   return out;
 }
@@ -318,9 +297,8 @@ export function exportFeatures(doc, units = 'km') {
       const own = { part_name: part.name, filled: part.fill };
       if (part.radius) {
         const rg = ringOf(n, part);
-        const arc = part.kind === 'arc';
-        feature({ ...base(part.kind, n), ...own, radius_m: m(part.radius), ...(arc ? {} : { area_m2: Math.round(areaOf(rg)) }),
-          ...(ARCED.has(part.kind) ? { bearing_deg: deg(n.bearing), aperture_deg: deg(part.aperture) } : {}), ...flatten(n.properties) }, arc ? roundGeometry(part, rg) : { type: 'Polygon', coordinates: [ccw(rg)] });
+        feature({ ...base(part.kind, n), ...own, radius_m: m(part.radius), area_m2: Math.round(areaOf(rg)),
+          ...(part.kind === 'sector' ? { bearing_deg: deg(n.bearing), aperture_deg: deg(part.aperture) } : {}), ...flatten(n.properties) }, { type: 'Polygon', coordinates: [ccw(rg)] });
       } else {
         const { ring: rg } = outlineOf(n.position, n.bearing, part.length, part.width, part.kind);
         feature({ ...base('shape', n), ...own, outline: part.kind, length_m: m(part.length), width_m: m(part.width), bearing_deg: deg(n.bearing), area_m2: Math.round(areaOf(rg)), ...flatten(n.properties) },

@@ -11,7 +11,6 @@ const { settleGeometry, DrawStore } = await import('../../site/draw/store.js');
 const { inverse } = await import('../../site/geodesy.js');
 const { verticesOf } = await import('../../site/draw/attach.js');
 const { parse, serialise } = await import('../../site/draw/file.js');
-const { inflated } = await import('../../site/draw/inflate.js');
 
 const R = (position, weight = 1) => ({ position, weight }); // a root for plan()
 const roots = (...ids) => ids.map((id) => ({ id, weight: 1 })); // roots for connect()
@@ -225,7 +224,7 @@ test('tree: straight lines root → hub → points, attached at both ends, each 
     assert.ok(h.pointIds.length >= 1 && h.pointIds.every((id) => ids.includes(id)));
     assert.deepEqual(h.pos, find(doc, h.pointId).el.position);
   }
-  assert.ok(made.every((s) => !s.vertices.length && s.mode === 'fixed'), 'straight lines');
+  assert.ok(made.every((s) => !s.vertices.length && !s.smooth), 'straight lines');
   assert.ok(made.filter((s) => part(doc, s) === 'trunk').every((s) => lineTrace(doc, s).length > 1), 'no trunk of length zero');
   // attached at both ends, where their points are
   for (const s of made) for (const e of [s.start, s.end]) assert.deepEqual(e.position, find(doc, e.element).el.position);
@@ -357,7 +356,7 @@ test('a distribution follows its line; one moved by hand stops; Edit moves them,
   // rule's new copy, but those whose parts were changed by hand since: they keep their own
   const n0 = array.points.length;
   ns[1].parts.push({ ...makePart('circle', { radius: 2000 }), fill: false });
-  Object.assign(ns[0].parts[0], { fill: false, shown: false, name: 'kept', strokeColor: '#00ff00', strokeDash: 'dotted' });
+  Object.assign(ns[0].parts[0], { fill: false, shown: false, name: 'kept' });
   const own = [structuredClone(ns[0].parts), structuredClone(ns[1].parts)];
   assert.deepEqual(editDistribution(doc, array.id, { offset: 200, aperture: 90, radius: 750 }), { distribution: array, remade: false });
   assert.equal(array.points.length, n0);
@@ -504,10 +503,10 @@ test('refreshGenerated: a distribution whose line or points are gone is dropped,
   assert.equal(distributions(doc).length, 0);
 });
 
-test('a distribution along a curved line in mode auto is back on it after a single change', () => {
+test('a distribution along a smooth line is back on it after a single change', () => {
   const doc = emptyDoc(0);
   const a = addPoint(doc, [12, 40]), b = addPoint(doc, [12.4, 40]);
-  const line = addLine(doc, a.id, [[12.2, 40.05]], b.id, { mode: 'auto' });
+  const line = addLine(doc, a.id, [[12.2, 40.05]], b.id, { smooth: true });
   settleGeometry(doc);
   const { distribution: array } = makeDistribution(doc, { along: { element: line.id }, spacing: 3000 });
   settleGeometry(doc);
@@ -776,33 +775,6 @@ test('a distribution makes at most MAX_COPIES points, and says so', () => {
   assert.equal(distribute(doc, s, { count: 10 }).capped, false);
 });
 
-test('inflate: display only; a branch along the dominant direction straight, the others bowed away from it by their angle; the trunk arriving along it; off at 0, kept in the file', () => {
-  const doc = emptyDoc(0);
-  const root = addPoint(doc, [12, 40]), ends = [[12.1, 40.03], [12.1, 40], [12.1, 39.97]].map((q) => addPoint(doc, q)); // a fan east of the hub, the trunk from the west
-  const r = connect(doc, { pointIds: ends.map((n) => n.id), roots: roots(root.id), pattern: 'tree', groupSize: 3, inflate: 0.6 });
-  assert.equal(r.connection.inflate, 0.6);
-  const drawn = inflated(doc), line = (end) => doc.lines.find((s) => s.end.element === end);
-  const mid = (c) => c[Math.floor(c.length / 2)];
-  const up = drawn.get(line(ends[0].id).id), level = drawn.get(line(ends[1].id).id), down = drawn.get(line(ends[2].id).id);
-  assert.ok(up && down && !level, 'the branch along the mean direction stays straight: not bowed');
-  const hub = find(doc, r.connection.hubs[0].pointId).el;
-  near(inverse(up[0], hub.position).s, 0, 1e-3, 'from the hub'); near(inverse(up.at(-1), ends[0].position).s, 0, 1e-3, 'to its end');
-  assert.ok(mid(up)[1] > (hub.position[1] + ends[0].position[1]) / 2, 'the upper branch bows up, away from the middle');
-  assert.ok(mid(down)[1] < (hub.position[1] + ends[2].position[1]) / 2, 'the lower one down');
-  const trunk = drawn.get(doc.lines.find((s) => s.start.element === root.id).id);
-  assert.ok(trunk && trunk.length > 2, 'the trunk bowed too');
-  assert.ok(doc.lines.every((s) => !s.vertices.length && !s.startHandle && !s.endHandle), 'the real lines untouched');
-  const sum = (c) => c.slice(1).reduce((a, q, i) => a + inverse(c[i], q).s, 0);
-  assert.ok(sum(up) > lineTrace(doc, line(ends[0].id)).length, 'the drawn curve is longer than the real, straight branch');
-  // a vertex added by hand: drawn as it is
-  doc.lines.find((s) => s.end.element === ends[0].id).vertices.push({ position: [12.05, 40.02], handleIn: null, handleOut: null, name: '', properties: [] });
-  assert.ok(!inflated(doc).has(line(ends[0].id).id));
-  r.connection.inflate = 0;
-  assert.equal(inflated(doc).size, 0);
-  r.connection.inflate = 0.25;
-  const back = parse(serialise(doc), null, 0).doc;
-  assert.equal(connections(back)[0].inflate, 0.25);
-});
 
 test('plan: a root on a point with a shortest branch still plans (no NaN); a set tree is capped; a bad size is Auto; ties are relative', async () => {
   const { MAX_TREE } = await import('../../site/draw/generator.js');

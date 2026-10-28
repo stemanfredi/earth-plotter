@@ -21,7 +21,7 @@ const again = (doc, known = null) => parse(serialise(doc), known, NOW);
 // a document as the file holds it: values rounded as the writer rounds them (positions 7 decimals,
 // metres and pixels 3, angles 4)
 const r = (n) => (v) => (typeof v === 'number' ? +v.toFixed(n) : v);
-const ROUND = { position: 7, pos: 7, center: 7, points: 7, startHandle: 3, endHandle: 3, handleIn: 3, handleOut: 3,
+const ROUND = { position: 7, pos: 7, center: 7, points: 7,
   radius: 3, length: 3, width: 3, at: 6, offset: 3, minSize: 3, opacity: 3, bearing: 4, aperture: 4, zoom: 4 };
 function rounded(x, n = null) {
   if (Array.isArray(x)) return x.map((y) => rounded(y, n));
@@ -34,7 +34,7 @@ function sample() {
   const doc = emptyDoc(NOW);
   const a = addPoint(doc, [12, 41]), b = addPoint(doc, [12.2, 41.1]);
   b.bearing = 30;
-  Object.assign(b.parts[0], { kind: 'sector', aperture: 120, shown: false, name: 'inner', strokeColor: '#00ff00', strokeDash: 'dotted' });
+  Object.assign(b.parts[0], { kind: 'sector', aperture: 120, shown: false, name: 'inner' });
   addPart(b, 'sector');
   addPart(b, 'triangle');
   addShape(doc, [12.1, 41], 'ellipse').bearing = 45;
@@ -43,7 +43,7 @@ function sample() {
   l.look.stroke = { ...d.GUIDE_STROKE }; // its own, though as a guide's
   l.properties = [{ key: 'name', value: 'x' }, { key: 'k', value: 'v' }, { key: 'k', value: 'w' }];
   const free = addLine(doc, [13, 40], [], [13.5, 40.5]);
-  Object.assign(free, { startHandle: [100, 200], mode: 'auto' });
+  free.smooth = true;
   free.look.offset = 4;
   addArea(doc, [[12, 40], [12, 40.5], [12.5, 40.5]]).look = { fill: { color: '#123456', opacity: 0.5 }, stroke: { dash: 'dotted' } };
   addArea(doc, [[12, 40], [12.5, 40], [12.5, 40.5]]);
@@ -102,9 +102,8 @@ test('round trip: a drawing made by the operations survives its file unchanged, 
 test('round trip: values come back rounded as the file writes them', () => {
   const doc = emptyDoc(NOW);
   const p = addPoint(doc, [12.123456789, 41.987654321], { bearing: 45.123456, parts: [makePart('sector', { radius: 1000.12345, aperture: 90.000049 })] });
-  p.look = { fill: { opacity: 0.123456 }, stroke: { width: 2.00049 }, minSize: 7.12345 };
-  const s = addLine(doc, [1.000000049, 2], [[1.5, 2.12345678]], p.id, { startHandle: [1.23456, -7.65432], look: { offset: 3.33333 } });
-  s.vertices[0].handleIn = [0.0004, 9.9999];
+  p.look = { fill: { opacity: 0.123456 }, stroke: { width: 2.00049 } };
+  const s = addLine(doc, [1.000000049, 2], [[1.5, 2.12345678]], p.id, { look: { offset: 3.33333 } });
   addLabel(doc, lineRef(doc, s, 1500.12345)).offset = [10.12345, -20.98765];
   addArea(doc, [[0, 0], [1.123456789, 0], [1, 1]]);
   Object.assign(addShape(doc, [3, 3]).parts[0], { length: 120.12345, width: 40.98765 });
@@ -225,33 +224,33 @@ test('repairs: symbol, angles, sizes, Offset, style values, parts, flags', () =>
   const st = { stroke: '#FF0000', 'stroke-width': 99, 'stroke-opacity': 2, fill: 'red' };
   const { doc, report } = read(collection([
     F('p1', 'Point', [0, 0], { kind: 'point', symbol: 'star', bearing: -90, look: { minSize: -3, stroke: { dash: 'wavy' }, text: { name: 'yes' } },
-      parts: [{ kind: 'circle', radius: 100 }, { kind: 'circle', radius: 200, strokeDash: 'wavy' }, { kind: 'circle', radius: 0 }, { kind: 'circle', radius: 2e7 }, 'x',
+      parts: [{ kind: 'circle', radius: 100 }, { kind: 'circle', radius: 200 }, { kind: 'circle', radius: 0 }, { kind: 'circle', radius: 2e7 }, 'x',
         { kind: 'sector', radius: 300, aperture: 400 }] }, st),
     F('p2', 'Point', [0, 0], { kind: 'point', look: { minSize: 900 },
-      parts: [{ kind: 'hovercraft', length: 10, width: 4 }, { kind: 'sector', radius: 5, aperture: 0 }, { kind: 'circle', radius: 1, fill: false, shown: false, name: 7, strokeColor: 'red' },
+      parts: [{ kind: 'hovercraft', length: 10, width: 4 }, { kind: 'sector', radius: 5, aperture: 0 }, { kind: 'circle', radius: 1, fill: false, shown: false, name: 7 },
         { kind: 'circle', radius: 2, fill: 'no', shown: 0 }] }),
     F('p3', 'Point', [0, 0], { kind: 'point', parts: [{ kind: 'rectangle', length: 0, width: 4 }, { kind: 'sector', radius: 50 }, { kind: 'sector', radius: 60, aperture: 360 },
       { kind: 'ellipse', length: 10, width: 4, aperture: 30, radius: 9 }, { kind: 'sector', radius: 70, aperture: 45, length: 3 }, { kind: 'triangle', length: 10 }] }),
-    F('s1', 'LineString', [[0, 0], [1, 0]], { kind: 'line', look: { offset: -99 }, startHandle: 'x', endHandle: [10, 20], mode: 'curvy' }),
+    F('s1', 'LineString', [[0, 0], [1, 0]], { kind: 'line', look: { offset: -99 }, smooth: 'yes' }),
     F('s2', 'LineString', [[0, 0], [1, 0]], { kind: 'line', look: { offset: 99 } }),
     F('s3', 'LineString', [[0, 0], [1, 0]], { kind: 'line', look: { offset: true } }),
   ]));
   const [p1, p2, p3] = doc.points, [s1, s2, s3] = doc.lines;
   assert.deepEqual([p1.symbol, p1.bearing, p1.look.minSize, p1.look.text, d.lookOf(doc, p1).text.name], ['none', 270, undefined, undefined, false]); // not valid: left out, the drawing's applies
-  assert.deepEqual(p1.parts.map((x) => [x.kind, x.radius, x.strokeDash, x.fill, x.shown]), [['circle', 100, null, true, true], ['circle', 200, null, true, true], ['circle', 300, null, true, true]]); // a sector of 360° or more: a circle
+  assert.deepEqual(p1.parts.map((x) => [x.kind, x.radius, x.fill, x.shown]), [['circle', 100, true, true], ['circle', 200, true, true], ['circle', 300, true, true]]); // a sector of 360° or more: a circle
   assert.ok(!('aperture' in p1.parts[2]));
   assert.deepEqual([p1.look.fill, p1.look.stroke], [undefined, { color: '#ff0000', width: 20, opacity: 1 }]); // the bad colour and dash dropped: the group's, else the defaults
-  assert.deepEqual([p2.symbol, p2.look.minSize], ['none', 200]);
+  assert.deepEqual([p2.symbol, p2.look.minSize], ['none', undefined]); // a point has none of its own
   assert.deepEqual(p2.parts, [makePart('circle', { radius: 5 }), { ...makePart('circle', { radius: 1 }), fill: false, shown: false, name: '7' }, makePart('circle', { radius: 2 })]); // Fill and Shown: on unless false
   assert.deepEqual(p3.parts, [makePart('circle', { radius: 50 }), makePart('circle', { radius: 60 }), makePart('ellipse', { length: 10, width: 4 }), makePart('sector', { radius: 70, aperture: 45 })]); // only a kind's own sizes kept
   assert.equal(p3.symbol, 'none');
-  assert.deepEqual([s1.look.offset, s1.startHandle, s1.endHandle, s1.mode], [-d.MAX_OFFSET, null, [10, 20], 'fixed']); // clamped either side
+  assert.deepEqual([s1.look.offset, s1.smooth], [-d.MAX_OFFSET, false]); // clamped either side
   assert.deepEqual([s2.look.offset, s3.look.offset], [d.MAX_OFFSET, undefined]); // true or false is not a number of pixels
-  for (const re of [/unknown symbol "star"/, /bearing -90 read as 270/, /aperture 400 read as a full circle/, /aperture: not an angle above 0; a circle/, /look minSize: not a number of pixels/,
-    /unknown dash "wavy"/, /look text name: not true or false, ignored/, /part 2: unknown dash, the point's used/, /part 3 skipped: radius not between/, /part 4 skipped: radius not between/, /part 5 skipped: not an object/,
-    /part 1 skipped: unknown kind "hovercraft"/, /part 3 name: number made text/, /part 3 stroke colour: not a #rrggbb/, /part 1 skipped: length or width not above 0/, /part 2: a sector with no aperture; a circle/,
+  for (const re of [/unknown symbol "star"/, /bearing -90 read as 270/, /aperture 400 read as a full circle/, /aperture: not an angle above 0; a circle/,
+    /unknown dash "wavy"/, /look text name: not true or false, ignored/, /part 3 skipped: radius not between/, /part 4 skipped: radius not between/, /part 5 skipped: not an object/,
+    /part 1 skipped: unknown kind "hovercraft"/, /part 3 name: number made text/, /part 1 skipped: length or width not above 0/, /part 2: a sector with no aperture; a circle/,
     /part 6 skipped: length or width not above 0/, /stroke width 99 clamped to 20/, /stroke opacity 2 clamped to 1/, /fill colour: not a #rrggbb/,
-    /Offset: not a number/, /startHandle: not \[east, north\]/]) warned(report, re);
+    /Offset: not a number/, /smooth is not true or false/]) warned(report, re);
   assert.equal(report.warnings.filter((w) => /aperture/.test(w)).length, 3); // those three; a sector of exactly 360°: a circle, quietly
 });
 
@@ -273,10 +272,10 @@ test('parts: named by their place, without IDs; an ID in the file is ignored and
 
 test('parts in the file: only what differs from the defaults, sizes rounded; no outline, radii or aperture on a point', () => {
   const doc = emptyDoc(NOW);
-  addPoint(doc, [0, 0], { bearing: 10, parts: [makePart('circle', { radius: 100.00049 }), { ...makePart('sector', { radius: 200, aperture: 33.333333 }), fill: false, shown: false, name: 'b', strokeColor: '#00ff00', strokeDash: 'dotted' },
+  addPoint(doc, [0, 0], { bearing: 10, parts: [makePart('circle', { radius: 100.00049 }), { ...makePart('sector', { radius: 200, aperture: 33.333333 }), fill: false, shown: false, name: 'b' },
     makePart('underwater-vehicle', { length: 12.34567, width: 2.5 })] });
   const c = toFile(doc).features[0].properties.charts;
-  assert.deepEqual(c.parts, [{ kind: 'circle', radius: 100 }, { kind: 'sector', radius: 200, aperture: 33.3333, fill: false, shown: false, name: 'b', strokeColor: '#00ff00', strokeDash: 'dotted' },
+  assert.deepEqual(c.parts, [{ kind: 'circle', radius: 100 }, { kind: 'sector', radius: 200, aperture: 33.3333, fill: false, shown: false, name: 'b' },
     { kind: 'underwater-vehicle', length: 12.346, width: 2.5 }]);
   assert.ok(!('outline' in c) && !('radii' in c) && !('aperture' in c));
   const back = again(doc).doc.points[0];
@@ -348,7 +347,7 @@ test('labels: on an element, along a line, on a vertex, or free; checked; writte
   const { doc, report } = read(collection([
     F('a', 'Point', [12, 40], { kind: 'point', look: { text: { name: true } } }), F('s', 'LineString', [[12, 40], [13, 40]], { kind: 'line' }),
     F('ar', 'Polygon', [[[12, 41], [13, 41], [13, 42], [12, 41]]], { kind: 'area' }),
-    F('l1', 'Point', [0, 0], { kind: 'label', text: '{name}', anchor: { element: 'a' }, offset: [10, -20], leader: 'dot', look: { text: { size: 'large', color: '#AA0000', background: 'box' } } }),
+    F('l1', 'Point', [0, 0], { kind: 'label', text: '{name}', anchor: { element: 'a' }, offset: [10, -20], leader: 'none', look: { text: { size: 'large', color: '#AA0000', background: 'box' } } }),
     F('l2', 'Point', [0, 0], { kind: 'label', anchor: { element: 's', edge: 0, at: 0.123456789 } }),
     F('l3', 'Point', [12, 41], { kind: 'label', leader: 'zigzag', offset: 'far', look: { text: { size: 'huge' } } }),
     F('l4', 'Point', [12, 42], { kind: 'label', anchor: { element: 'gone' } }),
@@ -363,7 +362,7 @@ test('labels: on an element, along a line, on a vertex, or free; checked; writte
   assert.deepEqual(skippedIds(report), ['l7']);
   const [l1, l2, l3, l4, l5, l6, l8, l9, l10] = doc.labels;
   const text = (a) => d.lookOf(doc, a).text;
-  assert.deepEqual([l1.leader, l1.offset, l1.look, l1.anchor], ['dot', [10, -20], { text: { size: 'large', color: '#aa0000', background: 'box' } }, { position: [12, 40], element: 'a' }]);
+  assert.deepEqual([l1.leader, l1.offset, l1.look, l1.anchor], ['none', [10, -20], { text: { size: 'large', color: '#aa0000', background: 'box' } }, { position: [12, 40], element: 'a' }]);
   assert.deepEqual([l2.anchor.element, l2.anchor.edge, l2.anchor.at, l2.text, l2.leader, l2.look, text(l2).background], ['s', 0, 0.123456789, '', 'arrow', {}, 'halo']);
   assert.deepEqual(l2.anchor.position, resolve(doc, l2.anchor).position); // where it points
   assert.ok(Math.abs(resolve(doc, l2.anchor).along - 0.123456789 * resolve(doc, l2.anchor).length) < 1e-6);
@@ -419,22 +418,15 @@ test('view: layers, variants and data checked against what the app offers', () =
   assert.equal(serialise(again(doc, known).doc), serialise(doc));
 });
 
-test('minimum display size: the drawing\'s value and a point\'s own, read, checked and written', () => {
-  const { doc, report } = read(collection([
-    F('a', 'Point', [12, 40], { kind: 'point', parts: [{ kind: 'rectangle', length: 10, width: 5 }] }),
-    F('b', 'Point', [12, 40], { kind: 'point', parts: [{ kind: 'rectangle', length: 10, width: 5 }], look: { minSize: 0 } }),
-    F('c', 'Point', [12, 40], { kind: 'point', look: { minSize: -3 } }),
-    F('d', 'Point', [12, 40], { kind: 'point', look: { minSize: 900 } }),
-  ], { look: { minSize: 20 } }));
-  assert.deepEqual(doc.look, { minSize: 20 });
-  assert.deepEqual(doc.points.map((p) => p.look.minSize), [undefined, 0, undefined, 200]);
-  assert.deepEqual(doc.points.map((p) => d.minSizeOf(doc, p)), [{ px: 20, own: false }, { px: 0, own: true }, { px: 20, own: false }, { px: 200, own: true }]);
-  warned(report, /look minSize: not a number of pixels/);
-  const plain = read(collection([], { view: {} })).doc;
-  assert.equal(d.lookOf(plain, plain).minSize, 12); // the default
-  const f = toFile(doc);
-  assert.deepEqual(f.features.map((x) => x.properties.charts.look?.minSize), [undefined, 0, undefined, 200]);
-  assert.deepEqual(f.charts.look, { minSize: 20 });
+test('minimum display size: the drawing\'s, read, checked and written; a point has none of its own', () => {
+  const { doc } = read(collection([
+    F('a', 'Point', [12, 40], { kind: 'point', parts: [{ kind: 'rectangle', length: 10, width: 5 }], look: { minSize: 0 } }),
+  ], { look: { minSize: 900 } }));
+  assert.deepEqual([doc.look, doc.points[0].look.minSize, d.minSizeOf(doc)], [{ minSize: 200 }, undefined, 200]); // clamped; the point's not read
+  const bad = read(collection([], { look: { minSize: -3 } }));
+  warned(bad.report, /look minSize: not a number of pixels/);
+  assert.equal(d.minSizeOf(bad.doc), 12); // the default
+  assert.deepEqual(toFile(doc).charts.look, { minSize: 200 });
 });
 
 test('rules (distribute, connect) are kept as records; defaults left out; an unknown kind or a distribution along nothing skipped', () => {
@@ -497,14 +489,14 @@ test('operations: new elements, names, parts, IDs', () => {
   b.name = 'Point 7';
   assert.equal(nextName(doc, 'point'), 'Point 8');
   const h = addShape(doc, [12, 41]);
-  assert.deepEqual([h.name, h.symbol, h.parts], ['Shape 1', 'none', [{ kind: 'rectangle', fill: true, shown: true, name: '', strokeColor: null, strokeDash: null, length: 100, width: 50 }]]);
+  assert.deepEqual([h.name, h.symbol, h.parts], ['Shape 1', 'none', [{ kind: 'rectangle', fill: true, shown: true, name: '', length: 100, width: 50 }]]);
   assert.equal(addShape(doc, [12, 41], 'ellipse').parts[0].kind, 'ellipse');
   doc.points.pop();
   assert.equal(nextName(doc, 'point', 'Shape'), 'Shape 2');
   const j = addDot(doc, [12, 42]);
   assert.deepEqual([j.symbol, j.parts, d.pointKind(j), d.pointKind(a), d.pointKind(h)], ['dot', [], 'point', 'circle', 'rectangle']);
   const rr = addPart(a);
-  assert.deepEqual(rr, { kind: 'circle', fill: false, shown: true, name: '', strokeColor: null, strokeDash: null, radius: 2000 }); // no ID; twice the last, not filled
+  assert.deepEqual(rr, { kind: 'circle', fill: false, shown: true, name: '', radius: 2000 }); // no ID; twice the last, not filled
   assert.equal(d.pointKind(a), 'rings');
   assert.equal(d.followedPart(a), 0);
   a.parts[0].fill = false; // none filled: the first followed
@@ -546,7 +538,7 @@ test('parts: round and outline ones by place, each one\'s reach, the largest out
   const doc = emptyDoc(NOW);
   const p = addPoint(doc, [0, 0], { parts: [makePart('rectangle', { length: 300, width: 400 }), { ...makePart('circle', { radius: 100 }), fill: false },
     makePart('triangle', { length: 500, width: 10 }), makePart('sector', { radius: 200, aperture: 30 })] });
-  assert.deepEqual([d.isRound(p.parts[1]), d.isRound(p.parts[0]), d.ROUND, d.PART_KINDS], [true, false, ['circle', 'sector', 'arc'], ['circle', 'sector', 'arc', ...d.OUTLINES]]);
+  assert.deepEqual([d.isRound(p.parts[1]), d.isRound(p.parts[0]), d.ROUND, d.PART_KINDS], [true, false, ['circle', 'sector'], ['circle', 'sector', ...d.OUTLINES]]);
   assert.deepEqual(p.parts.map(d.reachOf), [150, 100, 250, 200]); // an outline: half its length, whatever its width
   assert.deepEqual(d.roundParts(p).map((x) => x.i), [1, 3]);
   assert.deepEqual(d.outlineParts(p).map((x) => x.i), [0, 2]);
@@ -555,8 +547,6 @@ test('parts: round and outline ones by place, each one\'s reach, the largest out
   assert.equal(d.pointKind(p), 'triangle'); // the largest outline's kind
   p.parts = p.parts.filter((x) => d.isRound(x));
   assert.deepEqual([d.mainOutline(p), d.pointKind(p)], [null, 'sector']); // a sector among them
-  assert.equal(d.pointKind({ parts: [makePart('circle', { radius: 50 }), makePart('arc', { radius: 90 })] }), 'arc'); // an arc among them, no sector
-  assert.deepEqual([makePart('arc').fill, makePart('arc').aperture], [false, 90]); // an arc: never filled
   p.parts[1].kind = 'circle';
   assert.equal(d.pointKind(p), 'rings');
   p.parts[1].fill = false;
@@ -565,21 +555,16 @@ test('parts: round and outline ones by place, each one\'s reach, the largest out
   assert.deepEqual([d.followedPart(p), d.pointKind(p)], [null, 'ellipse']);
 });
 
-test('lines: ends attached to points or free; vertices inserted and deleted; straightened', () => {
+test('lines: ends attached to points or free; vertices inserted and deleted', () => {
   const doc = emptyDoc(NOW);
   const a = addPoint(doc, [12, 41]);
   const s = addLine(doc, a.id, [[12.1, 41.1]], [12.2, 41]);
-  assert.deepEqual([s.name, s.start, s.end, s.mode, s.guide], ['Line 1', { position: [12, 41], element: a.id }, { position: [12.2, 41], element: null }, 'fixed', false]);
+  assert.deepEqual([s.name, s.start, s.end, s.smooth, s.guide], ['Line 1', { position: [12, 41], element: a.id }, { position: [12.2, 41], element: null }, false, false]);
   assert.equal(doc.points.length, 1); // no point made for a free end
   assert.deepEqual(placeOf('line', s), [12, 41]);
   d.insertVertex(s, 1, [12.15, 41.05]);
   assert.deepEqual(s.vertices.map((v) => v.position), [[12.1, 41.1], [12.15, 41.05]]);
   d.deleteVertex(s, 0);
-  s.startHandle = [1, 2];
-  s.vertices[0].handleIn = [3, 4];
-  s.mode = 'auto';
-  d.straighten(s);
-  assert.deepEqual([s.startHandle, s.vertices[0].handleIn, s.mode], [null, null, 'fixed']);
   assert.deepEqual(again(doc).doc, doc);
 });
 
@@ -604,14 +589,13 @@ test('split a line at a vertex: a dot carrying the vertex\'s own, both lines att
   const doc = emptyDoc(NOW);
   const a = addPoint(doc, [0, 0]);
   const s = addLine(doc, a.id, [[1, 0], [2, 0], [3, 0]], [4, 0], { name: 'Main' });
-  Object.assign(s.vertices[1], { name: 'bend', properties: [{ key: 'k', value: 'v' }], handleIn: [1, 1], handleOut: [2, 2] });
-  s.endHandle = [5, 5];
+  Object.assign(s.vertices[1], { name: 'bend', properties: [{ key: 'k', value: 'v' }] });
   const p = splitLine(doc, s.id, 1);
   const rest = doc.lines[1];
   assert.deepEqual([p.symbol, p.parts, p.name, p.properties, p.position], ['dot', [], 'bend', [{ key: 'k', value: 'v' }], [2, 0]]);
-  assert.deepEqual([s.end, s.endHandle, s.vertices.map((v) => v.position)], [{ position: [2, 0], element: p.id }, [1, 1], [[1, 0]]]);
-  assert.deepEqual([rest.start, rest.startHandle, rest.end, rest.endHandle, rest.vertices.map((v) => v.position), rest.name],
-    [{ position: [2, 0], element: p.id }, [2, 2], { position: [4, 0], element: null }, [5, 5], [[3, 0]], 'Line 1']);
+  assert.deepEqual([s.end, s.vertices.map((v) => v.position)], [{ position: [2, 0], element: p.id }, [[1, 0]]]);
+  assert.deepEqual([rest.start, rest.end, rest.vertices.map((v) => v.position), rest.name],
+    [{ position: [2, 0], element: p.id }, { position: [4, 0], element: null }, [[3, 0]], 'Line 1']);
   assert.notEqual(rest.id, s.id);
   assert.equal(splitLine(doc, s.id, 0).name, 'Point 2'); // an unnamed vertex: the next point's name
 });
@@ -788,12 +772,10 @@ test('the look: the drawing\'s defaults, then its own (a group adds nothing); a 
   const m = addLine(doc, [0, 0], [], [1, 1], { guide: true, look: { text: { values: true } } });
   const s = addLine(doc, a.id, [], b.id);
   doc.look = { text: { name: true }, offset: 4, minSize: 20 };
-  assert.deepEqual([d.lookOf(doc, a).text.name, d.lookOf(doc, m).text.name, offsetOf(doc, s), d.minSizeOf(doc, a)], [true, false, 4, { px: 20, own: false }]);
+  assert.deepEqual([d.lookOf(doc, a).text.name, d.lookOf(doc, m).text.name, offsetOf(doc, s), d.minSizeOf(doc)], [true, false, 4, 20]);
   makeGroup(doc, [a.id, s.id]);
   d.setLook(a, 'text.name', false); // its own, over the drawing's
-  d.setLook(a, 'minSize', 8);
-  assert.deepEqual([d.lookOf(doc, a).text.name, d.lookOf(doc, b).text.name, offsetOf(doc, s), d.minSizeOf(doc, a)], [false, true, 4, { px: 8, own: true }]);
-  d.setLook(a, 'minSize', undefined);
+  assert.deepEqual([d.lookOf(doc, a).text.name, d.lookOf(doc, b).text.name, offsetOf(doc, s)], [false, true, 4]);
   d.setLook(a, 'text.name', undefined); // taken back
   assert.deepEqual(a.look, {});
   const f = toFile(doc);

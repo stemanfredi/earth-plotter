@@ -19,9 +19,6 @@ body { font: 13px/1.4 var(--font); color: var(--ink); background: #f1ebdc; overf
 .nostart { position: absolute; z-index: 10; top: 40%; left: 16px; right: 16px; max-width: 420px; margin: 0 auto; padding: 12px 16px;
   background: var(--bg); border: 1px solid var(--line); border-radius: 8px; box-shadow: var(--shadow); visibility: hidden; animation: nostart 0s 8s forwards; }
 @keyframes nostart { to { visibility: visible; } }
-/* a newer version published (app.js): said at the top, with Reload */
-.update { position: absolute; z-index: 10; top: 64px; left: 16px; right: 16px; max-width: 360px; margin: 0 auto; padding: 8px 14px;
-  background: var(--bg); border: 1px solid var(--line); border-radius: 8px; box-shadow: var(--shadow); text-align: center; }
 /* a button read as a link (About's Reload) */
 .linkbtn { border: 0; background: none; padding: 0; font: inherit; color: var(--accent); text-decoration: underline; cursor: pointer; }
 #map { position: absolute; inset: 0; }
@@ -242,7 +239,6 @@ input.bad { border-color: var(--err) !important; background: #fdf3f2 !important;
 .lmatrix td { white-space: nowrap; }
 .funit { color: var(--soft); font-size: 12px; }
 .mixed { font-size: 11px; color: var(--warn); }
-.fenlarged { font-size: 11.5px; color: var(--warn); }
 /* the Select area tool's rectangle, on the map */
 .dbox { position: absolute; border: 1.5px solid #1c7ed6; background: rgba(28, 126, 214, .1); /* the marks' blue (draw/layers.js) */ pointer-events: none; z-index: 2; }
 /* a group's row: a caret folds its members */
@@ -306,12 +302,6 @@ button.small.link:hover { border-color: var(--line); }
 .lgrid .fcheck { justify-content: center; padding: 0; min-width: var(--row); }
 .lbar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 4px 0; }
 /* a row's sub-row (a vertex's handles): across the row, held at the grid's left edge as it scrolls */
-.lgrid tr.lsub td { padding: 0 0 4px; }
-.lsubin { position: sticky; left: 0; width: max-content; padding-left: 26px; }
-.fhandles { display: flex; flex-direction: column; } /* in, then out: one line each */
-.fhandle { display: inline-flex; align-items: center; gap: 4px; }
-.fhandle > .funit:first-child { width: 24px; }
-.lgrid td .fhandle input.num:not([type=checkbox]) { width: 72px !important; } /* over the grid's full-width cells */
 .fsummary { color: var(--ink); background: var(--bg2); border-radius: 6px; padding: 6px 8px; }
 .fblock { display: flex; flex-direction: column; }
 .fend { justify-content: space-between; border-top: 1px solid var(--line2); padding-top: 8px; margin-top: 4px; }
@@ -337,13 +327,6 @@ button.small[aria-pressed="true"] { background: var(--accent); border-color: var
 .dinspect .seg button { display: grid; place-items: center; }
 .dinspect .seg svg { width: 16px; height: 16px; }
 /* radii: filled (radio), shown, name, value, own stroke, remove */
-.rstroke { position: relative; }
-.rstroke summary { list-style: none; cursor: pointer; width: var(--row); height: var(--row); border: 1px solid var(--line); border-radius: 6px; display: grid; place-items: center; }
-.rstroke summary::-webkit-details-marker { display: none; }
-.rstroke .swatch { width: 16px; height: 4px; border-radius: 2px; }
-.rstroke summary.own { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
-.rstroke .pop { position: fixed; z-index: 2; background: #fff; border: 1px solid var(--line); border-radius: 8px; box-shadow: var(--shadow); padding: 8px; display: grid; gap: 6px; width: 200px; }
-.rstroke .pop label { display: flex; align-items: center; justify-content: space-between; gap: 6px; font-size: 12px; color: var(--soft); }
 .dnote { position: absolute; left: 12px; right: 12px; bottom: 10px; display: flex; align-items: center; justify-content: space-between; gap: 8px;
   background: var(--ink); color: #fff; border-radius: 8px; padding: 6px 6px 6px 12px; box-shadow: var(--shadow); font-size: 12.5px; }
 .dnote button { border: 1px solid rgba(255,255,255,.4); background: none; color: #fff; border-radius: 6px; min-height: var(--row); padding: 0 12px; }

@@ -35,11 +35,10 @@ rail is full height and the map's bottom row and legends start at its edge; the 
 lies over everything (the map and its bottom row too):
 
 - the **rail**, small icons: **☰** (the drawings in this browser and the drawing's file, §10),
-  **Select** (on when no other tool is; its kinds, a click or an area), **Point**, **Line**,
+  **Select** (on when no other tool is), **Point**, **Line**,
   **Shape**, **Label**, **Measure**, **Undo**, **Redo**, and at its foot the column's toggle (or
   **E**). A tool with kinds has a small corner mark and shows the kind in use; its kinds are a column
-  beside the rail, level with the tool's button, open while the tool is on (Select's while Select area is, or
-  once Select is clicked), over the column; they go when the tool ends or another starts;
+  beside the rail, level with the tool's button, open while the tool is on, over the column; they go when the tool ends or another starts;
 - the **column** beside it: the tree (§4) over the inspector (§5), a divider between them (dragged, or
   ↑ ↓ when focused; its place remembered in this browser). Each half has a head: the tree's is the drawing's title
   (a click shows the drawing in the inspector) and the eye for all; the inspector's says what it
@@ -66,7 +65,7 @@ it back and lets the map pinch.
 ## 2. Tools
 
 The row: **Point** (P), **Line** (G), **Shape** (S), **Label** (T), **Measure** (M), then, after a
-divider, **Select** (A: Select area, a box dragged on the map). **Undo** and **Redo** (greyed when
+divider, **Select**. **Undo** and **Redo** (greyed when
 there is nothing to undo or redo) are in the panel's header. One tool is on at a time; it stays on after
 each placement. A tool's button pressed again turns it off. A tool's key works from anywhere and
 opens the panel (not on a phone).
@@ -78,16 +77,15 @@ tool remembers the kind chosen last; its key pressed again, while it is on, move
 |---|---|---|
 | Point | symbol, then the user's presets without extent | a point with a symbol: a marker, the same size at every zoom |
 | Line | none | a line (Guide is a switch on any element, §5) |
-| Shape | circle, rings, sector, arc, rectangle, ellipse, triangle, polygon, aerial vehicle, surface vehicle, underwater vehicle, then the user's presets with extent | see below |
+| Shape | circle, rings, sector, rectangle, ellipse, triangle, polygon, aerial vehicle, surface vehicle, underwater vehicle, then the user's presets with extent | see below |
 | Label | none | a label |
-| Measure | distance, area, ring | a guide showing its values (§3) |
+| Measure | none | a line kept as a guide showing its values (§3) |
 
 - **Shape**: built-in presets, as the user's are (`place.js`): a circle (1 km), rings (1, 2 and 3 km,
-  the first filled), a sector and an arc (three clicks, below; an arc is a sector's curved edge alone,
-  never filled), an outline to scale (100 × 50 m; a triangle 100 m a side); and a polygon (an area,
-  drawn corner by corner). Each is a point with its parts (circles, sectors, arcs, outlines) and no
-  symbol, named after what it is ("Circle 2"), the preset
-  it came from kept as its property `preset` ("Rings").
+  the first filled), a sector (three clicks, below), an outline to scale (100 × 50 m; a triangle
+  100 m a side); and a polygon (an area, drawn corner by corner). Each is a point with its parts
+  (circles, sectors, outlines) and no symbol, named after what it is ("Circle 2"), the preset it came
+  from kept as its property `preset` ("Rings").
 
 ### 2.1 Placing and drawing
 
@@ -101,15 +99,13 @@ tool remembers the kind chosen last; its key pressed again, while it is on, move
   second the opposite one (**Shift**: a square, a circle, the larger side); it is centred between
   them. The second click on the first places the default size. A preset of the user's keeps its size: one click
   places it. Exact sizes are typed in the inspector.
-- A tool's button pressed from the keyboard places a point, a shape (at its default size) or a label
-  at the map's centre.
 - **Line**: the first click is its start; each click after adds a vertex. A click on something a line
   can attach to ends it there, attached (not on its own start with nothing in between). Enter or a
   double-click ends it at the last vertex, free. Backspace takes back the last vertex (with none, the
   start). The snap marker shows what a click would attach to.
 - **Polygon** (Shape): a click per corner; a click on its first corner (marked when the pointer is
   on it), Enter or a double-click closes it (three corners at least).
-- **Sector** and **Arc** (Shape), in three clicks: the centre; the radius and one edge; the other edge, clockwise.
+- **Sector** (Shape), in three clicks: the centre; the radius and one edge; the other edge, clockwise.
   Esc or **Back** goes one click back. A third click back
   on the first edge makes a full circle.
 - **Label**: a click points a new label at what snapping finds there (a point's centre, a vertex, a
@@ -149,10 +145,8 @@ added to or taken from what it is on, it stays where it was (the nearest vertex,
 
 ## 3. Measure
 
-Measure is a shortcut: its kinds are the drawing's own tools with **Guide** and **Show values** ticked.
-**Distance** is the Line tool (its ends attach as a line's do), **Area** the Polygon, **Ring** a circle
-in two clicks (the centre, then the edge; the centre again: 1 km). The result is an ordinary element:
-a line "Distance 1", an area, a point "Ring 1" with one circle and no symbol, drawn in Measure's
+Measure is a shortcut: the Line tool with **Guide** and **Show values** ticked (its ends attach as a
+line's do). The result is an ordinary element, a line "Distance 1", drawn in Measure's
 colour (magenta, dashed). Unticking Guide makes it part of the drawing. There is no Measure apart
 from this: its values are the drawing's own (§2.1, Values while drawing).
 
@@ -173,11 +167,11 @@ from this: its values are the drawing's own (§2.1, Values while drawing).
 - Names and icons say what an element is: a point is a **Point**, **Circle**, **Rings**, **Sector**,
   or its outline's name (**Rectangle**, **Ellipse**…); an area is an **Area**; then **Line**,
   **Label**, **Group**. An unnamed one shows as its kind and place.
-- The value: a shape's size ("shown ×7.0" when drawn enlarged), its first filled round part's radius (and a
+- The value: a shape's size, its first filled round part's radius (and a
   sector's aperture), an area's area, a line's length ("guide" when it is one), a label's text, a
   group's count of elements (everything in it, its subgroups' too; the whole count in its tooltip).
-- **Select** (the tool, A): drag a box on the map: what lies entirely inside is selected, a point by
-  its centre, a shape by its whole outline; Shift adds; Esc or a right-click ends it.
+- **A box:** Shift-drag on the map with no tool on: what lies entirely inside is added to the
+  selection, a point by its centre, a shape by its whole outline.
 - Past 30 elements a filter appears (names and property values), with **Select all shown** (Shift:
   adds).
 - A row selects on the map, and the reverse (the list scrolls to it); hovering a row outlines the
@@ -205,25 +199,22 @@ in place while a wide list scrolls sideways; a row clicked or typed in is the cu
 actions in a bar under the list (Insert after, Delete, Split, Distribute along it…), and on keys
 (Insert, Ctrl/⌘ Delete); ↑, ↓ and Enter go to the same column in the row above or below. **Copy** on
 a list's heading puts its rows on the clipboard, tab-separated, a header first, every column (metres
-and degrees), for a spreadsheet. Places pasted into a vertex's or a corner's latitude (several lines,
-a latitude then a longitude on each, in any format a coordinate field reads; a copied list's Lat and
-Lon columns) replace the places from that row on, in one undo step: past the last one the line or
-area grows; an attached end is never moved (the paste stops before it); a line not read leaves it all
-as it was. The note says what was done. A line's free start and end have their own latitude and
+and degrees), for a spreadsheet. A line's free start and end have their own latitude and
 longitude in its list.
 
 **Look**, one section for one element, several, a group or the drawing, showing only the fields their
 kinds have: **Fill** (colour, opacity; not on lines); **Stroke** (colour, opacity; width, dash);
 **Text** (labels: size S, M, L; colour on Halo or Box); **Name on the map**; **Show values** (its
 lengths, area and perimeter, or radii on the map); **Offset** (lines; §7);
-**Min. size** (shapes: drawn enlarged, dotted, when shorter than this on screen). A field shows what
+**Min. size** (the drawing's only: shapes drawn enlarged, dotted, when shorter than this on
+screen). A field shows what
 they are drawn with; where several differ it says "mixed", and a change writes only that field.
 
 **Rows**: a property grid, ruled across the panel, 28 px with a mouse (44 with a finger): each a
 label, one value or a pair read as one (latitude · longitude, colour · opacity, start · end…), and a
 last column for × or ↺; a row never wraps. A field shows no box until it is pointed at or typed in;
 lists are tables of the same cells. A list longer than 100 rows shows them a page at a time (‹ rows
-1–100 of n ›); Copy and a paste still take every row. In a value row
+1–100 of n ›); Copy still takes every row. In a value row
 ↑ and ↓ nudge a distance, an angle or a number by one unit of its last digit (Shift: ten), each step
 applied. A distance shows to the decimetre (metres), the metre (km) or about 2 m (NM); what is typed is
 kept as typed, and a field left unchanged changes nothing.
@@ -238,9 +229,9 @@ sets it on each (as for several selected). A hidden group hides everything in it
   whose outline marks it), then its
   **Parts**, always its own, a list: each its place, its kind (circle, sector, an outline; changing it
   keeps its reach), its size (a radius, a sector's with its aperture; an outline's length × width, its
-  area in the tooltip), **Fill**, **Shown**, its own stroke colour and dash, a name. The empty last row
+  area in the tooltip), **Fill**, **Shown**, a name. The empty last row
   ("add a part…") adds one (a round one twice the last round one's radius); its bar: **Distribute
-  along it…**, **Delete**. When outlines are drawn enlarged, it says so.
+  along it…**, **Delete**.
   With parts: **Distribute along…** (§6). Then **Save as preset…** (§9).
 - **Area:** area and perimeter; its corners (latitude, longitude; from corner 2 on, the **Edge** from
   the corner before, its length and bearing: typed, that corner and those after it move together, the
@@ -253,17 +244,16 @@ sets it on each (as for several selected). A hidden group hides everything in it
   the line, as the depth shading has it (GEBCO, cut to the coast), sampled at the grid's spacing, at
   most 1,000 places; the shallowest and the deepest; a chart whose place pointed at shows on the map,
   and the line pointed at on the map shows on the chart; its length along the seabed, a lower bound;
-  **CSV**); Curve (smooth, or as drawn), and **Distribute along…** (§6), **Smooth**, **Straighten**; its vertices (latitude, longitude; the **Leg** from the place
+  **CSV**); **Legs** (straight, or smooth: a curve through its vertices, following them), and **Distribute along…** (§6); its vertices (latitude, longitude; the **Leg** from the place
   before, its length and bearing, typed: that vertex and those after it move together, the legs after
   it unchanged, an attached end staying attached; name, distance along;
   its bar: **Insert after** (halfway to the next), **Delete**, **Split** (the vertex becomes a point both
-  parts attach to)), with
-  **Handles** for each vertex's curve (metres east and north, in and out).
+  parts attach to)).
 - **Label:** Text, with **Insert** for the live values that apply to what it points at: name, length,
   distance along, bearing, radius, area, perimeter; **Attached to** (a link, which vertex or edge)
   with **Attach to…** and the broken link (detach), as a line's end; Along (typed) for a label on a line, or the
   position of a free one; **Leader**
-  (Arrow, Dot, Line, None); its Look; Placement (pixels from its point, dragged on the map; ↺ puts it
+  (on: a line to its point with an arrow head; off: none); its Look; Placement (pixels from its point, dragged on the map; ↺ puts it
   back).
 - **Group:** the group it is in; Members (its own, and how many groups in it, with one eye for
   everything in it, as the list's head; **Select members** selects everything in it, its subgroups'
@@ -333,11 +323,6 @@ one end to the other, an outline's ring.
 - **Connect…** (two or more points selected, placed by hand): the Connect half alone, the points taken
   in the order selected; its lines, hubs and new roots go in a **Connection** group in the points'
   group. **Edit…** makes it anew; lines edited by hand are replaced (Undo brings them back).
-- **Inflate**, on the **Made by** row of anything a tree connection made: a slider, 0 to 100 %, drawing
-  its trees bowed, display only (§7): each branch bows away from its hub's dominant direction (the
-  mean of its branches'), the more the farther off it heads, one along it staying straight; the trunk
-  arrives at the hub along that direction. Lines, hubs and points stay where they are; a line edited
-  by hand (a vertex added) is drawn as it is. Live while the slider moves, one undo step when let go.
 - **Deleting a root** makes its connection again with the roots left, in the same undo step as the
   delete; deleting the last one removes the connection's lines and hubs (the copies stay). A root
   moved by hand: its lines and hubs follow; nothing is planned again until Edit….
@@ -345,9 +330,7 @@ one end to the other, an outline's ring.
 ## 7. On the map
 
 - **Stacking**, bottom to top: points' circles and sectors, areas, lines (guides under the others),
-  shapes' outlines, symbols, names and values, labels; within each, the drawing order (§4). An area is
-  drawn whole, its fill then its outline, so one above another covers its edge too (past 250 areas the
-  rest share one fill and one outline layer, under them).
+  shapes' outlines, symbols, names and values, labels; within each, the drawing order (§4).
 - **Marks:** everything that says "this is what you point at, picked, or would hit" is one blue,
   cased in white so that it shows on chart, sea and satellite; at half strength for hovering, at
   full for the selection and for targets. What is not made yet (what is being drawn, a form's
@@ -359,7 +342,7 @@ one end to the other, an outline's ring.
   vertices. Hovering an element (on the map or as a row) shows a blue band just outside it (a
   point's outermost round part, or its largest outline; both sides of a line; a ring round a
   point's centre; a label's rim). What a click would snap to, and a root or an attachment being
-  picked, is marked in full blue; the Select area box is blue. Selecting never moves the map; Zoom
+  picked, is marked in full blue; the box is blue. Selecting never moves the map; Zoom
   to does.
 - **Clicks:** with no tool on, a click selects the topmost element; the same place again, the next
   one down. Shift or Ctrl/⌘-click adds or removes.
@@ -379,13 +362,11 @@ one end to the other, an outline's ring.
     only moved;
   - a line's **vertices** and **ends**: an end attached to a point's centre moves the point; any other
     end moves itself and attaches where it is dropped; a **+** halfway along a leg adds a vertex;
-    with Handles on, each curve handle;
   - an area's **corners**, and a **+** halfway along each edge adds one;
   - a label's text (its offset) and, for a free label or one on a line, its point.
 - **Display only** (never in lengths or exports): **Offset** (a line drawn this many pixels beside
   where it is, to the right of its direction, or to the left when negative, −50 to 50, as QGIS
-  offsets a line symbol; a line setting it shows ⇉ in the list); **Inflate** (a connection's
-  trees drawn bowed, §6); **Min. size** (a shape too small on screen drawn enlarged, dotted).
+  offsets a line symbol; a line setting it shows ⇉ in the list); **Min. size** (a shape too small on screen drawn enlarged, dotted).
   Names on the map are left out where they collide; labels are always drawn.
 
 ## 8. Keys
@@ -395,7 +376,8 @@ one end to the other, an outline's ring.
 | / | search |
 | L | Layers |
 | E | the column (tree and inspector) shown or hidden |
-| P, G, S, T, M, A | point, line, shape, label, measure, select area |
+| P, G, S, T, M | point, line, shape, label, measure |
+| Shift-drag | a box: what lies inside added to the selection |
 | a tool's key again | its next kind |
 | Enter, double-click | finishes |
 | Backspace | takes back a point |
@@ -413,7 +395,7 @@ None act while typing in a field, except Esc and Enter. About lists them from `s
 pastes it with its middle at the pointer (else the map's centre); Ctrl/⌘ D duplicates it 20 px beside
 itself. One undo step; the copy is selected. A copy keeps its group, look and properties, gets new
 numbered names, and keeps the attachments between the elements copied together; ends attached to an
-element left behind are free. The clipboard is kept in this browser, so it pastes into another drawing.
+element left behind are free. The clipboard is kept in this page, so it pastes into another drawing opened in it.
 
 ## 9. Presets
 

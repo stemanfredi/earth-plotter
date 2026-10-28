@@ -23,7 +23,7 @@
 import { inverse, destination, localFrame, lengthOf } from '../geodesy.js';
 import { norm360 } from '../geo.js';
 import { lineTrace, pointsAlong } from './lines.js';
-import { addPoint, addDot, addLine, newId, idsOf, makePart, followedPart, label, remove, removePart, ARCED } from './document.js';
+import { addPoint, addDot, addLine, newId, idsOf, makePart, followedPart, label, remove, removePart } from './document.js';
 import { outlineOf } from './outlines.js';
 import { BUILT_IN, scaled } from './place.js';
 
@@ -43,10 +43,10 @@ export function alongTrace(doc, el, part = null) {
   if (!o) return null;
   let coords;
   if (o.radius) {
-    const ap = ARCED.has(o.kind) ? o.aperture : 360, from = ap < 360 ? el.bearing - ap / 2 : el.bearing, n = Math.max(8, Math.ceil(ap * 2));
+    const ap = o.kind === 'sector' ? o.aperture : 360, from = ap < 360 ? el.bearing - ap / 2 : el.bearing, n = Math.max(8, Math.ceil(ap * 2));
     coords = Array.from({ length: n + 1 }, (_, i) => destination(el.position, from + (ap * i) / n, o.radius));
   } else coords = outlineOf(el.position, el.bearing, o.length, o.width, o.kind).ring;
-  return { coords, length: lengthOf(coords), closed: !ARCED.has(o.kind) };
+  return { coords, length: lengthOf(coords), closed: o.kind !== 'sector' };
 }
 // the element points go along (a line or a point), or null
 export const alongOf = (doc, id) => doc.lines.find((s) => s.id === id) ?? doc.points.find((n) => n.id === id) ?? null;
@@ -360,8 +360,7 @@ export const changedByHand = (doc, pointId) => {
 // Connect points to roots (doc is changed: one undo step for the caller). params: pointIds, roots
 // ([{ id (a point), weight }]), newRoots (positions where a root point is made: square, weight 1),
 // pattern ('tree' or 'chain'), groupSize (a number, or 'auto'), minBranch (a tree's shortest branch,
-// m), inflate (its trees drawn bowed, 0–1, display only: inflate.js), id (the connection made again: its
-// own), groupId (made again: its group, kept), parentId (the group a new "Connection" group goes in;
+// m), id (the connection made again: its own), groupId (made again: its group, kept), parentId (the group a new "Connection" group goes in;
 // undefined: the first point's, a distribution's own for its copies). Returns { connection, groups, groupSize, lines, unused (root IDs), total (m) }, or null (no
 // point or no root).
 export function connect(doc, params) {
@@ -400,8 +399,7 @@ export function connect(doc, params) {
   const keep = new Set(roots.map((r) => r.id));
   const created = [...doc.points, ...doc.lines].map((x) => x.id).filter((id) => !before.has(id) && !keep.has(id));
   const minBranch = pattern === 'tree' && params.minBranch > 0 ? params.minBranch : 0;
-  const inflate = pattern === 'tree' && params.inflate > 0 ? Math.min(1, params.inflate) : 0; // chains are never bowed
-  const connection = { id: params.id || newId(doc), kind: 'connect', groupId, pattern, groupSize: groupSizeOf(params.groupSize, pattern), minBranch, inflate, roots, pointIds: nodes.map((n) => n.id), hubs, created };
+  const connection = { id: params.id || newId(doc), kind: 'connect', groupId, pattern, groupSize: groupSizeOf(params.groupSize, pattern), minBranch, roots, pointIds: nodes.map((n) => n.id), hubs, created };
   doc.rules.push(connection);
   return { connection, groups: p.groups.length, groupSize: p.groupSize, lines: doc.lines.filter((x) => created.includes(x.id)).length,
     unused: p.unused.map((i) => roots[i].id), total: p.total };
@@ -437,7 +435,7 @@ export function reconnectWithout(doc, gone) {
 // groupSize, minBranch, roots, newRoots }). Lines edited by hand are replaced. Returns as connect.
 export function reconnect(doc, id, changes = {}) {
   const c = unconnect(doc, id, true);
-  return c && connect(doc, { pointIds: c.pointIds, roots: c.roots, pattern: c.pattern, groupSize: c.groupSize, minBranch: c.minBranch, inflate: c.inflate, groupId: c.groupId, ...changes, id: c.id });
+  return c && connect(doc, { pointIds: c.pointIds, roots: c.roots, pattern: c.pattern, groupSize: c.groupSize, minBranch: c.minBranch, groupId: c.groupId, ...changes, id: c.id });
 }
 
 // The rule an element was made by or is part of: a distribution's copy, its group or Copies; a

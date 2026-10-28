@@ -16,7 +16,7 @@ export const FORMAT = 'charts-drawing';
 export const VERSION = 1; // the drawing's version: this code writes and reads it, and no other
 
 // a shape whose long side is shorter than this on screen (px) is drawn enlarged (display only);
-// 0 turns it off. The drawing's value, unless a shape has its own.
+// 0 turns it off. The drawing's setting.
 const MIN_DISPLAY_SIZE = 12;
 export const MAX_OFFSET = 50; // px: Offset's reach either side of a line
 export const MAX_MIN_SIZE = 200; // px: the largest minimum display size
@@ -44,19 +44,15 @@ export const SYMBOLS = ['diamond', 'square', 'triangle', 'dot', 'none'];
 export const DASHES = ['solid', 'dashed', 'dotted'];
 export const OUTLINES = ['rectangle', 'triangle', 'ellipse', 'aerial-vehicle', 'surface-vehicle', 'underwater-vehicle']; // outlines.js draws them
 // A point's parts (docs/drawing-ui.md §5): round ones (a circle, its radius; a sector, its radius
-// and aperture, centred on the point's bearing; an arc, a sector's curved edge alone, never filled)
-// and outlines (a length along the bearing and a width).
-// Each has its own Fill and Shown switches, a name, and its own stroke colour and dash (null: the
-// point's).
-export const ROUND = ['circle', 'sector', 'arc'];
-export const ARCED = new Set(['sector', 'arc']); // a round part with an aperture
+// and aperture, centred on the point's bearing) and outlines (a length along the bearing and a
+// width). Each has its own Fill and Shown switches and a name; its stroke is the point's.
+export const ROUND = ['circle', 'sector'];
 export const PART_KINDS = [...ROUND, ...OUTLINES];
 export const isRound = (part) => ROUND.includes(part.kind);
 export function makePart(kind, size = {}) {
-  const part = { kind, fill: true, shown: true, name: '', strokeColor: null, strokeDash: null };
+  const part = { kind, fill: true, shown: true, name: '' };
   if (ROUND.includes(kind)) part.radius = size.radius ?? NEW_RADIUS; else { part.length = size.length ?? 100; part.width = size.width ?? 50; }
-  if (ARCED.has(kind)) part.aperture = size.aperture ?? 90;
-  if (kind === 'arc') part.fill = false;
+  if (kind === 'sector') part.aperture = size.aperture ?? 90;
   return part;
 }
 // a part's reach from the point: its radius, or half its length (along the bearing)
@@ -77,7 +73,7 @@ export const KIND = {
 export const KINDS = Object.keys(KIND);
 const LIST = Object.fromEntries(KINDS.map((k) => [k, KIND[k].list]));
 // labels (docs/drawing-format.md §7.7): their leader's end, text size, background
-export const LEADERS = ['arrow', 'dot', 'line', 'none'];
+export const LEADERS = ['arrow', 'none']; // a line to what it points at, an arrow head there; or none
 export const LABEL_SIZES = ['small', 'medium', 'large'];
 export const BACKGROUNDS = ['halo', 'box'];
 const LABEL_COLOUR = '#1f2933'; // a label's text, unless it or the drawing sets one
@@ -142,15 +138,15 @@ export function nextName(doc, kind, base = KIND[kind].name) {
   return `${base} ${used.length ? Math.max(...used) + 1 : 1}`;
 }
 // What kind of point it is, for its name and icon: its largest outline's kind; else, by its round
-// parts, 'sector' (one is), 'arc' (one is), 'rings' (several) or 'circle'; else 'point' (a symbol). Every one is a
+// parts, 'sector' (one is), 'rings' (several) or 'circle'; else 'point' (a symbol). Every one is a
 // point in the file.
 export function pointKind(p) {
   const o = mainOutline(p), r = roundParts(p);
   if (o) return o.part.kind;
   const has = (k) => r.some((x) => x.part.kind === k);
-  return !r.length ? 'point' : has('sector') ? 'sector' : has('arc') ? 'arc' : r.length > 1 ? 'rings' : 'circle';
+  return !r.length ? 'point' : has('sector') ? 'sector' : r.length > 1 ? 'rings' : 'circle';
 }
-export const POINT_KIND_NAME = { point: 'Point', circle: 'Circle', rings: 'Rings', sector: 'Sector', arc: 'Arc' };
+export const POINT_KIND_NAME = { point: 'Point', circle: 'Circle', rings: 'Rings', sector: 'Sector' };
 
 const groupOf = (doc, el) => (el.groupId ? doc.groups.find((g) => g.id === el.groupId) : null);
 // The groups an element (or a group) is in, the nearest first: its group, that group's, and so on
@@ -187,12 +183,8 @@ export const isMeasurement = (doc, el) => !!el.guide && lookOf(doc, el).text.val
 export const labelColour = (doc, a) => lookOf(doc, a).text.color ?? LABEL_COLOUR;
 // how far a line is drawn from where it is (Offset: px, positive to the right of its direction, 0: on it)
 export const offsetOf = (doc, el) => lookOf(doc, el).offset;
-// A point's minimum display size: { px, own } (own: set on it, not the drawing's, so a vehicle does
-// not double it)
-export function minSizeOf(doc, p) {
-  const own = p.look.minSize;
-  return own != null ? { px: own, own: true } : { px: doc.look.minSize ?? MIN_DISPLAY_SIZE, own: false };
-}
+// the drawing's minimum display size (px)
+export const minSizeOf = (doc) => doc.look.minSize ?? MIN_DISPLAY_SIZE;
 // Set one field of x's own look (path: 'offset', 'fill.color', 'text.name'…); undefined takes it back
 // (the value then comes from the drawing, or the defaults).
 export function setLook(x, path, v) {
@@ -239,15 +231,15 @@ export function addArea(doc, points, opts = {}) {
 const endOf = (doc, x) => (typeof x === 'string' ? { position: [...doc.points.find((p) => p.id === x).position], element: x }
   : Array.isArray(x) ? { position: [...x], element: null } : { ...structuredClone(x), position: [...x.position] });
 // A line from start to end (each a point's ID, an attached end, or a position) through positions, its
-// legs straight (geodesics), fixed. Returns it.
+// legs straight (geodesics). Returns it.
 export function addLine(doc, start, positions, end, opts = {}) {
   const taken = idsOf(doc);
-  const s = { ...base(doc, 'line', taken), start: endOf(doc, start), end: endOf(doc, end), startHandle: null, endHandle: null, mode: 'fixed',
+  const s = { ...base(doc, 'line', taken), start: endOf(doc, start), end: endOf(doc, end), smooth: false,
     guide: false, vertices: positions.map((p) => vertex(p)), ...opts };
   doc.lines.push(s);
   return s;
 }
-const vertex = (p) => ({ position: [...p], handleIn: null, handleOut: null, name: '', properties: [] });
+const vertex = (p) => ({ position: [...p], name: '', properties: [] });
 // a part added to a point: a round one twice the reach of the last round one (filled when it is the
 // first), an outline of the default size; one taken away (by its place)
 export function addPart(p, kind = 'circle') {
@@ -303,12 +295,6 @@ export function remove(doc, ids, withMembers = false) {
 // addVertex, removeVertex)
 export function insertVertex(line, index, position) { line.vertices.splice(index, 0, vertex(position)); }
 export function deleteVertex(line, index) { line.vertices.splice(index, 1); }
-export function straighten(line) {
-  line.startHandle = null;
-  line.endHandle = null;
-  for (const v of line.vertices) { v.handleIn = null; v.handleOut = null; }
-  line.mode = 'fixed';
-}
 // Split a line at its vertex index: the vertex becomes a point (a dot, with the vertex's name and
 // properties), the line ends there, and a new line carries on from it with the rest, both attached
 // to it (what points at the line: attach.js splitKeeping). Returns the new point.
@@ -317,9 +303,8 @@ export function splitLine(doc, lineId, index) {
   const taken = idsOf(doc);
   const p = addPoint(doc, v.position, { name: v.name || nextName(doc, 'point'), properties: clone(v.properties), symbol: 'dot', parts: [] }, taken);
   const rest = { ...clone(s), id: newId(doc, taken), name: nextName(doc, 'line'), start: { position: [...v.position], element: p.id }, end: clone(s.end),
-    startHandle: v.handleOut, endHandle: s.endHandle, vertices: clone(s.vertices.slice(index + 1)) };
+    vertices: clone(s.vertices.slice(index + 1)) };
   s.end = { position: [...v.position], element: p.id };
-  s.endHandle = v.handleIn;
   s.vertices = s.vertices.slice(0, index);
   doc.lines.splice(doc.lines.indexOf(s) + 1, 0, rest);
   return p;
@@ -368,7 +353,7 @@ export const canHold = (doc, gid, id) => !gid || (gid !== id && !groupsOf(doc, f
 // The fields of a look each kind is drawn with
 const STYLE_FIELDS = ['fill.color', 'fill.opacity', 'stroke.color', 'stroke.opacity', 'stroke.width', 'stroke.dash'];
 export const LOOK_FIELDS = {
-  point: [...STYLE_FIELDS, 'text.name', 'text.values', 'minSize'],
+  point: [...STYLE_FIELDS, 'text.name', 'text.values'],
   area: [...STYLE_FIELDS, 'text.name', 'text.values'],
   line: [...STYLE_FIELDS.slice(2), 'text.name', 'text.values', 'offset'],
   label: ['text.size', 'text.color', 'text.background'],

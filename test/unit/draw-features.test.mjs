@@ -11,8 +11,8 @@ const { fmtArea, fmtDist } = await import('../../site/format.js');
 
 // a round part (a circle, or a sector given its aperture), its other fields as given
 const C = (radius, more = {}) => ({ ...makePart(more.aperture ? 'sector' : 'circle', { radius, aperture: more.aperture }), ...more });
-// three circles: the first filled, the second its own stroke, the third hidden
-const PARTS = (more = {}) => [C(500, more), C(1000, { fill: false, strokeColor: '#ff0000', strokeDash: 'dotted', ...more }), C(2000, { fill: false, shown: false, ...more })];
+// three circles: the first filled, the second not, the third hidden
+const PARTS = (more = {}) => [C(500, more), C(1000, { fill: false, ...more }), C(2000, { fill: false, shown: false, ...more })];
 const STYLE = { fill: { color: '#112233', opacity: 0.2 }, stroke: { color: '#445566' } };
 // a point with three circles (the last hidden), its own fill and stroke
 const ringedDoc = () => {
@@ -24,10 +24,10 @@ const ringedDoc = () => {
 const turn = (rg) => { let a = 0; for (let i = 0; i < rg.length - 1; i++) a += rg[i][0] * rg[i + 1][1] - rg[i + 1][0] * rg[i][1]; return a; };
 const kindsOf = (fs) => fs.map((x) => [x.properties.id, x.properties.kind]);
 
-test('round parts: one polygon per shown part, filled as each says, own stroke kept', () => {
+test('round parts: one polygon per shown part, filled as each says, in the point\'s stroke', () => {
   const f = drawFeatures(ringedDoc()).features;
   const rings = f.filter((x) => x.properties.kind === 'ring');
-  assert.deepEqual(rings.map((x) => [x.properties.fill, x.properties.sc, x.properties.dash]), [[1, '#445566', 'solid'], [0, '#ff0000', 'dotted']]);
+  assert.deepEqual(rings.map((x) => [x.properties.fill, x.properties.sc, x.properties.dash]), [[1, '#445566', 'solid'], [0, '#445566', 'solid']]);
   assert.equal(rings[0].properties.fc, '#112233');
   near(inverse([12, 41], rings[1].geometry.coordinates[0][10]).s, 1000, 1e-3, 'on the circle');
   assert.deepEqual(f.filter((x) => x.properties.kind === 'symbol').map((x) => x.properties.symbol), ['diamond']);
@@ -36,7 +36,7 @@ test('round parts: one polygon per shown part, filled as each says, own stroke k
 test('a new point: a diamond with one circle of 1 km; a dot: no parts', () => {
   const doc = emptyDoc(0);
   const p = addPoint(doc, [12, 41]), d = addDot(doc, [12.1, 41]);
-  assert.deepEqual([p.symbol, p.parts, p.bearing], ['diamond', [{ kind: 'circle', fill: true, shown: true, name: '', strokeColor: null, strokeDash: null, radius: 1000 }], 0]);
+  assert.deepEqual([p.symbol, p.parts, p.bearing], ['diamond', [{ kind: 'circle', fill: true, shown: true, name: '', radius: 1000 }], 0]);
   assert.deepEqual(['outline', 'radii', 'aperture'].filter((k) => k in p), []);
   assert.deepEqual([d.symbol, d.parts], ['dot', []]);
   const f = drawFeatures(doc).features;
@@ -163,11 +163,11 @@ test('several outlines on one point: each drawn, filled as it says; corners name
   const doc = emptyDoc(0);
   const h = addShape(doc, [12, 40]);
   h.id = 'h';
-  h.parts = [makePart('rectangle', { length: 100, width: 50 }), { ...makePart('ellipse', { length: 200, width: 80 }), fill: false, strokeDash: 'dashed' }];
+  h.parts = [makePart('rectangle', { length: 100, width: 50 }), { ...makePart('ellipse', { length: 200, width: 80 }), fill: false }];
   doc.look.minSize = 12;
   const at = (zoom) => drawFeatures(doc, new Set(['h']), null, { zoom }).features;
   const close = at(20), shapes = close.filter((x) => x.properties.kind === 'shape');
-  assert.deepEqual(shapes.map((x) => [x.properties.fill, x.properties.dash, x.properties.enlarged]), [[1, 'solid', undefined], [0, 'dashed', undefined]]);
+  assert.deepEqual(shapes.map((x) => [x.properties.fill, x.properties.dash, x.properties.enlarged]), [[1, 'solid', undefined], [0, 'solid', undefined]]);
   near(inverse([12, 40], shapes[0].geometry.coordinates[0][0]).s, Math.hypot(100, 50) / 2, 1e-3, 'the rectangle at real size');
   assert.deepEqual(close.filter((x) => x.properties.kind === 'handle').map((x) => [x.properties.role, x.properties.ref]),
     [...[0, 1].flatMap((i) => [...[0, 1, 2, 3].map((c) => ['corner', `${i}:${c}`]), ...[0, 1, 2, 3].map((c) => ['side', `${i}:${c}`])]), ['rotate', 0]]);
@@ -343,14 +343,9 @@ test('minimum display size: an outline too small on screen is drawn enlarged, do
   // zoomed in: real size, its own dash
   assert.equal(enlargement(doc, s, 17), 1);
   assert.equal(shape({ zoom: 17 }).properties.dash, 'dashed');
-  // off for the drawing (0), or for the outline alone; an outline's own value wins
+  // off for the drawing (0); twice the minimum, twice the size
   assert.equal(enlargement(drawing(0), s, 11), 1);
-  assert.equal(enlargement(doc, { ...s, look: { minSize: 0 } }, 11), 1);
-  near(enlargement(drawing(0), { ...s, look: { minSize: 24 } }, 11), 2 * k, 1e-9, 'its own minimum');
-  // a vehicle needs twice the room, unless it has its own minimum
-  const vehicle = [{ ...s.parts[0], kind: 'aerial-vehicle' }];
-  near(enlargement(doc, { ...s, parts: vehicle }, 11), 2 * k, 1e-9, 'a vehicle');
-  near(enlargement(doc, { ...s, parts: vehicle, look: { minSize: 12 } }, 11), k, 1e-9, 'a vehicle, its own minimum');
+  near(enlargement(drawing(24), s, 11), 2 * k, 1e-9, 'the drawing\'s minimum');
   // without an outline or a zoom (exports, tests): real size
   assert.equal(enlargement(doc, addPoint(doc, [12, 40]), 11), 1);
   assert.equal(shape({}).properties.enlarged, undefined);
@@ -399,15 +394,6 @@ test('lines: guides and the others drawn, a click target each, halos, handles by
   const z = drawFeatures(doc, new Set(['s1']), null, { zoom: 10 }).features;
   assert.deepEqual(handles(z, 's1', 'mid'), [['mid', 0], ['mid', 1]]);
   near(inverse([12, 41], z.find((x) => x.properties.kind === 'mid').geometry.coordinates).s, inverse([12, 41], [12.1, 41.05]).s / 2, 1e-6, 'halfway');
-  // Bézier handles, while the inspector shows them
-  doc.lines[1].startHandle = [1000, 0];
-  const c = drawFeatures(doc, new Set(['s2']), null, { ctrl: true }).features;
-  assert.deepEqual(handles(c, 's2', 'ctrl'), [['ctrl', 'out:0']]);
-  const q = c.find((x) => x.properties.kind === 'ctrl').geometry.coordinates;
-  near(inverse([12.2, 41], q).s, 1000, 5, '1 km east');
-  near(inverse([12.2, 41], q).azi, 90, 0.1, 'east');
-  assert.deepEqual(c.find((x) => x.properties.kind === 'ctrlline').geometry.coordinates, [[12.2, 41], q]);
-  assert.equal(drawFeatures(doc, new Set(['s2'])).features.filter((x) => x.properties.kind === 'ctrl').length, 0);
 });
 
 test('lines with an Offset: drawn on their real geometry, the offset carried for MapLibre (the line, its hit stroke, its marks); none in the export', () => {
@@ -467,8 +453,6 @@ test('zoomDependent: an outline that may be drawn enlarged', () => {
   assert.equal(zoomDependent(doc), true);
   doc.look.minSize = 0;
   assert.equal(zoomDependent(doc), false); // off for the drawing
-  h.look.minSize = 5;
-  assert.equal(zoomDependent(doc), true); // on for the outline
   h.visible = false;
   doc.look.minSize = 12;
   assert.equal(zoomDependent(doc), false);
@@ -495,10 +479,11 @@ test('values shown: each leg\'s length and bearing, the total; an area\'s area a
   near(inverse([13, 40], v[4].geometry.coordinates).s, 2000, 1e-6, 'at the radius');
   near(inverse([13, 40], v[4].geometry.coordinates).azi, 0, 1e-6, 'north');
   // bearings: on straight legs only; units
-  ruler.vertices[0].handleOut = [0, 2000];
   const b = valueFeatures(doc, 'nm', true).filter((x) => x.properties.id === ruler.id).map((x) => x.properties.label);
   assert.equal(b[0], `${fmtDist(10000, 'nm')} · 090.0°T`);
-  assert.ok(!b[1].includes('°'), b[1]);
+  ruler.smooth = true;
+  const c = valueFeatures(doc, 'nm', true).filter((x) => x.properties.id === ruler.id).map((x) => x.properties.label);
+  assert.ok(!c[0].includes('°') && !c[1].includes('°'), c.join());
   // a sector's radius at its bearing
   Object.assign(ring.parts[0], { kind: 'sector', aperture: 90 });
   ring.bearing = 135;

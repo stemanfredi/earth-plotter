@@ -327,7 +327,7 @@ export class Drawing extends DrawStore {
   snapFor(point, e, { from = null, prev = null, exclude = new Set() } = {}) {
     const ll = this.map.unproject(point), raw = [ll.lng, ll.lat];
     let r;
-    if (e?.altKey || this.snapOff) r = { position: raw, to: null, kind: null }; // Alt, or Snap off (a finger's)
+    if (e?.altKey) r = { position: raw, to: null, kind: null }; // Alt: free
     else if (e?.shiftKey && from) r = { position: stepped(from, raw, prev), to: null, kind: null };
     else r = snapAt(this.doc, [point.x, point.y], this.view(), { ids: new Set(this.hitAt(point, SNAP_PX)), exclude, radius: SNAP_PX }) || { position: raw, to: null, kind: null };
     this.snapMark = r.kind ? { kind: r.kind, position: r.position } : null;
@@ -788,7 +788,8 @@ export class Drawing extends DrawStore {
     this.map.getCanvas().style.cursor = on ? 'crosshair' : '';
     this.onChange('tool');
   }
-  // ---- box select: Shift-drag a box with no tool on, what lies inside added to the selection -------
+  // ---- box select: Shift-drag a box with no tool on (a finger: held, then dragged), what lies inside
+  // added to the selection -------
   areaEvents(map) {
     const box = document.createElement('div');
     box.className = 'dbox';
@@ -797,20 +798,38 @@ export class Drawing extends DrawStore {
     let from = null;
     const at = (e) => { const r = map.getCanvasContainer().getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; };
     map.boxZoom.disable(); // Shift-drag is the box's, not the map's box zoom
-    // first (capture, after a drag's): Shift pressed on the map with no tool, not on what a drag takes
-    map.getCanvasContainer().addEventListener('pointerdown', (e) => {
-      if (this.tool || this.drag || !(e.shiftKey || this.boxNext) || e.button !== 0 || e.ctrlKey || e.metaKey) return;
+    const begin = (p) => {
       map.dragPan.disable();
-      from = at(e);
+      from = p;
       Object.assign(box.style, { left: `${from.x}px`, top: `${from.y}px`, width: '0px', height: '0px' });
       box.hidden = false;
+    };
+    // a finger held still on the map with no tool (half a second), then dragged: the box (Shift-drag's);
+    // moved first, or a second finger: the map's pan or pinch
+    let hold = null;
+    const unhold = () => { if (hold) { clearTimeout(hold.timer); hold = null; } };
+    // first (capture, after a drag's): Shift pressed on the map with no tool, not on what a drag takes
+    map.getCanvasContainer().addEventListener('pointerdown', (e) => {
+      if (e.pointerType === 'touch') {
+        if (hold || from) { unhold(); return; }
+        if (this.tool || this.drag || this.picking) return;
+        const p = at(e);
+        hold = { p, id: e.pointerId, timer: setTimeout(() => { hold = null; if (!this.drag && !this.tool) { begin(p); navigator.vibrate?.(10); } }, 500) };
+        return;
+      }
+      if (this.tool || this.drag || !(e.shiftKey || this.boxNext) || e.button !== 0 || e.ctrlKey || e.metaKey) return;
+      begin(at(e));
     }, true);
+    map.getCanvasContainer().addEventListener('contextmenu', (e) => { if (e.pointerType === 'touch' || hold || from) e.preventDefault(); }); // a long press's menu: the box's instead
+    window.addEventListener('pointercancel', unhold);
     window.addEventListener('pointermove', (e) => {
+      if (hold && e.pointerId === hold.id) { const p = at(e); if (Math.hypot(p.x - hold.p.x, p.y - hold.p.y) > 8) unhold(); }
       if (!from) return;
       const p = at(e);
       Object.assign(box.style, { left: `${Math.min(from.x, p.x)}px`, top: `${Math.min(from.y, p.y)}px`, width: `${Math.abs(p.x - from.x)}px`, height: `${Math.abs(p.y - from.y)}px` });
     });
     window.addEventListener('pointerup', (e) => {
+      if (hold && e.pointerId === hold.id) unhold();
       if (!from) return;
       const p = at(e), a = from;
       from = null;

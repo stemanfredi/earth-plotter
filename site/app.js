@@ -178,10 +178,10 @@ const map = new maplibregl.Map({
 map.touchZoomRotate.disableRotation();
 $('#nostart').remove(); // started (index.html)
 
-// ---- bottom row: credits; scale note, time shown, cursor position, the scale
+// ---- bottom row: credits; time shown, cursor position, the scale
 // One scale bar, in the display's units (the switch beside it); the PNG export draws a double
 // one, km and NM (png.js). Credits are always on screen (Esri: data attribution "always visible";
-// OSM likewise), on one line: what does not fit ends in "…", and a tap on the line shows it all.
+// OSM likewise), on one line: what does not fit fades at its end and is scrolled sideways.
 const statusEl = $('#status');
 const posEl = h('div', { class: 'pos', id: 'pos', 'aria-live': 'off' });
 const shownEl = h('div', { class: 'pos shown', id: 'shown', hidden: true }); // the time the layers show
@@ -190,26 +190,16 @@ const depthEl = h('select', { class: 'pos depthchip', id: 'depth', 'aria-label':
 const scale = new maplibregl.ScaleControl({ maxWidth: 100, unit: 'metric' });
 const scaleEl = scale.onAdd(map);
 scaleEl.id = 'scale';
-// MapLibre writes nautical miles "nm" (the nanometre's symbol): NM, as on charts and in Measure
-const scaleUnits = () => { scaleEl.textContent = scaleEl.textContent.replace(/\snm$/, '\u00a0NM'); };
-const scaleNoteEl = h('div', { class: 'scalenote', id: 'scalenote' });
+const scaleMark = h('span', { class: 'scalemark', hidden: true }, '≈');
 const creditsText = h('span', { class: 'credits-text' });
 const credits = h('div', { class: 'credits' }, creditsText);
-// a tap unfolds them only when they are cut ("…"), and folds them again; the hint says which
-const cut = () => creditsText.scrollWidth > creditsText.clientWidth;
-function creditsHint() {
-  const open = credits.classList.contains('open');
-  credits.classList.toggle('foldable', open || cut());
-  credits.title = open ? 'Tap to fold the credits' : cut() ? 'Tap for all the credits' : '';
-}
-credits.addEventListener('pointerenter', creditsHint);
-credits.addEventListener('click', (e) => {
-  if (!e.target.closest('a') && (credits.classList.contains('open') || cut())) credits.classList.toggle('open');
-  creditsHint();
-});
-// credits on the left; the scale note, time shown, cursor position and scale on the right (not for
-// navigation: About and the exports say it)
-statusEl.append(credits, h('div', { class: 'readout' }, scaleNoteEl, shownEl, depthEl, posEl, scaleEl));
+// the fade at its end only while some of it is out of sight (cut, and not scrolled to its end)
+const fadeCredits = () => credits.classList.toggle('cut', credits.scrollLeft + credits.clientWidth < credits.scrollWidth - 1);
+credits.addEventListener('scroll', fadeCredits, { passive: true });
+new ResizeObserver(fadeCredits).observe(credits);
+// credits on the left; the time shown, cursor position and scale on the right (not for navigation:
+// About and the exports say it)
+statusEl.append(credits, h('div', { class: 'readout' }, shownEl, depthEl, posEl, scaleMark, scaleEl));
 // the legends sit above the bottom row, whose height follows its credits
 new ResizeObserver(() => { document.documentElement.style.setProperty('--status-h', `${statusEl.offsetHeight}px`); snapLegends(); }).observe(statusEl);
 
@@ -951,7 +941,6 @@ function renderStatus() {
 // ---- the distance units for the whole app ----------------------------------------------------
 // the units the drawing's lengths and values, its labels and the exports use: a click on the scale
 // switches them
-scaleEl.title = 'Distance units: a click switches km and NM';
 scaleEl.addEventListener('click', () => setDisplay({ units: display.units === 'km' ? 'nm' : 'km' }));
 // the time shown, a chip on the bottom row: a click opens the field's calendar (the field itself in a
 // box over the chip, for a browser without a picker)
@@ -968,7 +957,7 @@ shownEl.addEventListener('click', (e) => { timeBox.toggle(shownEl, e); if (!time
 shownEl.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); shownEl.click(); } });
 function renderUnits() {
   scale.setUnit(display.units === 'nm' ? 'nautical' : 'metric');
-  scaleUnits();
+  scaleText();
 }
 
 // ---- the view's outputs, in the bar's Download menu: each says how it went on itself ("Saving…",
@@ -998,22 +987,24 @@ drawPanel = drawView($('#dview'), {
 function free() {
   const p = { top: 60 + $('#bar').offsetHeight, right: 60, bottom: 60, left: 60 };
   const side = $('#side'), props = $('#props');
-  if (NARROW.matches) p.bottom += Math.max(...[side, props].map((e) => (e.hidden ? 0 : innerHeight - e.getBoundingClientRect().top)));
+  if (NARROW.matches) p.bottom += Math.max($('#dock').offsetHeight, ...[side, props].map((e) => (e.hidden ? 0 : innerHeight - e.getBoundingClientRect().top)));
   else {
     if (!side.hidden) p.left += side.getBoundingClientRect().right;
     if (!props.hidden) p.right += innerWidth - props.getBoundingClientRect().left;
   }
   return p;
 }
-// find a place: a field in the bar, before About and Properties (/ goes to it); where the bar has no
-// room (COMPACT), behind a lens with the map's controls, shown while it is used, gone when left
+// find a place: a field in the bar, before About and Properties (/ goes to it; a phone: after ☰, its
+// tools being in the dock); where the bar has no room (a tablet's), behind a lens with the map's
+// controls, shown while it is used, gone when left
 const findBtn = $('#b-find'), searchBox = $('#search');
 $('#mapctl').prepend(findBtn);
 const openAbout = () => { about.showModal(); showVersion(); };
 const aboutBtn = h('button', { type: 'button', class: 'aboutbtn', 'aria-label': 'About', title: 'About', onclick: openAbout }, icon(...ICON.info));
 frame.rightBtn.before(aboutBtn);
-const placeFind = () => (COMPACT.matches ? document.body.insertBefore(searchBox, $('#timepop')) : aboutBtn.before(searchBox));
+const placeFind = () => (COMPACT.matches && !NARROW.matches ? document.body.insertBefore(searchBox, $('#timepop')) : aboutBtn.before(searchBox));
 COMPACT.addEventListener?.('change', placeFind);
+NARROW.addEventListener?.('change', placeFind);
 placeFind();
 const setFinding = (on) => { document.body.classList.toggle('finding', on); findBtn.setAttribute('aria-expanded', String(on)); if (on) $('#q').focus(); };
 findBtn.addEventListener('click', () => setFinding(!document.body.classList.contains('finding')));
@@ -1123,21 +1114,28 @@ map.on('click', async (e) => {
 // cursor position readout
 map.on('mousemove', (e) => { posEl.textContent = `${dm(e.lngLat.lat, 'N', 'S')}  ${dm(norm180(e.lngLat.lng), 'E', 'W')}`; });
 
-// ---- scale note: the Mercator scale bar is exact only at the centre latitude ------------
+// ---- the scale bar: exact only at the centre latitude (Mercator) ---------------------------------
 // relative change of the Mercator scale (∝ 1/cos lat) across the view: from the lowest to the
 // highest |lat| in view, the lowest being 0 when the view crosses the equator
 function scaleVariation() {
   const b = map.getBounds();
   return mercatorVariation(b.getSouth(), b.getNorth());
 }
-function scaleNote() {
-  const v = scaleVariation();
-  scaleNoteEl.textContent = v > NOTE_AT ? `scale varies ${(v * 100).toFixed(0)}%${NARROW.matches ? '' : ' across the view'}` : ''; // short on a phone: one line
+// its length as MapLibre writes it, with NM for its "nm" (the nanometre's symbol), as on charts and in
+// Measure; where the scale varies across the view, "≈" beside it (outside the bar: its length stays
+// what it says), by how much in their tooltips
+function scaleText() {
+  const v = scaleVariation(), varies = v > NOTE_AT, why = varies ? `The scale varies ${(v * 100).toFixed(0)}% across the view: this length is the centre's. ` : '';
+  scaleEl.textContent = scaleEl.textContent.replace(/\snm$/, '\u00a0NM');
+  scaleEl.classList.toggle('varies', varies);
+  scaleEl.title = `${why}Distance units: a click switches km and NM`;
+  scaleMark.hidden = !varies;
+  scaleMark.title = why;
 }
 
 // ---- credits, and the exports (PNG: png.js; GIS: below) ----------------------------------------
 // the credits of what is drawn: each shown source's own (catalog.js), once, the base map's first
-// (OpenStreetMap and Esri ask for theirs to be seen, and a line that does not fit is cut at its end)
+// (OpenStreetMap and Esri ask for theirs to be seen, and a line that does not fit scrolls from its start)
 const baseSources = new Set(ITEMS.filter((it) => it.group === 'base').flatMap((it) => (layersOf[it.id] || []).map((l) => l.source)));
 function creditParts() {
   const srcs = [];
@@ -1165,6 +1163,7 @@ function renderCredits() {
     if (key === creditsKey) return;
     creditsKey = key;
     creditsText.replaceChildren(...parts.flatMap((p, i) => [...(i ? [' | '] : []), ...creditNodes(p)]));
+    fadeCredits();
   });
 }
 map.on('styledata', renderCredits);
@@ -1279,13 +1278,12 @@ map.on('load', () => {
   renderUnits();
   ready = true;
   writeHash(); // the URL, now with everything applied
-  scaleNote();
-  scaleUnits();
+  scaleText();
   renderCompass();
 });
 map.on('moveend', writeHash);
-let moveRaf = 0; // once per frame while moving: the graticule's edge labels follow the frame, the scale note and units the view
-map.on('move', () => { cancelAnimationFrame(moveRaf); moveRaf = requestAnimationFrame(() => { updateGraticule(); scaleNote(); scaleUnits(); }); });
+let moveRaf = 0; // once per frame while moving: the graticule's edge labels follow the frame, the scale bar the view
+map.on('move', () => { cancelAnimationFrame(moveRaf); moveRaf = requestAnimationFrame(() => { updateGraticule(); scaleText(); }); });
 map.on('zoomend', renderZoom);
 // the Layers tab's spinner: the map's layers loading for longer than a moment (the sources set here,
 // the drawing's, the graticule, my location, as the pointer or the map moves, load nothing: they

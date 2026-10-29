@@ -25,7 +25,8 @@ One layout at every width (`site/frame.js`).
   on, and again at a click on its button while it is on; shut once one is picked or the map is
   clicked.
 - **Box select** (B): the next drag on the map, a mouse's or a finger's, draws a box; what lies
-  inside is selected, then Select again. A drag with Select moves the map; Shift-drag is the box too.
+  inside is selected, then Select again. A drag with Select moves the map; Shift-drag is the box too,
+  and so is a finger held still half a second, then dragged.
 - **The left panel**: **Layers** or **Elements** (the tree, §4), as its
   button in the bar (or **L**, **E**) chose: pressed again, it closes. At first it is open on Layers;
   Layers' button turns while the map's layers load.
@@ -40,10 +41,12 @@ One layout at every width (`site/frame.js`).
   E) then brings it back, Properties off.
 - **The map's foot**: one strip above the bottom row, between the panels (a phone: above its sheet).
   At its left, stacked: the legends, the touch row; at its right **the map's controls**: my
-  position, zoom in and out, north (only when turned). Nothing else sits there, so nothing overlaps.
-  The bottom row between the panels: credits, the time shown (a chip: a click opens its calendar),
-  the depth shown when a layer has one (a chip: a click opens its list), the cursor's position, the
-  scale (a click switches km and NM).
+  position, zoom in and out (with a mouse: a finger pinches), north (only when turned). Nothing else
+  sits there, so nothing overlaps. The bottom row between the panels, one line: credits (what does
+  not fit fades at the end and scrolls sideways), the time shown (a chip: a click opens its
+  calendar), the depth shown when a layer has one (a chip: a click opens its list), the cursor's
+  position, the scale (a click switches km and NM; in orange with "≈" before it where the scale
+  varies across the view, the tooltip by how much).
 - **Copy link** carries the view, the layers and the display settings (`u=nm`, `brg=1`), never the
   drawing. The drawing goes out as a file (**Download** › **Drawing (GeoJSON)**, with the view) and
   comes in by **Open a file…** or a file dropped on the map, after a report (what it holds, what was skipped and
@@ -53,21 +56,27 @@ One layout at every width (`site/frame.js`).
   nothing, a root not used, a panel that made way. What is visible (a deletion, a copy selected, a
   rule's result) is not said.
 
-**On a phone** (under 720 px) the bar holds **☰** (Open's menu with Download's, Copy link and About),
-Layers, Elements and the tools; Select (Back), Box, Undo and Properties are in the touch row, find
-a place with the map's controls; a tool's kinds wrap rather than leave the screen. The panels are one bottom
-sheet at a time (half the screen; as tall as its grip is dragged, short of the bar, the map's foot and
-some map; closed when dragged to the bottom).
-Both start closed. Zoom to and a place found are fitted to the map the bar and the panels leave.
+**On a phone** (under 720 px) the top is for looking, the bottom for doing. The bar holds **☰**
+(Open's menu with Download's, Copy link and About), find a place (a field), Layers and Elements. The
+**dock**, a bar along the bottom, holds Undo, Redo and the tools; while one is on: **Back**, Undo,
+Redo, the tool (its kinds a row above the dock, sideways) and **Done** (a line or measurement being
+drawn).
+The panels are one bottom sheet at a time over the dock (half the screen; as tall as its grip is
+dragged, short of the bars, the map's foot and some map; closed when dragged to the bottom). What is
+selected, while Properties is off and the left panel closed, **peeks**: Properties' head alone (what it
+is, Zoom to, Duplicate, Group, Delete); a tap or a drag up on it turns Properties on, a drag down
+turns it off again; a tap on the map clears the selection. Both panels start closed. Zoom to and a
+place found are fitted to the map the bars and the panels leave.
 
-**With a finger**: a row over the map's foot: **Done** (a line or measurement being drawn),
-**Back** (one level, as Esc), **Delete** and **Duplicate** (a selection), **Snap** (a tool on; off
-places exactly where tapped, as Alt), **Undo** and **Properties** (a phone: a selection, Properties off). Handles are 14 px, grabbed within 22 px; snapping reaches 16 px; a + only on legs over 80 px; a
-second finger during a drag puts it back and lets the map pinch.
+**With a finger** (a tablet; a phone's are the dock's and the peek's): a row over the map's foot:
+**Done** (a line or measurement being drawn), **Back** (one level, as Esc), **Delete** and
+**Duplicate** (a selection). Handles are 14 px, grabbed within 22 px; snapping reaches 16 px, always
+(to place near something without snapping to it, zoom in); a + only on legs over 80 px; a second
+finger during a drag puts it back and lets the map pinch.
 
 **Colours and sizes**: pressed is blue, a panel shown pale blue, yellow the marks on the map (bands,
 targets, +), handles white edged in ink, magenta the map's own (measurements,
-the search's pin). With a mouse the bar is 35 px (28 px buttons), rows 24 px, heads 30 px; with a
+the search's pin). With a mouse the bar is 39 px (32 px buttons, 20 px icons), rows 24 px, heads 30 px; with a
 finger every target is 44 px. Text: 11, 12, 13, 14, 16 px (a × glyph 18 or 20).
 
 ## 2. Tools

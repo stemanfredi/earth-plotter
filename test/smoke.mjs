@@ -103,7 +103,7 @@ await section('URL state, Link, Measure, a bad link', async () => {
   const made = await p.evaluate(() => [drawing.doc.lines.length, drawing.sel.has(drawing.doc.lines[0]?.id), drawing.tool]);
   await p.keyboard.press('Escape');
   await p.waitForTimeout(400);
-  const kinds = (await p.evaluate(() => [...document.querySelectorAll('.dlist .drow .dname')].map((l) => l.textContent.split(' ')[0]))).sort().join();
+  const kinds = (await p.evaluate(() => drawing.doc.lines.map((l) => l.name.split(' ')[0]))).sort().join(); // the list is built only while seen: the panel is closed
   const measured = await p.evaluate(async () => { const { elements, isMeasurement } = await import('./draw/document.js'); return [elements(drawing.doc).filter((x) => isMeasurement(drawing.doc, x.el)).length, map.querySourceFeatures('drawvalue').map((f) => f.properties.label)]; });
   check(made.join() === '1,true,measure' && kinds === 'Distance' && measured[0] === 1 && measured[1].some((t) => /NM$/.test(t)) && liveValues > 0,
     `Measure: a distance in the drawing, selected, the tool still on (${made}); a guide showing its values in NM; the leg's length shown while drawing (${kinds}; ${measured[1].join(' | ')}; ${liveValues} live)`);
@@ -256,8 +256,8 @@ await section('Copernicus layers, the time line, About, the manifest, my locatio
   check(cmPicks === 'waves:height currents:surface' && /col=waves:height/.test(cmLink) && /arr=currents:surface/.test(cmLink) && !/on=[^&]*waves/.test(cmLink),
     `the link's entries are in the menus and stay in the link: colours, arrows ${cmPicks}`);
   check(await cm.evaluate(() => document.querySelectorAll('#legends canvas[data-legend=waves], #legends canvas[data-legend=currents]').length === 2), 'Copernicus legends shown', true);
-  // the time line at the panel's foot: a time picked there (local time) is drawn, read above the
-  // legends and kept in the link; › steps an hour; Now goes back to now
+  // the time chip: a time picked there (local time) is drawn, read above the legends and kept in
+  // the link
   const ahead = await cm.evaluate(() => { const d = new Date(Date.now() + 864e5); d.setMinutes(0, 0, 0); return d.getTime(); });
   const aLocal = await cm.evaluate((t) => { const d = new Date(t), p = (n) => String(n).padStart(2, '0'); return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:00`; }, ahead);
   const [minMax, shownOn] = await cm.evaluate(() => [[document.querySelector('#when input').min, document.querySelector('#when input').max], !document.querySelector('#shown').hidden]);
@@ -1051,10 +1051,9 @@ await section('the drawing', async () => {
   const partsNow = await dw.evaluate((id) => drawing.doc.points.find((x) => x.id === id).parts.map((q) => q.kind).join(), pid);
   check(movedTo === 'Point 3 leg length' && vertsLeft === 0 && partsNow === 'circle,rectangle',
     `list grids: ↓ to the next row (${movedTo}); the row's bar deletes its vertex (${vertsLeft} left); a part added from the empty row (${partsNow})`);
-  // a point's parts linked to the map: a row clicked draws its part over; a part's handle pressed on
-  // the map picks its row
+  // a point's parts linked to the map: a part's handle pressed on the map picks its row
   await dw.click('.dinspect [data-grid$=":parts"] tr[data-r="1"] td:first-child');
-  const partMarked = await dw.evaluate(() => drawing.placeMark?.line?.length > 4);
+  const partMarked = await dw.evaluate(() => !drawing.placeMark); // a row clicked draws nothing over: its handles say it
   const rh = await dw.evaluate((id) => { const x = drawing.doc.points.find((q) => q.id === id); map.jumpTo({ center: x.position, zoom: 14 }); return [0, 0, x.parts[0].radius]; }, pid);
   await dw.waitForTimeout(300);
   const handle = await dw.evaluate(async ([id]) => { const { destination } = await import('./geodesy.js'); const x = drawing.doc.points.find((q) => q.id === id), q = map.project(destination(x.position, 90, x.parts[0].radius)), r = map.getCanvasContainer().getBoundingClientRect(); return [r.left + q.x, r.top + q.y]; }, [pid]);
@@ -1063,7 +1062,7 @@ await section('the drawing', async () => {
   await dw.mouse.up();
   await dw.waitForTimeout(300);
   const partPicked = await dw.evaluate(() => document.querySelector('.dinspect .lbar .funit')?.textContent);
-  check(partMarked && partPicked === 'Part 1:', `parts: a row clicked draws its part over on the map (${partMarked}); a part's handle pressed picks its row (${partPicked}, ${Math.round(rh[2])} m)`);
+  check(partMarked && partPicked === 'Part 1:', `parts: a row clicked marks nothing on the map (${partMarked}); a part's handle pressed picks its row (${partPicked}, ${Math.round(rh[2])} m)`);
   // a list's Copy: its rows, tab-separated, a header first
   await dw.evaluate((id) => drawing.select([id]), legIds[0]);
   await dw.click('.dinspect .fblock:has(h3:has-text("Points")) button:has-text("Copy")');

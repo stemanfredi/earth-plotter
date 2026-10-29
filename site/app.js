@@ -12,7 +12,7 @@ import { savedView } from './draw/saving.js';
 import { drawView } from './draw/panel.js';
 import { profileOf } from './draw/profile.js';
 import { circle } from './geodesy.js';
-import { norm360, tileXY, TILE, D2R } from './geo.js';
+import { norm360, norm180, tileXY, TILE, D2R } from './geo.js';
 import { fetchOk, lru } from './net.js';
 import { $, h, svg, typing, NARROW, COMPACT } from './dom.js';
 import { choice } from './fields.js';
@@ -55,7 +55,7 @@ const state = {
 let view = { zoom: 4, center: [12, 41], bearing: 0 };
 // the display's units and each leg's bearing beside its length (the switch beside the scale, the
 // drawing's inspector): the drawing's lengths and values, labels and exports follow them
-const display = { units: 'km', bearings: false };
+const display = { units: 'km', bearings: false, small: 'm' }; // small: a part's size in m or km (NM: NM)
 
 function readHash() {
   const q = new URLSearchParams(location.hash.slice(1));
@@ -83,6 +83,7 @@ function readHash() {
   if (q.has('menu')) state.menu = q.get('menu') === '1'; // menu=1: Layers open
   display.bearings = q.get('brg') === '1';
   if (q.get('u') === 'nm') display.units = 'nm';
+  if (q.get('pm') === 'km') display.small = 'km';
 }
 
 let hashTimer = 0;
@@ -311,14 +312,11 @@ function viewToAddress(v, q) {
   }
   if (v.units === 'nm') q.set('u', 'nm'); else q.delete('u');
   if (v.bearings) q.set('brg', '1'); else q.delete('brg');
+  if (display.small === 'km') q.set('pm', 'km'); else q.delete('pm');
 }
 const drawing = new Drawing(map, {
   known: KNOWN, getView: viewOf, units: () => display.units, bearings: () => display.bearings,
-  onChange: (what) => {
-    if (what === 'drag') return drawPanel.render('drag'); // its values on the map, and in Properties as it moves
-    if (what === 'draft') return drawPanel.render('draft'); // the touch row's Done
-    drawPanel.render(what);
-  },
+  onChange: (what) => drawPanel.render(what),
 });
 
 // ---- applying the state to the map ------------------------------------------
@@ -606,7 +604,7 @@ function setTime(t) {
   renderWhen(); // nothing else says the time
 }
 // ---- the map's settings: the time and the depth, for every layer that uses them -------------
-// Set on one line at the head of the Layers panel, read beside the coordinates. The time is a
+// Set in the time chip at the map's foot, read beside the coordinates. The time is a
 // datetime-local field in local time, on the hour (step 3600 s), within the times every layer on
 // has (min, max: the browser's calendar greys out the rest, the field's tooltip names them); the
 // chip opens the calendar itself. Every layer draws the time shown at its own time resolution:
@@ -685,7 +683,7 @@ function updateGraticule() {
   const latTop = map.unproject([W / 2, 64]).lat, lonLeft = map.unproject([8, H / 2]).lng;
   const label = (coord, text, anchor) => f.push({ type: 'Feature', properties: { label: text, anchor }, geometry: { type: 'Point', coordinates: coord } });
   for (let lon = Math.ceil(w / step) * step; lon <= e; lon += step) {
-    const L = ((k0(lon) + 540) % 360) - 180;
+    const L = norm180(k0(lon));
     f.push({ type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: [[lon, s], [lon, n]] } });
     if (edges) label([lon, latTop], fmtAngle(L, 'E', 'W', step), 'top');
   }
@@ -725,8 +723,8 @@ function itemStatus(id) {
 }
 
 // ---- small builders ---------------------------------------------------------
-// a 20 px line icon from SVG path data; a path given as [d, colour] is filled in that colour
-const icon = (...paths) => svg('svg', { viewBox: '0 0 24 24', width: 20, height: 20, 'aria-hidden': 'true', fill: 'none', stroke: 'currentColor', 'stroke-width': 1.8, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' },
+// an 18 px line icon (the bar's size; style.css sizes it where it differs) from SVG path data; a path given as [d, colour] is filled in that colour
+const icon = (...paths) => svg('svg', { viewBox: '0 0 24 24', width: 18, height: 18, 'aria-hidden': 'true', fill: 'none', stroke: 'currentColor', 'stroke-width': 1.8, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' },
   paths.map((d) => (Array.isArray(d) ? svg('path', { d: d[0], fill: d[1], stroke: d[1] }) : svg('path', { d }))));
 const ICON = {
   search: ['M11 18a7 7 0 1 0 0-14 7 7 0 0 0 0 14z', 'm20 20-4-4'],
@@ -1123,11 +1121,11 @@ map.on('click', async (e) => {
   const source = DEPTH_SOURCES.find(({ codes: [a, b] }) => code >= a && code <= b);
   // −1: shallower than 1 m, or sea the data calls dry (clip.js)
   const depth = v >= -1 ? 'Under 1 m' : `${Math.floor(-v)} m`;
-  depthPopup.setLngLat(e.lngLat).setDOMContent(h('div', {}, h('b', {}, depth), h('span', { class: 'at' }, `${dm(lat, 'N', 'S')} ${dm(((lng + 540) % 360) - 180, 'E', 'W')}`),
+  depthPopup.setLngLat(e.lngLat).setDOMContent(h('div', {}, h('b', {}, depth), h('span', { class: 'at' }, `${dm(lat, 'N', 'S')} ${dm(norm180(lng), 'E', 'W')}`),
     h('small', {}, ['GEBCO 2026', source?.label.toLowerCase()].filter(Boolean).join(' · ')))).addTo(map);
 });
 // cursor position readout
-map.on('mousemove', (e) => { posEl.textContent = `${dm(e.lngLat.lat, 'N', 'S')}  ${dm(((e.lngLat.lng + 540) % 360) - 180, 'E', 'W')}`; });
+map.on('mousemove', (e) => { posEl.textContent = `${dm(e.lngLat.lat, 'N', 'S')}  ${dm(norm180(e.lngLat.lng), 'E', 'W')}`; });
 
 // ---- scale note: the Mercator scale bar is exact only at the centre latitude ------------
 // relative change of the Mercator scale (∝ 1/cos lat) across the view: from the lowest to the

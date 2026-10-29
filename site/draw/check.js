@@ -2,7 +2,7 @@
 // default with a warning (c.warn), or skips the element (c.skip throws Skip), for the file's reader
 // (file.js). Pure: no map, no DOM.
 
-import { MAX_LAT, norm360 } from '../geo.js';
+import { MAX_LAT, norm360, norm180 } from '../geo.js';
 import { DEFAULT_STYLE, MAX_OFFSET, MAX_MIN_SIZE, STROKE_WIDTH, DASHES, MAX_RADIUS, LABEL_SIZES, BACKGROUNDS, ROUND, PART_KINDS, isoNow } from './document.js';
 
 export const ID = /^[A-Za-z0-9_-]{1,64}$/;
@@ -38,9 +38,8 @@ export function properties(list, c) {
   }
   return out;
 }
-// Offset, on a line or a group: px to the right of the line (negative: left), or null (a line's: its
-// group's)
-export function offset(v, c) {
+// Offset, on a line: px to the right of the line (negative: left), or null (the drawing's)
+function offset(v, c) {
   if (v === undefined || v === null) return null;
   if (fin(v)) return Math.max(-MAX_OFFSET, Math.min(MAX_OFFSET, v));
   c.warn('Offset: not a number of pixels; ignored');
@@ -54,7 +53,7 @@ export function position(p, c, what) {
   if (!Array.isArray(p) || p.length < 2 || !fin(p[0]) || !fin(p[1])) c.skip(`${what}: not [longitude, latitude]`);
   if (Math.abs(p[1]) > MAX_LAT) c.skip(`${what}: [${p[0]}, ${p[1]}] is out of range (latitude ±${MAX_LAT})`);
   // a longitude past ±180 (placed on a copy of the world beside the first): the same place, brought back
-  return [Math.abs(p[0]) > 180 ? norm360(p[0] + 180) - 180 : p[0], p[1]];
+  return [Math.abs(p[0]) > 180 ? norm180(p[0]) : p[0], p[1]];
 }
 export function angle(a, c, what) {
   if (!fin(a)) return 0;
@@ -64,19 +63,19 @@ export function angle(a, c, what) {
   return n;
 }
 // a minimum display size in px: 0 to MAX_MIN_SIZE, or null (not valid: warned)
-export function minSize(v, c, what) {
+function minSize(v, c, what) {
   if (fin(v) && v >= 0) return Math.min(MAX_MIN_SIZE, v);
   c.warn(`${what}: not a number of pixels ≥ 0, ignored`);
   return null;
 }
 // a sector's aperture (degrees, above 0 and below 360), or null: circles (360 or more: circles, warned)
-export function aperture(a, c) {
+function aperture(a, c) {
   if (a === undefined || a === null) return null;
   if (!fin(a) || a <= 0) { c.warn('aperture: not an angle above 0; a circle'); return null; }
   if (a >= 360) { if (a > 360) c.warn(`aperture ${a} read as a full circle`); return null; }
   return a;
 }
-export function colour(v, dflt, c, what) {
+function colour(v, dflt, c, what) {
   if (v === undefined) return dflt;
   if (typeof v === 'string' && COLOUR.test(v)) return v.toLowerCase();
   c.warn(`${what}: not a #rrggbb colour, default used`);
@@ -89,8 +88,8 @@ function clamp(v, lo, hi, dflt, c, what) {
   if (r !== v) c.warn(`${what} ${v} clamped to ${r}`);
   return r;
 }
-// An element's or a group's own style: the values it sets, each checked; those it does not set come
-// from its groups, else the defaults (document.js styleOf). fill: whether it has one (lines have none).
+// An element's own style: the values it sets, each checked; those it does not set come from the
+// drawing, else the defaults (document.js styleOf). fill: whether it has one (lines have none).
 export function ownStyle(s, c, fill) {
   if (s === undefined || s === null) return {};
   if (!isObj(s)) { c.warn('style: not an object, ignored'); return {}; }

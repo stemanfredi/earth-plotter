@@ -4,7 +4,7 @@
 // into a group or before one of their kind, shown or hidden by their eye.
 
 import { h } from '../dom.js';
-import { find, elements, groupsOf, label, kindName, pointKind, POINT_KIND_NAME, mainOutline, followedPart, setGroup, moveBefore } from './document.js';
+import { find, elements, groupsOf, label, kindName, pointKind, POINT_KIND_NAME, mainOutline, followedPart, setGroup, moveBefore, isShown } from './document.js';
 import { labelText } from './labels.js';
 import { OUTLINE_NAME } from './outlines.js';
 import { lineTrace } from './lines.js';
@@ -15,15 +15,15 @@ import { KIND_ICON, UI_ICON, POINT_ICON } from './icons.js';
 
 const FILTER_FROM = 30; // the filter field appears past this many elements
 // what a total counts: "15 points, 10 with radii · 3 lines, 12.4 km · 2 areas"
-export const countOf = (b, u) => [b.points ? `${plural(b.points, 'point')}${b.ringed && b.ringed < b.points ? `, ${b.ringed} with radii` : ''}` : '',
+const countOf = (b, u) => [b.points ? `${plural(b.points, 'point')}${b.ringed && b.ringed < b.points ? `, ${b.ringed} with radii` : ''}` : '',
   b.lines ? `${plural(b.lines, 'line')}, ${fmtDist(b.length, u)}` : '', b.areas ? plural(b.areas, 'area') : '', b.hidden ? 'incl. hidden' : ''].filter(Boolean).join(' · ');
 // an element's icon and what the panel calls its kind: a point by what it looks like (a circle, a
 // rectangle…); an area a polygon
-export const iconOf = (kind, el) => (kind === 'point' ? POINT_ICON[pointKind(el)] : KIND_ICON[kind === 'area' ? 'polygon' : kind]);
+const iconOf = (kind, el) => (kind === 'point' ? POINT_ICON[pointKind(el)] : KIND_ICON[kind === 'area' ? 'polygon' : kind]);
 export const kindTitle = (kind, el) => (kind === 'point' ? (POINT_KIND_NAME[pointKind(el)] ?? OUTLINE_NAME[pointKind(el)]) : kindName(kind));
-// a group's name with the groups it is in: "A › B"
 // an element's name as shown: its own, else a label's text as it reads on the map (its first line)
 export const shownName = (doc, kind, el, units) => (kind === 'label' && !el.name?.trim() ? labelText(doc, el, units).split('\n')[0].trim() || 'Label' : label(kind, el));
+// a group's name with the groups it is in: "A › B"
 export const groupPath = (doc, g) => [...groupsOf(doc, g).reverse(), g].map((x) => label('group', x)).join(' › ');
 
 // An eye for all of xs() (what: what they are, for its label): every one shown, a click hides them
@@ -105,10 +105,10 @@ export function createTree(drawing, ctx, { facts, openDrawing }) {
   }
 
   // one row of the list: a group's fold (or its room), its kind, its name, a short value, its eye (shown
-  // or hidden); selected by a click (Ctrl/⌘: adds or removes), outlined on the map while the pointer is
+  // or hidden: its own flag), dim while not drawn (itself or a group it is in hidden); selected by a click (Ctrl/⌘: adds or removes), outlined on the map while the pointer is
   // over it
-  function elementRow({ id, icon, kindIcon, title, name, value = '', valueTitle, visible, selected }, on, more = {}) {
-    return h('li', { class: `drow${selected ? ' sel' : ''}${visible ? '' : ' dim'}${more.classes ? ` ${more.classes}` : ''}`, 'data-id': id, draggable: 'true',
+  function elementRow({ id, icon, kindIcon, title, name, value = '', valueTitle, visible, drawn = visible, selected }, on, more = {}) {
+    return h('li', { class: `drow${selected ? ' sel' : ''}${drawn ? '' : ' dim'}${more.classes ? ` ${more.classes}` : ''}`, 'data-id': id, draggable: 'true',
       onpointerenter: () => on.hover(id), onpointerleave: () => on.hover(null) },
     more.fold || h('span', { class: 'dfold none', 'aria-hidden': 'true' }),
     h('span', { class: 'kind', title }, icon(...kindIcon)),
@@ -123,7 +123,7 @@ export function createTree(drawing, ctx, { facts, openDrawing }) {
       onclick: () => { if (folded.has(id)) folded.delete(id); else folded.add(id); render(); } }) : null;
     const t = kind === 'group' && facts().totals.groups.get(id);
     return elementRow({ id, icon, kindIcon: iconOf(kind, el), title: kindTitle(kind, el), name: shownName(drawing.doc, kind, el, ctx.units()), value: value(kind, el), valueTitle: t ? countOf(t, ctx.units()) : undefined,
-      visible: el.visible, selected: drawing.sel.has(id) }, {
+      visible: el.visible, drawn: isShown(drawing.doc, el), selected: drawing.sel.has(id) }, {
       select: (e) => clickRow(id, e), hover: (x) => drawing.setHover(x),
       visible: (v) => drawing.change((doc) => { find(doc, id).el.visible = v; }),
     }, { fold, classes: [depth ? `d${Math.min(depth, 5)}` : '', kind === 'group' ? 'dgroup' : ''].filter(Boolean).join(' '),

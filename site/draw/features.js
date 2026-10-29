@@ -60,14 +60,14 @@ export function drawParts(doc, sel = new Set(), hover = null, display = {}, want
   const markOf = (id) => (!want.marks ? null : sel.has(id) ? 'sel' : hover === id ? 'hover' : null);
   // What says "selected": the one element selected shows its handles and its own stroke, untouched
   // (as the drawing tools do: the edge is what one aligns to), a point a small white dot at its
-  // centre; among several selected, each shows such dots at its key points (dots(): a line's ends and
-  // vertices, an area's or an outline's corners), inert, thinned as handles are. The blue band
-  // along an element is for hovering only.
+  // centre; among several selected, each shows squares as handles look at its key points (dots(): a
+  // line's ends and vertices, an area's or an outline's corners), inert, thinned as handles are. The
+  // band along an element is for hovering only.
   const mark = (id, geometry, props = {}, dots = null) => {
     const kind = markOf(id);
     if (!kind) return kind;
     if (kind === 'sel' && geometry.type !== 'Point') {
-      if (sel.size > 1 && dots) for (const p of thinned(dots())) marks.push({ type: 'Feature', properties: { id, kind }, geometry: { type: 'Point', coordinates: p } });
+      if (sel.size > 1 && dots) for (const p of thinned(dots())) marks.push({ type: 'Feature', properties: { id, kind: 'dot' }, geometry: { type: 'Point', coordinates: p } }); // as handles look, inert
     } else marks.push({ type: 'Feature', properties: { id, kind, ...props }, geometry: fine(geometry) });
     return kind;
   };
@@ -209,12 +209,12 @@ export function drawParts(doc, sel = new Set(), hover = null, display = {}, want
       const centre = (e) => e.element && e.edge == null && e.vertex == null;
       const endRole = (e, i) => (centre(e) && doc.points.some((p) => p.id === e.element) ? { role: 'point', ref: e.element } : { role: 'end', ref: i ? 1 : 0 });
       handles(sg.id, an.map((a, i) => ({ p: a.position, ...(i === 0 ? endRole(sg.start, 0) : i === last ? endRole(sg.end, 1) : { role: 'vertex', ref: i - 1 }) })), true);
-      // a + halfway along each leg long enough on screen: dragging it adds a point there
+      // a + halfway along each leg long enough on screen, on the line as drawn (a smooth line's curve):
+      // dragging it adds a point there
       if (mpp) {
-        const mids = [];
+        const tr = lineTrace(doc, sg), mids = [];
         for (let i = 0; i < last; i++) {
-          const a = an[i].position, b = an[i + 1].position, d = inverse(a, b);
-          if (d.s / ground(a[1]) > midPx) mids.push({ p: destination(a, d.azi, d.s / 2), role: 'mid', ref: i, kind: 'mid' });
+          if (tr.legs[i] / ground(an[i].position[1]) > midPx) mids.push({ p: pointsAlong(tr.coords, [(tr.at[i] + tr.at[i + 1]) / 2])[0].position, role: 'mid', ref: i, kind: 'mid' });
         }
         handles(sg.id, mids);
       }
@@ -225,8 +225,9 @@ export function drawParts(doc, sel = new Set(), hover = null, display = {}, want
     const p = { type: 'Point', coordinates: n.position };
     if (want.base) {
       const st = styleOf(doc, n);
-      // the centre of a point is always visible: with nothing else to show it, a small dot there
-      const symbol = n.symbol === 'none' ? (mainOutline(n) ? null : 'centre') : n.symbol;
+      // the centre of a point is always visible: with nothing else to show it, a small dot there. An
+      // outline is the point's own sign: no symbol on it (Properties offers none there)
+      const symbol = mainOutline(n) ? null : n.symbol === 'none' ? 'centre' : n.symbol;
       if (symbol) base.push({ type: 'Feature', properties: { id: n.id, kind: 'symbol', symbol, sc: st.stroke.color, so: st.stroke.opacity }, geometry: p });
       if (named(n) && !mainOutline(n)) name(baseNames, n, p, st.stroke.color);
     }

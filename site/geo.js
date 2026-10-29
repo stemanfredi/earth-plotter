@@ -1,6 +1,6 @@
 // Web Mercator (EPSG:3857), as the map and its tiles use it: the sphere, lon/lat ↔ metres, tile edges.
 
-export const R = 6378137; // the sphere's radius, metres
+const R = 6378137; // the sphere's radius, metres
 export const CIRC = 2 * Math.PI * R; // the world's width, metres
 export const MAX_LAT = 85.05112878; // the latitude the map stops at (a square world)
 export const D2R = Math.PI / 180;
@@ -8,6 +8,7 @@ export const NM = 1852; // a nautical mile, m
 export const TILE = 256; // a raster tile's edge, pixels (the DEM and depth tiles)
 // an angle in degrees as 0 ≤ a < 360
 export const norm360 = (a) => ((a % 360) + 360) % 360;
+export const norm180 = (a) => norm360(a + 180) - 180; // a longitude in [−180, 180)
 // the nearest place on the planar segment a–b to p: { q, t (0–1 along it), d }
 export function nearestOnSegment(a, b, p) {
   const dx = b[0] - a[0], dy = b[1] - a[1], l2 = dx * dx + dy * dy;

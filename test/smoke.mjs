@@ -14,8 +14,12 @@ const referred = new Set();
 ctx.on('request', (r) => { const u = new URL(r.url()); if (u.origin !== new URL(base).origin && r.headers().referer) referred.add(u.host); });
 
 // a page at hash, loaded, its errors collected (in: another context, a phone's)
-async function open(hash, inCtx = ctx) {
+// tab: the left panel's tab to open on ('layers', 'elements'), as the frame keeps it in this browser;
+// groups: the Layers groups open, as the page keeps them in this browser
+async function open(hash, inCtx = ctx, tab = null, groups = null) {
   const page = await inCtx.newPage();
+  if (tab) await page.addInitScript((t) => { const k = 'charts.frame'; localStorage.setItem(k, JSON.stringify({ ...JSON.parse(localStorage.getItem(k) || '{}'), tab: t })); }, tab);
+  if (groups) await page.addInitScript((gs) => localStorage.setItem('charts.groups.open', JSON.stringify(gs)), groups);
   page.errors = []; // the page's own: thrown errors, and what it logs as an error
   page.providerErrors = []; // a provider's: a resource the browser could not load (an HTTP 500, a refused tile)
   page.on('pageerror', (e) => page.errors.push(e.message));
@@ -123,18 +127,18 @@ await section('URL state, Link, Measure, a bad link', async () => {
 });
 
 await section('the frame', async () => {
-  // the bar always there across the top; Layers the left panel's tab (menu=1 in the address), its
-  // key closing it; its toggle opening it again where it was
-  const pv = await open('#v=6/41/12/0&menu=1');
+  // the bar always there across the top; Layers the left panel's tab, its key closing it; its toggle
+  // opening it again where it was; the panel open never in the link
+  const pv = await open('#v=6/41/12/0', ctx, 'layers');
   const now = () => pv.evaluate(() => [!document.querySelector('#side').hidden && document.querySelector('#bar .ptab[aria-pressed=true]')?.dataset.tab, Math.round(document.querySelector('#bar').getBoundingClientRect().top),
-    new URLSearchParams(location.hash.slice(1)).get('menu')]);
+    new URLSearchParams(location.hash.slice(1)).has('menu')]);
   const opened = await now();
   await pv.keyboard.press('l');
   await pv.waitForTimeout(400);
   const closed = await now();
   await pv.click('#bar .ptab[data-tab=layers]');
   const back = await now();
-  check(opened.join() === 'layers,0,1' && closed.join() === 'false,0,0' && back[0] === 'layers', `Layers a tab of the left panel, closed by its key, opened again by its button in the bar; the bar at the top (${opened}; ${closed}; ${back})`);
+  check(opened.join() === 'layers,0,false' && closed.join() === 'false,0,false' && back[0] === 'layers', `Layers a tab of the left panel, closed by its key, opened again by its button in the bar; the bar at the top; not in the link (${opened}; ${closed}; ${back})`);
   // the drawing renamed by a double-click on its row, the tree's first (an undo puts it back)
   await pv.click('#bar .ptab[data-tab=elements]');
   await pv.dblclick('.droot .dname');
@@ -167,7 +171,7 @@ await section('the frame', async () => {
 await section('NASA true colour', async () => {
   // NASA true colour opened at now: the time goes no later than NASA's newest day, and the tiles
   // are of the day shown (no older day passed off as it)
-  const tc = await open('#v=5/40/10/0&menu=1&g=data&col=gibs:terra&on=chart,coastline');
+  const tc = await open('#v=5/40/10/0&col=gibs:terra&on=chart,coastline', ctx, 'layers', ['data']);
   await tc.waitForFunction(() => map.getLayoutProperty('gibs-terra', 'visibility') === 'visible' && /t=/.test(location.hash), null, { timeout: 20000 }).catch(() => {});
   await tc.waitForTimeout(500);
   const [tcTiles, tcHash, rowsOn, tcNotes] = await tc.evaluate(() => [map.getSource('gibs-terra').tiles[0], location.hash, document.querySelector('#when').hidden ? 'hidden' : 'shown',
@@ -180,7 +184,7 @@ await section('NASA true colour', async () => {
 await section('a zoom', async () => {
   // a zoom alone updates what depends on it: a layer out of its range greyed out with its hint,
   // the depth shading's legend gone above zoom 12
-  const zm = await open('#v=8/43.6/13.6/0&on=chart,coastline,depth,seamarks,legend&menu=1&g=sea');
+  const zm = await open('#v=8/43.6/13.6/0&on=chart,coastline,depth,seamarks,legend', ctx, 'layers', ['sea']);
   const zoomed = () => zm.evaluate(() => [document.querySelector('.item:has(#i-seamarks) .hint').textContent, document.querySelector('.item:has(#i-seamarks)').classList.contains('dim'), !!document.querySelector('#legends canvas[data-legend=depth]')]);
   const z8 = await zoomed();
   await zm.evaluate(() => map.jumpTo({ zoom: 13.5 }));
@@ -192,7 +196,7 @@ await section('a zoom', async () => {
 
 await section('search', async () => {
   // search: coordinates are read on the page (no request); a place comes from Photon
-  const sp = await open('#v=6/41/12/0&menu=0');
+  const sp = await open('#v=6/41/12/0', ctx, 'elements');
   // there: in the middle of the map's part left free by the left frame (from 1024 px wide), within tol degrees
   const near = (lat, lon, tol) => sp.evaluate(({ lat, lon, tol }) => {
     const side = document.querySelector('#side'), props = document.querySelector('#props'), top = document.querySelector('#bar').offsetHeight;
@@ -219,7 +223,7 @@ await section('search', async () => {
 
 await section('vessel density', async () => {
   // vessel density (EMODnet, off by default): loads, has a legend, type and year change the tiles
-  const tr = await open('#v=7/37.5/14/0&on=chart,coastline,traffic,legend&menu=1&g=shipping');
+  const tr = await open('#v=7/37.5/14/0&on=chart,coastline,traffic,legend', ctx, 'layers', ['shipping']);
   check(tr.errors.length === 0 && !(await tr.evaluate(() => document.querySelector('#i-traffic').closest('.item').classList.contains('error'))), `vessel density loads ${tr.errors.join(' | ')}`, true);
   check(await tr.evaluate(() => !!document.querySelector('#legends canvas[data-legend=traffic]')), 'vessel density legend shown', true);
   await tr.selectOption('.item:has(#i-traffic) select.variant', 't10');
@@ -234,7 +238,7 @@ await section('vessel density', async () => {
 
 await section('route density', async () => {
   // route density (EMSA, monthly): newest month by default, month and type change the tiles
-  const rt = await open('#v=7/37.5/14/0&on=chart,coastline,routes,legend&menu=1&g=shipping');
+  const rt = await open('#v=7/37.5/14/0&on=chart,coastline,routes,legend', ctx, 'layers', ['shipping']);
   check(rt.errors.length === 0 && !(await rt.evaluate(() => document.querySelector('#i-routes').closest('.item').classList.contains('error'))), `route density loads ${rt.errors.join(' | ')}`, true);
   await rt.selectOption('.item:has(#i-routes) select.variant', 't04');
   await rt.selectOption('.item:has(#i-routes) select.period', '2025-11');
@@ -248,7 +252,7 @@ await section('route density', async () => {
 
 await section('Copernicus layers, the time line, About, the manifest, my location', async () => {
   // Copernicus sea state, waves in colour and currents in arrows: tiles load, the legends show
-  const cm = await open('#v=6/40/14/0&col=waves:height&arr=currents:surface&on=chart,coastline,legend&menu=1&g=data');
+  const cm = await open('#v=6/40/14/0&col=waves:height&arr=currents:surface&on=chart,coastline,legend', ctx, 'layers', ['data']);
   await cm.waitForFunction(() => document.querySelectorAll('#legends canvas[data-legend=waves], #legends canvas[data-legend=currents]').length === 2, null, { timeout: 30000 }).catch(() => {});
   const cmBroken = await cm.evaluate(() => [...document.querySelectorAll('.item.error, .item.partial')].map((r) => `${r.querySelector('.name').textContent} (${r.title})`));
   check(cmBroken.length === 0 && cm.errors.length === 0, `Copernicus waves and currents load ${cmBroken.join(', ')} ${cm.errors.join(' | ')}`, true);
@@ -313,7 +317,7 @@ await section('Copernicus layers, the time line, About, the manifest, my locatio
 await section('the Ocean data menus', async () => {
   // the Ocean data menus: waves in colours, currents in arrows; wind in arrows; currents in both
   // draw speed and direction; none
-  const sl = await open('#v=6/40/14/0&col=waves:height&arr=currents:surface&on=chart,coastline&menu=1&g=data');
+  const sl = await open('#v=6/40/14/0&col=waves:height&arr=currents:surface&on=chart,coastline', ctx, 'layers', ['data']);
   const looks = () => sl.evaluate(() => ['waves', 'currents', 'wind'].map((id) => (map.getLayoutProperty(`cmems-${id}`, 'visibility') === 'visible' ? `${id}:${/cmems:\/\/\w+\/\w+\/(\w+)/.exec(map.getSource(`cmems-${id}`).tiles[0] || '')?.[1]}` : '')).filter(Boolean).join(' '));
   await sl.waitForTimeout(1000);
   const l1 = await looks();
@@ -334,24 +338,23 @@ await section('the Ocean data menus', async () => {
 });
 
 await section('water properties at a depth', async () => {
-  // water properties at a depth from the link: "100 m deep" beside the time, each model at its own
-  // level (the export records it), no note under the row
-  const wp = await open('#v=5/40/10/0&col=temperature:depth&on=chart,coastline,legend&menu=1&g=data&dz=100');
+  // water properties at a depth from the link: "100 m deep" in its chip beside the time's, each model
+  // at its own level (the export records it), no note under the row
+  const wp = await open('#v=5/40/10/0&col=temperature:depth&on=chart,coastline,legend&dz=100', ctx, 'layers', ['data']);
   await wp.waitForFunction(() => !!document.querySelector('#legends canvas[data-legend=temperature]')?.style.width, null, { timeout: 30000 }).catch(() => {});
-  const [wpDepth, wpNotes, wpBroken] = await wp.evaluate(() => [document.querySelector('#when .depthsel select').value + ' ' + document.querySelector('#shown').textContent,
+  const [wpDepth, wpNotes, wpBroken] = await wp.evaluate(() => [document.querySelector('#depth').value + ' ' + document.querySelector('#depth').selectedOptions[0]?.textContent,
     document.querySelectorAll('.item .note:not([hidden])').length, [...document.querySelectorAll('.item.error, .item.partial')].map((r) => r.title)]);
-  check(/^100 .* · 100 m deep$/.test(wpDepth) && !wpNotes && !wpBroken.length && !wp.errors.length, `temperature at 100 m, set on the time line and shown as "100 m deep": ${wpDepth} ${wpBroken.join(' ')} ${wp.errors.join(' | ')}`, true);
-  // the depth on a row of its own, under the time line, which keeps its width
-  await timeOpen(wp);
-  const [inW, below] = await wp.evaluate(() => { const i = document.querySelector('#when input').getBoundingClientRect(), d = document.querySelector('#when .depthsel').getBoundingClientRect(); return [i.width, d.top >= i.bottom]; });
-  check(below && inW >= 150, `the depth sits under the time line, which keeps its width (${Math.round(inW)} px)`);
+  check(wpDepth === '100 100 m deep' && !wpNotes && !wpBroken.length && !wp.errors.length, `temperature at 100 m, shown in the depth chip as "100 m deep": ${wpDepth} ${wpBroken.join(' ')} ${wp.errors.join(' | ')}`, true);
+  // the depth's chip beside the time's, a list of its own; the time's chip says the time only
+  const [chips, timeText] = await wp.evaluate(() => { const t = document.querySelector('#shown').getBoundingClientRect(), d = document.querySelector('#depth').getBoundingClientRect(); return [d.width > 0 && Math.abs(d.top - t.top) < 4 && d.left >= t.right, document.querySelector('#shown').textContent]; });
+  check(chips && !/deep/.test(timeText), `the depth a chip beside the time's (${timeText})`);
   await wp.close();
 });
 
 await section('a satellite observation', async () => {
   // a satellite observation opened at now: the time goes no later than its latest day, and the
   // day shown is the day drawn
-  const ob = await open('#v=5/40/10/0&col=sst:measured&on=chart,coastline,legend&menu=1&g=data');
+  const ob = await open('#v=5/40/10/0&col=sst:measured&on=chart,coastline,legend', ctx, 'layers', ['data']);
   await ob.waitForFunction(() => /t=/.test(location.hash) && !!document.querySelector('#legends canvas[data-legend=sst]')?.style.width, null, { timeout: 30000 }).catch(() => {});
   await ob.waitForTimeout(1500);
   const [obT, obWithin, obShown, obDay, obBroken] = await ob.evaluate(() => {
@@ -406,7 +409,7 @@ await section('the PNG and GIS exports', async () => {
 
 await section('the values of a Copernicus layer in the GIS export', async () => {
   // the values of a Copernicus layer, from its datasets' Zarr stores: global and Mediterranean waves
-  const cv = await open('#v=7/39.5/14/0&col=waves:height&on=chart,coastline&menu=0');
+  const cv = await open('#v=7/39.5/14/0&col=waves:height&on=chart,coastline', ctx, 'elements');
   await cv.waitForTimeout(3000);
   const [dv] = await Promise.all([cv.waitForEvent('download', { timeout: 120000 }), exportItem(cv, 'zip')]);
   const { names: ve, item: vi } = unzip(await readFile(await dv.path()));
@@ -428,7 +431,7 @@ await section('export parity', async () => {
     ['daily only, an observation', '#v=6/39/14/0&col=sst:measured&on=chart,coastline,legend'],
   ];
   for (const [what, hash] of PARITY) {
-    const pp = await open(`${hash}&menu=0`);
+    const pp = await open(`${hash}`, ctx, 'elements');
     await pp.waitForTimeout(3000);
     const seen = await pp.evaluate(() => { // the map, read from MapLibre itself
       const z = map.getZoom(), on = new Set(), draws = {};
@@ -464,7 +467,7 @@ await section('export parity', async () => {
 
 await section('EMODnet and the depth sources', async () => {
   // EMODnet: depth and its values, seabed substrate with its classes, the human activities overlays
-  const em = await open('#v=9/52.6/3.2/0&on=chart,coastline,emodnetdepth,substrate,cables,windfarms,wrecks,worlddensity,depthsource,legend&menu=0');
+  const em = await open('#v=9/52.6/3.2/0&on=chart,coastline,emodnetdepth,substrate,cables,windfarms,wrecks,worlddensity,depthsource,legend', ctx, 'elements');
   await em.waitForTimeout(3000);
   const [emBroken, emClasses] = await em.evaluate(() => [[...document.querySelectorAll('.item.error, .item.partial')].map((r) => `${r.querySelector('.name').textContent} (${r.title})`),
     document.querySelector('#legends canvas[data-legend=substrate]')?.getAttribute('aria-label') || '']);
@@ -482,7 +485,7 @@ await section('EMODnet and the depth sources', async () => {
 
 await section('the depth on a click', async () => {
   // a click on the sea says its depth (GEBCO, rounded towards shallower) and its source; on land, nothing
-  const dp = await open('#v=9/43.9/8.3/0&on=chart,coastline,depth,isobaths&menu=0');
+  const dp = await open('#v=9/43.9/8.3/0&on=chart,coastline,depth,isobaths', ctx, 'elements');
   const at = async (lng, lat) => {
     const { x, y } = await dp.evaluate(([a, b]) => map.project([a, b]), [lng, lat]);
     await dp.mouse.click(x, y);
@@ -500,7 +503,7 @@ await section('the depth on a click', async () => {
 await section('seagrass', async () => {
   // seagrass: its tiles from the bucket draw meadows off Liguria, with their legend; a tile with no
   // seagrass (none stored) is empty, not an error
-  const sg = await open('#v=11/44.1/9.75/0&on=chart,coastline,seagrass,legend&menu=0');
+  const sg = await open('#v=11/44.1/9.75/0&on=chart,coastline,seagrass,legend', ctx, 'elements');
   const [sgDrawn, sgLegend] = await sg.evaluate(() => [map.queryRenderedFeatures({ layers: ['seagrass', 'seagrass-points'] }).length,
     document.querySelector('#legends canvas[data-legend=seagrass]')?.getAttribute('aria-label') || '']);
   check(sgDrawn > 0 && /Posidonia oceanica/.test(sgLegend) && !sg.errors.length, `seagrass: ${sgDrawn} features drawn, with its legend ${sg.errors.join(' | ')}`);
@@ -509,7 +512,7 @@ await section('seagrass', async () => {
 
 await section('maritime zones', async () => {
   // Marine Regions' maritime limits load, with their legend (line types, from its WMS)
-  const mz = await open('#v=6/40/16/0&on=chart,coastline,maritime,legend&menu=0');
+  const mz = await open('#v=6/40/16/0&on=chart,coastline,maritime,legend', ctx, 'elements');
   await mz.waitForFunction(() => /Median line/.test(document.querySelector('#legends canvas[data-legend=maritime]')?.getAttribute('aria-label') || ''), null, { timeout: 30000 }).catch(() => {});
   const [mzBroken, mzLegend] = await mz.evaluate(() => [[...document.querySelectorAll('.item.error, .item.partial')].map((r) => r.title), document.querySelector('#legends canvas[data-legend=maritime]')?.getAttribute('aria-label') || '']);
   check(!mzBroken.length && !mz.errors.length && /Median line/.test(mzLegend), `maritime zones load, with their legend (${mzLegend.slice(0, 60)}…) ${mzBroken.join(', ')} ${mz.errors.join(' | ')}`, true);
@@ -518,7 +521,7 @@ await section('maritime zones', async () => {
 
 await section('the drawing', async () => {
   // the drawing: place, edit, undo, export, New, import, restore, the exports
-  const dw = await open('#v=11/40.2/12.1/0&on=chart,coastline&menu=0');
+  const dw = await open('#v=11/40.2/12.1/0&on=chart,coastline', ctx, 'elements');
   await dw.setViewportSize({ width: 1600, height: 800 }); // the map clear between the panels for the clicks below
   const DX = 260; // the left panel covers the map's left: the clicks below, written for the whole map, moved right of it
   await dw.evaluate(() => { // both panels on, the left on Elements (an earlier section may have changed them)
@@ -536,15 +539,14 @@ await section('the drawing', async () => {
   const own = (f) => f.properties.charts; // the app's own part of a feature
   const featuresOf = (fc, kind) => (fc?.features || []).filter((f) => own(f)?.kind === kind && !(own(f).guide && own(f).look?.text?.values));
   const measuredOf = (fc) => (fc?.features || []).filter((f) => own(f)?.guide && own(f)?.look?.text?.values);
-  await dw.keyboard.press('s'); // the Shape tool, a circle (its first kind)
-  // with a mouse and room in the bar: Shape's kinds are buttons in the bar, in its place
-  const sub = await dw.locator('#bar .kinds.inline:not([hidden]) button').evaluateAll((bs) => bs.map((b) => b.getAttribute('aria-label')));
-  check(sub.join() === 'Circle,Rings,Sector,Rectangle,Ellipse,Triangle,Polygon,Aerial vehicle,Surface vehicle,Underwater vehicle',
-    `tools: Shape's kinds in the bar, round a centre first, then the outlines, then the vehicles (${sub})`);
+  await dw.keyboard.press('s'); // the Shape tool, a circle (its first kind), its kinds a row under its button
+  const sub = await dw.locator('#bar .kinds:not([hidden]) button').evaluateAll((bs) => bs.map((b) => b.getAttribute('aria-label')));
+  check(sub.join() === 'Circle,Rings,Sector,Rectangle,Ellipse,Triangle,Aerial vehicle,Surface vehicle,Underwater vehicle',
+    `tools: Shape's kinds a row under its button, round a centre first, then the outlines, then the vehicles (${sub})`);
   // the bar across the top, the kind in use pressed in it; the left panel open on Elements, hidden by
   // its button, back with E; Properties hidden with nothing selected (it has nothing to show); the
   // bar's order: the file group (Open, the title, Download, Copy link), Layers, Elements, Undo…
-  const layoutNow = () => dw.evaluate(() => [document.querySelector('#bar .kinds.inline button[aria-pressed=true]')?.getAttribute('aria-label') ?? '', !!document.querySelector('#bar button[data-tool=shape]')?.offsetParent,
+  const layoutNow = () => dw.evaluate(() => [document.querySelector('#bar .kinds button[aria-pressed=true]')?.getAttribute('aria-label') ?? '', !!document.querySelector('#bar button[data-tool=shape]')?.offsetParent,
     !document.querySelector('#side').hidden, Math.round(document.querySelector('#bar').getBoundingClientRect().top), document.querySelector('#props').hidden]);
   const onTool = await layoutNow();
   const order = await dw.evaluate(() => [...document.querySelectorAll('#bar > button')].slice(0, 6).map((b) => b.getAttribute('aria-label')).join());
@@ -554,29 +556,22 @@ await section('the drawing', async () => {
   const hiddenE = await layoutNow();
   await dw.keyboard.press('e');
   const shownE = await layoutNow();
-  check(onTool.join() === 'Circle,false,true,0,true' && !hiddenE[2] && shownE[2] && order === 'Open,Download,Copy link,Layers,Elements,Undo',
+  check(onTool.join() === 'Circle,true,true,0,true' && !hiddenE[2] && shownE[2] && order === 'Open,Download,Copy link,Layers,Elements,Undo',
     `tools: the bar at the top (${order}), the kind in use pressed in it; the left panel open, hidden by its button, back with E; Properties hidden with nothing selected (${onTool}; ${hiddenE[2]}; ${shownE[2]})`);
-  // a kind clicked in the bar: the tool on with it; the key again: the next kind
-  await dw.click('#bar .kinds.inline button[aria-label="Rings"]');
-  const pickedIn = (await layoutNow())[0];
-  await dw.keyboard.press('s');
-  const nextIn = (await layoutNow())[0];
-  // without the room (a narrower window): the tool's one button, its kinds a row under it, shut once
-  // one is picked; the key again opens it on the next kind
-  await dw.setViewportSize({ width: 1000, height: 800 });
-  await dw.waitForTimeout(200);
-  const shut = () => dw.evaluate(() => [!!document.querySelector('#bar .kinds:not(.inline)')?.offsetParent, document.querySelector('#bar button[data-tool=shape]').dataset.shows]);
-  await dw.keyboard.press('s');
-  const opened = await shut();
-  await dw.click('#bar .kinds:not(.inline) button[aria-label="Rings"]');
+  // a kind picked in the row: the tool on with it, the row shut; the key again: the next kind, its
+  // row open; the button while it is on: the row again, the tool still on
+  const shut = () => dw.evaluate(() => [!!document.querySelector('#bar .kinds')?.offsetParent, document.querySelector('#bar button[data-tool=shape]').dataset.shows]);
+  if (!(await shut())[0]) await dw.click('#bar button[data-tool=shape]'); // the row open (a click on a tab may have shut it)
+  await dw.click('#bar .kinds button[aria-label="Rings"]');
   const picked = await shut();
-  await dw.setViewportSize({ width: 1280, height: 800 });
-  await dw.waitForTimeout(200);
-  await dw.keyboard.press('Escape');
   await dw.keyboard.press('s');
-  await dw.click('#bar .kinds.inline button[aria-label="Circle"]');
-  check(pickedIn === 'Rings' && nextIn === 'Sector' && opened.join() === 'true,rectangle' && picked.join() === 'false,rings',
-    `tools: a kind clicked in the bar (${pickedIn}), the key the next (${nextIn}); narrower, a row under the tool's button, opened by its key (${opened}), shut once one is picked (${picked})`);
+  const stepped = await shut();
+  await dw.click('#bar .kinds button[aria-label="Circle"]');
+  await dw.click('#bar button[data-tool=shape]');
+  const reopened = [...await shut(), await dw.evaluate(() => drawing.button)];
+  await dw.click('#bar .kinds button[aria-label="Circle"]');
+  check(picked.join() === 'false,rings' && stepped.join() === 'true,sector' && reopened.join() === 'true,circle,shape',
+    `tools: a kind picked in the row under the tool's button, the row shut (${picked}); the key again the next kind (${stepped}); the button while on, the row again (${reopened})`);
   await dw.mouse.click(DX + 500, 400);
   await dw.mouse.click(DX + 500, 400); // its centre again: the default size
   await dw.keyboard.press('Escape');
@@ -894,10 +889,10 @@ await section('the drawing', async () => {
   const square = await boxOf([DX + 300, 560], [DX + 380, 600]);
   check(sized[0] === 0 && Math.abs(sized[1] - sized[3]) < 2 && Math.abs(sized[2] - sized[4]) < 2 && Math.abs(sized[5] - DX - 340) <= 1 && Math.abs(sized[6] - 480) <= 1 && square[1] === square[2] && Math.abs(square[1] - square[4]) < 2,
     `shapes: a rectangle corner to corner, facing north, centred between them; Shift a square (${sized.map((v) => Math.round(v))}; ${square.slice(1, 3).map(Math.round)})`);
-  // a polygon closed by a click on its first corner; a sector in three clicks
+  // a line closed into an area by a click on its first point; a sector in three clicks
   await dw.keyboard.press('Escape');
-  await dw.evaluate(() => { drawing.variant.shape = 'polygon'; });
-  await dw.keyboard.press('s');
+  await dw.evaluate(() => drawing.stop());
+  await dw.keyboard.press('g');
   const areasBefore = await dw.evaluate(() => drawing.doc.areas.length);
   for (const [x, y] of [[450, 450], [520, 450], [500, 520], [451, 451]]) await dw.mouse.click(DX + x, y);
   const closed = await dw.evaluate(() => [drawing.doc.areas.length, drawing.doc.areas.at(-1)?.points.length, !!drawing.draft]);
@@ -910,7 +905,7 @@ await section('the drawing', async () => {
     map.querySourceFeatures('draw').filter((f) => f.properties.id === x.id && f.properties.kind === 'ring').map((f) => f.geometry.type)[0]]; });
   await dw.keyboard.press('Escape');
   check(closed.join() === `${areasBefore + 1},3,false` && sec[0] === 'sector:true:90' && sec[1] === 'Sector' && sec[2] === 'Polygon',
-    `shapes: a polygon closed on its first corner (${closed}); a sector in three clicks (${sec})`);
+    `shapes: a line closed into an area on its first point (${closed}); a sector in three clicks (${sec})`);
   await dw.evaluate(() => drawing.remove([drawing.doc.points.at(-1).id, drawing.doc.areas.at(-1).id])); // the checks after these find the drawing as it was
   await dw.keyboard.press('Escape');
   await dw.keyboard.press('Escape');
@@ -925,7 +920,8 @@ await section('the drawing', async () => {
   await dw.keyboard.press('Escape');
   await dw.keyboard.press('g');
   await dw.mouse.click(sc.x - 150, sc.y - 60);
-  await dw.mouse.click(sc.x + 3, sc.y + 2); // within the snapping radius of the corner: the line ends there, attached
+  await dw.mouse.click(sc.x + 3, sc.y + 2); // within the snapping radius of the corner: snapped there
+  await dw.keyboard.press('Enter'); // ended there, attached
   await dw.keyboard.press('Escape');
   const att = await dw.evaluate((id) => {
     const s = drawing.doc.lines.at(-1), before = [...s.end.position];
@@ -946,7 +942,7 @@ await section('the drawing', async () => {
   await dw.keyboard.press('g');
   await dw.mouse.click(host.x, host.y + 120);
   await dw.mouse.click(host.x, host.y);
-  await dw.keyboard.press('Escape');
+  await dw.keyboard.press('Enter');
   await dw.keyboard.press('Escape');
   const onLeg = await dw.evaluate((h) => { const s = drawing.doc.lines.at(-1); return { end: s.end, n: drawing.doc.lines.find((x) => x.id === h.id).vertices.length, id: s.id }; }, host);
   check(onLeg.end.element === host.id && onLeg.end.edge === 0 && onLeg.end.at > 0.2 && onLeg.end.at < 0.8 && onLeg.n === host.n,
@@ -1053,7 +1049,7 @@ await section('the drawing', async () => {
     `list grids: ↓ to the next row (${movedTo}); the row's bar deletes its vertex (${vertsLeft} left); a part added from the empty row (${partsNow})`);
   // a point's parts linked to the map: a part's handle pressed on the map picks its row
   await dw.click('.dinspect [data-grid$=":parts"] tr[data-r="1"] td:first-child');
-  const partMarked = await dw.evaluate(() => !drawing.placeMark); // a row clicked draws nothing over: its handles say it
+  const partMarked = await dw.evaluate(() => !drawing.placeAt()); // a row clicked draws nothing over: its handles say it
   const rh = await dw.evaluate((id) => { const x = drawing.doc.points.find((q) => q.id === id); map.jumpTo({ center: x.position, zoom: 14 }); return [0, 0, x.parts[0].radius]; }, pid);
   await dw.waitForTimeout(300);
   const handle = await dw.evaluate(async ([id]) => { const { destination } = await import('./geodesy.js'); const x = drawing.doc.points.find((q) => q.id === id), q = map.project(destination(x.position, 90, x.parts[0].radius)), r = map.getCanvasContainer().getBoundingClientRect(); return [r.left + q.x, r.top + q.y]; }, [pid]);
@@ -1094,7 +1090,7 @@ await section('the drawing', async () => {
   await dw.click('.dinspect .lpager button[aria-label="Next rows"]'); // › again: the next page (a button kept by morph acts as it says)
   const pageThree = await dw.evaluate(() => document.querySelector('.dinspect .lpager .funit').textContent);
   await dw.click('.dinspect [data-grid*=":points"] tr[data-r="4"] td:first-child'); // point 205
-  const ringed = await dw.evaluate((id) => drawing.placeMark?.join() === drawing.doc.lines.find((x) => x.id === id).vertices[203].position.join(), longId);
+  const ringed = await dw.evaluate((id) => drawing.placeAt()?.join() === drawing.doc.lines.find((x) => x.id === id).vertices[203].position.join(), longId);
   const vAt = await dw.evaluate((id) => { const v = drawing.doc.lines.find((x) => x.id === id).vertices[349].position; map.jumpTo({ center: v, zoom: 15 }); return v; }, longId);
   await dw.waitForTimeout(500);
   const vPx = await dw.evaluate((v) => { const q = map.project(v), r = map.getCanvasContainer().getBoundingClientRect(); return [r.left + q.x, r.top + q.y]; }, vAt);

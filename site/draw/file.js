@@ -8,7 +8,7 @@
 
 import { FORMAT, VERSION, KINDS, KIND, SYMBOLS, LEADERS, LABEL_OFFSET,
   emptyDoc, newId, columnsOf } from './document.js';
-import { ID, isObj, fin, Skip, time, text, properties, flag, position, angle, ownStyle, look, parts, readView } from './check.js';
+import { ID, isObj, fin, Skip, time, text, properties, flag, position, angle, ownStyle, look, drawingLook, parts, readView } from './check.js';
 import { resolve, targetPosition } from './attach.js';
 import { groupSizeOf } from './generator.js';
 import { positionsOf } from './lines.js';
@@ -78,7 +78,7 @@ function read(raw, app, known, now, report) {
       doc.meta = { title: text(m.title, c, 'title'), description: text(m.description, c, 'description'), author: text(m.author, c, 'author') };
     }
     if (app.view != null) doc.view = readView(app.view, known, ctx('view'));
-    doc.look = look(app.look, ctx('look'), true, true);
+    doc.look = drawingLook(app.look, ctx('look'));
     for (const x of Array.isArray(app.groups) ? app.groups : []) {
       const g = attempt('group', x?.id, (c) => {
         if (!isObj(x)) c.skip('not an object');
@@ -181,7 +181,8 @@ function read(raw, app, known, now, report) {
         if (!along) c.skip('nothing it is along');
         taken.add(x.id);
         const d = (k) => (fin(x[k]) && x[k] >= 0 ? x[k] : 0);
-        const copy = isObj(x.copy) ? { symbol: SYMBOLS.includes(x.copy.symbol) ? x.copy.symbol : 'none', parts: parts(x.copy.parts, c) } : null;
+        const lk = isObj(x.copy) ? look(x.copy.look, c) : {};
+        const copy = isObj(x.copy) ? { symbol: SYMBOLS.includes(x.copy.symbol) ? x.copy.symbol : 'none', parts: parts(x.copy.parts, c), ...(Object.keys(lk).length && { look: lk }) } : null;
         return { id: x.id, kind: 'distribute', groupId: ref(x.groupId), copiesId: ref(x.copiesId), along: { element: along, part: Number.isInteger(x.along.part) && x.along.part >= 0 ? x.along.part : null },
           spacing: fin(x.spacing) && x.spacing > 0 ? x.spacing : null, count: Number.isInteger(x.count) && x.count > 0 ? x.count : null,
           startMargin: d('startMargin'), endMargin: d('endMargin'), offset: d('offset'), side: SIDES.includes(x.side) ? x.side : 'left',
@@ -263,7 +264,7 @@ const READ = {
       smooth: flag(mine.smooth, c, 'smooth'),
       vertices: pts.slice(1, -1).map((position, k) => {
         const v = isObj(meta[k]) ? meta[k] : {};
-        return { position, name: text(v.name, c, `vertex ${k + 1} name`), properties: properties(v.properties, c) };
+        return { position, name: text(v.name, c, `vertex ${k + 1} name`) };
       }) };
     // its ends attached: { element, vertex | edge and at } (attach.js)
     for (const end of ['start', 'end']) {
@@ -315,7 +316,7 @@ const partOut = (r) => lean({ kind: r.kind, radius: r.radius && r3(r.radius), ap
   fill: r.fill, shown: r.shown, name: r.name },
 { radius: undefined, aperture: undefined, length: undefined, width: undefined, fill: true, shown: true, name: '' });
 const VIEW_D = { center: null, zoom: null, bearing: 0, layers: null, data: null, units: 'km', bearings: false };
-const VERTEX_D = { name: '', properties: [] };
+const VERTEX_D = { name: '' };
 const DISTRIBUTE_D = { groupId: null, copiesId: null, spacing: null, count: null, startMargin: 0, endMargin: 0, offset: 0, side: 'left', radius: null, aperture: null, preset: null, copy: null };
 const CONNECTION_D = { groupId: null, pattern: 'tree', groupSize: 'auto', minBranch: 0, hubs: [] };
 
@@ -368,7 +369,7 @@ function feature(doc, kind, el) {
     if (el.parts.length) mine.parts = el.parts.map(partOut);
   } else if (kind === 'line') {
     geometry = { type: 'LineString', coordinates: positionsOf(el).map(pos) };
-    const vs = el.vertices.map((v) => lean({ name: v.name, properties: v.properties.map((p) => ({ ...p })) }, VERTEX_D));
+    const vs = el.vertices.map((v) => lean({ name: v.name }, VERTEX_D));
     Object.assign(mine, lean({ start: endOut(el.start), end: endOut(el.end), smooth: el.smooth },
     { start: null, end: null, smooth: false }));
     if (vs.some((v) => Object.keys(v).length)) mine.vertices = vs;
@@ -402,7 +403,7 @@ export function toFile(doc) {
     rules: doc.rules.map((a) => (a.kind === 'distribute'
       ? lean({ ...a, along: { element: a.along.element, ...(a.along.part != null ? { part: a.along.part } : {}) }, spacing: a.spacing == null ? null : r3(a.spacing), radius: a.radius == null ? null : r3(a.radius),
         aperture: a.aperture == null ? null : r4(a.aperture), startMargin: r3(a.startMargin), endMargin: r3(a.endMargin), offset: r3(a.offset),
-        copy: a.copy && { symbol: a.copy.symbol, parts: a.copy.parts.map(partOut) },
+        copy: a.copy && lean({ symbol: a.copy.symbol, parts: a.copy.parts.map(partOut), look: lookOut(a.copy.look ?? {}) }, { look: {} }),
         points: a.points.map((f) => ({ pointId: f.pointId, t: +f.t.toFixed(9), ...(f.left ? { left: true } : {}), pos: pos(f.pos) })) }, DISTRIBUTE_D)
       : lean({ ...a, roots: a.roots.map((r) => (r.weight === 1 ? { id: r.id } : { id: r.id, weight: +r.weight.toPrecision(6) })), pointIds: [...a.pointIds], hubs: a.hubs.map((b) => ({ ...b, pointIds: [...b.pointIds], pos: pos(b.pos) })), created: [...a.created] }, CONNECTION_D))),
   }, { meta: {}, view: null, look: {}, groups: [], rules: [] });

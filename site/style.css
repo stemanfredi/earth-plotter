@@ -71,11 +71,9 @@ svg { flex: none; }
 /* the time shown and the depth, in a box over its chip: ‹ time › Now, then the depth (on the next line if need be) */
 .timepop { position: fixed; z-index: 9; padding: 6px; }
 .when { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
-.when input, .when select { min-height: var(--row); border: 1px solid var(--line); border-radius: 6px; background: #fff; padding: 0 8px; }
+.when input { min-height: var(--row); border: 1px solid var(--line); border-radius: 6px; background: #fff; padding: 0 8px; }
 .when input { flex: 1; min-width: 0; }
 /* the depth on a row of its own: the time line keeps its width, however long the depth control is */
-.when .depthsel { flex: 1 0 100%; display: flex; align-items: center; gap: 8px; color: var(--soft); font-size: 12px; }
-.when .depthsel select { flex: 1; }
 .spin { display: inline-block; flex: none; box-sizing: border-box; width: 12px; height: 12px; vertical-align: -1px; border: 2px solid var(--line); border-top-color: var(--accent); border-radius: 50%; visibility: hidden; } /* a box: a span left inline has no size, its border a thin stain */
 body.loading .spin { visibility: visible; animation: spin .8s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
@@ -282,7 +280,6 @@ button.small.link:hover { border-color: var(--line); }
 .dinspect .lgrid td.n input:not([type=checkbox]) { text-align: right; font-family: var(--mono); font-size: 12px; padding: 0 3px; }
 .lgrid td.n .fvalue { display: block; padding: 0 4px; text-align: right; font-family: var(--mono); }
 .lgrid th.n { text-align: right; }
-.lgrid th .hunit { cursor: pointer; text-decoration: underline dotted; } /* a Parts head: a click, m or km */
 .fsummary { color: var(--ink); background: var(--bg2); border-radius: 6px; padding: 6px 8px; }
 .fblock { display: flex; flex-direction: column; }
 .fcheck { display: flex; align-items: center; gap: 6px; min-height: var(--row); padding-right: 6px; cursor: pointer; }
@@ -388,14 +385,14 @@ dialog .action { justify-content: center; border: 1px solid var(--line); margin-
 
 /* ---- phones: no cursor position; the bottom row on two lines ---- */
 @media (max-width: 719px) {
-  .pos:not(.shown) { display: none; } /* no cursor on a phone; the time shown stays */
+  .pos:not(.shown, .depthchip) { display: none; } /* no cursor on a phone; the time and depth shown stay */
   /* two lines: the credits and the scale; the scale note and the time */
   .status { flex-wrap: wrap; }
   .readout { display: contents; }
   .credits { order: 1; flex: 1 1 0; }
   #scale { order: 2; }
   .status::after { content: ""; order: 3; flex-basis: 100%; }
-  .scalenote, .shown { order: 4; }
+  .scalenote, .shown, .depthchip { order: 4; }
   .scalenote:not(:empty), .shown { margin-left: auto; }
 }
 /* with a finger (drawing-ui.md §1): Done, Back, Delete, Duplicate, Snap, Undo, Properties, over the map's foot, at its left */
@@ -440,11 +437,6 @@ svg.profile .pcursor { stroke: var(--magenta); stroke-width: 1; }
 /* a tool's kinds: a row under its button, over the panel while they are picked */
 .kinds { position: absolute; display: flex; gap: 2px; padding: 4px;
   }
-/* a tool's kinds in the bar, in its place (tools.js WIDE): its buttons as the bar's, no card */
-.bar .kinds.inline { position: static; display: inline-flex; align-items: center; gap: 0; padding: 0; margin: 0; border: 0; border-radius: 0; box-shadow: none; background: none; } /* one group between dividers like the bar's others */
-.bar .kinds.inline::before, .bar .kinds.inline::after { content: ""; width: 1px; height: 20px; background: var(--line); flex: none; } /* 6 px each side, as the bar's gap and margin give the others */
-.bar .kinds.inline::before { margin: 0 6px 0 4px; } .bar .kinds.inline::after { margin: 0 4px 0 6px; }
-.bar .kinds.inline button { width: 28px; height: 28px; padding: 0; }
 .kinds button { min-width: 28px; min-height: 28px; padding: 0 4px; border: 0; border-radius: 6px; background: none; display: flex; align-items: center; justify-content: center; }
 .kinds button:hover { background: var(--line2); }
 .kinds button[aria-pressed="true"] { background: var(--accent); color: #fff; }
@@ -483,6 +475,8 @@ svg.profile .pcursor { stroke: var(--magenta); stroke-width: 1; }
 .lpager { display: flex; align-items: center; justify-content: center; gap: 8px; padding: 4px 12px; border-bottom: 1px solid var(--line2); }
 /* the scale switches the units; the time a chip */
 #scale { cursor: pointer; }
-.pos.shown { cursor: pointer; }
+.pos.shown, .depthchip { cursor: pointer; }
+.depthchip { border: 0; height: auto; appearance: none; } /* a chip as the time's, its list the browser's */
+.depthchip:hover { background: #fff; }
 .pos.shown::after { content: " ▾"; color: var(--soft); }
 .pos.shown:hover { background: #fff; }

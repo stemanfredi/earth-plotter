@@ -22,7 +22,7 @@ import { fields, choice, select, check } from '../fields.js';
 import { mac, MOD } from '../keys.js';
 import { loadPresets, savePresets, presetOf, presetTool } from './presets.js';
 import { listGrid, setCurrent, currentOf } from './grid.js';
-import { fmtArea, fmtDist, rowsText, plural } from '../format.js';
+import { fmtArea, fmtDist, rowsText, plural, distText, UNIT_M } from '../format.js';
 import { fileGroup } from './files.js';
 import { createTools } from './tools.js';
 import { createTree, kindTitle, groupPath, eyeFor, shownName } from './tree.js';
@@ -126,16 +126,17 @@ export function drawView(root, ctx) {
     const doc = drawing.doc;
     xs = [...new Map(xs.flatMap((x) => (x.kind === 'group' ? membersOf(doc, x.el.id, true).filter((m) => m.kind !== 'group') : [x])).map((x) => [x.el.id ?? 'drawing', x])).values()];
     if (!xs.length && !extra.length) return null; // an empty group
-    const has = (x, f) => x.kind === 'drawing' || LOOK_FIELDS[x.kind].includes(f);
+    const has = (x, f) => LOOK_FIELDS[x.kind].includes(f);
     const shown = (f) => (!fields || fields.includes(f)) && xs.some((x) => has(x, f));
     const looks = xs.map((x) => (x.kind === 'label' ? { ...lookOf(doc, x.el), text: { ...lookOf(doc, x.el).text, color: labelColour(doc, x.el) } } : lookOf(doc, x.el)));
     const same = (f) => { const vs = xs.map((x, i) => (has(x, f) ? lookField(looks[i], f) : undefined)).filter((v) => v !== undefined); return vs.every((v) => v === vs[0]) ? vs[0] : null; };
     const target = (d, x) => (x.kind === 'drawing' ? d : find(d, x.el.id).el);
     // live: shown as it changes (a colour being picked), the undo step made when it is set
     const put = (f, v, live = false) => (live ? drawing.preview : drawing.change).call(drawing, (d) => { for (const x of xs) if (has(x, f)) setLook(target(d, x), f, v); });
-    const above = xs.some((x) => x.kind === 'drawing') ? 'the default' : 'the drawing\'s';
+    // what ↺ gives back: the drawing's, for what the drawing sets; else the default
+    const aboveOf = (f) => (xs.some((x) => x.kind === 'drawing') || !LOOK_FIELDS.drawing.includes(f) ? 'the default' : 'the drawing\'s');
     const back = (...fs) => (xs.some((x) => fs.some((f) => has(x, f) && lookField(x.el.look, f) !== undefined))
-      ? h('button', { type: 'button', class: 'x', title: `Back to ${above}`, 'aria-label': `${fs[0]} back to ${above}`,
+      ? h('button', { type: 'button', class: 'x', title: `Back to ${aboveOf(fs[0])}`, 'aria-label': `${fs[0]} back to ${aboveOf(fs[0])}`,
         onclick: () => drawing.change((d) => { for (const x of xs) for (const f of fs) if (has(x, f)) setLook(target(d, x), f, undefined); }) }, '↺') : null);
     const mixed = (v) => (v === null ? h('span', { class: 'mixed' }, 'mixed') : null);
     const colour = (f, aria) => {
@@ -241,7 +242,8 @@ export function drawView(root, ctx) {
     const adder = (aria, text) => select(aria, [['', text], ...PART_KINDS.map((k) => [k, PART_NAME[k]])], '', (k) => { if (k) set(id, (x) => addPart(x, k)); }, { title: 'Add a part' });
     const box = (i, key, aria) => check('', el.parts[i][key], (v) => at(i, (y) => { y[key] = v; }), { 'aria-label': `Part ${i + 1} ${aria}` });
     const PARTS_COPY = ['#', 'Kind', 'Radius m', 'Aperture °', 'Length m', 'Width m', 'Fill', 'Shown', 'Name'];
-    const dist = (i, key, aria) => distField(() => now(id).parts[i][key], (m) => at(i, (y) => { y[key] = m; }), aria, (m) => (m >= MAX_RADIUS || (key === 'radius' && !fits(m)) ? 'too large' : null), { in: partUnit() });
+    const sizeU = unitOf(el.parts.map((q) => q.radius ?? q.length)), acrossU = unitOf(el.parts.map((q) => q.width ?? NaN));
+    const dist = (i, key, aria) => distField(() => now(id).parts[i][key], (m) => at(i, (y) => { y[key] = m; }), aria, (m) => (m >= MAX_RADIUS || (key === 'radius' && !fits(m)) ? 'too large' : null), { in: key === 'width' ? acrossU : sizeU });
     // its size, two columns, in the column's unit: a round part's radius and a sector's aperture (°), an outline's length and width
     const size = (part, i) => (part.radius ? dist(i, 'radius', `Part ${i + 1} radius`) : dist(i, 'length', `Part ${i + 1} length`));
     const across = (part, i) => (part.kind === 'sector'
@@ -253,8 +255,8 @@ export function drawView(root, ctx) {
     // Shown in the bar over the grid, with Delete
     const table = listGrid({ name: `${id}:parts`,
       columns: [{ head: '#', width: 28, cls: 'num' }, { head: 'Kind', width: 92 },
-        { head: partHead('Size'), width: 80, cls: 'n', title: 'Radius, or length' },
-        { head: partHead('Across'), width: 64, cls: 'n', title: 'Aperture, or width' },
+        { head: `Size ${UNIT_HEAD[sizeU]}`, width: 80, cls: 'n', title: 'Radius, or length' },
+        { head: `Across ${UNIT_HEAD[acrossU]}`, width: 64, cls: 'n', title: 'Aperture (°), or width' },
         { head: 'Fill', width: 40 }],
       rows: el.parts.map((part, i) => ({ cells: [`${i + 1}`, kind(part, i), size(part, i), across(part, i), box(i, 'fill', 'filled')],
       cls: part.radius && !fits(part.radius) ? 'warn' : null })),
@@ -262,7 +264,7 @@ export function drawView(root, ctx) {
       actions: (i) => ({ label: `Part ${i + 1}`, buttons: [field(() => now(id).parts[i].name, (t) => t, (v) => at(i, (y) => { y.name = v; }), { 'aria-label': `Part ${i + 1} name`, placeholder: 'name' }),
         check('Shown', now(id).parts[i].shown, (v) => at(i, (y) => { y.shown = v; }), { 'aria-label': `Part ${i + 1} shown` }),
         act('Delete', `${MOD} Delete`, () => removeAt(i))] }),
-      keys: { remove: removeAt } });
+      keys: { remove: removeAt }, current: (i) => drawing.setPlace(i == null ? null : { id, index: i }) });
     const far = el.parts.find((part) => part.radius && !fits(part.radius));
     return h('div', { class: 'fblock' },
       h('h3', {}, `Parts (${el.parts.length})`, copyBtn(() => [PARTS_COPY,
@@ -293,7 +295,7 @@ export function drawView(root, ctx) {
         onclick: async () => {
           const name = (await askText('Save as preset', 'Name', el.name || 'Preset'))?.trim();
           if (!name) return;
-          const p = presetOf(drawing.doc, now(id), name);
+          const p = presetOf(now(id), name);
           drawing.presets = [...drawing.presets.filter((x) => x.name !== name), p];
           savePresets(drawing.presets);
           const tool = presetTool(p);
@@ -314,14 +316,14 @@ export function drawView(root, ctx) {
     // its corners as rows, 1 to n, a page of them shown: Lat, Lon; the edge from the corner before
     // (corner 1's from the last; typed: this corner moves)
     const pg = paged(`${id}:corners`, n), abs = (r) => pg.rows[r];
-    const U = colUnitText();
+    const lu = unitOf(el.points.map((_, i) => legOf(el.points, i).s)), U = UNIT_HEAD[lu];
     const table = listGrid({ name: pg.name,
       columns: [...PLACE_COLUMNS, { head: `Edge ${U}`, width: 56, cls: 'n', title: 'From the corner before' },
         { head: 'Brg °T', width: 52, cls: 'n', title: 'Its bearing' }],
-      rows: pg.rows.map((i) => ({ cells: [`${i + 1}`, corner(i, 'lat'), corner(i, 'lon'), ...legFields(id, (x) => x.points, i, setAreaEdge, 'Corner')] })),
+      rows: pg.rows.map((i) => ({ cells: [`${i + 1}`, corner(i, 'lat'), corner(i, 'lon'), ...legFields(id, (x) => x.points, i, setAreaEdge, 'Corner', lu)] })),
       actions: (r, i = abs(r)) => ({ label: `Corner ${i + 1}`, buttons: [act('Insert after', 'A corner halfway to the next (Insert)', () => insertAt(i)), act('Delete', `${MOD} Delete; three are kept`, () => drop(i), n <= 3)] }),
       keys: { insert: (r) => insertAt(abs(r)), remove: (r) => drop(abs(r)) },
-      current: (r) => drawing.markPlace(r == null ? null : now(id).points[abs(r)]) });
+      current: (r) => drawing.setPlace(r == null ? null : { id, index: abs(r) }) });
     const cornerRows = () => { const ps = now(id).points; return [['#', 'Lat', 'Lon', 'Edge m', 'Brg °'], ps.map((q, i) => { const g = legOf(ps, i); return [i + 1, q[1], q[0], +g.s.toFixed(3), +g.azi.toFixed(1)]; })]; };
     return [...commonTop('area', id),
       row('Area', valued(fmtArea(areaOf(pathOf(el.points, true)), u))),
@@ -404,21 +406,19 @@ export function drawView(root, ctx) {
   const placesRead = new Map();
   const placesNow = (id, places) => { if (!placesRead.has(id)) placesRead.set(id, places(now(id))); return placesRead.get(id); };
   // in a table: the length in the column's unit (a number to the metre), the bearing to a tenth
-  const legFields = (id, places, k, put, what) => [
-    F.dist(() => legOf(placesNow(id, places), k).s, (m) => set(id, (x) => put(x, k, { s: m })), `${what} ${k + 1} leg length`, { in: colUnit() }),
+  const legFields = (id, places, k, put, what, unit) => [
+    F.dist(() => legOf(placesNow(id, places), k).s, (m) => set(id, (x) => put(x, k, { s: m })), `${what} ${k + 1} leg length`, { in: unit }),
     F.angle(() => legOf(placesNow(id, places), k).azi, (a) => set(id, (x) => put(x, k, { azi: a })), `${what} ${k + 1} leg bearing (degrees true)`, { fixed: 1 })];
   // a table of places' first columns; with its leg and bearing 304 px, inside Properties' 320
   // with a scroll bar: degrees in 6 decimals, distances to the metre (up to 999 km), bearings to a tenth
   const PLACE_COLUMNS = [{ head: '#', width: 28, cls: 'num' }, { head: 'Lat', width: 80, cls: 'n' }, { head: 'Lon', width: 88, cls: 'n' }];
-  // a table's distances: one unit for the column (its head says it), km or NM as the display's; a
-  // part's size in m or km (the display's small), a click on the head switching them (NM stays)
-  const colUnit = () => (ctx.units() === 'nm' ? 'nm' : 'km');
-  const colUnitText = () => (ctx.units() === 'nm' ? 'NM' : 'km');
-  const partUnit = () => (ctx.units() === 'nm' ? 'nm' : ctx.display.small);
-  const partHead = (text) => (ctx.units() === 'nm' ? `${text} NM` : h('span', { class: 'hunit', title: 'Click: m or km', onclick: () => ctx.setDisplay({ small: ctx.display.small === 'm' ? 'km' : 'm' }) }, `${text} ${ctx.display.small}`));
-  const inUnit = (m) => (m / (ctx.units() === 'nm' ? 1852 : 1000)).toFixed(3);
+  // a table's distances: one unit for the column (its head says it), by the rule a field's value
+  // follows (format.js distText): metres while its largest is under 1 km, else km; NM in NM
+  const unitOf = (ms) => (ctx.units() === 'nm' ? 'nm' : Math.max(0, ...ms.filter(Number.isFinite)) < 1000 ? 'm' : 'km');
+  const UNIT_HEAD = { m: 'm', km: 'km', nm: 'NM' };
+  const inUnit = (m, unit) => (m / UNIT_M[unit]).toFixed(unit === 'm' ? 0 : 3);
   // a table of places (a line's points, an area's corners, a point's parts): its row k made current
-  // (k: the place's index), the table at its page; from the map (a place pressed: drawing.pressedPlace)
+  // (k: the place's index), the table at its page; from the map (a place pressed: drawing.currentPlace)
   function pickPlace(table, k, paged = true) {
     const from = paged ? k - (k % PAGE) : 0, name = paged ? `${table}@${from}` : table;
     if (paged) pageAt.set(table, from);
@@ -540,11 +540,12 @@ export function drawView(root, ctx) {
         (v) => set(id, (x) => { const q = x[key].position; x[key] = { position: axis === 'lat' ? [q[0], v] : [v, q[1]], element: null }; }));
       return [at('lat'), at('lon')];
     };
-    const legCells = (k) => (k === N - 1 && el.end.element ? [value(inUnit(legOf(ps, k).s)), value(legOf(ps, k).azi.toFixed(1))] : legFields(id, positionsOf, k, setLineLeg, 'Point'));
+    const lu = unitOf(ps.slice(1).map((_, k) => legOf(ps, k + 1).s));
+    const legCells = (k) => (k === N - 1 && el.end.element ? [value(inUnit(legOf(ps, k).s, lu)), value(legOf(ps, k).azi.toFixed(1))] : legFields(id, positionsOf, k, setLineLeg, 'Point', lu));
     const name = (k) => field(() => now(id).vertices[k - 1].name, (t) => t, (nv) => set(id, (x) => { x.vertices[k - 1].name = nv; }), { 'aria-label': `Point ${k + 1} name`, placeholder: 'name' });
     // the grid fits the panel's 320 px: #, Lat, Lon, the leg and its bearing; the row current says
     // how far along the line its point is, and holds a vertex's name, in the bar over the grid
-    const along = (k) => funit(`${inUnit(at[k] || 0)} ${U} along`);
+    const along = (k) => funit(`${distText(at[k] || 0, ctx.units()).text} along`);
     const rowAt = (k) => ({ cells: [k === 0 || k === N - 1 ? h('span', { title: k ? 'Its end' : 'Its start' }, `${k + 1}`) : `${k + 1}`,
         ...(k === 0 || k === N - 1 ? endCells(k) : [vcoord(k, 'lat'), vcoord(k, 'lon')]),
         ...(k ? legCells(k) : [null, null])] });
@@ -557,7 +558,7 @@ export function drawView(root, ctx) {
       return [attach, el[key].element ? act('Detach', 'Free, where it is', () => set(id, (x) => { x[key] = freeRef(x[key]); })) : null].filter(Boolean);
     };
     const pg = paged(`${id}:points`, N), abs = (r) => pg.rows[r];
-    const U = colUnitText();
+    const U = UNIT_HEAD[lu];
     const table = listGrid({ name: pg.name,
       columns: [...PLACE_COLUMNS, { head: `Leg ${U}`, width: 56, cls: 'n', title: 'From the point before' },
         { head: 'Brg °T', width: 52, cls: 'n', title: 'Its bearing' }],
@@ -567,7 +568,7 @@ export function drawView(root, ctx) {
           : { label: `Point ${k + 1}`, buttons: [along(k), name(k), act('Insert after', 'Insert', () => insertAfter(k - 1)),
             act('Delete', `${MOD} Delete`, () => removeAt(k - 1)), act('Split', 'Two lines, attached here', () => splitAt(k - 1))] }),
       keys: { insert: (rr) => { const k = abs(rr); if (k < N - 1) insertAfter(k - 1); }, remove: (rr) => { const k = abs(rr); if (k >= 1 && k <= n) removeAt(k - 1); } },
-      current: (rr) => drawing.markPlace(rr == null ? null : positionsOf(now(id))[abs(rr)]) });
+      current: (rr) => drawing.setPlace(rr == null ? null : { id, index: abs(rr) }) });
     const pointRows = () => { const x = now(id), qs = positionsOf(x), t = lineTrace(drawing.doc, x).at;
       return [['#', 'Lat', 'Lon', 'Leg m', 'Brg °', 'Along m', 'Name'], qs.map((q, k) => { const g = k ? legOf(qs, k) : null; return [k + 1, q[1], q[0], g ? +g.s.toFixed(3) : '', g ? +g.azi.toFixed(1) : '', +(t[k] || 0).toFixed(3), x.vertices[k - 1]?.name ?? '']; })]; };
     const off = el.look.offset ?? null, offNow = offsetOf(drawing.doc, el);
@@ -586,7 +587,7 @@ export function drawView(root, ctx) {
     const doc = drawing.doc;
     const direct = membersOf(doc, id);
     const below = membersOf(doc, id, true).filter((x) => x.kind !== 'group'); // everything in it, its subgroups' too
-    const shownEye = eyeFor(drawing, icon, () => membersOf(drawing.doc, id, true), 'members');
+    const shownEye = eyeFor(drawing, icon, () => membersOf(drawing.doc, id, true), 'members', id);
     shownEye.render();
     // its members as the tree counts them (everything in it, its subgroups' too), and its subgroups
     const allSubs = membersOf(doc, id, true).length - below.length;
@@ -626,15 +627,16 @@ export function drawView(root, ctx) {
       const at = (i, fn) => drawing.change((d) => { for (const x of pts) { const p = find(d, x.el.id).el; if (p.parts[i]) fn(p.parts[i], p); reattach(d, x.el.id); } });
       const tooFar = (m) => (m >= MAX_RADIUS ? 'too large' : null);
       const kindCell = (i) => select(`Part ${i + 1} kind of each`, PART_KINDS.map((k) => [k, PART_NAME[k]]), same(partsAt(i), (q) => q.kind), (v) => at(i, (q, p) => { p.parts[i] = asKind(q, v); }));
-      const sizeCell = (i) => distField(() => same(partsAt(i), (q) => q.radius ?? q.length), (m) => at(i, (q) => { if (q.radius != null) q.radius = m; else q.length = m; }), `Part ${i + 1} size of each`, tooFar, { in: partUnit() });
+      const all = rows.flatMap((i) => partsAt(i)), sizeU = unitOf(all.map((q) => q.radius ?? q.length)), acrossU = unitOf(all.map((q) => q.width ?? NaN));
+      const sizeCell = (i) => distField(() => same(partsAt(i), (q) => q.radius ?? q.length), (m) => at(i, (q) => { if (q.radius != null) q.radius = m; else q.length = m; }), `Part ${i + 1} size of each`, tooFar, { in: sizeU });
       const acrossCell = (i) => {
         const sectors = partsAt(i).filter((q) => q.aperture != null).length, outlines = partsAt(i).filter((q) => q.width != null).length;
         return [sectors > 1 ? h('span', { class: 'vpair' }, angleField(() => same(partsAt(i).filter((q) => q.aperture != null), (q) => q.aperture), (v) => at(i, (q) => { if (q.aperture != null) q.aperture = v; }), `Part ${i + 1} aperture of each`, 0, 360, false), funit('°')) : null,
-          outlines > 1 ? distField(() => same(partsAt(i).filter((q) => q.width != null), (q) => q.width), (m) => at(i, (q) => { if (q.width != null) q.width = m; }), `Part ${i + 1} width of each`, tooFar, { in: partUnit() }) : null];
+          outlines > 1 ? distField(() => same(partsAt(i).filter((q) => q.width != null), (q) => q.width), (m) => at(i, (q) => { if (q.width != null) q.width = m; }), `Part ${i + 1} width of each`, tooFar, { in: acrossU }) : null];
       };
       if (rows.length) out.push(h('div', { class: 'fblock' }, h('h3', { title: 'Every part two or more points have' }, 'Parts · of each point'),
         listGrid({ name: 'shared:parts', plain: true, head: true,
-          columns: [{ head: '#', width: 28, cls: 'num' }, { head: 'Kind', width: 92 }, { head: partHead('Size'), width: 80, cls: 'n', title: 'Radius, or length' }, { head: partHead('Across'), width: 64, cls: 'n', title: 'Aperture, or width' }, { head: 'Fill', width: 40 }],
+          columns: [{ head: '#', width: 28, cls: 'num' }, { head: 'Kind', width: 92 }, { head: `Size ${UNIT_HEAD[sizeU]}`, width: 80, cls: 'n', title: 'Radius, or length' }, { head: `Across ${UNIT_HEAD[acrossU]}`, width: 64, cls: 'n', title: 'Aperture (°), or width' }, { head: 'Fill', width: 40 }],
           rows: rows.map((i) => ({ cells: [`${i + 1}`, kindCell(i), sizeCell(i), acrossCell(i),
             check('', same(partsAt(i), (q) => q.fill), (v) => at(i, (q) => { q.fill = v; }), { 'aria-label': `Part ${i + 1} filled, each` })] })) })));
     }
@@ -817,7 +819,7 @@ export function drawView(root, ctx) {
     const choose = (v) => {
       dform.preset = v;
       const pre = v.startsWith('preset:') && mine.find((x) => `preset:${x.name}` === v);
-      dform.copy = pre ? { symbol: pre.point.symbol, parts: structuredClone(pre.point.parts) } : null;
+      dform.copy = pre ? structuredClone(pre.point) : null; // its symbol, parts and own look, as placed by hand
       redo();
     };
     const reach = dform.copy ? Math.max(...dform.copy.parts.map((q) => q.radius ?? q.length / 2)) : null;
@@ -889,7 +891,7 @@ export function drawView(root, ctx) {
     title = `Drawing · ${m.title?.trim() || 'Untitled drawing'}`;
     const titleField = Object.assign(meta('title', 'Title'), { placeholder: 'Untitled drawing' }); // what the tree and the bar call it while it has none
     return [row('Title', titleField), row('Description', meta('description', 'Description', true)), row('Author', meta('author', 'Author')),
-      lookBlock([{ kind: 'drawing', el: drawing.doc }], ['text.name', 'offset', 'minSize'], 'Display', [
+      lookBlock([{ kind: 'drawing', el: drawing.doc }], LOOK_FIELDS.drawing, 'Display', [
         offsetElsewhere.length ? h('p', { class: 'note' }, 'Offset also set on ', ...offsetElsewhere.map((x) => link(x.el.id))) : null,
         row('Leg bearings', check('', ctx.display.bearings, (v) => ctx.setDisplay({ bearings: v }), { 'aria-label': 'Leg bearings', title: 'Beside each length on the map' }))]),
       n > 1 ? totalsBlock(keys.length ? by : null, groupName) : null,
@@ -1030,7 +1032,8 @@ export function drawView(root, ctx) {
     }
     // deleting: Delete; on a Mac, whose delete key is Backspace, ⌘-Backspace as in the Finder. Never
     // Backspace alone, which takes back a point while drawing (here and in Measure)
-    if (!typed && (e.key === 'Delete' || (mac && e.metaKey && e.key === 'Backspace')) && drawing.sel.size) { e.preventDefault(); del([...drawing.sel]); return; }
+    // a place current (a point of a line, a corner, a part: pressed on the map or its row): it, else the selection
+    if (!typed && (e.key === 'Delete' || (mac && e.metaKey && e.key === 'Backspace')) && drawing.sel.size) { e.preventDefault(); if (!drawing.removePlace()) del([...drawing.sel]); return; }
     if (typed || mod || e.altKey) return;
     // the tools' keys: app.js, from anywhere
     // ↑ ↓ step the tree, unless what has the focus takes them itself (a slider, a radio card, the map)
@@ -1050,7 +1053,7 @@ export function drawView(root, ctx) {
       if (what === 'draft') return tools.renderTouch();
       if (what === 'drag') return renderInspector(); // once a frame (drawing.js): in place, the tree after it is let go
       // a line's point or an area's corner pressed on the map: its row in the table made current
-      if (what === 'place') { const { id, index } = drawing.pressedPlace; if (drawing.sel.size === 1 && drawing.sel.has(id)) pickPlace(`${id}:${{ line: 'points', area: 'corners', point: 'parts' }[kindOf(id)]}`, index, kindOf(id) !== 'point'); return; }
+      if (what === 'place') { const { id, index } = drawing.currentPlace; if (drawing.sel.size === 1 && drawing.sel.has(id)) pickPlace(`${id}:${{ line: 'points', area: 'corners', point: 'parts' }[kindOf(id)]}`, index, kindOf(id) !== 'point'); return; }
       if (what === 'area' && !drawing.sel.size) note('Nothing lies entirely inside the box'); // a box drawn: why nothing is selected
       // a label just placed (and selected, so shown): its text ready to be typed
       if (what === 'placed') { const t = inspector.querySelector('.ltext'); t?.focus(); t?.select(); return; }
@@ -1066,6 +1069,6 @@ export function drawView(root, ctx) {
       renderTools();
     },
     importFile: (f) => files.importFile(f), // a file dropped on the map (app.js)
-    press: tools.press, cycle: tools.cycle, // the tools' keys (app.js)
+    step: tools.step, // the tools' keys (app.js)
   };
 }

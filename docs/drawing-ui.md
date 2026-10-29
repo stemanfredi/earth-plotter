@@ -20,12 +20,13 @@ One layout at every width (`site/frame.js`).
   **Shape**, **Label**; **Measure**; at its end **find a place** (a field; / goes to it), **About**
   and the **Properties** toggle. The drawing is named in Elements' first row and its Properties.
   With a finger under 1,280 px (a tablet), as on a phone: **☰** in place of Open holds the
-  file group and About, find a place is behind its lens with the map's controls. With a mouse and room (a window from 1,280 px), a tool's kinds are buttons in the bar in its place (Shape's ten), each the tool on with that kind.
-  Otherwise the tool's one button shows the kind in use and a corner mark; its kinds are a row under
-  it as it goes on, shut once one is picked or the map is clicked. Its key again: the next kind.
+  file group and About, find a place is behind its lens with the map's controls. A tool with kinds
+  is one button showing the kind in use and a corner mark; its kinds are a row under it as it goes
+  on, and again at a click on its button while it is on; shut once one is picked or the map is
+  clicked.
 - **Box select** (B): the next drag on the map, a mouse's or a finger's, draws a box; what lies
   inside is selected, then Select again. A drag with Select moves the map; Shift-drag is the box too.
-- **The left panel**: **Layers** (`menu=1` in the address) or **Elements** (the tree, §4), as its
+- **The left panel**: **Layers** or **Elements** (the tree, §4), as its
   button in the bar (or **L**, **E**) chose: pressed again, it closes. At first it is open on Layers;
   Layers' button turns while the map's layers load.
 - **Properties** (the inspector, §5), on the right: a switch of the user's (its toggle, **I**, or a
@@ -40,9 +41,10 @@ One layout at every width (`site/frame.js`).
 - **The map's foot**: one strip above the bottom row, between the panels (a phone: above its sheet).
   At its left, stacked: the legends, the touch row; at its right **the map's controls**: my
   position, zoom in and out, north (only when turned). Nothing else sits there, so nothing overlaps.
-  The bottom row between the panels: credits, the time shown (a chip: a click opens its calendar,
-  and the depth when a layer has one), the cursor's position, the scale (a click switches km and NM).
-- **Copy link** carries the view, the layers and the display settings (`u=nm`, `brg=1`, `pm=km`), never the
+  The bottom row between the panels: credits, the time shown (a chip: a click opens its calendar),
+  the depth shown when a layer has one (a chip: a click opens its list), the cursor's position, the
+  scale (a click switches km and NM).
+- **Copy link** carries the view, the layers and the display settings (`u=nm`, `brg=1`), never the
   drawing. The drawing goes out as a file (**Download** › **Drawing (GeoJSON)**, with the view) and
   comes in by **Open a file…** or a file dropped on the map, after a report (what it holds, what was skipped and
   why); a presets file adds its presets (§9).
@@ -58,7 +60,7 @@ sheet at a time (half the screen; as tall as its grip is dragged, short of the b
 some map; closed when dragged to the bottom).
 Both start closed. Zoom to and a place found are fitted to the map the bar and the panels leave.
 
-**With a finger**: a row over the map's foot: **Done** (a line, polygon or measurement being drawn),
+**With a finger**: a row over the map's foot: **Done** (a line or measurement being drawn),
 **Back** (one level, as Esc), **Delete** and **Duplicate** (a selection), **Snap** (a tool on; off
 places exactly where tapped, as Alt), **Undo** and **Properties** (a phone: a selection, Properties off). Handles are 14 px, grabbed within 22 px; snapping reaches 16 px; a + only on legs over 80 px; a
 second finger during a drag puts it back and lets the map pinch.
@@ -71,13 +73,15 @@ finger every target is 44 px. Text: 11, 12, 13, 14, 16 px (a × glyph 18 or 20).
 ## 2. Tools
 
 One tool is on at a time, and stays on after each placement; its button again, or Select, turns it
-off. Its key works from anywhere; again, while it is on, it moves to its next kind.
+off; a tool with kinds (Shape; Point with presets) is turned off by Select, Esc or another tool, its
+button while on opening its kinds. Its key works from anywhere: on, or off; a tool with kinds, on,
+its next kind (its row open to show it).
 
 | Tool | Kinds | Makes |
 |---|---|---|
 | Point | symbol, the user's presets without extent | a point: a marker, the same size at every zoom |
-| Line | none | a line |
-| Shape | circle, rings, sector, rectangle, ellipse, triangle, polygon, three vehicles, the user's presets with extent | a point with parts and no symbol (a polygon: an area), named after its kind, its preset kept as the property `preset` |
+| Line | none | a line; closed on its first point, an area |
+| Shape | circle, rings, sector, rectangle, ellipse, triangle, three vehicles, the user's presets with extent | a point with parts and no symbol, named after its kind, its preset kept as the property `preset` |
 | Label | none | a label |
 | Measure | none | nothing, unless kept (§3) |
 
@@ -88,9 +92,10 @@ off. Its key works from anywhere; again, while it is on, it moves to its next ki
   (the stalk, or Bearing). A **rectangle** or **ellipse** goes corner to corner instead (**Shift**: a
   square, a circle). The second click on the first: the default size. A preset of the user's keeps
   its size: one click.
-- **Line**: a click per vertex; a click on something it can attach to ends it there, attached; Enter
-  or a double-click ends it at the last vertex, free. Backspace takes back a vertex.
-- **Polygon**: a click per corner; a click on the first corner, Enter or a double-click closes it.
+- **Line**: as Measure, a click per point, snapped to what is drawn; Enter, a double-click or Done
+  ends it at its last point, attached when its first or last point snapped to something it can
+  attach to; a click on its first point (three or more) closes it into an area. Backspace takes back
+  a point.
 - **Sector**: the centre; the radius and one edge; the other edge, clockwise (back on the first: a
   circle). Esc goes one click back.
 - **Label**: points at what snapping finds (else an area's centre, a place on a line), or is free
@@ -157,7 +162,8 @@ its **actions** (one row of buttons: Edit… and Select all for what a rule made
 Save as preset…, Select members, Connect…), its **Look**, then its foot (**In group**, **Guide**,
 **Data**). Every number is 12 px, of one width; a unit stands beside its value in grey (a distance
 field shows its number, its unit next to it or in the column's head: typed with another unit, it is
-read in that one).
+read in that one). One rule for every distance: metres below 1 km, else km; with NM, NM. A column
+takes one unit by its largest value.
 
 - **Rows**: a label, one value or a pair (latitude · longitude, colour · opacity), and a last column
   for an action (detach, attach, ↺). A box ticked is a row like any other.
@@ -167,7 +173,7 @@ read in that one).
   actions (and what did not fit the columns) in a bar over the list, shown only then, and on keys
   (Insert, Ctrl/⌘ Delete); ↑ ↓ and Enter keep the column. Past 100 rows, a page at a time. **Copy**
   gives every row, tab-separated, for a spreadsheet. Numbers are right-aligned, with fixed decimals:
-  degrees to 6 (a decimetre), distances in the column's unit (km or NM, in its head) to 3, bearings
+  degrees to 6 (a decimetre), distances in the column's unit (in its head) to the metre, bearings
   to 1.
 - **Sections** have the heads of Layers' groups, the arrow at the right where one folds: **Data**, open while it has properties of the user's;
   **Depth profile**, read when opened; **Totals**, open to start with.
@@ -195,8 +201,7 @@ read in that one).
   **Depth profile**: the depth along it from the depth shading's grid (at most 1,000 places), its
   extremes, a chart linked to the map both ways, its length along the seabed, CSV.
 - A point's **Parts** are its own: circles, sectors, outlines; a table of Kind, **Size** (a radius, an
-  outline's length), **Across** (a sector's aperture in °, an outline's width), in m or km (a click
-  on the head switches; with NM, NM), and Fill; the row
+  outline's length), **Across** (a sector's aperture in °, an outline's width), and Fill; the row
   current has its name and **Shown** in the bar. One way to add one: the table's empty last row. A
   part's handle pressed on the map makes its row current. All parts share the point's Bearing (a
   sector centred on it, an outline facing it).
@@ -273,14 +278,13 @@ click on the map picks a root):
 | / | search |
 | L, E | the left panel on Layers, on Elements, or closed |
 | I | Properties on or off |
-| P, G, S, T, M | point, line, shape, label, measure |
-| a tool's key again | its next kind |
+| P, G, S, T, M | point, line, shape, label, measure; again: off, or the next kind (Shape; Point with presets) |
 | B, Shift-drag | Box select: a box, what lies inside added to the selection |
 | Enter, double-click | finishes |
 | Backspace | takes back a point |
 | Esc, right-click | steps back one level |
 | ↑ ↓ | previous, next element in the tree |
-| Delete (Mac: also ⌘ Backspace) | deletes the selection |
+| Delete (Mac: also ⌘ Backspace) | deletes the place current (a line's point, a corner, a part: pressed on the map or its row), else the selection |
 | F2 | rename |
 | Ctrl/⌘ Z, Ctrl/⌘ Shift Z (or Ctrl Y) | undo, redo |
 | Ctrl/⌘ C, V, D | copy, paste, duplicate |
@@ -295,7 +299,8 @@ lives in this page, so it pastes into another drawing opened in it.
 
 ## 9. Presets
 
-**Save as preset…** (a point's Properties) keeps its symbol, parts, fill and stroke under a name. One
+**Save as preset…** (a point's Properties) keeps its symbol, parts and the fill and stroke it sets
+itself (not what it takes from the drawing or the defaults) under a name; Distribute along copies all of it. One
 with parts joins Shape's kinds, one without Point's. Placing one makes a point named after it, with
 the preset's name as a property; a right-click on it among the kinds renames or deletes it. Presets
 live in this browser only; **Download** › **Presets (JSON)** and **Open a file…** move them.
@@ -306,7 +311,8 @@ live in this browser only; **Download** › **Presets (JSON)** and **Open a file
   where they were; labels on it stay, free. A group with members asks first: the group only (what is
   in it goes to the group above), or everything in it.
 - Each drawing is saved as it changes, never sent anywhere; the open one comes back with the page.
-  **Open** lists the drawings in this browser (last change, size): a click opens one where it was
-  drawn, a bin deletes it for good (asked first); **+ New drawing** adds one.
+  **Open** lists the drawings in this browser (last change, size): a click opens one with its view (where
+  it was drawn, its layers, time, depth and units, as an import does), a bin deletes it for good
+  (asked first); **+ New drawing** adds one.
 - When the browser refuses to save, Properties says so (Download › Drawing keeps it as a file); when
   another tab saved the same drawing, it says so, with **Reload**.

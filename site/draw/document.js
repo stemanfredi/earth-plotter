@@ -26,15 +26,15 @@ export const DEFAULT_STYLE = Object.freeze({
   stroke: Object.freeze({ color: '#e8590c', opacity: 1, width: 1.5, dash: 'solid' }),
 });
 // what a guide is drawn with, unless it or its group says otherwise: faint, dashed, one colour
-export const GUIDE_STROKE = Object.freeze({ color: '#6b7a86', opacity: 1, width: 1, dash: 'dashed' });
-export const GUIDE_STYLE = Object.freeze({ fill: Object.freeze({ color: '#6b7a86', opacity: 0.05 }), stroke: GUIDE_STROKE });
+export const GUIDE_STROKE = Object.freeze({ color: '#5d6d79', opacity: 1, width: 1, dash: 'dashed' });
+export const GUIDE_STYLE = Object.freeze({ fill: Object.freeze({ color: '#5d6d79', opacity: 0.05 }), stroke: GUIDE_STROKE });
 // what a measurement (a guide showing its values, Measure's tools make) is drawn with
 const MEASURE_COLOUR = '#b0127a';
 export const MEASURE_STYLE = Object.freeze({ fill: Object.freeze({ color: MEASURE_COLOUR, opacity: 0.08 }),
   stroke: Object.freeze({ color: MEASURE_COLOUR, opacity: 1, width: 2, dash: 'dashed' }) });
 // A look: how an element is drawn. Every field optional where it is set (an element's, the
 // drawing's); the defaults fill it in. fill, stroke: as a style; text: its name on the map, its values
-// shown, and a label's size, colour (null: the drawing's, else the default) and
+// shown, and a label's size, colour (null: the default) and
 // background; offset: a line drawn this many px to the right of where it is (negative: left; 0: on
 // it; display only); minSize: a small outline drawn enlarged below it
 // (px, 0: never; for a vehicle, twice the drawing's).
@@ -75,7 +75,7 @@ export const KINDS = Object.keys(KIND);
 export const LEADERS = ['arrow', 'none']; // a line to what it points at, an arrow head there; or none
 export const LABEL_SIZES = ['small', 'medium', 'large'];
 export const BACKGROUNDS = ['halo', 'box'];
-const LABEL_COLOUR = '#1f2933'; // a label's text, unless it or the drawing sets one
+const LABEL_COLOUR = '#1f2c36'; // a label's text, unless it sets one: the UI's ink (style.css --ink)
 export const LABEL_OFFSET = Object.freeze([40, -40]); // px: a new label's text, up and to the right of what it points at
 const NEW_RADIUS = 1000; // a new point's one radius: a neutral starting value, not a preset
 export const MAX_RADIUS = 1e7;
@@ -102,9 +102,10 @@ export function newId(doc, taken = idsOf(doc)) {
 }
 
 // The empty document at time now (ms).
+export const META_D = { title: '', description: '', author: '' };
 export function emptyDoc(now = Date.now()) {
   const t = isoNow(now);
-  return { created: t, modified: t, meta: { title: '', description: '', author: '' }, view: null, look: {},
+  return { created: t, modified: t, meta: { ...META_D }, view: null, look: {},
     groups: [], points: [], lines: [], areas: [], labels: [], rules: [] };
 }
 
@@ -179,7 +180,7 @@ export function lookOf(doc, el) {
 export const styleOf = (doc, el) => { const l = lookOf(doc, el); return { fill: l.fill, stroke: l.stroke }; };
 // a measurement: a guide showing its values (what Measure makes)
 export const isMeasurement = (doc, el) => !!el.guide && lookOf(doc, el).text.values;
-// a label's colour: its own, else the drawing's, else the default
+// a label's colour: its own, else the default (the drawing's look has none: LOOK_FIELDS.drawing)
 export const labelColour = (doc, a) => lookOf(doc, a).text.color ?? LABEL_COLOUR;
 // how far a line is drawn from where it is (Offset: px, positive to the right of its direction, 0: on it)
 export const offsetOf = (doc, el) => lookOf(doc, el).offset;
@@ -229,7 +230,7 @@ export function addArea(doc, points, opts = {}) {
 // a line's end: at a point (its ID: attached to its centre, following it), attached otherwise (an end
 // { position, element, corner | edge and at | vertex }: attach.js), or a free position
 const endOf = (doc, x) => (typeof x === 'string' ? { position: [...doc.points.find((p) => p.id === x).position], element: x }
-  : Array.isArray(x) ? { position: [...x], element: null } : { ...structuredClone(x), position: [...x.position] });
+  : Array.isArray(x) ? { position: [...x], element: null } : { element: null, ...structuredClone(x), position: [...x.position] }); // free: element null, the one shape
 // A line from start to end (each a point's ID, an attached end, or a position) through positions, its
 // legs straight (geodesics). Returns it.
 export function addLine(doc, start, positions, end, opts = {}) {
@@ -255,7 +256,7 @@ export function removePart(p, i) { p.parts = p.parts.filter((_, k) => k !== i); 
 export function addLabel(doc, anchor) {
   const free = !anchor.element;
   // no name: it goes by its text (tree.js shownName)
-  const a = { ...base(doc, 'label', undefined, ''), text: free ? 'Text' : '{name}', anchor: clone(anchor), offset: free ? [0, 0] : [...LABEL_OFFSET], leader: free ? 'none' : 'arrow' };
+  const a = { ...base(doc, 'label', undefined, ''), text: free ? 'Text' : '{name}', anchor: { element: null, ...clone(anchor) }, offset: free ? [0, 0] : [...LABEL_OFFSET], leader: free ? 'none' : 'arrow' };
   doc.labels.push(a);
   return a;
 }
@@ -323,9 +324,14 @@ function commonGroup(doc, xs) {
 export function makeGroup(doc, ids) {
   const picked = ids.map((id) => find(doc, id)).filter(Boolean), chosen = new Set(picked.filter((x) => x.kind === 'group').map((x) => x.el));
   const xs = picked.filter((x) => !groupsOf(doc, x.el).some((g) => chosen.has(g))); // inside a group chosen: it goes with it
-  const parent = commonGroup(doc, xs), g = { ...base(doc, 'group', idsOf(doc)), groupId: parent?.id ?? null };
-  doc.groups.push(g);
+  const g = addGroup(doc, undefined, commonGroup(doc, xs)?.id ?? null);
   for (const x of xs) setGroup(doc, x.el.id, g.id);
+  return g;
+}
+// a new group, named (else the next "Group n"), in the group parent (null: at the top)
+export function addGroup(doc, name, parent = null) {
+  const g = { ...base(doc, 'group', idsOf(doc), name), groupId: parent };
+  doc.groups.push(g);
   return g;
 }
 // Order (docs/drawing-format.md §2): each kind's list is the panel's order and the drawing order, the
@@ -369,10 +375,10 @@ export function setGroup(doc, id, gid) {
 // ---- the user's properties as columns -----------------------------------------------------------------
 
 // keys the GIS export uses itself: a property so keyed is written p_<key>
-const RESERVED = ['kind', 'id', 'name', 'outline', 'group', 'guide', 'text', 'anchor', 'along_m', 'length_m', 'width_m', 'radius_m', 'area_m2', 'perimeter_m', 'bearing_deg', 'aperture_deg', 'part_name', 'filled'];
+const GIS_COLUMNS = ['kind', 'id', 'name', 'outline', 'group', 'guide', 'text', 'anchor', 'along_m', 'length_m', 'width_m', 'radius_m', 'area_m2', 'perimeter_m', 'bearing_deg', 'aperture_deg', 'part_name', 'filled'];
 // The user's properties ([{ key, value }]) as columns: one each, in order; a key the export uses (reserved)
 // prefixed p_, a repeated one numbered. { out, changed (a key had to be renamed) }
-export function columnsOf(props, reserved = RESERVED) {
+export function columnsOf(props, reserved = GIS_COLUMNS) {
   const out = Object.create(null); // no prototype: a key named __proto__ is a column too
   let changed = false;
   for (const { key, value } of props) {

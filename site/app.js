@@ -5,8 +5,9 @@ import { buildStyle, depthRamp, OPACITY_PROP, SEA_PICTURES, LOCATION_LAYERS, INK
 import { cmemsTile, partTimes, partLevels, domainOf, cmemsLegend } from './cmems.js';
 import { workerClipper } from './clip.js';
 import { drawRamp, drawColormap, drawClasses, wmsClasses } from './legend.js';
-import { fmtAngle, dm, mercatorVariation, NOTE_AT, exportName } from './format.js';
+import { fmtAngle, dm, fmtDepth, mercatorVariation, NOTE_AT, exportName } from './format.js';
 import { Drawing } from './draw/drawing.js';
+import { isoNow } from './draw/document.js';
 import { DRAW_LAYERS } from './draw/layers.js';
 import { savedView } from './draw/saving.js';
 import { drawView } from './draw/panel.js';
@@ -14,8 +15,7 @@ import { profileOf } from './draw/profile.js';
 import { circle } from './geodesy.js';
 import { norm360, norm180, tileXY, TILE, D2R } from './geo.js';
 import { fetchOk, lru } from './net.js';
-import { $, h, svg, typing, NARROW, COMPACT, store } from './dom.js';
-import { choice } from './fields.js';
+import { $, h, svg, typing, NARROW, COMPACT, store, animate } from './dom.js';
 import { keyEntry, openKey, keyList } from './keys.js';
 import { popup, note } from './menu.js';
 import { createFrame } from './frame.js';
@@ -34,6 +34,7 @@ const variantsOf = (it) => Object.keys(it.kind === 'gibs' ? GIBS : CMEMS[it.id])
 const drawsOfEntry = (it, v) => (it.kind === 'gibs' ? ['colour'] : drawsOf(CMEMS[it.id][v]));
 const entryLabel = (it, v, slot) => (it.kind === 'gibs' ? `NASA ${GIBS[v].label.replace('True colour', 'true colour')}`
   : it.id === 'currents' ? (slot === 'colour' ? 'Current speed' : 'Currents') : CMEMS[it.id][v].label);
+const entryOf = (key) => { if (!key) return null; const [id, variant] = key.split(':'); return { id, variant: variant ?? null }; }; // 'item:variant' → { id, variant }, '' → null
 const ENTRIES = { colour: [], arrows: [] }; // slot → [{ key, it, label }]
 for (const it of DATA) for (const v of variantsOf(it)) for (const slot of drawsOfEntry(it, v)) ENTRIES[slot].push({ key: `${it.id}:${v}`, it, label: entryLabel(it, v, slot) });
 
@@ -43,13 +44,15 @@ const dayOf = (t) => new Date(t).toISOString().slice(0, 10); // its day (UTC)
 // ---- state (mirrored in the URL hash) ---------------------------------------
 // the Layers groups open: kept in this browser, as the panel's tab (frame.js), not in the link
 const GROUPS_OPEN = 'charts.groups.open', groupsOpen = store.json(GROUPS_OPEN);
+// a layer as it starts: its first variant, its own opacity, a density dataset's default period
+const defaultsOf = (it) => ({ variant: it.variants ? Object.keys(it.variants)[0] : undefined, opacity: it.opacity ?? undefined, period: DENSITY[it.id]?.defaultPeriod });
 const state = {
   on: new Set(ITEMS.filter((it) => it.on).map((it) => it.id)),
-  variant: Object.fromEntries(ITEMS.filter((it) => it.variants).map((it) => [it.id, Object.keys(it.variants)[0]])),
+  variant: Object.fromEntries(ITEMS.filter((it) => it.variants).map((it) => [it.id, defaultsOf(it).variant])),
   opacity: Object.fromEntries(ITEMS.filter((it) => it.opacity != null).map((it) => [it.id, it.opacity])),
   time: hour(Date.now()), // the map's time: the hour shown (ms), now by default
   depth: 0, // Copernicus layers with depth: metres below the surface (CMEMS_DEPTHS)
-  period: Object.fromEntries(Object.entries(DENSITY).map(([id, d]) => [id, d.defaultPeriod])), // density datasets
+  period: Object.fromEntries(Object.keys(DENSITY).map((id) => [id, defaultsOf(byId[id]).period])), // density datasets
   colour: '', arrows: '', // Ocean data: the entry drawing colours, the one drawing arrows ('item:variant', '' for none)
   open: new Set(Array.isArray(groupsOpen) ? groupsOpen.filter((g) => GROUPS.some((x) => x.id === g)) : ['base', 'sea']),
 };
@@ -62,17 +65,16 @@ function readHash() {
   const q = new URLSearchParams(location.hash.slice(1));
   const v = (q.get('v') || '').split('/').map(Number);
   if (v.length >= 3 && v.every(Number.isFinite) && Math.abs(v[1]) <= 90) view = { zoom: v[0], center: [v[2], v[1]], bearing: v[3] || 0 }; // a latitude past the pole would throw in MapLibre
-  if (q.has('on')) state.on = new Set(q.get('on').split(',').filter((id) => byId[id]));
+  if (q.has('on')) state.on = new Set(q.get('on').split(',').filter((id) => byId[id] && byId[id].group !== 'data')); // the data layers: col= and arr= (applyData)
   for (const kv of (q.get('var') || '').split(',')) {
-    const [k, val] = kv.split(':');
-    if (Object.hasOwn(byId[k]?.variants ?? {}, val)) state.variant[k] = val;
+    const { id: k, variant: val } = entryOf(kv) ?? {};
+    if (byId[k]?.group !== 'data' && Object.hasOwn(byId[k]?.variants ?? {}, val)) state.variant[k] = val;
   }
   for (const kv of (q.get('op') || '').split(',')) {
     const [k, val] = kv.split(':');
     if (Object.hasOwn(state.opacity, k) && Number.isFinite(+val)) state.opacity[k] = Math.min(1, Math.max(0, +val));
   }
   for (const [slot, key] of [['colour', 'col'], ['arrows', 'arr']]) if (ENTRIES[slot].some((e) => e.key === q.get(key))) state[slot] = q.get(key);
-  for (const it of DATA) state.on.delete(it.id); // the menus switch them (applyData)
   const t = /^\d{4}-\d{2}-\d{2}T\d{2}$/.test(q.get('t') || '') ? Date.parse(`${q.get('t')}:00:00Z`) : NaN; // a date that is no date (month 13) is NaN
   if (Number.isFinite(t)) state.time = t;
   if (CMEMS_DEPTHS.includes(+q.get('dz'))) state.depth = +q.get('dz');
@@ -98,8 +100,6 @@ function writeHashNow() {
   if (!ready) return;
   const q = new URLSearchParams();
   viewToAddress(viewOf(), q);
-  if (!timeOn().length) q.delete('t');
-  if (!depthOn().length) q.delete('dz');
   drawing.saving.viewChanged(); // saved with the drawing, for a page opened without a view
   setHash(q);
 }
@@ -113,7 +113,7 @@ const KNOWN = {
   data: {},
   depths: CMEMS_DEPTHS,
 };
-for (const e of [...ENTRIES.colour, ...ENTRIES.arrows]) { const [id, v] = e.key.split(':'); if (!(KNOWN.data[id] ||= []).includes(v)) KNOWN.data[id].push(v); }
+for (const e of [...ENTRIES.colour, ...ENTRIES.arrows]) { const { id, variant: v } = entryOf(e.key); if (!(KNOWN.data[id] ||= []).includes(v)) KNOWN.data[id].push(v); }
 
 // The drawing's saved view comes back only when the address has none (docs/drawing-format.md §10):
 // written into the address before anything reads it, so the page loads once with it
@@ -228,14 +228,16 @@ function watchLocation(on) {
   if (watching != null) navigator.geolocation.clearWatch(watching);
   watching = null;
   if (!on) return;
+  let warned = false; // one note per watch: a watch not answered yet reports again and again
   watching = navigator.geolocation.watchPosition(({ coords }) => {
     const at = [coords.longitude, coords.latitude];
     showLocation({ at, accuracy: coords.accuracy });
-    if (!located) { located = true; map.flyTo({ center: at, zoom: Math.max(map.getZoom(), 13), padding: 0 }); }
+    if (!located) { located = true; map.flyTo({ center: at, zoom: Math.max(map.getZoom(), 13), padding: 0, animate: animate() }); }
   }, (e) => {
-    if (e.code !== e.PERMISSION_DENIED) return; // not found yet, or too slow: it keeps trying
-    setLocating(false);
-    locate.title = 'Location not available: this site is not allowed to know it (the browser\'s site settings)';
+    const denied = e.code === e.PERMISSION_DENIED;
+    if (denied) setLocating(false); // else it keeps trying (not found yet, or too slow): the button stays on
+    if (!located && !warned) note(denied ? 'Location not available: this site is not allowed to know it (the browser\'s site settings)' : 'Location not available yet');
+    warned = true;
   }, { enableHighAccuracy: true, maximumAge: 10000 });
 }
 function setLocating(on) {
@@ -261,15 +263,19 @@ function setDisplay(changes) {
 }
 
 // ---- the drawing (draw/drawing.js, draw/document.js; its panel view: draw/panel.js) ---------------------
-const entryOf = (key) => { if (!key) return null; const [id, variant] = key.split(':'); return { id, variant: variant ?? null }; };
-// the map's view and layers, in the drawing file's terms (docs/drawing-format.md §4)
+// the map's view and layers, in the drawing file's terms (docs/drawing-format.md §4): of each layer what
+// differs from its default, the time and the depth only while a layer uses them (as the address)
 function viewOf() {
   const c = map.getCenter();
+  const own = { variant: state.variant, opacity: state.opacity, period: state.period };
   return {
     center: [+c.lng.toFixed(7), +c.lat.toFixed(7)], zoom: map.getZoom(), bearing: norm360(map.getBearing()),
-    layers: [...state.on].filter((id) => byId[id].group !== 'data').map((id) => ({ id,
-      ...(byId[id].variants ? { variant: state.variant[id] } : {}), ...(id in state.opacity ? { opacity: state.opacity[id] } : {}), ...(DENSITY[id] ? { period: state.period[id] } : {}) })),
-    data: { colour: entryOf(state.colour), arrows: entryOf(state.arrows), time: new Date(state.time).toISOString().replace(/\.\d{3}Z$/, 'Z'), depth: state.depth },
+    layers: [...state.on].filter((id) => byId[id].group !== 'data').map((id) => { // the data layers: data below
+      const d = defaultsOf(byId[id]), l = { id };
+      for (const k of ['variant', 'opacity', 'period']) if (id in own[k] && own[k][id] !== d[k]) l[k] = own[k][id];
+      return l;
+    }),
+    data: { colour: entryOf(state.colour), arrows: entryOf(state.arrows), time: timeOn().length ? isoNow(state.time) : null, depth: depthOn().length ? state.depth : null },
     units: display.units, bearings: display.bearings,
   };
 }
@@ -285,12 +291,11 @@ function applyView(v) {
 }
 function viewToAddress(v, q) {
   const c = v.center || [map.getCenter().lng, map.getCenter().lat];
-  q.set('v', [(v.zoom ?? map.getZoom()).toFixed(2), c[1].toFixed(5), c[0].toFixed(5), Math.round(v.bearing > 180 ? v.bearing - 360 : v.bearing)].join('/'));
+  q.set('v', [(v.zoom ?? map.getZoom()).toFixed(2), c[1].toFixed(5), c[0].toFixed(5), +(v.bearing > 180 ? v.bearing - 360 : v.bearing).toFixed(1)].join('/')); // a tenth of a degree: a drawing's bearing comes back as saved
   if (v.layers) {
     q.set('on', v.layers.map((l) => l.id).join(','));
     // what differs from the layer's default only (a file's layer lacking one: its default)
-    const dflt = { variant: (l) => (byId[l.id]?.variants ? Object.keys(byId[l.id].variants)[0] : undefined), opacity: (l) => byId[l.id]?.opacity, period: (l) => DENSITY[l.id]?.defaultPeriod };
-    const kv = (key) => v.layers.filter((l) => l[key] !== undefined && l[key] !== dflt[key](l)).map((l) => `${l.id}:${l[key]}`).join(',');
+    const kv = (key) => v.layers.filter((l) => l[key] !== undefined && l[key] !== defaultsOf(byId[l.id] ?? {})[key]).map((l) => `${l.id}:${l[key]}`).join(',');
     for (const [key, p] of [['variant', 'var'], ['opacity', 'op'], ['period', 'per']]) { const s = kv(key); if (s) q.set(p, s); else q.delete(p); }
   }
   if (v.data) {
@@ -565,7 +570,7 @@ const hourly = () => timeOn().some((it) => kindOf(it.id).time(it.id) === 'hour')
 // read together, nor two sets of arrows: the menus hold one of each.
 const looks = {}; // item → what it draws: 'colour', 'arrows' or 'both'
 function applyData() {
-  const [ci, cv] = state.colour.split(':'), [ai, av] = state.arrows.split(':');
+  const { id: ci, variant: cv } = entryOf(state.colour) ?? {}, { id: ai, variant: av } = entryOf(state.arrows) ?? {};
   for (const it of DATA) {
     const was = state.on.has(it.id) ? `${looks[it.id]}:${state.variant[it.id]}` : '';
     const look = it.id === ci ? (it.id === ai ? 'both' : 'colour') : it.id === ai ? 'arrows' : '';
@@ -596,7 +601,7 @@ function setTime(t) {
 // has (min, max: the browser's calendar greys out the rest, the field's tooltip names them); the
 // chip opens the calendar itself. Every layer draws the time shown at its own time resolution:
 // that hour, the 3-hour step holding it, that day.
-const when = $('#when'), whenIn = $('input', when), shown = shownEl;
+const when = $('#when'), whenIn = $('input', when);
 const pad = (n) => String(n).padStart(2, '0');
 const depthWords = (d) => (d ? `${d} m deep` : 'surface'); // each model at its level nearest the depth chosen
 const fmtDate = (t) => new Date(t).toLocaleDateString([], { day: 'numeric', month: 'short', year: 'numeric' });
@@ -630,7 +635,7 @@ depthEl.addEventListener('change', (e) => setDepth(+e.target.value));
 function renderWhen() {
   const on = timeOn().length > 0, deep = depthOn().length > 0;
   when.hidden = !on;
-  shown.hidden = !on;
+  shownEl.hidden = !on;
   depthEl.hidden = !(on && deep);
   if (!on) return;
   updateRange();
@@ -646,8 +651,8 @@ function renderWhen() {
   const part = (o) => d.toLocaleDateString([], { ...o, timeZone: tz });
   const day = same(new Date()) ? 'Today' // "Wed 21 Oct", in this order in every locale
     : `${part({ weekday: 'short' })} ${d.toLocaleDateString('en', { day: 'numeric', timeZone: tz })} ${part({ month: 'short' })}`;
-  shown.textContent = [day, hr ? d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''].filter(Boolean).join(' ');
-  shown.title = `Time shown: ${d.toLocaleString([], hr ? { dateStyle: 'full', timeStyle: 'short' } : { dateStyle: 'full', timeZone: 'UTC' })}. A click: the calendar`;
+  shownEl.textContent = [day, hr ? d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''].filter(Boolean).join(' ');
+  shownEl.title = `Time shown: ${d.toLocaleString([], hr ? { dateStyle: 'full', timeStyle: 'short' } : { dateStyle: 'full', timeZone: 'UTC' })}. A click: the calendar`;
 }
 // ---- graticule (WGS 84 lat/lon grid; spacing adapts to the view) -------------
 const STEPS = [30, 20, 10, 5, 2, 1, 30 / 60, 20 / 60, 10 / 60, 5 / 60, 2 / 60, 1 / 60];
@@ -717,7 +722,7 @@ const ICON = {
   link: ['M10 14a4 4 0 0 0 6 0l3-3a4 4 0 0 0-6-6l-1 1', 'M14 10a4 4 0 0 0-6 0l-3 3a4 4 0 0 0 6 6l1-1'],
   png: ['M4 5h16v14H4z', 'm4 17 5-5 4 4 3-3 4 4', 'M17 9.5a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0z'], // a picture
   zip: ['M4 4h16v4H4z', 'M5 8v12h14V8', 'M10 12h4'],
-  compass: [['m12 3 4 9h-8z', '#b42318'], 'm12 21-4-9h8z'],
+  compass: [['m12 3 4 9h-8z', 'var(--err)'], 'm12 21-4-9h8z'],
   locate: ['M19 12a7 7 0 1 1-14 0 7 7 0 0 1 14 0z', 'M12 2v3M12 19v3M2 12h3M19 12h3', ['M14 12a2 2 0 1 1-4 0 2 2 0 0 1 4 0z', 'currentColor']], // a dot in sights
   info: ['M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18z', 'M12 11v5', 'M12 8h.01'],
   ruler: ['M3 17 17 3l4 4L7 21z', 'm7 13 2 2M10 10l2 2M13 7l2 2'],
@@ -732,7 +737,6 @@ const frame = createFrame({ left: $('#side'), right: $('#props'), icon, onChange
 // ---- layers panel -----------------------------------------------------------
 const menu = $('#menu');
 const rows = {};
-let depthSeg = null; // the depth colours' control: rendered again with the menu
 function setVariant(id, v) {
   state.variant[id] = v;
   refresh(id);
@@ -754,17 +758,15 @@ function infoBlock(it) {
     h('p', {}, h('b', {}, 'Resolution '), it.info.res),
     it.info.url ? h('p', {}, h('a', { href: it.info.url, target: '_blank', rel: 'noopener noreferrer' }, it.info.url.replace(/^https:\/\/(www\.)?/, '').replace(/\/.*$/, ''))) : null);
 }
-function moreButton(label, info) {
-  return h('button', { class: 'more', type: 'button', title: 'Source, licence, resolution', 'aria-label': `About ${label}`, 'aria-expanded': 'false',
-    onclick: (e) => { info.hidden = !info.hidden; e.currentTarget.setAttribute('aria-expanded', String(!info.hidden)); } }, icon(...ICON.info));
+function moreButton(label, onclick) {
+  return h('button', { class: 'more', type: 'button', title: 'Source, licence, resolution, opacity', 'aria-label': `About ${label}`, 'aria-expanded': 'false', onclick }, icon(...ICON.info));
 }
+// a ⓘ's click: its block shown or hidden
+const toggles = (info) => (e) => { info.hidden = !info.hidden; e.currentTarget.setAttribute('aria-expanded', String(!info.hidden)); };
 // what the item shows (scheme, source, its kind's controls) sits under its row while it is on
 function controlsOf(it) {
   let variant = null;
-  if (it.id === 'depth') {
-    variant = choice('Depth colours', [['atlas', 'Darker = deeper', it.variants.atlas], ['nautical', 'Darker = shallower', it.variants.nautical]], () => state.variant.depth, (v) => setVariant('depth', v));
-    depthSeg = variant;
-  } else if (it.variants) {
+  if (it.variants) {
     variant = h('select', { class: 'variant', 'aria-label': `${it.label} variant`, onchange: (e) => setVariant(it.id, e.target.value) },
       Object.entries(it.variants).map(([k, label]) => h('option', { value: k }, label)));
   }
@@ -774,7 +776,7 @@ function itemRow(it) {
   const input = h('input', { type: 'checkbox', role: 'switch', class: 'switch', id: `i-${it.id}`, onchange: (e) => setOn(it.id, e.target.checked) });
   const info = infoBlock(it), controls = controlsOf(it);
   const row = h('li', { class: 'item' },
-    h('div', { class: 'line' }, h('label', { class: 'name', for: input.id }, it.label, h('span', { class: 'hint' })), moreButton(it.label, info), input),
+    h('div', { class: 'line' }, h('label', { class: 'name', for: input.id }, it.label, h('span', { class: 'hint' })), moreButton(it.label, toggles(info)), input),
     controls, info);
   rows[it.id] = { row, input, controls };
   return row;
@@ -782,20 +784,19 @@ function itemRow(it) {
 // Base: two cards (a radio group); the satellite source and the provenance below them
 function baseBlock(items) {
   const infos = Object.fromEntries(items.map((it) => [it.id, infoBlock(it)]));
-  const more = moreButton('this base', h('div')); // toggles the info of whichever base is shown
-  more.onclick = (e) => {
+  const more = moreButton('this base', (e) => { // the info of whichever base is shown
     const open = e.currentTarget.getAttribute('aria-expanded') !== 'true';
     e.currentTarget.setAttribute('aria-expanded', String(open));
     for (const [id, el] of Object.entries(infos)) el.hidden = !(open && state.on.has(id));
-  };
+  });
   const cards = items.map((it) => {
-    const card = h('button', { type: 'button', role: 'radio', class: 'basecard', 'data-base': it.id, id: `i-${it.id}`, 'aria-checked': 'false', onclick: () => setOn(it.id, true) },
+    const card = h('button', { type: 'button', class: 'basecard', 'data-base': it.id, id: `i-${it.id}`, 'aria-pressed': 'false', onclick: () => setOn(it.id, true) },
       h('div', { class: 'thumb' }), h('span', {}, it.label));
     rows[it.id] = { row: card, input: card, controls: controlsOf(it), infos, more };
     return card;
   });
   return h('div', { class: 'base' },
-    h('div', { class: 'bases', role: 'radiogroup', 'aria-label': 'Base map' }, cards),
+    h('div', { class: 'bases', role: 'group', 'aria-label': 'Base map' }, cards),
     h('ul', {}, h('li', { class: 'item' }, ...items.map((it) => rows[it.id].controls),
       h('div', { class: 'line' }, h('span', { class: 'name' }, 'Source and licence'), more), ...Object.values(infos))));
 }
@@ -805,8 +806,7 @@ const picks = {}; // slot → its menu
 let dataMore = null, dataInfos = {};
 function dataBlock(items, sections) {
   dataInfos = Object.fromEntries(items.map((it) => [it.id, infoBlock(it)]));
-  dataMore = moreButton('the ocean data shown', h('div'));
-  dataMore.onclick = (e) => { e.currentTarget.setAttribute('aria-expanded', String(e.currentTarget.getAttribute('aria-expanded') !== 'true')); renderMenu(); };
+  dataMore = moreButton('the ocean data shown', (e) => { e.currentTarget.setAttribute('aria-expanded', String(e.currentTarget.getAttribute('aria-expanded') !== 'true')); renderMenu(); });
   const pick = (slot, label) => {
     picks[slot] = h('select', { 'aria-label': label, onchange: (e) => { state[slot] = e.target.value; applyData(); labelPaint(); writeHash(); renderMenu(); } },
       h('option', { value: '' }, 'None'),
@@ -840,7 +840,7 @@ function renderMenu() {
     const r = rows[it.id];
     if (!r) continue; // Ocean data: below
     const on = state.on.has(it.id);
-    if (it.group === 'base') r.input.setAttribute('aria-checked', String(on));
+    if (it.group === 'base') r.input.setAttribute('aria-pressed', String(on));
     else r.input.checked = on;
     r.controls.hidden = !on || !(it.variants || kindOf(it.id)?.controls);
     if (on) kindOf(it.id)?.render?.(it, r.controls);
@@ -850,7 +850,6 @@ function renderMenu() {
     const rng = (r.infos?.[it.id] || r.row).querySelector('input[type=range]');
     if (rng) rng.value = state.opacity[it.id];
   }
-  depthSeg?.render();
   for (const slot in picks) picks[slot].value = state[slot];
   for (const [id, el] of Object.entries(dataInfos)) {
     el.hidden = !(dataMore.getAttribute('aria-expanded') === 'true' && state.on.has(id));
@@ -935,13 +934,16 @@ function renderStatus() {
     row.title = st ? st.msg : '';
   };
   for (const it of ITEMS) if (rows[it.id]) mark(rows[it.id].row, state.on.has(it.id) ? itemStatus(it.id) : null);
-  for (const slot in picks) mark(picks[slot].closest('li'), state[slot] ? itemStatus(state[slot].split(':')[0]) : null);
+  for (const slot in picks) mark(picks[slot].closest('li'), state[slot] ? itemStatus(entryOf(state[slot]).id) : null);
 }
 
 // ---- the distance units for the whole app ----------------------------------------------------
 // the units the drawing's lengths and values, its labels and the exports use: a click on the scale
 // switches them
 scaleEl.addEventListener('click', () => setDisplay({ units: display.units === 'km' ? 'nm' : 'km' }));
+Object.assign(scaleEl, { tabIndex: 0 }); // a button, as the time chip: reached by keyboard too
+scaleEl.setAttribute('role', 'button');
+scaleEl.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); scaleEl.click(); } });
 // the time shown, a chip on the bottom row: a click opens the field's calendar (the field itself in a
 // box over the chip, for a browser without a picker)
 const timePop = $('#timepop');
@@ -953,7 +955,8 @@ const timeBox = popup(timePop, {
 });
 Object.assign(shownEl, { tabIndex: 0 });
 shownEl.setAttribute('role', 'button');
-shownEl.addEventListener('click', (e) => { timeBox.toggle(shownEl, e); if (!timePop.hidden) { try { whenIn.showPicker(); } catch { /* no picker here: the field is open */ } } });
+// a click: the browser's calendar at once (the field stays hidden); where there is no picker, the field in its box
+shownEl.addEventListener('click', (e) => { try { whenIn.showPicker(); } catch { timeBox.toggle(shownEl, e); } });
 shownEl.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); shownEl.click(); } });
 function renderUnits() {
   scale.setUnit(display.units === 'nm' ? 'nautical' : 'metric');
@@ -1072,8 +1075,8 @@ window.addEventListener('keydown', (e) => {
   if (k.open === 'search') { e.preventDefault(); setFinding(true); }
   else if (k.open === 'elements' || k.open === 'layers') frame.toggleTab(k.open);
   else if (k.open === 'props') frame.setProps(!frame.props);
-  else if (k.tool[1] === 'box') drawing.boxSelect(!drawing.boxNext);
-  else drawPanel.step(k.tool[1]); // on, off, or a tool with kinds its next
+  else if (k.tool === 'box') drawing.boxSelect(!drawing.boxNext);
+  else drawPanel.step(k.tool); // on, off, or a tool with kinds its next
 });
 // the tooltips and About say the keys
 $('#about .keys').replaceChildren(...keyList());
@@ -1107,7 +1110,7 @@ map.on('click', async (e) => {
   if (!Number.isFinite(v)) { depthPopup.remove(); return; } // land, a lake, inland water: no depth here
   const source = DEPTH_SOURCES.find(({ codes: [a, b] }) => code >= a && code <= b);
   // −1: shallower than 1 m, or sea the data calls dry (clip.js)
-  const depth = v >= -1 ? 'Under 1 m' : `${Math.floor(-v)} m`;
+  const depth = fmtDepth(v).replace(/^u/, 'U');
   depthPopup.setLngLat(e.lngLat).setDOMContent(h('div', {}, h('b', {}, depth), h('span', { class: 'at' }, `${dm(lat, 'N', 'S')} ${dm(norm180(lng), 'E', 'W')}`),
     h('small', {}, ['GEBCO 2026', source?.label.toLowerCase()].filter(Boolean).join(' · ')))).addTo(map);
 });
@@ -1129,6 +1132,7 @@ function scaleText() {
   scaleEl.textContent = scaleEl.textContent.replace(/\snm$/, '\u00a0NM');
   scaleEl.classList.toggle('varies', varies);
   scaleEl.title = `${why}Distance units: a click switches km and NM`;
+  scaleEl.setAttribute('aria-label', `Scale ${scaleEl.textContent}. ${scaleEl.title}`);
   scaleMark.hidden = !varies;
   scaleMark.title = why;
 }
@@ -1174,7 +1178,7 @@ map.on('sourcedata', (e) => { if (!e.tile) renderCredits(); });
 // button says "Saving…" meanwhile, then "Failed" or "Partial" for a few seconds, its tooltip why.
 let exporting = false; // one export at a time, however often the buttons are clicked
 async function onFrame(b, fn, before = async () => {}) {
-  if (exporting) return;
+  if (exporting) { if (!b.hasAttribute('aria-busy')) flash(b, 'Wait…', 'Another export is being saved'); return; } // the other button: told; the one saving: left saying so
   exporting = true;
   const label = b.querySelector('span'), own = labelOf(b);
   clearTimeout(b.flashTimer); // a "Failed" still shown: this try replaces it
@@ -1189,7 +1193,11 @@ async function onFrame(b, fn, before = async () => {}) {
   };
   const failed = (e) => { console.error('export failed:', e.message); done('Failed', `Export failed: ${e.message}`); };
   try { await before(); } catch (e) { failed(e); return; }
+  // a provider that never answers: the map never idles; after a while the export fails instead of
+  // saying "Saving…" for ever (and dropping every later click)
+  const deadline = setTimeout(() => { map.off('idle', go); failed(new Error('the map did not finish loading')); }, 30000);
   const go = () => {
+    clearTimeout(deadline);
     drawing.showMarks(false); // the selection's highlight is not part of the picture, nor the device's location
     for (const id of LOCATION_LAYERS.map((l) => l.id)) map.setLayoutProperty(id, 'visibility', 'none');
     map.once('render', async () => {
@@ -1249,7 +1257,7 @@ function exportPng(b) {
 function drawnItems() {
   const z = map.getZoom();
   return ITEMS.filter((it) => (layersOf[it.id] || []).some((l) => map.getLayoutProperty(l.id, 'visibility') === 'visible' && z >= (l.minzoom ?? 0) && z < (l.maxzoom ?? 24)))
-    .map((it) => ({ ...it, variant: it.variants?.[state.variant[it.id]] }));
+    .map((it) => ({ ...it, variant: it.variants && state.variant[it.id] })); // the variant's key, as the file's view and item.json's at.variant
 }
 const exportZip = gisExport({ map, layersOf, kindOf, drawing, display, profiled, clips: { sea: seaClip, land: landClip }, cmemsDrawn, snapshot, onFrame, download });
 

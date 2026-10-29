@@ -43,6 +43,7 @@ export function popup(el, { place = () => {}, closed = () => {}, choose = true }
 // (Cancel, Esc), then a note. Resolves to the value chosen, or null. One at a time.
 let askDialog = null;
 export function dialog(title, body, buttons, cancel = 'Cancel', foot = null) {
+  if (askDialog?.open) return Promise.resolve(null); // one at a time: a second asked meanwhile is not
   if (!askDialog) document.body.append(askDialog = h('dialog', { class: 'dreport', 'aria-labelledby': 'dask-title' }));
   return new Promise((resolve) => {
     let answer = null;
@@ -68,7 +69,7 @@ export function askText(title, what, value = '') {
   return asked;
 }
 
-// The note: what just happened, for a few seconds, at the map's foot
+// The note: what just happened, for a few seconds, a chip under the bar
 let noteEl = null, noteTimer = 0;
 export function note(text) {
   if (!noteEl) document.body.append(noteEl = h('div', { class: 'dnote', role: 'status', hidden: true })); // a chip under the bar, at the centre

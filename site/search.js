@@ -1,6 +1,6 @@
 // Search: coordinates are read here; place names go to Photon (OpenStreetMap data). search(map,
-// Marker) wires the page's search box (#q) and its results; it returns the box.
-import { $, h } from './dom.js';
+// Marker, free) wires the page's search box (#q) and its results (free(): the map's part not under a panel).
+import { $, h, animate } from './dom.js';
 import { dm, parseLatLon } from './format.js';
 import { fetchOk } from './net.js';
 import { HOSTS } from './hosts.js';
@@ -36,6 +36,7 @@ export function search(map, Marker, free) {
     q.setAttribute('aria-activedescendant', active >= 0 ? `r-${active}` : '');
   }
   function hideResults() {
+    hits = []; // not shown again on focus under a query they no longer answer
     results.hidden = true;
     q.setAttribute('aria-expanded', 'false');
     q.removeAttribute('aria-activedescendant');
@@ -53,10 +54,10 @@ export function search(map, Marker, free) {
     hideResults();
     pin?.remove();
     pin = new Marker({ element: h('div', { class: 'pin', title: r.name }) }).setLngLat(r.at).addTo(map);
-    if (r.bounds) map.fitBounds(r.bounds, { padding: free(), maxZoom: 15, bearing: map.getBearing() });
+    if (r.bounds) map.fitBounds(r.bounds, { padding: free(), maxZoom: 15, bearing: map.getBearing(), animate: animate() });
     else { // centred in the part of the map left free; an offset, not padding, which the map would keep
       const f = free();
-      map.flyTo({ center: r.at, zoom: Math.max(map.getZoom(), r.zoom), offset: [(f.left - f.right) / 2, (f.top - f.bottom) / 2] });
+      map.flyTo({ center: r.at, zoom: Math.max(map.getZoom(), r.zoom), offset: [(f.left - f.right) / 2, (f.top - f.bottom) / 2], animate: animate() });
     }
     q.blur();
   }
@@ -117,5 +118,4 @@ export function search(map, Marker, free) {
     pin = null;
   }
   qClear.addEventListener('click', () => { clear(); q.focus(); });
-  return q;
 }

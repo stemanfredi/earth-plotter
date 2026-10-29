@@ -24,10 +24,11 @@ import { radiusTo, bearingTo, sectorEdgeTo, resizeRect, resizeSide, moved } from
 // the ID of the line being drawn, as measured for its values: always the same, so the traces cached by
 // ID (lines.js) keep one entry for it, not one for each move of the pointer
 const DRAFT_ID = '~draft';
-const SNAP = 12; // px: a click this close to a point is on it (Connect's roots)
 // with a finger (drawing-ui.md §1): snapping reaches farther, handles are grabbed farther, a + is
 // added only along longer legs
 const SNAP_PX = FINGER ? 16 : SNAP_RADIUS, GRAB_PX = FINGER ? 22 : 5, MID_PX = FINGER ? 80 : 40;
+// a pointer event's place on the map's canvas (px)
+const canvasPoint = (map, e) => { const r = map.getCanvasContainer().getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; };
 // where a line's end being drawn is: a point's (its ID), an attached end's, a position
 const placeOfEnd = (doc, x) => (typeof x === 'string' ? doc.points.find((n) => n.id === x)?.position : Array.isArray(x) ? x : x?.position);
 export class Drawing extends DrawStore {
@@ -47,10 +48,11 @@ export class Drawing extends DrawStore {
     // what is being drawn: a line { start (a point's ID or a position), pts }; a polygon or a sector
     // { pts }; a shape { pts: [its centre] }
     this.draft = null;
-    this.pressed = null; // the bar's button of the tool on
+    this.button = null; // the bar's button of the tool on (Shape › sector draws with 'sector')
     this.cursor = null;
     map.on('click', (e) => this.click(e));
-    map.on('mousemove', (e) => this.pointer(e));
+    let hoverRaf = 0, hoverEvent = null; // once a frame, the last move: pointer() queries the map's features
+    map.on('mousemove', (e) => { hoverEvent = e; if (!hoverRaf) hoverRaf = requestAnimationFrame(() => { hoverRaf = 0; this.pointer(hoverEvent); }); });
     this.dragEvents(map);
     this.areaEvents(map);
     this.keyEvents(map);
@@ -257,7 +259,12 @@ export class Drawing extends DrawStore {
   }
   // what the next click on the map attaches (Attach to…): a label's anchor (key 'anchor'), a line's
   // start or end; or nothing
-  startRepoint(id, key = 'anchor') { this.repointing = { id, key }; this.map.getCanvas().style.cursor = 'crosshair'; }
+  startRepoint(id, key = 'anchor') {
+    this.stop(); // a click on the map now attaches, not a tool's next point
+    this.boxSelect(false);
+    this.repointing = { id, key };
+    this.map.getCanvas().style.cursor = 'crosshair';
+  }
   cancelRepoint() { this.repointing = null; this.map.getCanvas().style.cursor = ''; }
   // what a click on the map picks while the generator's form is open (fn(nodeId, position)), or null
   setPicking(fn) { this.picking = fn; if (!fn && !this.tool) this.map.getCanvas().style.cursor = ''; }
@@ -266,8 +273,6 @@ export class Drawing extends DrawStore {
     this.variant[button] = v;
     this.start(button);
   }
-  // the bar's button of the tool on (Shape › sector draws with 'sector')
-  get button() { return this.pressed; }
 
   // ---- tools -----------------------------------------------------------------------------
   start(tool) {
@@ -275,7 +280,7 @@ export class Drawing extends DrawStore {
     this.boxNext = false;
     clearTimeout(this.dblZoom); // stop()'s, which would turn it on again after this
     const v = this.variant[tool];
-    this.pressed = tool;
+    this.button = tool;
     this.tool = tool === 'shape' && v === 'sector' ? v : tool;
     this.map.doubleClickZoom.disable();
     this.map.getCanvas().style.cursor = 'crosshair';
@@ -285,7 +290,7 @@ export class Drawing extends DrawStore {
     if (!this.tool) return;
     this.snapMark = null;
     this.tool = null;
-    this.pressed = null;
+    this.button = null;
     this.draft = null;
     this.renderMarks();
     this.map.getCanvas().style.cursor = '';
@@ -340,9 +345,9 @@ export class Drawing extends DrawStore {
     const pts = [...(d.start ? [placeOfEnd(this.doc, d.start)] : []), ...d.pts].filter(Boolean);
     return { from: pts.at(-1) ?? null, prev: pts.at(-2) ?? null };
   }
-  // a point within SNAP px of a screen point, if any (the nearest): Connect's roots
+  // a point within snapping distance of a screen point, if any (the nearest): Connect's roots
   pointAt(point) {
-    let best = null, bd = SNAP;
+    let best = null, bd = SNAP_PX;
     for (const n of this.doc.points) {
       if (!isShown(this.doc, n)) continue;
       const q = this.map.project(n.position), d = Math.hypot(q.x - point.x, q.y - point.y);
@@ -599,8 +604,7 @@ export class Drawing extends DrawStore {
     return f && { id: f.properties.id, role: f.properties.role, ref: f.properties.ref };
   }
   dragEvents(map) {
-    const box = map.getCanvasContainer();
-    const at = (e) => { const r = box.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; };
+    const box = map.getCanvasContainer(), at = (e) => canvasPoint(map, e);
     // first (capture): a press on a handle or a selected element takes the gesture from the map's panning
     box.addEventListener('pointerdown', (e) => {
       // a second finger during a drag: everything back (as Esc), the map's pinch takes over
@@ -638,6 +642,7 @@ export class Drawing extends DrawStore {
       };
       raf = requestAnimationFrame(() => move?.());
     });
+    window.addEventListener('pointercancel', () => { if (this.drag) this.cancelDrag(); }); // taken by the browser: as a second finger
     window.addEventListener('pointerup', () => {
       const d = this.drag;
       if (!d) return;
@@ -692,7 +697,7 @@ export class Drawing extends DrawStore {
       case 'anchor': { // a free label's point, or where along the edge (a line's leg) it points
         if (!el.anchor.element) { el.anchor.position = moved(el.anchor.position, d.start, p); return; }
         const x = find(doc, el.anchor.element), r = x && refNear(doc, x, p);
-        if (r) { const { d: _, ...ref } = r; el.anchor = ref; } // eslint-disable-line no-unused-vars
+        if (r) { const { d: _, ...ref } = r; el.anchor = ref; }
         return;
       }
       case 'point': { // a line's end attached to a point's centre: the point moves, snapped (not onto itself or its lines)
@@ -796,7 +801,7 @@ export class Drawing extends DrawStore {
     box.hidden = true;
     map.getCanvasContainer().append(box);
     let from = null;
-    const at = (e) => { const r = map.getCanvasContainer().getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; };
+    const at = (e) => canvasPoint(map, e);
     map.boxZoom.disable(); // Shift-drag is the box's, not the map's box zoom
     const begin = (p) => {
       map.dragPan.disable();

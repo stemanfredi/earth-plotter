@@ -4,7 +4,7 @@ Version 1 (reading and writing `site/draw/file.js`; the model `site/draw/documen
 `site/draw/check.js`). The interface is in `drawing-ui.md`.
 
 This is the contract between the app and anything that reads or writes its drawings: the app's own
-Export, the copy kept in the browser, a GIS, and a file prepared by hand or by a script. §15 is a
+Download, the copy kept in the browser, a GIS, and a file prepared by hand or by a script. §15 is a
 short example; §16 lists every default.
 
 ## 1. The file
@@ -91,8 +91,8 @@ Without a `charts` member the file is still read: it is plain GeoJSON (§11).
 | Field | Notes |
 |---|---|
 | `center`, `zoom`, `bearing` | the map's view; `zoom` 0–24; `bearing` the map's rotation (0: north up) |
-| `layers` | the layers shown, by the app's layer ID; `variant`, `period` and `opacity` (0–1) only where that layer has them |
-| `data` | the data layers chosen: what draws colours and what draws arrows (`{ id, variant }` or `null`), the hour shown, and `depth` in metres (one the app offers) |
+| `layers` | the layers shown, by the app's layer ID; `variant`, `period` and `opacity` (0–1) only where that layer has them and they differ from its default |
+| `data` | the data layers chosen: what draws colours and what draws arrows (`{ id, variant }` or `null`), the hour shown and `depth` in metres (one the app offers), each only while a layer shown uses it |
 | `units` | `"km"` or `"nm"` (nautical miles) |
 | `bearings` | whether each leg's bearing is shown with its length |
 
@@ -149,7 +149,7 @@ How an element is drawn is its **look**: one object, every field optional where 
 ```json
 { "fill": { "color": "#e8590c", "opacity": 0.15 },
   "stroke": { "color": "#e8590c", "opacity": 1, "width": 1.5, "dash": "solid" },
-  "text": { "name": false, "values": false, "size": "medium", "color": "#1f2933", "background": "halo" },
+  "text": { "name": false, "values": false, "size": "medium", "color": "#1f2c36", "background": "halo" },
   "offset": 0,
   "minSize": 12 }
 ```
@@ -178,7 +178,7 @@ Each field an element leaves out comes from the drawing's (the three it has), el
 | the drawing's (`charts.look`) | |
 | the defaults | |
 
-A label's colour, set nowhere, is `#1f2933`. `visible` is not part of the look: an element is drawn
+A label's colour, set nowhere, is `#1f2c36`. `visible` is not part of the look: an element is drawn
 only if every group it is in is visible.
 
 A group is only who is in it: joining or leaving one, or a group deleted, changes nothing of an
@@ -343,7 +343,7 @@ A `Point` geometry where the label points, with `"kind": "label"`:
 - **`offset`:** the text's centre, in screen pixels from the anchor (x right, y down; ±2000).
 - **`leader`:** `"arrow"` (a line from the text to the anchor, an arrow head there) or `"none"`.
 - **`look`:** its text's `size` (`"small"`, `"medium"` or `"large"`: 11, 13, 16 px), `color` (set
-  nowhere: the drawing's, else the default) and `background` (`"halo"` or `"box"`), as
+  nowhere: the default) and `background` (`"halo"` or `"box"`), as
   any look (§6).
 
 A label has no stroke or fill names in its properties, and no `guide`.
@@ -412,8 +412,7 @@ or point (or its part) is gone, or all of whose copies are, is dropped.
 
 Each line it makes is a plain line attached to the points it joins; what it is follows from its ends:
 in a tree, a trunk (root to hub) or a branch (hub to point); in a chain, a root link (from a root) or
-a link (point to point). A property `part` of `"trunk"`, `"branch"` or `"chain"` on them, which
-earlier files have, is dropped on reading. The plan: the points, in order, are
+a link (point to point). The plan: the points, in order, are
 cut into groups of consecutive points, each joined to one root, the cut and the roots chosen together
 as the cheapest, the sum of the groups' lengths each divided by its root's weight (a tie: the most
 even cut). Every tree has a hub of its own, never one of its points: where the median falls on a
@@ -427,8 +426,8 @@ it.
 
 - Every value equal to its default (§16) is left out, and an object when nothing in it differs: a
   point that is only an ID and a position is written as `"charts": { "kind": "point" }`.
-- Rounding: positions 7 decimals (about 1 cm); metres (radii, outline sizes, margins,
-  offsets, a distribution's `spacing` and `radius`) 3; angles (bearings, apertures, the view's zoom) 4;
+- Rounding: positions 7 decimals (about 1 cm); metres (radii, outline sizes, a distribution's
+  margins, `offset`, `spacing` and `radius`) 3; angles (bearings, apertures, the view's zoom) 4;
   opacities and widths 3; an edge's `at` 6; a copy's `t` 9.
   The reader takes any precision.
 - The text is indented JSON, each position on one line.
@@ -440,8 +439,8 @@ it.
   (`charts.drawing.<id>`), with a small index (`charts.drawings`: title, last change, size) and the
   one open (`charts.drawings.current`). Nothing is sent anywhere.
 - When the page opens, the open drawing comes back; its view too when the address has none.
-- If the browser refuses to save (storage full or turned off), the panel says so, and Export keeps the
-  drawing as a file.
+- If the browser refuses to save (storage full or turned off), the panel says so, and Download › Drawing keeps
+  the drawing as a file.
 - A drawing kept that this app cannot read (one of another version, §12) is left as it is, never
   saved over: a new drawing opens instead.
 
@@ -465,7 +464,8 @@ The reader takes a FeatureCollection, a single Feature or a bare geometry.
   colour that is not `#rrggbb`, or an unknown dash, dropped (the drawing's or the default applies); an
   unknown symbol, leader, size or background → the default; a sector without an aperture a circle (§6); a
   name or text given as a number or boolean made text; an unknown group → standalone. Clamped without
-  a warning: a minimum display size to 200, a label's offset to ±2000, the view's zoom to 0–24.
+  a warning: a minimum display size to 200, a line's offset to ±50, a label's offset to ±2000, the
+  view's zoom to 0–24.
 - **Unknown fields are ignored** and not kept: writing again drops them. Data to carry goes into the
   user's properties.
 - **Attached ends and anchored labels** follow what they are attached to (§7.4, §7.7).
@@ -474,7 +474,7 @@ The import report lists what was refused, skipped and repaired, before the drawi
 
 ## 12. Reading: refusals and skips
 
-**The whole file is refused** (nothing loads) when it is not JSON; its top level is not an object;
+**The whole file is refused** (nothing loads) when it is larger than 64 MB; it is not JSON; its top level is not an object;
 it is not GeoJSON; `charts.version` is a number other than 1; or its lines and areas hold more than
 1 000 000 positions together.
 
@@ -590,6 +590,8 @@ What a value is when the file leaves it out. Writing it with this value means th
 | collection | `charts.groups`, `rules` | `[]` |
 | view | `center`, `zoom`, `layers`, `data` | none: the map's |
 | view | `bearing`; `units`; `bearings` | `0`; `"km"`; `false` |
+| view layer | `variant`, `opacity`, `period` | the layer's own default |
+| view data | `colour`, `arrows`, `time`, `depth` | `null`: none chosen; no layer shown uses the time or the depth |
 | feature | `id` | a new one |
 | feature | `name` | `""` |
 | feature | user's properties | none |
@@ -600,9 +602,9 @@ What a value is when the file leaves it out. Writing it with this value means th
 | feature | `charts.guide` | `false` |
 | default look | fill | `#e8590c`, opacity 0.15 |
 | default look | stroke | `#e8590c`, opacity 1, width 1.5, `"solid"` |
-| default look | text | `name` `false`, `values` `false`, `size` `"medium"`, `color` none (a label: `#1f2933`), `background` `"halo"` |
+| default look | text | `name` `false`, `values` `false`, `size` `"medium"`, `color` none (a label: `#1f2c36`, its own only), `background` `"halo"` |
 | default look | `offset`; `minSize` | `0`; `12` |
-| guide style | fill; stroke | `#6b7a86`, opacity 0.05; `#6b7a86`, opacity 1, width 1, `"dashed"` |
+| guide style | fill; stroke | `#5d6d79`, opacity 0.05; `#5d6d79`, opacity 1, width 1, `"dashed"` |
 | measurement style | fill; stroke | `#b0127a`, opacity 0.08; `#b0127a`, opacity 1, width 2, `"dashed"` |
 | group | `name`; `properties`; `visible` | `""`; `[]`; `true` |
 | group | `groupId` | `null` (at the top) |

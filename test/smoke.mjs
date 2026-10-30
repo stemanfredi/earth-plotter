@@ -6,9 +6,12 @@
 import { readFile } from 'node:fs/promises';
 import { inflateRawSync } from 'node:zlib';
 import { start } from './browser.mjs';
+import { setSwVersion } from './serve.mjs';
+import { tileBounds } from '../site/geo.js';
 
 const { browser, base, check, section, finish } = await start();
-const ctx = await browser.newContext({ locale: 'en-US', viewport: { width: 1280, height: 800 }, acceptDownloads: true, permissions: ['clipboard-read', 'clipboard-write'] });
+// the service worker blocked, but in its own section at the end: here the network as it is, routes included
+const ctx = await browser.newContext({ locale: 'en-US', viewport: { width: 1280, height: 800 }, acceptDownloads: true, permissions: ['clipboard-read', 'clipboard-write'], serviceWorkers: 'block' });
 // cross-origin requests that carried a Referer (the page and the clip worker both promise none)
 const referred = new Set();
 ctx.on('request', (r) => { const u = new URL(r.url()); if (u.origin !== new URL(base).origin && r.headers().referer) referred.add(u.host); });
@@ -160,7 +163,7 @@ await section('the frame', async () => {
     return fits;
   };
   const mouse = await fitsAt(pv, [390, 720, 1024, 1440]);
-  const tctx = await browser.newContext({ viewport: { width: 820, height: 800 }, hasTouch: true, isMobile: true });
+  const tctx = await browser.newContext({ viewport: { width: 820, height: 800 }, hasTouch: true, isMobile: true, serviceWorkers: 'block' });
   const finger = await fitsAt(await open('#v=6/41/12/0', tctx), [390, 820, 1180, 1280]);
   await tctx.close();
   check([...mouse, ...finger].every(Boolean), `the bar within the window, each button with its icon, with a mouse at 390, 720, 1024, 1440 px (${mouse}) and a finger at 390, 820, 1180, 1280 (${finger})`);
@@ -1160,7 +1163,7 @@ await section('with a finger, on a phone', async () => {
   // with a finger, on a phone (drawing-ui.md §1): the sheet closed to start with, Elements and
   // Properties in it one at a time; the tools in the dock, Back there while one is on, Undo and Redo; what is
   // selected peeks (Properties' head), a tap on it Properties; a finger held then dragged: a box; handles larger
-  const fctx = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
+  const fctx = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true, serviceWorkers: 'block' });
   const fp = await open('#v=11/40.2/12.1/0&on=chart,coastline', fctx);
   const shown = () => fp.evaluate(() => [!document.querySelector('#side').hidden, !document.querySelector('#props').hidden]);
   const atStart = await shown();
@@ -1220,6 +1223,198 @@ await section('with a finger, on a phone', async () => {
   check(handles === 1.75 && after[0] === rBefore && !after[1], `finger: handles drawn larger (${handles}); a second finger during a drag puts it back (${rBefore} → ${after[0]})`);
   check(!fp.errors.length, `finger: no errors ${fp.errors.join(' | ')}`);
   await fctx.close();
+});
+
+await section('the page without a connection, and a new version', async () => {
+  // a version published: the worker keeps the page's files and takes the page over; without a
+  // connection the page still opens, with its drawings
+  setSwVersion('a');
+  const sctx = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+  const sp = await open('#v=8/43.5/9.5/0&on=chart,coastline', sctx);
+  await sp.waitForFunction(() => navigator.serviceWorker.controller?.state === 'activated', null, { timeout: 30000 });
+  const kept = await sp.evaluate(async () => [(await caches.keys()).join(), (await (await caches.open('shell-a')).keys()).map((r) => new URL(r.url).pathname)]);
+  const shell = (await readFile(new URL('../site/sw.js', import.meta.url), 'utf8')).match(/shell:start[^\n]*\n([\s\S]*?)\s*\/\/ shell:end/)[1].split('\n').length;
+  check(kept[0] === 'shell-a' && kept[1].length === shell && kept[1].includes('/vendor/maplibre-gl.mjs'), `offline: the worker keeps the page's ${kept[1].length} of ${shell} files (${kept[0]})`);
+  await sp.evaluate(async () => { const { addPoint } = await import('./draw/document.js'); drawing.change((d) => addPoint(d, [9.5, 43.5])); });
+  await sp.waitForTimeout(1500); // saved as it goes
+  const drawn = await sp.evaluate(() => drawing.doc.points.length);
+  await sctx.setOffline(true);
+  await sp.reload();
+  await sp.waitForFunction((n) => window.drawing?.doc.points.length === n, drawn, { timeout: 15000 }).catch(() => {}); // restored once the map has loaded
+  const offline = await sp.evaluate(() => [!document.querySelector('#nostart'), !!document.querySelector('#bar'), drawing.doc.points.length, document.querySelector('#update').hidden]);
+  check(drawn === 1 && offline[0] && offline[1] && offline[2] === drawn && offline[3], `offline: the page opens without a connection, the map started, the bar there, its ${offline[2]} points kept (${offline})`);
+  await sctx.setOffline(false);
+  // a newer version: fetched by the worker, it waits; the chip says so, and its Reload applies it
+  setSwVersion('b');
+  await sp.evaluate(() => navigator.serviceWorker.getRegistration().then((r) => r.update()));
+  await sp.waitForSelector('#update:not([hidden])', { timeout: 30000 });
+  const before = await sp.evaluate(async () => (await caches.keys()).sort().join());
+  await Promise.all([sp.waitForEvent('load', { timeout: 30000 }), sp.click('#update .linkbtn')]);
+  await sp.waitForFunction(() => window.map, null, { timeout: 30000 });
+  const after = await sp.evaluate(async () => [(await caches.keys()).join(), document.querySelector('#update').hidden]);
+  check(before === 'shell-a,shell-b' && after[0] === 'shell-b' && after[1], `a new version waits beside the old (${before}), the chip's Reload applies it (${after[0]}), the chip gone (${after[1]})`);
+  check(!sp.errors.filter((e) => !/Failed to fetch|AJAXError|NetworkError|ERR_INTERNET_DISCONNECTED/.test(e)).length, `offline: no errors of the page's own ${sp.errors.join(' | ')}`);
+  setSwVersion(null);
+  await sctx.close();
+});
+
+await section('a saved area: served from it, online and without a connection; Esri never', async () => {
+  // an area saved by hand (the downloader comes later): every file of the saved hosts the view asked
+  // for, put in a pack-… cache under its own address, as a saved area keeps them
+  setSwVersion('c');
+  const actx = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+  const savedHosts = (await readFile(new URL('../site/sw.js', import.meta.url), 'utf8')).match(/hosts:start[^\n]*\n([\s\S]*?)\s*\/\/ hosts:end/)[1].match(/'[^']+'/g).map((h) => h.slice(1, -1));
+  const isSaved = (u) => savedHosts.some((h) => u.startsWith(h));
+  const asked = new Set(), failed = [];
+  actx.on('request', (r) => { if (isSaved(r.url())) asked.add(r.url()); });
+  actx.on('requestfailed', (r) => { if (!r.serviceWorker() && isSaved(r.url())) failed.push(r.url()); }); // the page's, not the worker's own tries of the network
+  const view = '#v=10/44.08/9.85/0&on=chart,coastline,depth,isobaths,relief,contours,seamarks';
+  const ap = await open(view, actx);
+  await ap.waitForFunction(() => navigator.serviceWorker.controller?.state === 'activated', null, { timeout: 30000 });
+  const put = await ap.evaluate(async (urls) => {
+    const cache = await caches.open('pack-test');
+    let n = 0;
+    for (const u of urls) { const r = await fetch(u, { credentials: 'omit', referrerPolicy: 'no-referrer' }).catch(() => null); if (r?.ok) { await cache.put(u, r); n++; } }
+    await cache.put(new URL('pack.json', document.baseURI).href, new Response('{"name":"test"}')); // complete: used
+    navigator.serviceWorker.controller.postMessage('packs');
+    return n;
+  }, [...asked]);
+  // online: the area's files come from it; Esri's never pass through the worker
+  const fromWorker = [], esri = [];
+  actx.on('response', (r) => { if (isSaved(r.url()) && r.fromServiceWorker()) fromWorker.push(r.url()); if (/arcgisonline/.test(r.url())) esri.push(r.fromServiceWorker()); });
+  await ap.goto(base + view.replace('chart,', 'sat,'));
+  await ap.waitForFunction(() => window.map?.loaded?.() && map.areTilesLoaded(), null, { timeout: 90000 });
+  check(put > 20 && fromWorker.length > 10 && esri.length > 0 && esri.every((w) => !w), `saved area: ${put} files saved; online, ${fromWorker.length} served from it; Esri's ${esri.length} tiles never through the worker`);
+  // without a connection: the same view drawn from the area, no request to a saved host failing; the
+  // area first given what the online loads asked for since (work that ends after the map says its
+  // tiles are loaded: a lake's shore read at lower zooms)
+  await ap.goto(base + view);
+  await ap.waitForFunction(() => window.map?.loaded?.() && map.areTilesLoaded(), null, { timeout: 90000 });
+  await ap.waitForTimeout(1000);
+  await ap.evaluate(async (urls) => {
+    const cache = await caches.open('pack-test');
+    for (const u of urls) if (!(await cache.match(u))) { const r = await fetch(u, { credentials: 'omit', referrerPolicy: 'no-referrer' }).catch(() => null); if (r?.ok) await cache.put(u, r); }
+  }, [...asked]);
+  failed.length = 0;
+  await (await actx.newCDPSession(ap)).send('Network.clearBrowserCache'); // only the saved area can answer
+  await actx.setOffline(true);
+  await ap.reload();
+  await ap.waitForFunction(() => window.map?.loaded?.() && map.areTilesLoaded(), null, { timeout: 60000 }).catch(() => {});
+  await ap.waitForTimeout(2000);
+  const drawn = await ap.evaluate(() => {
+    const at = (layer) => map.queryRenderedFeatures({ layers: map.getStyle().layers.filter((l) => l.source === layer).map((l) => l.id) }).length;
+    return { base: at('omt'), isobaths: at('isobaths'), contours: at('contours'), loaded: map.loaded() && map.areTilesLoaded() };
+  });
+  check(drawn.base > 50 && drawn.isobaths > 0 && drawn.contours > 0 && !failed.length,
+    `saved area, offline: the base map (${drawn.base} features), isobaths (${drawn.isobaths}) and contours (${drawn.contours}) drawn; ${failed.length} saved-host requests failed${failed.length ? `: ${failed.slice(0, 3).join(' ')}` : ''}`);
+  await actx.setOffline(false);
+  setSwVersion(null);
+  await actx.close();
+});
+
+await section('Offline areas: the view saved from the dialog, drawn without a connection, deleted', async () => {
+  setSwVersion('d');
+  const octx = await browser.newContext({ viewport: { width: 1280, height: 800 }, acceptDownloads: true });
+  const savedHosts = (await readFile(new URL('../site/sw.js', import.meta.url), 'utf8')).match(/hosts:start[^\n]*\n([\s\S]*?)\s*\/\/ hosts:end/)[1].match(/'[^']+'/g).map((x) => x.slice(1, -1));
+  // the page's requests that failed (not the service worker's own tries of the network) for a saved
+  // host, in the saved area: a tile beyond it, which a wide window shows, is not in it, nor a tile
+  // below the area's lowest zoom (MapLibre asks for a failed tile's parents, coarser and coarser,
+  // to show something in its place: a tile beyond the area has parents that contain it)
+  const failed = [];
+  let area = null, areaFrom = 0;
+  let wide = false; // the window wider than the area: a depth chunk (degrees wide) may be wanted only by tiles beyond it
+  const inArea = (u) => {
+    if (!area) return true;
+    // a GEBCO chunk (gebco.js): level k of 15″ × 2^k cells, 512 × 512 cells a chunk, from 90° N, 180° W
+    const c = /\.zarr\/(\d+)\/\w+\/(\d+)\.(\d+)$/.exec(u), m = /\/(\d+)\/(\d+)\/(\d+)\.(?:pbf|png)$/.exec(u);
+    const deg = c && (512 * 15 * 2 ** c[1]) / 3600;
+    if (!c && !m) return true;
+    if (c && wide) return false;
+    if (m && +m[1] < areaFrom) return false;
+    const [w, s, e, n] = c ? [-180 + c[3] * deg, 90 - (+c[2] + 1) * deg, -180 + (+c[3] + 1) * deg, 90 - c[2] * deg] : tileBounds(+m[1], +m[2], +m[3]);
+    return e > area[0] && w < area[2] && n > area[1] && s < area[3];
+  };
+  octx.on('requestfailed', (r) => { if (!r.serviceWorker() && savedHosts.some((x) => r.url().startsWith(x)) && inArea(r.url())) failed.push(r.url()); });
+  const op = await open('#v=11/44.08/9.85/0&on=chart,coastline,depth,isobaths,relief,contours,seamarks,places,roads', octx);
+  await op.waitForFunction(() => navigator.serviceWorker.controller?.state === 'activated', null, { timeout: 30000 });
+  await exportItem(op, 'offline');
+  await op.waitForSelector('dialog.offline[open]');
+  await op.selectOption('dialog.offline select', '12');
+  const count = await op.textContent('dialog.offline .orow .val');
+  const t0 = Date.now();
+  await op.click('dialog.offline button.done');
+  await op.waitForSelector('dialog.offline .drawings li', { timeout: 600000 });
+  const took = Math.round((Date.now() - t0) / 1000);
+  const row = await op.textContent('dialog.offline .drawings li .val');
+  check(/zoom 12 · [\d.]+ MB/.test(row) && !(await op.textContent('dialog.offline .ostatus')), `offline areas: saved (${count}; ${row}; ${took} s)`);
+  await op.click('dialog.offline .fbuttons button:not(.done)'); // Close
+  ({ bounds: area, from: areaFrom } = await op.evaluate(async () => {
+    const id = (await caches.keys()).find((k) => k.startsWith('pack-'));
+    return (await (await caches.open(id)).match(new URL('pack.json', document.baseURI).href)).json();
+  }));
+  // without a connection: the area at zooms 9 to 12, across it, with no request to a saved host failing
+  failed.length = 0;
+  await (await octx.newCDPSession(op)).send('Network.clearBrowserCache'); // only the saved area can answer
+  await octx.setOffline(true);
+  await op.reload();
+  const seen = [];
+  for (const [z, lng, lat] of [[8, 9.85, 44.08], [10, 9.6, 44.0], [11, 10.1, 44.2], [12, 9.85, 44.08], [12, 9.55, 43.95]]) {
+    wide = z < 11;
+    await op.evaluate(([z, lng, lat]) => map.jumpTo({ zoom: z, center: [lng, lat] }), [z, lng, lat]);
+    await op.waitForFunction(() => map.loaded() && map.areTilesLoaded(), null, { timeout: 60000 }).catch(() => {});
+    await op.waitForTimeout(500);
+    seen.push(await op.evaluate(() => map.queryRenderedFeatures().length));
+  }
+  check(seen.every((n) => n > 5) && !failed.length, `offline areas, offline: drawn at zooms 8–12 across the area (${seen.join(', ')} features); ${failed.length} saved-host requests failed${failed.length ? `: ${failed.slice(0, 3).join(' ')}` : ''}`);
+  // still without a connection: the layers kept are not marked as failing (beyond the area is no
+  // fault); one not kept says why; place search says there is no connection, asking nobody
+  await op.evaluate(() => document.querySelector('#i-maritime').click());
+  await op.waitForTimeout(3000);
+  const marks = await op.evaluate(() => [...document.querySelectorAll('.error, .partial')].filter((r) => r.title).map((r) => `${r.querySelector('input')?.id || r.textContent.trim().slice(0, 12)}: ${r.title}`));
+  check(marks.length === 1 && /^i-maritime: No connection/.test(marks[0]), `offline: only a layer not kept is marked (${marks.join(' | ') || 'none'})`);
+  await findOpen(op);
+  await op.fill('#q', 'Genova');
+  await op.waitForSelector('#results li', { timeout: 5000 }).catch(() => {});
+  const said = await op.evaluate(() => document.querySelector('#results')?.textContent || '');
+  check(/No connection/.test(said), `offline: place search says there is no connection (${said.slice(0, 60)})`);
+  await op.keyboard.press('Escape');
+  await octx.setOffline(false);
+  // its file written (File), then deleted: asked first, then gone from the list and from the browser
+  await exportItem(op, 'offline');
+  await op.waitForSelector('dialog.offline[open] .drawings li');
+  const [fdl] = await Promise.all([op.waitForEvent('download', { timeout: 60000 }), op.click('dialog.offline .drawings button.small >> text=File')]);
+  const fileBytes = await readFile(await fdl.path());
+  await op.click('dialog.offline .drawings .hact');
+  await op.click('dialog.dreport .fbuttons button.done');
+  await op.waitForFunction(() => !document.querySelector('dialog.offline .drawings li'), null, { timeout: 10000 });
+  const left = await op.evaluate(async () => (await caches.keys()).filter((k) => k.startsWith('pack-')).length);
+  check(left === 0, `offline areas: deleted (${left} left)`);
+  // as a file: written before the delete above (its File button), opened again, drawn offline from it
+  const az = files(fileBytes);
+  const head = JSON.parse(az['area.json']);
+  check(head.format === 'charts-offline-area' && head.files.length > 100 && head.files.every((f) => az[f.name]) && !head.files.some((f) => f.url.includes('openseamap')) && /OpenStreetMap/.test(String(az['README.txt'])),
+    `offline areas, file: ${head.files.length} files with their addresses, the credits, no seamarks (${Math.round(fileBytes.length / 1e6)} MB)`);
+  await op.setInputFiles('input[type=file][accept^=".zip"]', { name: 'area.zip', mimeType: 'application/zip', buffer: fileBytes });
+  await op.waitForSelector('dialog.offline .drawings li', { timeout: 60000 });
+  await op.click('dialog.offline .fbuttons button:not(.done)'); // Close
+  failed.length = 0;
+  await (await octx.newCDPSession(op)).send('Network.clearBrowserCache');
+  await octx.setOffline(true);
+  await op.reload();
+  await op.evaluate(() => map.jumpTo({ zoom: 12, center: [9.85, 44.08] }));
+  await op.waitForFunction(() => map.loaded() && map.areTilesLoaded(), null, { timeout: 60000 }).catch(() => {});
+  await op.waitForTimeout(1000);
+  const fromFile = await op.evaluate(() => map.queryRenderedFeatures().length), missed = failed.filter((u) => !u.includes('openseamap'));
+  check(fromFile > 100 && !missed.length, `offline areas, file opened again: drawn offline (${fromFile} features), ${missed.length} requests failed but the seamarks'${missed.length ? `: ${missed.slice(0, 3).join(' ')}` : ''}`);
+  await octx.setOffline(false);
+  await op.reload();
+  await exportItem(op, 'offline');
+  await op.waitForSelector('dialog.offline[open] .drawings li');
+  await op.click('dialog.offline .drawings .hact');
+  await op.click('dialog.dreport .fbuttons button.done');
+  await op.waitForFunction(() => !document.querySelector('dialog.offline .drawings li'), null, { timeout: 10000 });
+  setSwVersion(null);
+  await octx.close();
 });
 
 await finish();

@@ -24,6 +24,8 @@ import { gisExport } from './gis.js';
 import { chartCanvas, chartPng } from './png.js';
 import { cmemsValues, emodnetValues, gebcoValues } from './values.js';
 import { tidTile, tidAt } from './gebco.js';
+import { offlineDialog, KEPT_SOURCES, noConnection, onConnection } from './offline.js';
+import { UI_ICON } from './draw/icons.js';
 
 const byId = Object.assign(Object.create(null), Object.fromEntries(ITEMS.map((it) => [it.id, it]))); // no inherited names: the link names items
 // Ocean data: the layers that change with time, chosen in two menus, colours and arrows. An entry
@@ -707,10 +709,13 @@ map.on('data', (e) => {
   if (e.dataType === 'source' && e.tile && health[e.sourceId]) { health[e.sourceId].ok++; renderStatus(); }
 });
 map.on('movestart', () => { for (const k in health) delete health[k]; renderStatus(); });
+onConnection(() => renderStatus());
 function itemStatus(id) {
   for (const l of layersOf[id] || []) {
     if (l.metadata.variant && l.metadata.variant !== state.variant[id]) continue;
     const s = health[l.source];
+    // without a connection: the layers saved areas keep fail only beyond them; the others say why
+    if (s?.err && noConnection()) { if (KEPT_SOURCES.has(l.source)) continue; return { cls: 'error', msg: 'No connection: not kept in offline areas' }; }
     if (s?.err) return { cls: s.ok ? 'partial' : 'error', msg: s.ok ? `some tiles failed: ${s.msg}` : `not loading: ${s.msg}` };
   }
   return null;
@@ -726,6 +731,7 @@ const ICON = {
   link: ['M10 14a4 4 0 0 0 6 0l3-3a4 4 0 0 0-6-6l-1 1', 'M14 10a4 4 0 0 0-6 0l-3 3a4 4 0 0 0 6 6l1-1'],
   png: ['M4 5h16v14H4z', 'm4 17 5-5 4 4 3-3 4 4', 'M17 9.5a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0z'], // a picture
   zip: ['M4 4h16v4H4z', 'M5 8v12h14V8', 'M10 12h4'],
+  offline: ['M4 6.5 9 4l6 2.5L20 4v13.5L15 20l-6-2.5L4 20z', 'M12 9v6', 'm9.5 12.5 2.5 2.5 2.5-2.5'], // a map, an arrow into it
   compass: [['m12 3 4 9h-8z', 'var(--err)'], 'm12 21-4-9h8z'],
   locate: ['M19 12a7 7 0 1 1-14 0 7 7 0 0 1 14 0z', 'M12 2v3M12 19v3M2 12h3M19 12h3', ['M14 12a2 2 0 1 1-4 0 2 2 0 0 1 4 0z', 'currentColor']], // a dot in sights
   info: ['M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18z', 'M12 11v5', 'M12 8h.01'],
@@ -959,9 +965,12 @@ function renderUnits() {
 
 // ---- the view's outputs, in the bar's Download menu: each says how it went on itself ("Saving…",
 // "Failed"), the menu open meanwhile
-const output = (id, iconName, text, title, run) => h('button', { type: 'button', role: 'menuitem', id, title, onclick: (e) => run(e.currentTarget) }, icon(...ICON[iconName]), h('span', {}, text));
+const output = (id, iconName, text, title, run, more = {}) => h('button', { type: 'button', role: 'menuitem', id, title, onclick: (e) => run(e.currentTarget), ...more }, icon(...ICON[iconName]), h('span', {}, text));
 const outputs = [output('png', 'png', 'Picture (PNG)', 'Download the view as a picture', (b) => exportPng(b)),
-  output('zip', 'zip', 'GIS data (ZIP)', 'Download the view as GIS data: a georeferenced picture, GeoJSON, GeoTIFF', (b) => exportZip(b))];
+  output('zip', 'zip', 'GIS data (ZIP)', 'Download the view as GIS data: a georeferenced picture, GeoJSON, GeoTIFF', (b) => exportZip(b)),
+  output('offline', 'offline', 'Offline areas…', 'Save this view in this browser, to open it without a connection; the areas saved', () => offline.open(), { 'data-closes': '' })]; // its dialog: the menu closed
+// Offline areas (offline.js): the dialog that saves the view and lists the areas saved
+const offline = offlineDialog({ map, fit: ([w, s, e, n]) => map.fitBounds([[w, s], [e, n]], { padding: free() }), deleteIcon: () => icon(...UI_ICON.delete), download: (blob, name) => download(blob, name) });
 
 // ---- the drawing (draw/panel.js): its tools in the bar, the tree, its properties -------------------
 drawPanel = drawView($('#dview'), {
@@ -1041,7 +1050,28 @@ async function published() {
     return /^[0-9a-f]{40}$/.test(v?.commit) ? v : null;
   } catch { return null; }
 }
-for (const b of document.querySelectorAll('[data-reload]')) b.addEventListener('click', () => location.reload());
+// The service worker (sw.js) keeps the page's own files in this browser, so that the page opens
+// without a connection. A new version, once fetched, waits for the page: the chip says it is ready,
+// and a Reload (the chip's, or About's) applies it; closing every tab of the page does too.
+let waiting = null; // the new version's worker, ready
+function offerUpdate(w) { waiting = w; $('#update').hidden = false; }
+function watchUpdates() {
+  navigator.serviceWorker.register('sw.js').then((reg) => {
+    if (reg.waiting && navigator.serviceWorker.controller) offerUpdate(reg.waiting);
+    reg.addEventListener('updatefound', () => {
+      const w = reg.installing; // a first install (no controller yet) is no update
+      w?.addEventListener('statechange', () => { if (w.state === 'installed' && navigator.serviceWorker.controller) offerUpdate(w); });
+    });
+  }).catch((e) => console.warn('the page\'s files are not kept for use without a connection:', e.message));
+}
+// after the page has loaded: its own requests first, the worker's copies of the same files after
+if ('serviceWorker' in navigator) { if (document.readyState === 'complete') watchUpdates(); else window.addEventListener('load', watchUpdates, { once: true }); }
+function reload() {
+  if (!waiting) { location.reload(); return; }
+  navigator.serviceWorker.addEventListener('controllerchange', () => location.reload(), { once: true });
+  waiting.postMessage('apply');
+}
+for (const b of document.querySelectorAll('[data-reload]')) b.addEventListener('click', reload);
 let versionShown = false;
 async function showVersion() {
   if (versionShown) return;
@@ -1103,7 +1133,7 @@ map.on('click', async (e) => {
   const [v, code] = await Promise.all([depthAt([lng, lat], z).catch(() => null), tidAt(lng, lat).catch(() => null)]);
   if (v === null) { depthPopup.setLngLat(e.lngLat).setDOMContent(h('div', {}, h('b', {}, 'Depth not available'), h('small', {}, 'GEBCO 2026 could not be read'))).addTo(map); return; }
   if (!Number.isFinite(v)) { depthPopup.remove(); return; } // land, a lake, inland water: no depth here
-  const source = DEPTH_SOURCES.find(({ codes: [a, b] }) => code >= a && code <= b);
+  const source = DEPTH_SOURCES.find(({ ranges }) => ranges.some(([a, b]) => code >= a && code <= b));
   // −1: shallower than 1 m, or sea the data calls dry (clip.js)
   const depth = fmtDepth(v).replace(/^u/, 'U');
   depthPopup.setLngLat(e.lngLat).setDOMContent(h('div', {}, h('b', {}, depth), h('span', { class: 'at' }, `${dm(lat, 'N', 'S')} ${dm(norm180(lng), 'E', 'W')}`),

@@ -6,7 +6,8 @@
 //                                  licences into site/vendor/, and write into index.html the policy
 //                                  (from the hosts in site/hosts.js) and a modulepreload for each
 //                                  module app.js reaches (a cold load asks for them at once, not
-//                                  nine import levels deep, one round trip each)
+//                                  nine import levels deep, one round trip each); and into
+//                                  site/sw.js the list of the page's files it keeps
 //   node tools/deps.mjs            newer data periods in the EMODnet density WMS than catalog.js
 //                                  lists (newer library versions: npm outdated)
 //
@@ -14,7 +15,7 @@
 import { readFile, writeFile, mkdir, readdir, rm } from 'node:fs/promises';
 import { posix } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { HOSTS, cspSource } from '../site/hosts.js';
+import { HOSTS, OFFLINE, cspSource } from '../site/hosts.js';
 
 // [package, file in it, name in site/vendor/]
 export const LIBRARIES = [
@@ -43,6 +44,11 @@ const INDEX = new URL('../site/index.html', import.meta.url), VENDOR = new URL('
 const MODULES = new URL('../node_modules/', import.meta.url);
 const BLOCK = /(<!-- csp:start[^>]*-->)[\s\S]*?(<!-- csp:end -->)/;
 const SITE = new URL('../site/', import.meta.url), PRELOAD = /(<!-- preload:start[^>]*-->)[\s\S]*?(<!-- preload:end -->)/;
+const SW = new URL('../site/sw.js', import.meta.url), SHELL = /( *)(\/\/ shell:start[^\n]*\n)[\s\S]*?( *\/\/ shell:end)/;
+const SAVED = /( *)(\/\/ hosts:start[^\n]*\n)[\s\S]*?( *\/\/ hosts:end)/;
+// not kept by the service worker: itself, the picture for link previews, and version.json (written
+// by the deploy, asked for apart)
+const NOT_SHELL = new Set(['sw.js', 'preview.jpg', 'version.json']);
 
 // the modules app.js imports statically, directly or through others, in the order they are met
 // (dynamic imports are left out: they are lazy on purpose); the libraries are not read into
@@ -59,6 +65,20 @@ async function moduleGraph(entry = 'app.js') {
   seen.delete(entry); // the script tag asks for it
   return [...seen];
 }
+
+// the page's files, relative to site/, sorted (the libraries in site/vendor/ included)
+async function shellFiles() {
+  const files = (await readdir(SITE, { recursive: true, withFileTypes: true })).filter((e) => e.isFile())
+    .map((e) => posix.join(posix.relative(fileURLToPath(SITE), e.parentPath).split('\\').join('/'), e.name))
+    .filter((f) => !NOT_SHELL.has(f) && !f.split('/').some((part) => part.startsWith('.')));
+  return files.sort();
+}
+// sw.js with the page's files and the hosts a saved area may keep (as addresses: a request starts with one)
+const swWith = (src, files) => {
+  if (!SHELL.test(src) || !SAVED.test(src)) throw new Error('shell or hosts markers not found in sw.js');
+  const list = (re, items) => (s) => s.replace(re, (_, pad, a, b) => `${pad}${a}${items.map((f) => `${pad}'${f}',\n`).join('')}${b}`);
+  return list(SAVED, OFFLINE.map((k) => `${HOSTS[k].replace(/\/?$/, '/')}`))(list(SHELL, files)(src));
+};
 
 // what site/vendor/ should hold: name → the bytes in node_modules (the libraries and their licences)
 async function wanted() {
@@ -89,6 +109,8 @@ export async function stale() {
   for (const e of await readdir(VENDOR, { withFileTypes: true }).catch(() => [])) if (!w.has(e.name) || e.isDirectory()) out.push(`site/vendor/${e.name}: not a library of package.json's`);
   const html = await readFile(INDEX, 'utf8');
   if (indexWith(html, await moduleGraph()) !== html) out.push('index.html: the Content-Security-Policy or the preloads');
+  const sw = await readFile(SW, 'utf8');
+  if (swWith(sw, await shellFiles()) !== sw) out.push('sw.js: the list of the page\'s files or of the hosts a saved area keeps');
   return out;
 }
 
@@ -98,7 +120,8 @@ async function write() {
   for (const e of await readdir(VENDOR, { withFileTypes: true })) if (!w.has(e.name) || e.isDirectory()) await rm(new URL(e.name, VENDOR), { recursive: true }); // a library renamed or dropped, or anything else left there
   for (const [name, bytes] of w) await writeFile(new URL(name, VENDOR), bytes);
   await writeFile(INDEX, indexWith(await readFile(INDEX, 'utf8'), await moduleGraph()));
-  console.log('site/vendor/, the policy and the preloads written');
+  await writeFile(SW, swWith(await readFile(SW, 'utf8'), await shellFiles()));
+  console.log('site/vendor/, the policy, the preloads and the service worker\'s files written');
 }
 
 

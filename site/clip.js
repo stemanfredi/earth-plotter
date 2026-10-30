@@ -15,7 +15,7 @@
 
 import { NO_DEPTH_M } from './catalog.js';
 import { HOSTS } from './hosts.js';
-import { gebcoTile } from './gebco.js';
+import { gebcoTile, gebcoSeaTile } from './gebco.js';
 import { latOf, tileBounds, TILE } from './geo.js';
 import { FETCH, fetchOk, lru } from './net.js';
 
@@ -288,13 +288,21 @@ const omtTemplateOf = (omtTileJson) => tileJsons(omtTileJson, () => fetchOk(omtT
   if (typeof t !== 'string' || new URL(t).origin !== new URL(HOSTS.openfreemap).origin) throw new Error('the base map\'s TileJSON names tiles elsewhere');
   return t;
 }));
-export function clipper({ template, mode, omtTileJson }) {
+// what a water mask throws when it would need heights (cut: the land's tile all open sea)
+const HEIGHTS = new Error('heights needed');
+const NEEDS_HEIGHTS = () => { throw HEIGHTS; };
+// remember false: each tile classifies its water bodies itself, none remembered (offline.js: an area
+// saved must hold what any tile asked first would read)
+export function clipper({ template, mode, omtTileJson, remember = true }) {
   const omtTemplate = () => omtTemplateOf(omtTileJson);
   // 64 tiles each: a view and its surroundings (raw 256 kB, cut 320 kB: two clippers, two cuts of a sea tile)
-  const rawCache = lru(64), cache = lru(64), waterLevel = new Map(); // waterLevel: OSM id → DEPTH, FLAT or LAKE
+  const rawCache = lru(64), cache = lru(64), waterLevel = remember ? new Map() : { has: () => false, set() {} }; // waterLevel: OSM id → DEPTH, FLAT or LAKE
   // a tile's elevation in metres as the data has it (no mask): also what inland water is classified
   // from, at lower zooms too
   const raw = (z, x, y) => rawCache(`${z}/${x}/${y}`, () => (mode === 'sea' ? gebcoTile(z, x, y) : demMetres(template.replace('{z}', z).replace('{x}', x).replace('{y}', y))));
+  // the sea's depths as drawn: blended from water cells alone (gebco.js), so the shore's land cells do
+  // not pull them shallower; the land's are its DEM as it is
+  const drawn = (z, x, y) => (mode === 'sea' ? rawCache(`${z}/${x}/${y}/sea`, () => gebcoSeaTile(z, x, y)) : raw(z, x, y));
   // Shared by several requesters (the shading and the contours ask for the same tile): the work goes on
   // while any of them still waits, and stops between its steps once every one has given up (MapLibre
   // aborts the tiles a quick zoom leaves behind), so the tiles now wanted are not queued behind them
@@ -308,9 +316,19 @@ export function clipper({ template, mode, omtTileJson }) {
     return cache(key, () => cut(z, x, y, omtOffset, w.ac.signal).finally(() => waiting.delete(key)));
   };
   const cut = async (z, x, y, omtOffset, signal) => {
+    // The land's tile all open sea needs no heights: its water mask from the base map alone says so,
+    // and the tile is what the cut would make of it (0 m, all sea), its elevation never read (at sea
+    // the land's tiles were half of what a view or a saved area fetched). A mask that would need
+    // heights (inland water to classify, a shore read at a lower zoom) stops it: the cut as ever
+    if (mode === 'land') {
+      const sea = await seaMask({ omtTemplate, raw: NEEDS_HEIGHTS, waterLevel }, z, x, y, NEEDS_HEIGHTS, () => false, omtOffset)
+        .catch((e) => { if (e === HEIGHTS) return null; throw e; });
+      if (sea?.every((m) => m === DEPTH)) return { h: new Float32Array(SIZE * SIZE), mask: sea };
+      if (signal.aborted) throw new Error('aborted');
+    }
     const [tw, ts, te, tn] = tileBounds(z, x, y);
     const datums = mode === 'sea' ? DATUMS.filter(([, b]) => b[0] < te && b[2] > tw && b[1] < tn && b[3] > ts) : [];
-    const src = await raw(z, x, y);
+    const src = await raw(z, x, y), val = await drawn(z, x, y);
     if (signal.aborted) throw new Error('aborted'); // nobody waits: not cut (the lru forgets a make that fails: asked again, it is)
     // surface per tile pixel: 0, or a DATUMS surface for pixels inside its box
     const lonAt = (i) => tw + ((i + 0.5) / SIZE) * (te - tw);
@@ -327,7 +345,7 @@ export function clipper({ template, mode, omtTileJson }) {
     for (let j = 0; j < SIZE; j++) {
       for (let i = 0; i < SIZE; i++) {
         const k = j * SIZE + i, m = mask[k];
-        let h = src[k];
+        let h = val[k];
         if (mode === 'sea') h = m === 0 ? 1 : m === DEPTH ? Math.min(h - surface(i, j), -1) : m === FLAT ? -1 : NO_DEPTH_M;
         else if (m === DEPTH) h = 0;
         out[k] = h;

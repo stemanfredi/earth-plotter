@@ -78,12 +78,14 @@ export function fields({ note, units }) {
     }, put, { 'aria-label': aria, class: 'dist', nudge: (t, up, big) => stepped(t, up, big, 0), bad: zero ? 'a distance, 0 or more, with m, km or NM' : 'a distance above 0, with m, km or NM',
       title: 'In the unit beside it, or with one', placeholder: 'mixed', ...attrs });
     input.unitText = () => UNIT_TEXT[unit];
+    input.dataset.unit = unit; // morph (dom.js) replaces the field when the unit it reads in changes
     return input;
   };
   // degrees: wrap (a bearing: any number, read modulo 360), else strictly between lo and hi; fixed:
   // its decimals always shown (a table's column)
-  const angle = (get, put, aria, { lo = 0, hi = 360, wrap = true, fixed = null } = {}) => field(() => { const v = get(); return v == null ? '' : fixed == null ? `${+v.toFixed(4)}` : v.toFixed(fixed); }, (t) => {
+  const angle = (get, put, aria, { lo = 0, hi = 360, wrap = true, fixed = null, none = false } = {}) => field(() => { const v = get(); return v == null ? '' : fixed == null ? `${+v.toFixed(4)}` : v.toFixed(fixed); }, (t) => {
     const v = num(t.replace('°', ''));
+    if (t.trim() === '' && none) return null; // none: empty is a value of its own (no sector)
     if (t.trim() === '' || !Number.isFinite(v)) return undefined;
     if (wrap) return norm360(v);
     return v > lo && v < hi ? v : undefined;

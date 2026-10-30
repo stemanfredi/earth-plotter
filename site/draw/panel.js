@@ -3,16 +3,16 @@
 // selected, the drawing itself) and edits it with fields. Fields apply on Enter or when they lose
 // focus, one undo step each.
 
-import { h, svg, typing, morph, animate } from '../dom.js';
+import { h, svg, typing, morph, animate, NARROW } from '../dom.js';
 import { ask, askText, note } from '../menu.js';
 import { FINGER } from './layers.js';
-import { find, elements, groupsOf, membersOf, canHold, label, kindName, POINT_KIND_NAME, lookOf, lookField, setLook, LOOK_FIELDS, labelColour, addPart, makePart, followedPart, mainOutline, PART_KINDS, ROUND, SYMBOLS, LABEL_OFFSET, makeGroup, setGroup, moveStep, MAX_RADIUS, offsetOf, MAX_OFFSET, MAX_MIN_SIZE, STROKE_WIDTH } from './document.js';
+import { find, elements, groupsOf, membersOf, canHold, label, kindName, POINT_KIND_NAME, lookOf, lookField, setLook, LOOK_FIELDS, addPart, makePart, followedPart, mainOutline, roundParts, PART_KINDS, ROUND, SYMBOLS, LABEL_OFFSET, makeGroup, setGroup, moveStep, MAX_RADIUS, MAX_OFFSET, MAX_MIN_SIZE, STROKE_WIDTH } from './document.js';
 import { insertCorner, removeCorner, reattach, partName, addVertex, removeVertex, splitKeeping, lineRef, freeRef, resolve, along } from './attach.js';
 import { labelValues, labelText, TOKENS } from './labels.js';
 import { OUTLINE_NAME } from './outlines.js';
 import { lineTrace, totals, breakdown, nearestAlong, positionsOf } from './lines.js';
 import { profileCsv } from './profile.js';
-import { COPY_RADIUS, distribute, lines, plan, planConnection, makeDistribution, editDistribution, connect, reconnect, unconnect, alongTrace, alongOf,
+import { DISTRIBUTE_D, distribute, lines, plan, planConnection, makeDistribution, editDistribution, connect, reconnect, unconnect, alongTrace, alongOf,
   distributions, connections, ruleOf, distributionOf, connectionOn, changedByHand, giveBack, removePartOf, MAX_COPIES, MAX_TREE } from './generator.js';
 import { BUILT_IN, builtInName } from './place.js';
 import { boundsOf, drawable } from './features.js';
@@ -36,11 +36,11 @@ const WIDTH_NAME = { 'aerial-vehicle': 'Span', 'surface-vehicle': 'Beam', 'under
 
 // root: the left panel's Elements tab. ctx: { drawing, map, icon, units() ('km' | 'nm'), known, bar
 // (the bar, its tools here), props (the right panel: the inspector), frame (frame.js), outputs, copyLink(), about(), linkIcon (files.js),
-// onImport(doc, report) (applies an imported document), openDrawing(id), download(text, name), profile(trace) }
+// onImport(doc, view) (an imported document, the view it was made in), openDrawing(id), download(text, name), profile(trace) }
 export function drawView(root, ctx) {
   const { drawing, map, icon } = ctx;
   const F = fields({ note, units: ctx.units }), { field } = F; // fields.js: each applies on Enter or when left
-  let facts = null; // the totals: computed once per rendering of the list, read by the inspector
+  let facts = null; // the totals: computed once per change, when the list or the inspector reads them
   let totalsBy = ''; // the drawing's totals by group (''), or by the values of a property (its key)
   const totalsFolded = new Set(); // the Totals view's groups folded (by key)
   const computeFacts = () => (facts = { totals: totals(drawing.doc, totalsBy || null), breakdown: breakdown(drawing.doc, totalsBy || null) });
@@ -52,19 +52,12 @@ export function drawView(root, ctx) {
   const { renderTools } = tools;
 
   // ---- the tree (tree.js), its first row the drawing ------------------------------------------
-  // The drawing shown in Properties (its row clicked), until something is selected
-  let showDrawing = false;
-  function openDrawing() {
-    drawing.select([]);
-    showDrawing = true;
-    renderInspector();
-  }
-  const tree = createTree(drawing, ctx, { facts: () => facts, openDrawing });
+  const tree = createTree(drawing, ctx, { facts: fx });
   // the tree built only while it is seen (a large drawing's rows cost tens of ms per change); built
   // when its tab opens (render('tool'), after any change of the frame)
   let listStale = false;
   const listSeen = () => !root.closest('[hidden]');
-  const renderList = () => { computeFacts(); listStale = !listSeen(); if (!listStale) tree.render(); };
+  const renderList = () => { facts = null; listStale = !listSeen(); if (!listStale) tree.render(); };
   const drawElements = () => elements(drawing.doc);
   // the inspector's head: what it shows, the actions on it (renderHead), its fold
   let title = ''; // what the inspector shows, said in its head (set by the inspector built)
@@ -106,7 +99,6 @@ export function drawView(root, ctx) {
   const pair = (a, sep, b) => h('span', { class: 'vpair' }, ...[a].flat(), h('span', { class: 'vsep' }, sep), ...[b].flat());
   const textField = (id, key, aria, area = false) => F.text(() => now(id)[key], (v) => set(id, (el) => { el[key] = v; }), aria, area ? 2 : 0);
   const coordFields = (id, key) => { const [, lat, , lon] = F.position(() => now(id)[key], (p) => set(id, (el) => { el[key] = p; }), '', 6); return row('Position', pair(lat, '·', lon)); };
-  const distField = (get, apply, aria, check, attrs = {}) => F.dist(get, apply, aria, { check, ...attrs });
   // a value's unit beside it, in grey (drawing-ui.md §5: never inside the text): a distance field's
   // (fields.js unitText), or a formatted value's ("10.08 km" → 10.08 · km)
   const funit = (t) => h('span', { class: 'funit' }, t);
@@ -114,7 +106,6 @@ export function drawView(root, ctx) {
   const fvalue = (t, attrs = {}) => h('span', { class: 'fvalue', ...attrs }, t);
   const valued = (text, attrs = {}) => { const i = text.lastIndexOf(' '); return i < 0 ? [fvalue(text, attrs)] : [fvalue(text.slice(0, i), attrs), funit(text.slice(i + 1))]; };
   const distValue = (m, attrs = {}) => valued(fmtDist(m, ctx.units()), attrs);
-  const angleField = (get, apply, aria, lo, hi, wrap) => F.angle(get, apply, aria, { lo, hi, wrap });
   const segOf = (aria, options, current, pick) => choice(aria, options, () => current, pick);
 
   // The look of xs ({ kind, el }, one or several; a group: everything in it; the drawing: { kind:
@@ -122,13 +113,15 @@ export function drawView(root, ctx) {
   // else the drawing's), "mixed" where they differ; a change sets it on each of them, ↺ takes it back.
   // A group has no look of its own: it reaches its members. Only the fields their kinds have (a line
   // no fill, a label its text, a shape its minimum size); fields: those to show, else all of those.
+  // xs with each group replaced by its members (its subgroups' too), none twice
+  const flat = (xs) => [...new Map(xs.flatMap((x) => (x.kind === 'group' ? membersOf(drawing.doc, x.el.id, true).filter((m) => m.kind !== 'group') : [x])).map((x) => [x.el.id ?? 'drawing', x])).values()];
   function lookBlock(xs, fields = null, title = 'Look', extra = []) {
     const doc = drawing.doc;
-    xs = [...new Map(xs.flatMap((x) => (x.kind === 'group' ? membersOf(doc, x.el.id, true).filter((m) => m.kind !== 'group') : [x])).map((x) => [x.el.id ?? 'drawing', x])).values()];
+    xs = flat(xs);
     if (!xs.length && !extra.length) return null; // an empty group
-    const has = (x, f) => LOOK_FIELDS[x.kind].includes(f);
+    const has = (x, f) => LOOK_FIELDS[x.kind].includes(f) && !(f === 'text.values' && x.kind === 'point' && !roundParts(x.el).length); // a point's values: its radii
     const shown = (f) => (!fields || fields.includes(f)) && xs.some((x) => has(x, f));
-    const looks = xs.map((x) => (x.kind === 'label' ? { ...lookOf(doc, x.el), text: { ...lookOf(doc, x.el).text, color: labelColour(doc, x.el) } } : lookOf(doc, x.el)));
+    const looks = xs.map((x) => lookOf(doc, x.el));
     const same = (f) => { const vs = xs.map((x, i) => (has(x, f) ? lookField(looks[i], f) : undefined)).filter((v) => v !== undefined); return vs.every((v) => v === vs[0]) ? vs[0] : null; };
     const target = (d, x) => (x.kind === 'drawing' ? d : find(d, x.el.id).el);
     // live: shown as it changes (a colour being picked), the undo step made when it is set
@@ -214,7 +207,7 @@ export function drawView(root, ctx) {
   const commonTop = (kind, id) => {
     const el = now(id);
     title = `${kindTitle(kind, el)} · ${shownName(drawing.doc, kind, el, ctx.units())}`;
-    return [ruleRow(id)?.row, row('Name', textField(id, 'name', 'Name'))];
+    return [ruleRow(id)?.row, kind === 'label' ? null : row('Name', textField(id, 'name', 'Name'))]; // a label is its text
   };
   const ruleActs = (id) => ruleRow(id)?.acts ?? [];
   // and its foot: the group it is in, Guide, its data (Delete: in the head)
@@ -243,11 +236,11 @@ export function drawView(root, ctx) {
     const box = (i, key, aria) => check('', el.parts[i][key], (v) => at(i, (y) => { y[key] = v; }), { 'aria-label': `Part ${i + 1} ${aria}` });
     const PARTS_COPY = ['#', 'Kind', 'Radius m', 'Aperture °', 'Length m', 'Width m', 'Fill', 'Shown', 'Name'];
     const sizeU = unitOf(el.parts.map((q) => q.radius ?? q.length)), acrossU = unitOf(el.parts.map((q) => q.width ?? NaN));
-    const dist = (i, key, aria) => distField(() => now(id).parts[i][key], (m) => at(i, (y) => { y[key] = m; }), aria, (m) => (m >= MAX_RADIUS || (key === 'radius' && !fits(m)) ? 'too large' : null), { in: key === 'width' ? acrossU : sizeU });
+    const dist = (i, key, aria) => F.dist(() => now(id).parts[i][key], (m) => at(i, (y) => { y[key] = m; }), aria, { check: (m) => (m >= MAX_RADIUS || (key === 'radius' && !fits(m)) ? 'too large' : null), in: key === 'width' ? acrossU : sizeU });
     // its size, two columns, in the column's unit: a round part's radius and a sector's aperture (°), an outline's length and width
     const size = (part, i) => (part.radius ? dist(i, 'radius', `Part ${i + 1} radius`) : dist(i, 'length', `Part ${i + 1} length`));
     const across = (part, i) => (part.kind === 'sector'
-      ? h('span', { class: 'vpair' }, angleField(() => now(id).parts[i].aperture, (v) => at(i, (y) => { y.aperture = v; }), `Part ${i + 1} aperture (degrees): centred on the bearing`, 0, 360, false), funit('°'))
+      ? h('span', { class: 'vpair' }, F.angle(() => now(id).parts[i].aperture, (v) => at(i, (y) => { y.aperture = v; }), `Part ${i + 1} aperture (degrees): centred on the bearing`, { wrap: false }), funit('°'))
       : part.radius ? null : dist(i, 'width', `Part ${i + 1} ${WIDTH_NAME[part.kind] || 'width'}`));
     const kind = (part, i) => select(`Part ${i + 1} kind`, PART_KINDS.map((k) => [k, PART_NAME[k]]), part.kind, (v) => drawing.change((d) => { const x = find(d, id).el; x.parts[i] = asKind(x.parts[i], v); reattach(d, id); }));
     const removeAt = (i) => drawing.change((d) => { removePartOf(d, id, i); reattach(d, id); });
@@ -257,7 +250,7 @@ export function drawView(root, ctx) {
       columns: [{ head: '#', width: 28, cls: 'num' }, { head: 'Kind', width: 92 },
         { head: `Size ${UNIT_TEXT[sizeU]}`, width: 80, cls: 'n', title: 'Radius, or length' },
         { head: `Across ${UNIT_TEXT[acrossU]}`, width: 64, cls: 'n', title: 'Aperture (°), or width' },
-        { head: 'Fill', width: 40 }],
+        { head: 'Filled', width: 48 }],
       rows: el.parts.map((part, i) => ({ cells: [`${i + 1}`, kind(part, i), size(part, i), across(part, i), box(i, 'fill', 'filled')],
       cls: part.radius && !fits(part.radius) ? 'warn' : null })),
       add: [null, adder('Add a part', 'add a part…'), null, null, null],
@@ -282,7 +275,7 @@ export function drawView(root, ctx) {
   function pointInspector(id) {
     const el = now(id);
     const parts = [...commonTop('point', id), coordFields(id, 'position'),
-      row('Bearing', angleField(() => now(id).bearing, (v) => set(id, (x) => { x.bearing = v; }), 'Bearing (degrees true): where its outlines face, and its sectors'), funit('°T')),
+      row('Bearing', F.angle(() => now(id).bearing, (v) => set(id, (x) => { x.bearing = v; }), 'Bearing (degrees true): where its outlines face, and its sectors'), funit('°T')),
       mainOutline(el) ? null : row('Symbol', segOf('Symbol (the same size on screen at every zoom)', SYMBOLS.map((sy) => [sy, sy === 'none' ? '∅' : icon(...SYMBOL_ICON[sy]), SYMBOL_TITLE[sy]]), el.symbol, (sy) => set(id, (x) => { x.symbol = sy; }))),
       partsBlock(id),
       changedByHand(drawing.doc, id) ? row('Parts', fvalue('changed by hand, not its rule\'s'),
@@ -295,6 +288,7 @@ export function drawView(root, ctx) {
         onclick: async () => {
           const name = (await askText('Save as preset', 'Name', el.name || 'Preset'))?.trim();
           if (!name) return;
+          if (drawing.presets.some((x) => x.name === name) && !(await ask('Save as preset', `Replace the preset “${name}”?`, [[() => true, 'Replace']]))) return;
           const p = presetOf(now(id), name);
           drawing.presets = [...drawing.presets.filter((x) => x.name !== name), p];
           savePresets(drawing.presets);
@@ -566,10 +560,8 @@ export function drawView(root, ctx) {
       current: (rr) => drawing.setPlace(rr == null ? null : { id, index: abs(rr) }) });
     const pointRows = () => { const x = now(id), qs = positionsOf(x), t = lineTrace(drawing.doc, x).at;
       return [['#', 'Lat', 'Lon', 'Leg m', 'Brg °', 'Along m', 'Name'], qs.map((q, k) => { const g = k ? legOf(qs, k) : null; return [k + 1, q[1], q[0], g ? +g.s.toFixed(3) : '', g ? +g.azi.toFixed(1) : '', +(t[k] || 0).toFixed(3), x.vertices[k - 1]?.name ?? '']; })]; };
-    const off = el.look.offset ?? null, offNow = offsetOf(drawing.doc, el);
     return [...commonTop('line', id),
       row('Length', distValue(line.length)),
-      offNow && off == null ? h('p', { class: 'note' }, `Drawn ${Math.abs(offNow)} px to the ${offNow > 0 ? 'right' : 'left'} of its line, the drawing's Offset. Its length is the real one.`) : null,
       row('Path', segOf('Path', [[false, 'Straight', 'Geodesics'], [true, 'Smooth', 'A curve through its bends']], !!el.smooth, (v) => set(id, (x) => { x.smooth = v; }))),
       h('div', { class: 'fblock' }, h('h3', { title: 'A row clicked is ringed on the map' }, `Points (${N})`, copyBtn(pointRows)),
       table, pg.pager),
@@ -582,7 +574,7 @@ export function drawView(root, ctx) {
     const doc = drawing.doc;
     const direct = membersOf(doc, id);
     const below = membersOf(doc, id, true).filter((x) => x.kind !== 'group'); // everything in it, its subgroups' too
-    const shownEye = eyeFor(drawing, icon, () => membersOf(drawing.doc, id, true), 'members', id);
+    const shownEye = eyeFor(drawing, icon, () => [item(id)], 'members'); // the group's own flag, as its row's eye: one flag hides them all
     shownEye.render();
     // its members as the tree counts them (everything in it, its subgroups' too), and its subgroups
     const allSubs = membersOf(doc, id, true).length - below.length;
@@ -611,7 +603,7 @@ export function drawView(root, ctx) {
       // their position, each axis alone: a latitude typed puts them all on that parallel, their longitudes kept
       const axis = (k, aria) => F.coord(k ? 'lat' : 'lon', () => same(nowPts(), (p) => p.position[k]), (v) => each(pts, (p) => { p.position[k] = v; }), aria, 6);
       out.push(row('Position', pair(axis(1, 'Latitude of each point'), '·', axis(0, 'Longitude of each point'))));
-      out.push(row('Bearing', angleField(() => same(nowPts(), (p) => p.bearing), (v) => each(pts, (p) => { p.bearing = v; }), 'Bearing (degrees true) of each point'), funit('°T')));
+      out.push(row('Bearing', F.angle(() => same(nowPts(), (p) => p.bearing), (v) => each(pts, (p) => { p.bearing = v; }), 'Bearing (degrees true) of each point'), funit('°T')));
       const plain = pts.filter((x) => !mainOutline(x.el)); // a symbol: the points without an outline
       if (plain.length > 1) out.push(row('Symbol', segOf('Symbol of each point', SYMBOLS.map((sy) => [sy, sy === 'none' ? '∅' : icon(...SYMBOL_ICON[sy]), SYMBOL_TITLE[sy]]), same(plain, (x) => x.el.symbol), (sy) => each(plain, (p) => { p.symbol = sy; }))));
       // their parts, part by part: every row at least two points have; a cell set on those it applies to
@@ -623,15 +615,15 @@ export function drawView(root, ctx) {
       const tooFar = (m) => (m >= MAX_RADIUS ? 'too large' : null);
       const kindCell = (i) => select(`Part ${i + 1} kind of each`, PART_KINDS.map((k) => [k, PART_NAME[k]]), same(partsAt(i), (q) => q.kind), (v) => at(i, (q, p) => { p.parts[i] = asKind(q, v); }));
       const all = rows.flatMap((i) => partsAt(i)), sizeU = unitOf(all.map((q) => q.radius ?? q.length)), acrossU = unitOf(all.map((q) => q.width ?? NaN));
-      const sizeCell = (i) => distField(() => same(partsAt(i), (q) => q.radius ?? q.length), (m) => at(i, (q) => { if (q.radius != null) q.radius = m; else q.length = m; }), `Part ${i + 1} size of each`, tooFar, { in: sizeU });
+      const sizeCell = (i) => F.dist(() => same(partsAt(i), (q) => q.radius ?? q.length), (m) => at(i, (q) => { if (q.radius != null) q.radius = m; else q.length = m; }), `Part ${i + 1} size of each`, { check: tooFar, in: sizeU });
       const acrossCell = (i) => {
         const sectors = partsAt(i).filter((q) => q.aperture != null).length, outlines = partsAt(i).filter((q) => q.width != null).length;
-        return [sectors > 1 ? h('span', { class: 'vpair' }, angleField(() => same(partsAt(i).filter((q) => q.aperture != null), (q) => q.aperture), (v) => at(i, (q) => { if (q.aperture != null) q.aperture = v; }), `Part ${i + 1} aperture of each`, 0, 360, false), funit('°')) : null,
-          outlines > 1 ? distField(() => same(partsAt(i).filter((q) => q.width != null), (q) => q.width), (m) => at(i, (q) => { if (q.width != null) q.width = m; }), `Part ${i + 1} width of each`, tooFar, { in: acrossU }) : null];
+        return [sectors > 1 ? h('span', { class: 'vpair' }, F.angle(() => same(partsAt(i).filter((q) => q.aperture != null), (q) => q.aperture), (v) => at(i, (q) => { if (q.aperture != null) q.aperture = v; }), `Part ${i + 1} aperture of each`, { wrap: false }), funit('°')) : null,
+          outlines > 1 ? F.dist(() => same(partsAt(i).filter((q) => q.width != null), (q) => q.width), (m) => at(i, (q) => { if (q.width != null) q.width = m; }), `Part ${i + 1} width of each`, { check: tooFar, in: acrossU }) : null];
       };
       if (rows.length) out.push(h('div', { class: 'fblock' }, h('h3', { title: 'Every part two or more points have' }, 'Parts · of each point'),
         listGrid({ name: 'shared:parts', plain: true, head: true,
-          columns: [{ head: '#', width: 28, cls: 'num' }, { head: 'Kind', width: 92 }, { head: `Size ${UNIT_TEXT[sizeU]}`, width: 80, cls: 'n', title: 'Radius, or length' }, { head: `Across ${UNIT_TEXT[acrossU]}`, width: 64, cls: 'n', title: 'Aperture (°), or width' }, { head: 'Fill', width: 40 }],
+          columns: [{ head: '#', width: 28, cls: 'num' }, { head: 'Kind', width: 92 }, { head: `Size ${UNIT_TEXT[sizeU]}`, width: 80, cls: 'n', title: 'Radius, or length' }, { head: `Across ${UNIT_TEXT[acrossU]}`, width: 64, cls: 'n', title: 'Aperture (°), or width' }, { head: 'Filled', width: 48 }],
           rows: rows.map((i) => ({ cells: [`${i + 1}`, kindCell(i), sizeCell(i), acrossCell(i),
             check('', same(partsAt(i), (q) => q.fill), (v) => at(i, (q) => { q.fill = v; }), { 'aria-label': `Part ${i + 1} filled, each` })] })) })));
     }
@@ -652,8 +644,8 @@ export function drawView(root, ctx) {
     title = `${xs.length} elements · ${Object.entries(counts).map(([k, n]) => plural(n, kindName(k).toLowerCase())).join(', ')}`;
     return [between ? row('Apart', distValue(between.s, { title: 'From the first to the second' })) : null,
     between ? row('Bearing 1→2', fvalue(norm360(between.azi).toFixed(1), { title: `From ${label(xs[0].kind, xs[0].el)} to ${label(xs[1].kind, xs[1].el)}` }), funit('°T')) : null,
-    ...sharedRows(xs),
-    xs.some((x) => x.kind === 'label') ? leaderRow(xs.filter((x) => x.kind === 'label')) : null,
+    ...sharedRows(flat(xs)),
+    flat(xs).some((x) => x.kind === 'label') ? leaderRow(flat(xs).filter((x) => x.kind === 'label')) : null,
     actionsRow(pointIds.length > 1 ? h('button', { type: 'button', class: 'small', title: 'Lines from roots to these points', onclick: () => openConnect(pointIds) }, 'Connect…') : null),
     lookBlock(xs),
     groupRow(ids),
@@ -688,7 +680,7 @@ export function drawView(root, ctx) {
   // (an id: the one edited or made again, or null), and the selection it was opened with (another
   // closes it)
   let form = null;
-  const DFORM = { by: 'spacing', spacing: 1000, count: 10, startMargin: 0, endMargin: 0, offset: 0, side: 'left', radius: COPY_RADIUS, aperture: null, part: null, preset: 'circle', copy: null, groupId: null, connect: false };
+  const DFORM = { by: 'spacing', spacing: 1000, count: 10, startMargin: 0, endMargin: 0, offset: 0, side: 'left', radius: DISTRIBUTE_D.radius, aperture: null, part: null, preset: 'circle', copy: null, groupId: null, connect: false };
   const CON = { pattern: 'tree', groupSize: 'auto', minBranch: 0, roots: [], newRoots: [] };
   const dform = { ...DFORM }, con = { ...CON }; // a new form starts from these; one edited, from its rule's
   const dformParams = () => ({ spacing: dform.spacing, count: dform.by === 'count' ? dform.count : null, startMargin: dform.startMargin, endMargin: dform.endMargin, offset: dform.offset, side: dform.side, radius: dform.radius, aperture: dform.aperture, preset: dform.preset, copy: dform.copy, groupId: dform.groupId,
@@ -702,7 +694,7 @@ export function drawView(root, ctx) {
     drawing.stop(); // a click on the map now picks a root, not a tool's next point
     drawing.boxSelect(false);
     form = { ...f, sel: selKey() };
-    drawing.setPicking(picks() ? pick : null);
+    drawing.setPicking(picks() ? pick : null, true);
     formPreview();
     renderInspector();
   }
@@ -737,12 +729,8 @@ export function drawView(root, ctx) {
   // a connection's plan before it is made: { positions (in order), roots, plan }; for Distribute along,
   // on the places the points would have. Planned once for each change: the preview and the form, drawn
   // in the same task, share it (the next task plans again)
-  let planned = null;
+  // what the form would make (plan() in generator.js keeps the last plan by its inputs: the preview and the form share it)
   const connectPlan = () => {
-    if (!planned) { planned = planNow(); queueMicrotask(() => { planned = null; }); }
-    return planned;
-  };
-  const planNow = () => {
     if (form.kind === 'connect') return (({ nodes, roots, plan: p }) => ({ positions: nodes.map((n) => n.position), roots, plan: p }))(planConnection(drawing.doc, { pointIds: form.pointIds, ...conParams() }));
     const positions = distributionPoints().map((x) => x.position), roots = rootsNow();
     return { positions, roots, plan: dform.connect && positions.length && roots.length ? plan(positions, roots, con.groupSize, con.pattern, con.minBranch) : null };
@@ -753,7 +741,7 @@ export function drawView(root, ctx) {
     drawing.setPreview(form.kind === 'distribute' ? c.positions : [], joined ? c.roots.map((r) => r.position) : [], c.plan ? lines(c.positions, c.roots, c.plan, con.pattern) : []);
   }
   // a setting changed: the preview and the form follow
-  const formChanged = () => { drawing.setPicking(picks() ? pick : null); formPreview(); renderInspector(); };
+  const formChanged = () => { drawing.setPicking(picks() ? pick : null, true); formPreview(); renderInspector(); };
   // a click on the map while roots are picked: on a point, it is a root or no longer one; anywhere
   // else, a new root there (on one, it goes)
   function pick(nid, pos) {
@@ -827,10 +815,11 @@ export function drawView(root, ctx) {
       distributionCapped() ? h('p', { class: 'note warn' }, `At most ${MAX_COPIES.toLocaleString('en')} copies: the spacing would give more`) : null,
       closed ? null : row('Margins', pair(dist('startMargin', 'Start margin', true), '·', dist('endMargin', 'End margin', true))),
       row('Offset', pair(dist('offset', 'Offset', true), '·', select('Side', [['left', arc ? 'Out' : 'Left'], ['right', arc ? 'In' : 'Right'], ['alternate', 'Alternate']], dform.side, (v) => { dform.side = v; redo(); }))),
-      row('Copy', select('Copy', [...Object.keys(BUILT_IN).map((k) => [k, builtInName(k)]), ...mine.map((x) => [`preset:${x.name}`, x.name])], dform.preset, choose, { title: 'What each copy is' })),
+      row('Copy', select('Copy', [...Object.keys(BUILT_IN).map((k) => [k, builtInName(k)]), ...mine.map((x) => [`preset:${x.name}`, x.name]),
+        ...(dform.copy && !mine.some((x) => `preset:${x.name}` === dform.preset) ? [[dform.preset, `${dform.preset.slice(7)} (as copied)`]] : [])], dform.preset, choose, { title: 'What each copy is' })), // a preset renamed or deleted since: its copy is kept
       dform.copy ? row('Radius', distValue(reach, { title: 'The preset\'s own' }))
         : row('Radius', withUnit(F.dist(() => dform.radius, (m) => { dform.radius = m; redo(); }, 'Radius', { check: (m) => (m >= MAX_RADIUS ? 'too large' : null), title: dform.preset === 'circle' ? 'Each circle\'s, whatever the spacing' : 'Its largest part\'s reach, whatever the spacing' }))),
-      dform.preset === 'circle' ? row('Sector', segOf('Sector', [[null, 'None', 'circles'], ...[90, 180, 270].map((a) => [a, `${a}°`, arc ? 'facing outwards' : 'facing away from the line'])], dform.aperture, (v) => { dform.aperture = v; redo(); })) : null,
+      dform.preset === 'circle' ? row('Aperture', F.angle(() => dform.aperture, (v) => { dform.aperture = v; redo(); }, `Aperture (degrees): a sector ${arc ? 'facing outwards' : 'facing away from the line'}; empty: a circle`, { wrap: false, none: true }), funit('°')) : null,
       editing ? null : row('In group', select('Group', [['', 'none (at the top)'], ...doc.groups.map((g) => [g.id, groupPath(drawing.doc, g)])], dform.groupId ?? '', (v) => { dform.groupId = v || null; }, { title: 'Where its group goes' })),
       h('p', { class: 'note fsummary' }, points.length ? `${copies(points.length)}.` : `No copy fits: ${arc ? 'the part' : 'the line'} is shorter than the margins, or the spacing too long.`),
       differs ? h('p', { class: 'note warn' }, `Another number of points (${editing.points.length} now): they are made anew${was ? ', and connected again' : ''}. Changes made to those by hand are lost; Undo brings them back.`) : null,
@@ -879,7 +868,7 @@ export function drawView(root, ctx) {
     const meta = (key, aria, area) => F.text(() => m[key], (v) => drawing.change((doc) => { doc.meta[key] = v; }), aria, area ? 2 : 0);
     const n = drawElements().length;
     const groupName = (gid) => (gid ? groupPath(drawing.doc, drawing.doc.groups.find((g) => g.id === gid)) : 'Not grouped');
-    const keys = [...new Set(elements(drawing.doc).flatMap((x) => x.el.properties.map((p) => p.key)))].sort((a, b) => a.localeCompare(b));
+    const keys = [...new Set(elements(drawing.doc).filter((x) => x.kind !== 'group').flatMap((x) => x.el.properties.map((p) => p.key)))].sort((a, b) => a.localeCompare(b));
     if (totalsBy && !keys.includes(totalsBy)) { totalsBy = ''; computeFacts(); } // its key gone
     const by = select('Totals by', [['', 'group'], ...keys.map((k) => [k, k])], totalsBy || '', (v) => { totalsBy = v; computeFacts(); renderInspector(); });
     const offsetElsewhere = elements(drawing.doc).filter((x) => x.el.look?.offset != null); // where Offset is set on an element
@@ -959,8 +948,7 @@ export function drawView(root, ctx) {
     placesRead.clear();
     const xs = drawing.selected();
     if (form && selKey() !== form.sel) { closeForm(); note('The form closed: the selection changed'); }
-    ctx.frame.has(!!form || xs.length > 0 || showDrawing); // Properties shown while it has something, and is on
-    tree.markDrawing(showDrawing && !xs.length);
+    ctx.frame.has(!!form || xs.length > 0 || !NARROW.matches); // Properties shown while it has something (a computer: the drawing, with nothing selected), and is on
     // not seen (off, or nothing to show): not built; built anew when it is (render('tool'))
     if (ctx.props.hidden) { shows = null; return; }
     const what = `${form ? `${form.kind}:${form.sel}` : ''}|${selKey()}`;
@@ -1049,20 +1037,20 @@ export function drawView(root, ctx) {
         return renderTools();
       }
       if (what === 'draft') return tools.renderTouch();
-      if (what === 'drag') return renderInspector(); // once a frame (drawing.js): in place, the tree after it is let go
+      if (what === 'cancel') { closeForm(); return renderInspector(); } // Esc or a right-click on the map with a form open
+      if (what === 'drag') { if (!drawing.drag) renderInspector(); return; } // when it is let go (the map shows its values while it moves); the tree then too
       // a line's point or an area's corner pressed on the map: its row in the table made current
       if (what === 'place') { const { id, index } = drawing.currentPlace; if (drawing.sel.size === 1 && drawing.sel.has(id)) pickPlace(`${id}:${{ line: 'points', area: 'corners', point: 'parts' }[kindOf(id)]}`, index, kindOf(id) !== 'point'); return; }
       if (what === 'area' && !drawing.sel.size) note('Nothing lies entirely inside the box'); // a box drawn: why nothing is selected
       // a label just placed (and selected, so shown): its text ready to be typed
       if (what === 'placed') {
-        if (ctx.props.hidden) ctx.frame.setProps(true); // typing it is the point of placing it: Properties on, as a double-click does
+        if (ctx.props.hidden) ctx.frame.showProps(true); // typing it is the point of placing it: Properties shown (the user's switch as it was)
         if (shows === null) renderInspector();
         const t = inspector.querySelector('.ltext'); t?.focus(); t?.select(); return;
       }
       // the selection only changed: the rows marked again, not built again (each row's value is a length
       // or an area, computed)
       if (what === 'sel') {
-        showDrawing = false; // something else selected, or nothing (the drawing's row: openDrawing)
         if (!listStale) tree.mark();
       } else renderList();
       renderInspector();
@@ -1071,6 +1059,6 @@ export function drawView(root, ctx) {
       renderTools();
     },
     importFile: (f) => files.importFile(f), // a file dropped on the map (app.js)
-    step: tools.step, // the tools' keys (app.js)
+    press: tools.press, // the tools' keys (app.js)
   };
 }

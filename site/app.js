@@ -1,6 +1,6 @@
 import * as maplibregl from './vendor/maplibre-gl.mjs';
 import mlcontour from './vendor/maplibre-contour.mjs';
-import { GROUPS, ITEMS, GIBS, DEM_TILES, DEM_SEA_MAX, DEPTH_SOURCES, DEM_LAND_MAX, OMT_TILEJSON, isobathSteps, DEPTH_SCHEMES, NO_DEPTH, DENSITY, ESRI_META, gibsTiles, gibsDomainUrl, domainEnd, densityTiles, CMEMS, CMEMS_DEPTHS, drawsOf, CLASS_LEGENDS, CLASS_LABELS, EMODNET_DEPTH_STOPS, SEAGRASS } from './catalog.js';
+import { GROUPS, ITEMS, GIBS, DEM_TILES, DEM_SEA_MAX, DEPTH_SOURCES, DEM_LAND_MAX, OMT_TILEJSON, isobathSteps, DEPTH_SCHEMES, NO_DEPTH, DENSITY, ESRI_META, gibsTiles, gibsDomainUrl, domainEnd, densityTiles, CMEMS, CMEMS_DEPTHS, drawsOf, CLASS_LABELS, EMODNET_DEPTH_STOPS, SEAGRASS } from './catalog.js';
 import { buildStyle, depthRamp, OPACITY_PROP, SEA_PICTURES, LOCATION_LAYERS, INK, esriAttribution } from './style.js';
 import { cmemsTile, partTimes, partLevels, domainOf, cmemsLegend } from './cmems.js';
 import { workerClipper } from './clip.js';
@@ -17,7 +17,7 @@ import { norm360, norm180, tileXY, TILE, D2R } from './geo.js';
 import { fetchOk, lru } from './net.js';
 import { $, h, svg, typing, NARROW, COMPACT, store, animate } from './dom.js';
 import { keyEntry, openKey, keyList } from './keys.js';
-import { popup, note } from './menu.js';
+import { note } from './menu.js';
 import { createFrame } from './frame.js';
 import { search } from './search.js';
 import { gisExport } from './gis.js';
@@ -30,7 +30,7 @@ const byId = Object.assign(Object.create(null), Object.fromEntries(ITEMS.map((it
 // is an item at a variant ('waves:height'), in the menus of what it can draw (drawsOf: currents in
 // both, speed and direction)
 const DATA = ITEMS.filter((it) => it.group === 'data');
-const variantsOf = (it) => Object.keys(it.kind === 'gibs' ? GIBS : CMEMS[it.id]);
+const variantsOf = (it) => (it.group === 'data' ? Object.keys(it.kind === 'gibs' ? GIBS : CMEMS[it.id]) : it.variants ? Object.keys(it.variants) : null); // its choices, by key
 const drawsOfEntry = (it, v) => (it.kind === 'gibs' ? ['colour'] : drawsOf(CMEMS[it.id][v]));
 const entryLabel = (it, v, slot) => (it.kind === 'gibs' ? `NASA ${GIBS[v].label.replace('True colour', 'true colour')}`
   : it.id === 'currents' ? (slot === 'colour' ? 'Current speed' : 'Currents') : CMEMS[it.id][v].label);
@@ -45,10 +45,10 @@ const dayOf = (t) => new Date(t).toISOString().slice(0, 10); // its day (UTC)
 // the Layers groups open: kept in this browser, as the panel's tab (frame.js), not in the link
 const GROUPS_OPEN = 'charts.groups.open', groupsOpen = store.json(GROUPS_OPEN);
 // a layer as it starts: its first variant, its own opacity, a density dataset's default period
-const defaultsOf = (it) => ({ variant: it.variants ? Object.keys(it.variants)[0] : undefined, opacity: it.opacity ?? undefined, period: DENSITY[it.id]?.defaultPeriod });
+const defaultsOf = (it) => ({ variant: variantsOf(it)?.[0], opacity: it.opacity ?? undefined, period: DENSITY[it.id]?.defaultPeriod });
 const state = {
   on: new Set(ITEMS.filter((it) => it.on).map((it) => it.id)),
-  variant: Object.fromEntries(ITEMS.filter((it) => it.variants).map((it) => [it.id, defaultsOf(it).variant])),
+  variant: Object.fromEntries(ITEMS.filter((it) => variantsOf(it)).map((it) => [it.id, defaultsOf(it).variant])),
   opacity: Object.fromEntries(ITEMS.filter((it) => it.opacity != null).map((it) => [it.id, it.opacity])),
   time: hour(Date.now()), // the map's time: the hour shown (ms), now by default
   depth: 0, // Copernicus layers with depth: metres below the surface (CMEMS_DEPTHS)
@@ -184,7 +184,11 @@ $('#nostart').remove(); // started (index.html)
 // OSM likewise), on one line: what does not fit fades at its end and is scrolled sideways.
 const statusEl = $('#status');
 const posEl = h('div', { class: 'pos', id: 'pos', 'aria-live': 'off' });
-const shownEl = h('div', { class: 'pos shown', id: 'shown', hidden: true }); // the time the layers show
+// the time the layers show: a chip that is the date field, the field covering it unseen (so every
+// browser hangs its calendar from the chip itself)
+const whenIn = h('input', { type: 'datetime-local', step: '3600', required: true, 'aria-label': 'Time shown' });
+const shownText = h('span');
+const shownEl = h('div', { class: 'pos shown', id: 'shown', hidden: true }, shownText, whenIn);
 // the depth they show, a chip of its own beside it: a click opens its list (ocean data at a depth only)
 const depthEl = h('select', { class: 'pos depthchip', id: 'depth', 'aria-label': 'Depth below the surface', title: 'Depth shown: each model at its level nearest it', hidden: true });
 const scale = new maplibregl.ScaleControl({ maxWidth: 100, unit: 'metric' });
@@ -279,12 +283,16 @@ function viewOf() {
     units: display.units, bearings: display.bearings,
   };
 }
-// Apply a file's view and measurements (either may be null: left as they are): as the address the
-// app writes, then a reload, so the app's own checked reading of the address applies them (no second
-// way of applying layers or measurements). The drawing is saved first: it comes back after the reload.
+// Apply a file's view (null: left as it is): as the address the app writes, then a reload, so the
+// app's own checked reading of the address applies it (no second way of applying layers). A view
+// that differs from the page's in its camera alone (the same layers, time, depth and units: a
+// drawing opened where it was) moves the map instead. The drawing is saved first: it comes back
+// after the reload.
 function applyView(v) {
-  const q = new URLSearchParams(location.hash.slice(1));
+  const q = new URLSearchParams(location.hash.slice(1)), was = new URLSearchParams(q);
   viewToAddress(v, q);
+  const butCamera = (p) => { const r = new URLSearchParams(p); r.delete('v'); return r.toString(); };
+  if (butCamera(q) === butCamera(was)) { map.jumpTo({ center: v.center || map.getCenter(), zoom: v.zoom ?? map.getZoom(), bearing: v.bearing ?? 0 }); writeHashNow(); return; } // the address says it at once
   drawing.saving.now();
   setHash(q);
   location.reload();
@@ -369,7 +377,7 @@ const ISOBATH_INK = {
   nautical: { line: '#3d6a91', text: '#3d6a91', halo: LIGHT_HALO },
 };
 const PICTURES = new Set(SEA_PICTURES); // drawn above EMODnet depth (style.js)
-const isPicture = (id) => state.on.has(id) && (PICTURES.has(id) || (byId[id].group === 'data' && looks[id] !== 'arrows'));
+const isPicture = (id) => state.on.has(id) && (PICTURES.has(id) || (byId[id].group === 'data' && drawnAs(id) !== 'arrows'));
 function isobathInk() {
   if (ITEMS.some((it) => isPicture(it.id))) return ISOBATH_INK.picture;
   if (state.on.has('emodnetdepth')) return ISOBATH_INK.emodnet;
@@ -499,7 +507,7 @@ const KINDS = {
   classes: {
     legend(id) {
       // the URL of its service's legend, the URLs of several, or the classes themselves
-      const src = CLASS_LEGENDS[id](state.variant[id]), urls = typeof src === 'string' ? [src] : typeof src[0] === 'string' ? src : null;
+      const src = byId[id].legend(state.variant[id]), urls = typeof src === 'string' ? [src] : typeof src[0] === 'string' ? src : null;
       return { key: urls ? urls.join(' ') : `${id}:${state.variant[id]}`, ready: urls ? classesOf(urls) : src,
         paint: (el, cls) => { drawClasses(el, byId[id].label, [byId[id].variants?.[state.variant[id]], byId[id].legendSub].filter(Boolean).join(' · '), cls); return `${byId[id].label} legend: ${cls.map((c) => c.label).join(', ')}`; } };
     },
@@ -539,7 +547,7 @@ const KINDS = {
     depth: cmemsDepth,
     show(id) {
       const depth = cmemsDepth(id) ? state.depth : 0; // no new tiles for a depth change it ignores
-      map.getSource(`cmems-${id}`).setTiles([`cmems://${id}/${state.variant[id]}/${looks[id] || 'both'}/${state.time}/${depth}/{z}/{x}/{y}`]);
+      map.getSource(`cmems-${id}`).setTiles([`cmems://${id}/${state.variant[id]}/${drawnAs(id) || 'both'}/${state.time}/${depth}/{z}/{x}/{y}`]);
       applyItem(id);
     },
     // each dataset from its first step to the end of its last (a daily mean covers its day, a
@@ -568,18 +576,16 @@ const hourly = () => timeOn().some((it) => kindOf(it.id).time(it.id) === 'hour')
 // The menus' entries switch their items on at their variants, drawing colours, arrows, or both
 // (currents chosen in both menus); the group's other items go off. Two colour layers cannot be
 // read together, nor two sets of arrows: the menus hold one of each.
-const looks = {}; // item → what it draws: 'colour', 'arrows' or 'both'
+// what a data item draws now: 'colour', 'arrows', 'both' or '' (off), from the two slots
+const drawnAs = (id) => { const c = entryOf(state.colour)?.id === id, a = entryOf(state.arrows)?.id === id; return c && a ? 'both' : c ? 'colour' : a ? 'arrows' : ''; };
+const dataShown = {}; // item → 'draws:variant' as its source is set now ('' off): refreshed only when that changes
 function applyData() {
-  const { id: ci, variant: cv } = entryOf(state.colour) ?? {}, { id: ai, variant: av } = entryOf(state.arrows) ?? {};
+  const { id: ci, variant: cv } = entryOf(state.colour) ?? {}, { variant: av } = entryOf(state.arrows) ?? {};
   for (const it of DATA) {
-    const was = state.on.has(it.id) ? `${looks[it.id]}:${state.variant[it.id]}` : '';
-    const look = it.id === ci ? (it.id === ai ? 'both' : 'colour') : it.id === ai ? 'arrows' : '';
-    if (look) {
-      state.on.add(it.id);
-      looks[it.id] = look;
-      state.variant[it.id] = it.id === ci ? cv : av;
-    } else state.on.delete(it.id);
-    if ((look && `${look}:${state.variant[it.id]}`) !== was) refresh(it.id);
+    const look = drawnAs(it.id);
+    if (look) { state.on.add(it.id); state.variant[it.id] = it.id === ci ? cv : av; } else state.on.delete(it.id);
+    const key = look && `${look}:${state.variant[it.id]}`;
+    if (key !== (dataShown[it.id] ?? '')) { dataShown[it.id] = key; refresh(it.id); }
   }
 }
 
@@ -601,7 +607,6 @@ function setTime(t) {
 // has (min, max: the browser's calendar greys out the rest, the field's tooltip names them); the
 // chip opens the calendar itself. Every layer draws the time shown at its own time resolution:
 // that hour, the 3-hour step holding it, that day.
-const when = $('#when'), whenIn = $('input', when);
 const pad = (n) => String(n).padStart(2, '0');
 const depthWords = (d) => (d ? `${d} m deep` : 'surface'); // each model at its level nearest the depth chosen
 const fmtDate = (t) => new Date(t).toLocaleDateString([], { day: 'numeric', month: 'short', year: 'numeric' });
@@ -634,7 +639,6 @@ depthEl.append(...CMEMS_DEPTHS.map((d) => h('option', { value: d }, d ? `${d} m 
 depthEl.addEventListener('change', (e) => setDepth(+e.target.value));
 function renderWhen() {
   const on = timeOn().length > 0, deep = depthOn().length > 0;
-  when.hidden = !on;
   shownEl.hidden = !on;
   depthEl.hidden = !(on && deep);
   if (!on) return;
@@ -651,7 +655,7 @@ function renderWhen() {
   const part = (o) => d.toLocaleDateString([], { ...o, timeZone: tz });
   const day = same(new Date()) ? 'Today' // "Wed 21 Oct", in this order in every locale
     : `${part({ weekday: 'short' })} ${d.toLocaleDateString('en', { day: 'numeric', timeZone: tz })} ${part({ month: 'short' })}`;
-  shownEl.textContent = [day, hr ? d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''].filter(Boolean).join(' ');
+  shownText.textContent = [day, hr ? d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''].filter(Boolean).join(' ');
   shownEl.title = `Time shown: ${d.toLocaleString([], hr ? { dateStyle: 'full', timeStyle: 'short' } : { dateStyle: 'full', timeZone: 'UTC' })}. A click: the calendar`;
 }
 // ---- graticule (WGS 84 lat/lon grid; spacing adapts to the view) -------------
@@ -713,7 +717,7 @@ function itemStatus(id) {
 }
 
 // ---- small builders ---------------------------------------------------------
-// an 18 px line icon (the bar's size; style.css sizes it where it differs) from SVG path data; a path given as [d, colour] is filled in that colour
+// a 20 px line icon (the bar's size; style.css sizes it where it differs) from SVG path data; a path given as [d, colour] is filled in that colour
 const icon = (...paths) => svg('svg', { viewBox: '0 0 24 24', width: 18, height: 18, 'aria-hidden': 'true', fill: 'none', stroke: 'currentColor', 'stroke-width': 1.8, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' },
   paths.map((d) => (Array.isArray(d) ? svg('path', { d: d[0], fill: d[1], stroke: d[1] }) : svg('path', { d }))));
 const ICON = {
@@ -944,20 +948,10 @@ scaleEl.addEventListener('click', () => setDisplay({ units: display.units === 'k
 Object.assign(scaleEl, { tabIndex: 0 }); // a button, as the time chip: reached by keyboard too
 scaleEl.setAttribute('role', 'button');
 scaleEl.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); scaleEl.click(); } });
-// the time shown, a chip on the bottom row: a click opens the field's calendar (the field itself in a
-// box over the chip, for a browser without a picker)
-const timePop = $('#timepop');
-const timeBox = popup(timePop, {
-  place: () => {
-    const r = shownEl.getBoundingClientRect();
-    Object.assign(timePop.style, { right: `${Math.max(8, innerWidth - r.right)}px`, bottom: `${innerHeight - r.top + 6}px` });
-  },
-});
-Object.assign(shownEl, { tabIndex: 0 });
-shownEl.setAttribute('role', 'button');
-// a click: the browser's calendar at once (the field stays hidden); where there is no picker, the field in its box
-shownEl.addEventListener('click', (e) => { try { whenIn.showPicker(); } catch { timeBox.toggle(shownEl, e); } });
-shownEl.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); shownEl.click(); } });
+// the time chip: a click (Enter, Space) opens the browser's calendar from the field in it; a browser
+// without a picker shows the field itself, in the chip's place
+shownEl.addEventListener('click', () => { try { whenIn.showPicker(); } catch { whenIn.classList.add('raw'); whenIn.focus(); } });
+whenIn.addEventListener('keydown', (e) => { if ((e.key === 'Enter' || e.key === ' ') && !whenIn.classList.contains('raw')) { e.preventDefault(); shownEl.click(); } });
 function renderUnits() {
   scale.setUnit(display.units === 'nm' ? 'nautical' : 'metric');
   scaleText();
@@ -977,7 +971,7 @@ drawPanel = drawView($('#dview'), {
   outputs, copyLink: () => copyLink(), about: () => openAbout(), linkIcon: ICON.link, aboutIcon: ICON.info,
   // a drawing imported, or one of the list, opened with its view: where it was, its layers, time,
   // depth and units
-  onImport: (doc) => { const v = doc.view; drawing.saving.add(doc); if (v) applyView(v); },
+  onImport: (doc, view) => { drawing.saving.add(doc); if (view) applyView(view); },
   openDrawing: (id) => { const v = drawing.saving.open(id); if (v) applyView(v); },
   download: (text, name, type = 'application/geo+json') => download(new Blob([text], { type }), name),
   profile: (trace) => profileFor(trace),
@@ -995,6 +989,7 @@ function free() {
     if (!side.hidden) p.left += side.getBoundingClientRect().right;
     if (!props.hidden) p.right += innerWidth - props.getBoundingClientRect().left;
   }
+  p.bottom = Math.min(p.bottom, innerHeight - p.top - 120); // at least 120 px of map, else MapLibre fits nothing
   return p;
 }
 // find a place: a field in the bar, before About and Properties (/ goes to it; a phone: after ☰, its
@@ -1005,7 +1000,7 @@ $('#mapctl').prepend(findBtn);
 const openAbout = () => { about.showModal(); showVersion(); };
 const aboutBtn = h('button', { type: 'button', class: 'aboutbtn', 'aria-label': 'About', title: 'About', onclick: openAbout }, icon(...ICON.info));
 frame.rightBtn.before(aboutBtn);
-const placeFind = () => (COMPACT.matches && !NARROW.matches ? document.body.insertBefore(searchBox, $('#timepop')) : aboutBtn.before(searchBox));
+const placeFind = () => (COMPACT.matches && !NARROW.matches ? document.body.insertBefore(searchBox, $('#bar')) : aboutBtn.before(searchBox));
 COMPACT.addEventListener?.('change', placeFind);
 NARROW.addEventListener?.('change', placeFind);
 placeFind();
@@ -1023,7 +1018,7 @@ mapBox.addEventListener('drop', (e) => {
 });
 async function copyLink() {
   writeHashNow(); // the link must be the view as it is now
-  try { await navigator.clipboard.writeText(location.href); note('Link copied'); } catch { prompt('Copy this link', location.href); }
+  try { await navigator.clipboard.writeText(location.href); note(drawing.isEmpty() ? 'Link copied' : 'Link copied: the view and its layers, not the drawing (Download › Drawing for that)'); } catch { prompt('Copy this link', location.href); }
 }
 // a button's own label and tooltip, kept while it says something else for a moment (flash: the text,
 // and why in its tooltip)
@@ -1069,14 +1064,14 @@ about.querySelector('[data-close]').addEventListener('click', () => about.close(
 // the single keys (keys.js), from anywhere: search, the panels, or a tool
 // (draw/drawing.js handles the keys of what is being drawn; draw/panel.js the drawing's own)
 window.addEventListener('keydown', (e) => {
-  if (e.ctrlKey || e.metaKey || e.altKey || document.querySelector('dialog[open]') || typing(e.target)) return;
+  if (e.ctrlKey || e.metaKey || e.altKey || document.querySelector('dialog[open]') || typing(e.target) || e.target.closest?.('#side, #props')) return; // from a panel's control (a button, a box ticked): its own (WCAG 2.1.4)
   const k = keyEntry(e.key);
   if (!k?.open && !k?.tool) return;
   if (k.open === 'search') { e.preventDefault(); setFinding(true); }
   else if (k.open === 'elements' || k.open === 'layers') frame.toggleTab(k.open);
   else if (k.open === 'props') frame.setProps(!frame.props);
   else if (k.tool === 'box') drawing.boxSelect(!drawing.boxNext);
-  else drawPanel.step(k.tool); // on, off, or a tool with kinds its next
+  else drawPanel.press(k.tool); // on, or off
 });
 // the tooltips and About say the keys
 $('#about .keys').replaceChildren(...keyList());
@@ -1127,9 +1122,12 @@ function scaleVariation() {
 // its length as MapLibre writes it, with NM for its "nm" (the nanometre's symbol), as on charts and in
 // Measure; where the scale varies across the view, "≈" beside it (outside the bar: its length stays
 // what it says), by how much in their tooltips
+let scaleSaid = '';
 function scaleText() {
   const v = scaleVariation(), varies = v > NOTE_AT, why = varies ? `The scale varies ${(v * 100).toFixed(0)}% across the view: this length is the centre's. ` : '';
   scaleEl.textContent = scaleEl.textContent.replace(/\snm$/, '\u00a0NM');
+  if (`${why}${scaleEl.textContent}` === scaleSaid) return; // as said: nothing to write (this runs every move frame)
+  scaleSaid = `${why}${scaleEl.textContent}`;
   scaleEl.classList.toggle('varies', varies);
   scaleEl.title = `${why}Distance units: a click switches km and NM`;
   scaleEl.setAttribute('aria-label', `Scale ${scaleEl.textContent}. ${scaleEl.title}`);
@@ -1183,7 +1181,7 @@ async function onFrame(b, fn, before = async () => {}) {
   const label = b.querySelector('span'), own = labelOf(b);
   clearTimeout(b.flashTimer); // a "Failed" still shown: this try replaces it
   b.setAttribute('aria-busy', 'true');
-  label.textContent = 'Saving…';
+  label.textContent = 'Preparing…';
   b.title = own.title;
   const done = (text, title) => {
     b.removeAttribute('aria-busy');
@@ -1229,7 +1227,7 @@ function snapshot(src) {
   // each layer with what it is drawn with: at (its variant, the time and depth: its values are read at these), and for
   // item.json its period (density), its day (NASA daily), what it draws (colours, arrows: Copernicus)
   const layers = drawnItems().map((it) => ({ ...it, assets: [], at: { variant: state.variant[it.id], t, depth: state.depth },
-    period: DENSITY[it.id] ? state.period[it.id] : undefined, date: it.kind === 'gibs' ? gibsDay : undefined, draws: it.kind === 'cmems' ? looks[it.id] : undefined }));
+    period: DENSITY[it.id] ? state.period[it.id] : undefined, date: it.kind === 'gibs' ? gibsDay : undefined, draws: it.kind === 'cmems' ? drawnAs(it.id) : undefined }));
   return {
     when, name: exportName(when, c.lat, c.lng), at: `${dm(c.lat, 'N', 'S')} ${dm(c.lng, 'E', 'W')}`, lat: c.lat,
     zoom: map.getZoom(), bearing: map.getBearing(), link: location.href, credits: attributionText(), layers, legends: legendWant.map((id) => legendEls[id]),
@@ -1257,7 +1255,7 @@ function exportPng(b) {
 function drawnItems() {
   const z = map.getZoom();
   return ITEMS.filter((it) => (layersOf[it.id] || []).some((l) => map.getLayoutProperty(l.id, 'visibility') === 'visible' && z >= (l.minzoom ?? 0) && z < (l.maxzoom ?? 24)))
-    .map((it) => ({ ...it, variant: it.variants && state.variant[it.id] })); // the variant's key, as the file's view and item.json's at.variant
+    .map((it) => ({ ...it, variant: variantsOf(it) && state.variant[it.id] })); // the variant's key, as the file's view and item.json's at.variant
 }
 const exportZip = gisExport({ map, layersOf, kindOf, drawing, display, profiled, clips: { sea: seaClip, land: landClip }, cmemsDrawn, snapshot, onFrame, download });
 

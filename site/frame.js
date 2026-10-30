@@ -13,7 +13,7 @@ import { openKey } from './keys.js';
 const KEY = 'charts.frame';
 const LEFT = { min: 200, max: 480, dflt: 260 }, RIGHT = { min: 260, max: 600, dflt: 320 }, SHEET = { min: 25, max: 90, dflt: 52 }; // px; the sheet in % of the window
 const MIN_MAP = 480; // px of map kept between the two panels
-const clamp = (v, r) => Math.round(Math.max(r.min, Math.min(r.max, v)));
+const clamp = (v, r) => (Number.isFinite(v) ? Math.round(Math.max(r.min, Math.min(r.max, v))) : r.dflt); // what was saved, or the default
 
 // left, right: the panels (empty asides); tabs: [{ id, label, paths, badge, body }] for the left (its
 // button's icon, and what it shows besides, if anything); icon(...paths).
@@ -21,12 +21,13 @@ const clamp = (v, r) => Math.round(Math.max(r.min, Math.min(r.max, v)));
 export function createFrame({ left, right, tabs, icon, onChange = () => {} }) {
   const saved = store.json(KEY) ?? {};
   const st = {
-    tab: NARROW.matches ? null : saved.tab === undefined ? 'layers' : saved.tab, // the left's tab, or null: closed (at first: Layers)
-    props: NARROW.matches ? false : saved.props !== false, // Properties on (on a phone: off to start with)
+    tab: NARROW.matches ? null : saved.tab === null || tabs.some((t) => t.id === saved.tab) ? saved.tab : 'layers', // the left's tab, or null: closed (at first: Layers)
+    props: NARROW.matches ? false : saved.props !== false, // Properties shown now (on a phone: off to start with)
+    wants: saved.props !== false, // the user's switch, saved; what the app shows for a moment (showProps) does not change it
     has: false, // Properties has something to show
-    lw: clamp(saved.lw ?? LEFT.dflt, LEFT), rw: clamp(saved.rw ?? RIGHT.dflt, RIGHT), sh: clamp(saved.sh ?? SHEET.dflt, SHEET),
+    lw: clamp(saved.lw, LEFT), rw: clamp(saved.rw, RIGHT), sh: clamp(saved.sh, SHEET),
   };
-  const save = () => store.set(KEY, JSON.stringify({ tab: st.tab, props: st.props, lw: st.lw, rw: st.rw, sh: st.sh }));
+  const save = () => store.set(KEY, JSON.stringify({ tab: st.tab, props: st.wants, lw: st.lw, rw: st.rw, sh: st.sh }));
   const root = document.documentElement;
 
   // the bar's toggles: a button per left tab (the left panel open on it, or closed when it shows it; while
@@ -37,7 +38,7 @@ export function createFrame({ left, right, tabs, icon, onChange = () => {} }) {
   const rightBtn = toggle('pright', 'Properties', openKey('props'), ['M4 5h16v14H4z', 'M15 5v14'], () => setProps(!st.props));
   // a grip (the sheet's, on a phone) and an edge to drag (the panel's width)
   const grip = (panel) => h('div', { class: 'grip', 'aria-hidden': 'true', onpointerdown: (e) => drag(e, panel, 'sheet') });
-  const edge = (panel, side) => h('div', { class: `edge ${side}`, role: 'separator', 'aria-orientation': 'vertical', 'aria-label': 'Resize', title: 'Drag to resize; double-click: the default width',
+  const edge = (panel, side) => h('div', { class: `edge ${side}`, 'aria-hidden': 'true', title: 'Drag to resize; double-click: the default width',
     onpointerdown: (e) => drag(e, panel, side), ondblclick: () => { st[side === 'left' ? 'lw' : 'rw'] = (side === 'left' ? LEFT : RIGHT).dflt; place(); save(); } });
   left.prepend(grip(left));
   left.append(...tabs.map((t) => t.body), edge(left, 'left'));
@@ -58,7 +59,7 @@ export function createFrame({ left, right, tabs, icon, onChange = () => {} }) {
     const move = (ev) => {
       if (what === 'sheet') {
         const v = ((panel.getBoundingClientRect().bottom - ev.clientY) / innerHeight) * 100; // from its foot (a phone's: the dock)
-        if (panel === right && !st.props) { if (v < SHEET.min / 2) return; st.props = true; } // the peek dragged up: Properties on
+        if (panel === right && !st.props) { if (v < SHEET.min / 2) return; st.props = st.wants = true; } // the peek dragged up: Properties on
         down = v < SHEET.min / 2; st.sh = clamp(v, SHEET);
       }
       else if (what === 'left') st.lw = clamp(ev.clientX - panel.getBoundingClientRect().left, LEFT);
@@ -105,14 +106,20 @@ export function createFrame({ left, right, tabs, icon, onChange = () => {} }) {
     place();
     save();
   }
+  // the user's switch (its button, I); showProps: the app's, for now (the left panel making way, a
+  // label placed): the switch as saved comes back at its next press
   function setProps(on) {
+    st.wants = on;
+    showProps(on);
+    save();
+  }
+  function showProps(on) {
     st.props = on;
     if (on && NARROW.matches) st.tab = null;
     place();
-    save();
   }
   function toggleTab(id) {
-    if (yields()) { setTab(id); setProps(false); } else setTab(st.tab === id ? null : id);
+    if (yields()) { setTab(id); showProps(false); } else setTab(st.tab === id ? null : id);
   }
   NARROW.addEventListener?.('change', place);
   addEventListener('resize', place);
@@ -121,7 +128,7 @@ export function createFrame({ left, right, tabs, icon, onChange = () => {} }) {
     tabBtns, rightBtn,
     get tab() { return st.tab; },
     get props() { return st.props; },
-    setProps,
+    setProps, showProps,
     toggleTab, // its button or key: open there, or closed when it is
     has: (v) => { if (v !== st.has) { st.has = v; place(); } }, // Properties has something to show, or not
   };

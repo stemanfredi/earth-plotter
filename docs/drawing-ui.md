@@ -4,10 +4,7 @@ How drawing and measuring behave: what the screen shows is not repeated here, on
 show (the layout's rules, snapping and attaching, order, the look's cascade, the rules, keys,
 storage). The file is in `drawing-format.md`.
 
-Code: `site/frame.js` the frame; `site/draw/`: `panel.js` the inspector, `tree.js`, `tools.js`,
-`files.js` (the bar's file group), `drawing.js` the map side, `snap.js`, `attach.js`, `drag.js`,
-`features.js` what the map draws and its handles, `generator.js` the rules, `clipboard.js`,
-`presets.js`, `place.js` what Point and Shape place; `site/keys.js`.
+Code: `site/frame.js` the frame, `site/draw/` the rest (architecture.md says which file holds what).
 
 ## 1. The layout
 
@@ -22,17 +19,19 @@ One layout at every width (`site/frame.js`).
   With a finger under 1,280 px (a tablet), as on a phone: **☰** in place of Open holds the
   file group and About, find a place is behind its lens with the map's controls. A tool with kinds
   is one button showing the kind in use and a corner mark; its kinds are a row under it as it goes
-  on, and again at a click on its button while it is on; shut once one is picked or the map is
-  clicked.
+  on, and at a right-click on its button; shut once one is picked or the map is clicked. A tool's
+  button or key pressed again turns it off.
 - **Box select** (B): the next drag on the map, a mouse's or a finger's, draws a box; what lies
-  inside is selected, then Select again. A drag with Select moves the map; Shift-drag is the box too,
-  and so is a finger held still half a second, then dragged.
+  inside is selected, then Select again. A drag with Select moves the map; Shift-drag is the box too.
+  On a phone its button is in the dock.
 - **The left panel**: **Layers** or **Elements** (the tree, §4), as its
   button in the bar (or **L**, **E**) chose: pressed again, it closes. At first it is open on Layers;
   Layers' button turns while the map's layers load.
 - **Properties** (the inspector, §5), on the right: a switch of the user's (its toggle, **I**, or a
-  double-click on an element). While on, it shows what is selected (or the drawing, its row
-  clicked) and goes when nothing is; selecting never turns it on. Its head: what it shows, then
+  double-click on an element). While on, it shows what is selected, else the drawing (its title,
+  its display, its totals); on a phone it goes when nothing is. The left panel making way for it, or
+  a label placed (its text there to be typed), shows or hides it for the moment: the switch comes
+  back as it was at its next press. Its head: what it shows, then
   **Zoom to**, **Duplicate**, **Group**, **Delete**.
 - Each panel is as wide as dragged at its inner edge (left 200–480 px, right 260–600; a
   double-click: 260 and 320); widths, the tab and the switch are remembered in this browser. Where
@@ -58,7 +57,7 @@ One layout at every width (`site/frame.js`).
 
 **On a phone** (under 720 px) the top is for looking, the bottom for doing. The bar holds **☰**
 (Open's menu with Download's, Copy link and About), find a place (a field), Layers and Elements. The
-**dock**, a bar along the bottom, holds Undo, Redo and the tools; while one is on: **Back**, Undo,
+**dock**, a bar along the bottom, holds Undo, Redo, Box select and the tools; while one is on: **Back**, Undo,
 Redo, the tool (its kinds a row above the dock, sideways) and **Done** (a line or measurement being
 drawn).
 The panels are one bottom sheet at a time over the dock (half the screen; as tall as its grip is
@@ -82,9 +81,9 @@ finger every target is 44 px. Text: 11, 12, 13, 14, 16 px (a × glyph 18 or 20).
 ## 2. Tools
 
 One tool is on at a time, and stays on after each placement; its button again, or Select, turns it
-off; a tool with kinds (Shape; Point with presets) is turned off by Select, Esc or another tool, its
-button while on opening its kinds. Its key works from anywhere: on, or off; a tool with kinds, on,
-its next kind (its row open to show it).
+off. Its key works from anywhere but a panel's control (a button, a box: focus there keeps the letters
+for it): on, or off. A right-click on a tool with kinds (Shape; Point with
+presets) opens its kinds.
 
 | Tool | Kinds | Makes |
 |---|---|---|
@@ -101,21 +100,21 @@ its next kind (its row open to show it).
   (the stalk, or Bearing). A **rectangle** or **ellipse** goes corner to corner instead (**Shift**: a
   square, a circle). The second click on the first: the default size. A preset of the user's keeps
   its size: one click.
-- **Line**: as Measure, a click per point, snapped to what is drawn; Enter, a double-click or Done
-  ends it at its last point, attached when its first or last point snapped to something it can
-  attach to; a click on its first point (three or more) closes it into an area. Backspace takes back
-  a point.
+- **Line**: as Measure, a click per point, snapped to what is drawn; Enter, a double-click, a
+  right-click or Done ends it at its last point, attached when its first or last point snapped to something it can
+  attach to; a click on its first point (three or more) closes it into an area. Backspace or Undo
+  takes back a point.
 - **Sector**: the centre; the radius and one edge; the other edge, clockwise (back on the first: a
   circle). Esc goes one click back.
 - **Label**: points at what snapping finds (else an area's centre, a place on a line), or is free
-  text where clicked; its text selected, ready to type. It has no name of its own: the tree and
-  Properties show it by its text as it reads (a name typed wins).
+  text where clicked; its text selected, ready to type. It has no name of its own: the tree shows
+  it by its text as it reads, and renames it by its text.
 - What is drawn or dragged shows its values on the map (legs, total, area, radius). Exact lengths and
   bearings are typed afterwards, in the points' and corners' tables (§5).
 - **Shift**: 15° steps from the leg before (from north for the first). **Alt**: nothing snapped or
   attached.
-- **Esc** or a right-click steps back one level: what is half drawn, else the
-  tool, else Attach to… waiting, else the selection.
+- **Esc** (or a right-click with nothing to finish) steps back one level: what is half drawn, else
+  the tool, else a form open, else Attach to… waiting, else the selection.
 
 ### 2.2 Snapping and attaching
 
@@ -222,7 +221,7 @@ takes one unit by its largest value.
   a line; **Text offset**, where its text was dragged to (↺: back); **Leader**, when attached. Look:
   text size, colour, background (halo or box).
 - A **group**: **Members** as the tree counts them (everything in it, its subgroups' too) and its
-  subgroups, with an eye for all of them; **Totals** as the drawing's, its members only, by subgroup
+  subgroups, with the group's eye (as its row's); **Totals** as the drawing's, its members only, by subgroup
   (Copy); **Select members**; **Look · sets each member** (a group has no look of its own); its foot
   as every element's.
 - **Guide** (points, lines, areas): faint and dashed, left out of the totals.
@@ -240,7 +239,7 @@ click on the map picks a root):
 
 - **By** spacing or count; **Margins** at the start and the end; **Offset** left, right or
   alternating (Out, In round a part); **Copy**, a built-in kind or a preset of yours; **Radius**
-  (500 m to start with; a preset keeps its size); **Sector** (none, 90°, 180°, 270°, facing away);
+  (500 m to start with; a preset keeps its size); **Aperture** (a sector facing away; empty: circles);
   **In group**.
 - It makes a group "Distribute along" and the name, holding **Copies** and, when connected,
   **Connection**.
@@ -287,9 +286,9 @@ click on the map picks a root):
 | / | search |
 | L, E | the left panel on Layers, on Elements, or closed |
 | I | Properties on or off |
-| P, G, S, T, M | point, line, shape, label, measure; again: off, or the next kind (Shape; Point with presets) |
+| P, G, S, T, M | point, line, shape, label, measure; again: off |
 | B, Shift-drag | Box select: a box, what lies inside added to the selection |
-| Enter, double-click | finishes |
+| Enter, double-click, right-click | finishes |
 | Backspace | takes back a point |
 | Esc, right-click | steps back one level |
 | ↑ ↓ | previous, next element in the tree |
@@ -311,7 +310,8 @@ lives in this page, so it pastes into another drawing opened in it.
 **Save as preset…** (a point's Properties) keeps its symbol, parts and the fill and stroke it sets
 itself (not what it takes from the drawing or the defaults) under a name; Distribute along copies all of it. One
 with parts joins Shape's kinds, one without Point's. Placing one makes a point named after it, with
-the preset's name as a property; pressed again while current among the kinds (or right-clicked), it is renamed or deleted. Presets
+the preset's name as a property; pressed again while current among the kinds (or right-clicked), it is renamed or deleted. Saving one
+under a name in use asks before replacing it (a file's replaces). Presets
 live in this browser only; **Download** › **Presets (JSON)** and **Open a file…** move them.
 
 ## 10. Deleting, and drawings in this browser

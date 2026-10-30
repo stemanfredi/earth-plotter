@@ -7,6 +7,7 @@
 import { emptyDoc } from './document.js';
 import { parse } from './file.js';
 import { store } from '../dom.js';
+import { note } from '../menu.js';
 
 const INDEX = 'charts.drawings', CURRENT = 'charts.drawings.current', OPENING = 'charts.drawings.opening';
 const KEY = (id) => `charts.drawing.${id}`;
@@ -25,7 +26,7 @@ function readKept(text, known) {
 // the view of the drawing open (format terms), or null: read before the map is made
 export function savedView(known) {
   const id = store.get(CURRENT), text = id && store.get(KEY(id));
-  return text ? readKept(text, known).doc?.view ?? null : null;
+  return text ? readKept(text, known).view : null;
 }
 
 // drawing: the Drawing (drawing.js) whose document is saved: its doc, known, text(), isEmpty(),
@@ -39,6 +40,7 @@ export class Saving {
     this.viewMoved = false; // the view moved since the last save
     this.otherTab = false;
     this.id = store.get(CURRENT) || newKey(); // the drawing open: saved once it holds something
+    if (!store.get(CURRENT)) store.set(CURRENT, this.id); // CURRENT: what a new tab opens; written when a drawing is opened, not at every save (a tab's saves do not switch another tab's drawing at its reload)
     window.addEventListener('storage', (e) => { if (e.key === KEY(this.id)) { this.otherTab = true; this.d.onChange('storage'); } });
     // a change still waiting to be saved when the page goes (closed, reloaded, hidden): saved now
     const flush = () => { if (this.timer || this.viewMoved) this.now(); };
@@ -78,10 +80,10 @@ export class Saving {
       const index = readIndex().filter((x) => x.id !== this.id);
       index.push({ id: this.id, title: this.d.doc.meta.title, modified: this.d.doc.modified, size: text.length });
       store.set(INDEX, JSON.stringify(index));
-      store.set(CURRENT, this.id);
     }
     if (ok === !this.failed) return; // as it was: nothing to say
     this.failed = !ok;
+    if (!ok) note('The drawing could not be saved in this browser (storage full or turned off)');
     this.d.onChange('storage');
   }
   // the view only changed: kept with the drawing at its next save, or when the page goes; never by a
@@ -93,21 +95,22 @@ export class Saving {
     this.now();
     return this.load(id)?.view ?? null;
   }
-  // the drawing id read and opened: its document, or null (not there, not readable)
+  // the drawing id read and opened: { doc, view }, or null (not there, not readable)
   load(id) {
     const text = store.get(KEY(id));
-    const doc = text && parse(text, this.d.known).doc;
-    if (!doc) return null;
+    const { doc, view, report } = text ? parse(text, this.d.known) : { doc: null, report: { refused: 'This drawing is no longer in this browser' } };
+    if (!doc) { note(report.refused); return null; }
     this.id = id;
     store.set(CURRENT, id);
     this.otherTab = false;
     this.d.adopt(doc);
-    return doc;
+    return { doc, view };
   }
   // a drawing added to the list and opened: an empty one (New), or one imported
   add(doc = emptyDoc()) {
     this.now();
     this.id = newKey();
+    store.set(CURRENT, this.id);
     this.otherTab = false;
     this.d.adopt(doc);
     this.now();

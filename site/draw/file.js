@@ -8,11 +8,11 @@
 
 import { FORMAT, VERSION, KINDS, KIND, SYMBOLS, LEADERS, LABEL_OFFSET, META_D,
   emptyDoc, newId, columnsOf } from './document.js';
-import { ID, isObj, fin, Skip, time, text, properties, flag, position, angle, ownStyle, look, pointSpec, drawingLook, parts, readView, VIEW_D, VIEW_DATA_D } from './check.js';
+import { ID, isObj, fin, Skip, time, text, properties, flag, position, angle, ownStyle, look, pointSpec, parts, readView, VIEW_D, VIEW_DATA_D } from './check.js';
 import { resolve, targetPosition } from './attach.js';
 import { groupSizeOf, patternOf, DISTRIBUTE_D, CONNECT_D } from './generator.js';
 import { positionsOf } from './lines.js';
-import { norm180 } from '../geo.js';
+import { norm180, samePosition, signedArea2 } from '../geo.js';
 
 const SIDES = ['left', 'right', 'alternate'];
 const MAX_LABEL_OFFSET = 2000; // px: a label's text from its anchor
@@ -26,22 +26,23 @@ const GEOMETRIES = ['Point', 'MultiPoint', 'LineString', 'MultiLineString', 'Pol
 
 // ---- reading ---------------------------------------------------------------------------------
 
-// A file's text → { doc, report }. doc is null when the file is refused (report.refused says why);
+// A file's text → { doc, view, report }. doc is null when the file is refused (report.refused says why);
+// view: the map's view the file was made in (page state, not the document's), or null;
 // otherwise every element that could be read, completed with defaults, and the report lists what was
 // skipped (and why) and what was repaired. known: what the app offers, to check the view's layers:
 // { layers: { id: { variants, periods } }, data: { id: [variants] }, depths: [metres] }. now: the time
 // to give a file without one.
 export function parse(text, known = null, now = Date.now()) {
   const report = { refused: null, skipped: [], warnings: [] };
-  const refuse = (why) => { report.refused = why; return { doc: null, report }; };
+  const refuse = (why) => { report.refused = why; return { doc: null, view: null, report }; };
   let raw;
   try { raw = JSON.parse(text); } catch { return refuse('This is not a drawing file: it is not JSON.'); }
   if (!isObj(raw)) return refuse('This is not a drawing file: it holds no document.');
   if (raw.type !== 'FeatureCollection' && raw.type !== 'Feature' && !GEOMETRIES.includes(raw.type)) return refuse('This is neither a drawing file nor GeoJSON.');
   const app = isObj(unpack(raw.charts)) ? unpack(raw.charts) : null; // as text: a GIS may write it so
-  if (app && fin(app.version) && app.version !== VERSION) return refuse(`This drawing is of format version ${app.version}; this app reads version ${VERSION}.`);
-  const doc = read(raw, app, known, now, report);
-  return { doc: report.refused ? null : doc, report };
+  if (app && app.version !== undefined && +app.version !== VERSION) return refuse(`This drawing is of format version ${app.version}; this app reads version ${VERSION}.`);
+  const { doc, view } = read(raw, app, known, now, report);
+  return report.refused ? { doc: null, view: null, report } : { doc, view, report };
 }
 
 // a value a GIS may have written back as text (a nested value): read again
@@ -49,6 +50,7 @@ const unpack = (v) => { if (typeof v !== 'string' || !/^\s*[[{]/.test(v)) return
 
 function read(raw, app, known, now, report) {
   const doc = emptyDoc(now);
+  let view = null;
   const taken = new Set();
   const ctx = (kind, id) => ({
     warn: (t) => report.warnings.push(`${kind}${id ? ` ${id}` : ''}: ${t}`),
@@ -77,8 +79,8 @@ function read(raw, app, known, now, report) {
       const c = ctx('meta'), m = isObj(app.meta) ? app.meta : (c.warn('not an object, ignored'), {});
       doc.meta = { title: text(m.title, c, 'title'), description: text(m.description, c, 'description'), author: text(m.author, c, 'author') };
     }
-    if (app.view != null) doc.view = readView(app.view, known, ctx('view'));
-    doc.look = drawingLook(app.look, ctx('look'));
+    if (app.view != null) view = readView(app.view, known, ctx('view'));
+    doc.look = look(app.look, ctx('look'), 'drawing');
     for (const x of Array.isArray(app.groups) ? app.groups : []) {
       const g = attempt('group', x?.id, (c) => {
         if (!isObj(x)) c.skip('not an object');
@@ -147,7 +149,7 @@ function read(raw, app, known, now, report) {
       if (positions > MAX_TOTAL_POSITIONS) throw new Refused(`This file holds more than ${MAX_TOTAL_POSITIONS.toLocaleString('en')} positions in its lines and areas: it would stall the page at every change.`);
       if (el) doc[KIND[kind].list].push(el);
     });
-  }); } catch (e) { if (!(e instanceof Refused)) throw e; report.refused = e.message; return null; }
+  }); } catch (e) { if (!(e instanceof Refused)) throw e; report.refused = e.message; return { doc: null, view: null }; }
 
   // a line's end attached: the attachment wins, the end goes where what it is attached to is
   let moved = 0;
@@ -155,7 +157,7 @@ function read(raw, app, known, now, report) {
   for (const { line, end, to } of ends) {
     const p = to.element !== line.id && targetPosition(doc, to);
     if (!p) { report.warnings.push(`line ${line.id}: its ${end} is attached to ${String(to.element).slice(0, 64)}, which is not here (or has no such vertex or edge); free`); continue; }
-    if (Math.abs(p[0] - line[end].position[0]) > 1e-6 || Math.abs(p[1] - line[end].position[1]) > 1e-6) moved++; // more than the file's rounding
+    if (!samePosition(p, line[end].position)) moved++; // more than the file's rounding
     line[end] = { position: [...p], ...to };
   }
   if (moved) report.warnings.push(`${moved} line end${moved > 1 ? 's' : ''} moved to what ${moved > 1 ? 'they are' : 'it is'} attached to (the file was edited elsewhere)`);
@@ -200,7 +202,7 @@ function read(raw, app, known, now, report) {
     });
     if (r) doc.rules.push(r);
   }
-  return doc;
+  return { doc, view };
 }
 
 // a feature's name and the user's properties (a description, a category: properties like any other):
@@ -295,14 +297,14 @@ const READ = {
 
 const r7 = (v) => +v.toFixed(7), r3 = (v) => +v.toFixed(3), r4 = (v) => +v.toFixed(4);
 const pos = (p) => [r7(norm180(p[0])), r7(p[1])]; // a click past ±180° is kept as the map has it, written in range (§2)
-const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+const sameJson = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 // o without the fields equal to their defaults d; an object field against an object default field by
 // field, left out when nothing in it differs
 function lean(o, d) {
   const out = {};
   for (const [k, v] of Object.entries(o)) {
     if (!(k in d)) out[k] = v;
-    else if (isObj(v) && isObj(d[k])) { const sub = lean(v, d[k]); if (Object.keys(sub).length) out[k] = sub; } else if (!same(v, d[k])) out[k] = v;
+    else if (isObj(v) && isObj(d[k])) { const sub = lean(v, d[k]); if (Object.keys(sub).length) out[k] = sub; } else if (!sameJson(v, d[k])) out[k] = v;
   }
   return out;
 }
@@ -343,8 +345,6 @@ const endOut = (e) => {
   const on = { element: e.element, ...(e.part != null ? { part: e.part } : {}) };
   return e.vertex != null ? { ...on, vertex: e.vertex } : e.edge != null ? { ...on, edge: e.edge, at: +e.at.toFixed(6) } : { element: e.element };
 };
-// twice the signed area of a ring in longitude and latitude: positive counter-clockwise
-const signed = (pts) => pts.reduce((a, p, i) => { const q = pts[(i + 1) % pts.length]; return a + p[0] * q[1] - q[0] * p[1]; }, 0);
 
 // one element as a Feature
 function feature(doc, kind, el) {
@@ -366,7 +366,7 @@ function feature(doc, kind, el) {
     if (vs.some((v) => Object.keys(v).length)) mine.vertices = vs;
   } else if (kind === 'area') {
     // counter-clockwise, as RFC 7946 asks; a ring stored clockwise is written reversed, and says so
-    const cw = signed(el.points) < 0, pts = cw ? el.points.slice().reverse() : el.points;
+    const cw = signedArea2(el.points) < 0, pts = cw ? el.points.slice().reverse() : el.points;
     geometry = { type: 'Polygon', coordinates: [[...pts, pts[0]].map(pos)] };
     if (cw) mine.reversed = true;
   } else {
@@ -378,10 +378,9 @@ function feature(doc, kind, el) {
   return { type: 'Feature', id: el.id, geometry, properties: { ...props, charts: mine } };
 }
 
-// The document as the file's object: a FeatureCollection, what differs from the defaults, rounded as
-// the format says.
-export function toFile(doc) {
-  const v = doc.view;
+// The document as the file's object (with the view it is in: the map's, page state the file carries):
+// a FeatureCollection, what differs from the defaults, rounded as the format says.
+export function toFile(doc, v = null) {
   const app = lean({
     format: FORMAT, version: VERSION, created: doc.created, modified: doc.modified,
     meta: lean(doc.meta, META_D),
@@ -402,6 +401,6 @@ export function toFile(doc) {
 }
 // The file's text: indented JSON, with each pair of numbers (a position) on one line. Only
 // the indentation's line breaks are matched: a string never holds one (JSON writes it \n).
-export function serialise(doc) {
-  return `${JSON.stringify(toFile(doc), null, 2).replace(/\[\n\s*(-?[\d.e+-]+),\n\s*(-?[\d.e+-]+)\n\s*\]/g, '[$1, $2]')}\n`;
+export function serialise(doc, view = null) {
+  return `${JSON.stringify(toFile(doc, view), null, 2).replace(/\[\n\s*(-?[\d.e+-]+),\n\s*(-?[\d.e+-]+)\n\s*\]/g, '[$1, $2]')}\n`;
 }

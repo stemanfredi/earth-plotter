@@ -674,7 +674,7 @@ await section('the drawing\'s files: imported again, dropped on the map, the lis
   check(drawings.length === 3, `drawing: every drawing kept in the list, the imported ones added (${drawings.join(', ')})`); // the first and two imported (an empty New left nothing)
   // a drawing's Delete asks first, a question and its buttons only (an absent foot once printed "null")
   await dw.click('#bar .filebtn');
-  await dw.locator('.dmenu .drawings .hact').last().click();
+  await dw.locator('.dmenu .drawings .del').last().click();
   const asked = await dw.evaluate(() => document.querySelector('dialog[open]').textContent);
   await dw.click('dialog[open] button:not(.done)');
   await dw.keyboard.press('Escape');
@@ -1340,13 +1340,18 @@ await section('Offline areas: the view saved from the dialog, drawn without a co
   await exportItem(op, 'offline');
   await op.waitForSelector('dialog.offline[open]');
   await op.selectOption('dialog.offline select', '12');
-  const count = await op.textContent('dialog.offline .orow .val');
   const t0 = Date.now();
   await op.click('dialog.offline button.done');
   await op.waitForSelector('dialog.offline .drawings li', { timeout: 600000 });
   const took = Math.round((Date.now() - t0) / 1000);
   const row = await op.textContent('dialog.offline .drawings li .val');
-  check(/zoom 12 · [\d.]+ MB/.test(row) && !(await op.textContent('dialog.offline .ostatus')), `offline areas: saved (${count}; ${row}; ${took} s)`);
+  check(/zooms 8–12 · [\d.]+ MB/.test(row) && !(await op.textContent('dialog.offline .ostatus')), `offline areas: saved (${row}; ${took} s)`);
+  // renamed in its row: double-clicked, typed, Enter (a single click would show it on the map)
+  await op.dblclick('dialog.offline .drawings .dname');
+  await op.fill('dialog.offline .drawings input.dname', 'Gulf');
+  await op.press('dialog.offline .drawings input.dname', 'Enter');
+  const renamed = await op.waitForFunction(() => document.querySelector('dialog.offline[open] .drawings .dname')?.textContent === 'Gulf', null, { timeout: 5000 }).then(() => true, () => false);
+  check(renamed, `offline areas: renamed in its row (${await op.textContent('dialog.offline .drawings .dname').catch(() => 'no row')})`);
   await op.click('dialog.offline .fbuttons button:not(.done)'); // Close
   ({ bounds: area, from: areaFrom } = await op.evaluate(async () => {
     const id = (await caches.keys()).find((k) => k.startsWith('pack-'));
@@ -1382,9 +1387,9 @@ await section('Offline areas: the view saved from the dialog, drawn without a co
   // its file written (File), then deleted: asked first, then gone from the list and from the browser
   await exportItem(op, 'offline');
   await op.waitForSelector('dialog.offline[open] .drawings li');
-  const [fdl] = await Promise.all([op.waitForEvent('download', { timeout: 60000 }), op.click('dialog.offline .drawings button.small >> text=File')]);
+  const [fdl] = await Promise.all([op.waitForEvent('download', { timeout: 60000 }), op.click('dialog.offline .drawings button[aria-label^="Download"]')]);
   const fileBytes = await readFile(await fdl.path());
-  await op.click('dialog.offline .drawings .hact');
+  await op.click('dialog.offline .drawings .del');
   await op.click('dialog.dreport .fbuttons button.done');
   await op.waitForFunction(() => !document.querySelector('dialog.offline .drawings li'), null, { timeout: 10000 });
   const left = await op.evaluate(async () => (await caches.keys()).filter((k) => k.startsWith('pack-')).length);
@@ -1394,7 +1399,7 @@ await section('Offline areas: the view saved from the dialog, drawn without a co
   const head = JSON.parse(az['area.json']);
   check(head.format === 'charts-offline-area' && head.files.length > 100 && head.files.every((f) => az[f.name]) && !head.files.some((f) => f.url.includes('openseamap')) && /OpenStreetMap/.test(String(az['README.txt'])),
     `offline areas, file: ${head.files.length} files with their addresses, the credits, no seamarks (${Math.round(fileBytes.length / 1e6)} MB)`);
-  await op.setInputFiles('input[type=file][accept^=".zip"]', { name: 'area.zip', mimeType: 'application/zip', buffer: fileBytes });
+  await op.setInputFiles('input[type=file][accept*=".zip"]', { name: 'area.zip', mimeType: 'application/zip', buffer: fileBytes }); // the bar's Open › Open a file…
   await op.waitForSelector('dialog.offline .drawings li', { timeout: 60000 });
   await op.click('dialog.offline .fbuttons button:not(.done)'); // Close
   failed.length = 0;
@@ -1410,7 +1415,7 @@ await section('Offline areas: the view saved from the dialog, drawn without a co
   await op.reload();
   await exportItem(op, 'offline');
   await op.waitForSelector('dialog.offline[open] .drawings li');
-  await op.click('dialog.offline .drawings .hact');
+  await op.click('dialog.offline .drawings .del');
   await op.click('dialog.dreport .fbuttons button.done');
   await op.waitForFunction(() => !document.querySelector('dialog.offline .drawings li'), null, { timeout: 10000 });
   setSwVersion(null);

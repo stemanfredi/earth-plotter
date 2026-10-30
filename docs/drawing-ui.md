@@ -12,7 +12,7 @@ One layout at every width (`site/frame.js`).
 
 - **The bar**, across the top: the file group, **Open** (the drawings in this browser, + New, **Open
   a file…**), **Download** (the drawing's GeoJSON, a
-  picture, GIS data, the presets), **Copy link**; **Layers** and **Elements** (the left panel's
+  picture, GIS data, the presets; apart, **Offline areas…**), **Copy link**; **Layers** and **Elements** (the left panel's
   tabs); **Undo**, **Redo** (history, not tools); **Select** and **Box select**; **Point**, **Line**,
   **Shape**, **Label**; **Measure**; at its end **find a place** (a field; / goes to it), **About**
   and the **Properties** toggle. The drawing is named in Elements' first row and its Properties.
@@ -49,7 +49,7 @@ One layout at every width (`site/frame.js`).
 - **Copy link** carries the view, the layers and the display settings (`u=nm`, `brg=1`), never the
   drawing. The drawing goes out as a file (**Download** › **Drawing (GeoJSON)**, with the view) and
   comes in by **Open a file…** or a file dropped on the map, after a report (what it holds, what was skipped and
-  why); a presets file adds its presets (§9).
+  why); a presets file adds its presets (§9); an offline area's file (a zip) joins the offline areas.
 - **The note**, a chip under the bar at the centre, says for a few seconds what the screen cannot
   show: a value not applied and why, a file not read, what was copied, why a click or a box did
   nothing, a root not used, a panel that made way. What is visible (a deletion, a copy selected, a

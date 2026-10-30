@@ -709,7 +709,14 @@ map.on('data', (e) => {
   if (e.dataType === 'source' && e.tile && health[e.sourceId]) { health[e.sourceId].ok++; renderStatus(); }
 });
 map.on('movestart', () => { for (const k in health) delete health[k]; renderStatus(); });
-onConnection(() => renderStatus());
+// the connection gone (or never there): said once, beyond a saved area the map is blank
+let wasOff = false;
+const connection = () => {
+  if (noConnection() && !wasOff) note('No connection: the map shows only what offline areas keep (Download › Offline areas)');
+  wasOff = noConnection();
+};
+onConnection(() => { connection(); renderStatus(); });
+connection();
 function itemStatus(id) {
   for (const l of layersOf[id] || []) {
     if (l.metadata.variant && l.metadata.variant !== state.variant[id]) continue;
@@ -967,21 +974,23 @@ function renderUnits() {
 // "Failed"), the menu open meanwhile
 const output = (id, iconName, text, title, run, more = {}) => h('button', { type: 'button', role: 'menuitem', id, title, onclick: (e) => run(e.currentTarget), ...more }, icon(...ICON[iconName]), h('span', {}, text));
 const outputs = [output('png', 'png', 'Picture (PNG)', 'Download the view as a picture', (b) => exportPng(b)),
-  output('zip', 'zip', 'GIS data (ZIP)', 'Download the view as GIS data: a georeferenced picture, GeoJSON, GeoTIFF', (b) => exportZip(b)),
-  output('offline', 'offline', 'Offline areas…', 'Save this view in this browser, to open it without a connection; the areas saved', () => offline.open(), { 'data-closes': '' })]; // its dialog: the menu closed
+  output('zip', 'zip', 'GIS data (ZIP)', 'Download the view as GIS data: a georeferenced picture, GeoJSON, GeoTIFF', (b) => exportZip(b))];
+// last in Download, apart: not a file, the areas kept in this browser
+const offlineItem = output('offline', 'offline', 'Offline areas…', 'Save this view in this browser, to open it without a connection; the areas saved', () => offline.open(), { 'data-closes': '' }); // its dialog: the menu closed
 // Offline areas (offline.js): the dialog that saves the view and lists the areas saved
-const offline = offlineDialog({ map, fit: ([w, s, e, n]) => map.fitBounds([[w, s], [e, n]], { padding: free() }), deleteIcon: () => icon(...UI_ICON.delete), download: (blob, name) => download(blob, name) });
+const offline = offlineDialog({ map, fit: ([w, s, e, n]) => map.fitBounds([[w, s], [e, n]], { padding: free() }), icon: (name) => icon(...UI_ICON[name]), download });
 
 // ---- the drawing (draw/panel.js): its tools in the bar, the tree, its properties -------------------
 drawPanel = drawView($('#dview'), {
   drawing, display, setDisplay, map, icon, known: KNOWN, units: () => display.units,
   measureIcon: ICON.ruler, free: () => free(), bar: $('#bar'), props: $('#props'), frame,
   // the bar's file group (draw/files.js): the view's outputs in Download, Copy link, About (a phone's ☰)
-  outputs, copyLink: () => copyLink(), about: () => openAbout(), linkIcon: ICON.link, aboutIcon: ICON.info,
+  outputs, offlineItem, copyLink: () => copyLink(), about: () => openAbout(), linkIcon: ICON.link, aboutIcon: ICON.info,
   // a drawing imported, or one of the list, opened with its view: where it was, its layers, time,
   // depth and units
   onImport: (doc, view) => { drawing.saving.add(doc); if (view) applyView(view); },
   openDrawing: (id) => { const v = drawing.saving.open(id); if (v) applyView(v); },
+  openArea: (f) => offline.openFile(f),
   download: (text, name, type = 'application/geo+json') => download(new Blob([text], { type }), name),
   profile: (trace) => profileFor(trace),
 });

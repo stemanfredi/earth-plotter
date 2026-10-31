@@ -5,7 +5,7 @@
 // elements as the document does, in this page, so they paste into another drawing opened in it too.
 // Pure.
 
-import { find, leavesOf, positionsIn, newId, idsOf, KIND, nextName } from './document.js';
+import { find, leavesOf, positionsIn, newId, idsOf, KIND, nextName, emptyDoc } from './document.js';
 import { extentOf } from './features.js';
 
 const clone = (x) => structuredClone(x);
@@ -46,4 +46,11 @@ export function paste(doc, clip, mv) {
     if (keep) doc.links.push({ from: [ids.get(from[0]), from[1]], to: { ...to, element: ids.get(to.element) ?? to.element } });
   }
   return made;
+}
+// point id of doc and its shapes, as they are, in a drawing of their own (a preset; a rule's copy as its
+// template)
+export function alone(doc, id) {
+  const d = emptyDoc(0);
+  paste(d, clipOf(doc, [id]), (q) => q);
+  return d;
 }

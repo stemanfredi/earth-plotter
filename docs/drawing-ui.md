@@ -287,8 +287,10 @@ Copies) opens its form (a click on the map picks a root):
 - **Clicks**, no tool on: the topmost element; the same place again, the next one down. A shape a
   point holds: the first click selects its point (with its shapes, marked with it), the next the
   shape alone.
-- **Dragging** a selected element moves it (several together); one undo step; Esc puts it back;
-  positions snap (Alt: free; Shift: 15° steps). A point moved or turned carries its shapes.
+- **Dragging** a selected element moves it (several together) as one piece along the ellipsoid: each
+  place keeps its distance and bearing from where it was grabbed, which stays under the pointer, so
+  it keeps its size at any latitude. One undo step; Esc puts it back; positions snap (Alt: free;
+  Shift: 15° steps). A point moved or turned carries its shapes.
   **Handles**: a circle's radius; a sector's two ends and its stalk (its bearing); a point's stalk,
   beyond its shapes (it turns them with it); a line's points (one attached to a point's centre moves
   the point; another, dropped on something, attaches there) and a **+** halfway along a leg (a closed
@@ -322,7 +324,8 @@ None act while typing in a field, except Esc and Enter. About lists them from `s
 **Copy, paste, duplicate:** a copy keeps its group, look and properties, gets new numbered names and
 keeps the attachments between the elements copied together (a line's point on one left behind is
 free); a point is copied with its shapes, a shape copied alone is free. Paste
-puts its middle at the pointer; Duplicate 20 px beside. One undo step; the copy selected. The clipboard
+puts its middle at the pointer, moved there as a drag moves (its size kept at any latitude);
+Duplicate 20 px beside. One undo step; the copy selected. The clipboard
 lives in this page, so it pastes into another drawing opened in it.
 
 ## 9. Presets

@@ -2,8 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { near } from './helpers.mjs';
 
-const { OUTLINES } = await import('../../site/draw/document.js');
-const { OUTLINE_NAME, unitOutline, outlinePoints } = await import('../../site/draw/outlines.js');
+const { OUTLINES, unitOutline, outlinePoints } = await import('../../site/draw/outlines.js');
 const { inverse, areaOf, densify, ccw } = await import('../../site/geodesy.js');
 
 const C = [12, 40], B = 30, L = 120, W = 40;
@@ -45,8 +44,4 @@ test('areas: the rectangle its length by its width; the ellipse π/4 of it; the 
   for (const o of ['surface-vehicle', 'underwater-vehicle']) { const a = areaOf(ccw(ringOf(o))); assert.ok(a > 0.75 * L * W && a < L * W, `${o}: ${a}`); }
   const air = areaOf(ccw(ringOf('aerial-vehicle')));
   assert.ok(air > 0.1 * L * W && air < 0.5 * L * W, `aerial: ${air}`);
-});
-
-test('every outline the Shape tool offers has a name', () => {
-  for (const o of OUTLINES) assert.ok(OUTLINE_NAME[o], o);
 });

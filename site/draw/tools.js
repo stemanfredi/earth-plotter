@@ -6,8 +6,7 @@
 
 import { h, NARROW } from '../dom.js';
 import { ask, askText, note } from '../menu.js';
-import { OUTLINES } from './document.js';
-import { OUTLINE_NAME } from './outlines.js';
+import { OUTLINES, OUTLINE_NAME } from './outlines.js';
 import { savePresets, presetTool } from './presets.js';
 import { keyOf, MOD } from '../keys.js';
 import { icon, KIND_ICON, POINT_ICON, SELECT_ICON, BOX_ICON, UI_ICON } from '../icons.js';

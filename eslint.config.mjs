@@ -4,7 +4,7 @@ import js from '@eslint/js';
 import globals from 'globals';
 
 export default [
-  { ignores: ['site/vendor/', '.tmp-*/'] }, // the libraries, as npm ships them; local scratch
+  { ignores: ['site/vendor/', '.tmp-*/', '.claude/'] }, // the libraries, as npm ships them; local scratch; agents' worktrees
   js.configs.recommended,
   { linterOptions: { reportUnusedDisableDirectives: 'error' } },
   { files: ['site/**/*.js'], languageOptions: { globals: { ...globals.browser, ...globals.worker } } },

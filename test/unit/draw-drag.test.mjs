@@ -2,9 +2,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { near } from './helpers.mjs';
 
-const { radiusTo, bearingTo, sectorEdgeTo, moved } = await import('../../site/draw/drag.js');
-const { destination } = await import('../../site/geodesy.js');
-const { mercator } = await import('../../site/geo.js');
+const { radiusTo, bearingTo, sectorEdgeTo } = await import('../../site/draw/drag.js');
+const { destination, inverse, moveAbout } = await import('../../site/geodesy.js');
 
 const C = [12, 40];
 
@@ -28,22 +27,31 @@ test('an end of a sector\'s arc dragged: the other end stays; across north; at l
   assert.equal(sectorEdgeTo(C, 0, 90, 0.5, destination(C, 97, 500), 15).aperture, 135, 'Shift: the end on 15° steps');
 });
 
-test('moving by the pointer', () => {
-  const p = moved([12.5, 40.5], [12, 40], [12.1, 40.05]);
-  const d = [mercator(p)[0] - mercator([12.5, 40.5])[0], mercator(p)[1] - mercator([12.5, 40.5])[1]];
-  near(d[0], mercator([12.1, 40.05])[0] - mercator([12, 40])[0], 1e-6, 'x');
-  near(d[1], mercator([12.1, 40.05])[1] - mercator([12, 40])[1], 1e-6, 'y');
+test('one rigid move on the ellipsoid: distance and bearing from the anchor kept (turned), the anchor where it goes', () => {
+  const a = [12, 0], b = [12, 60], q = destination(a, 30, 5000), mv = moveAbout(a, b, 15);
+  assert.deepEqual(mv(a), b);
+  const g = inverse(b, mv(q));
+  near(g.s, 5000, 1e-6, 'distance'); near(g.azi, 45, 1e-9, 'bearing, turned');
+  // not in the projection: a 100 m east-west reach at the equator is 100 m at 60°N, not 50
+  near(inverse(moveAbout(a, b)(a), moveAbout(a, b)(destination(a, 90, 100))).s, 100, 1e-6, 'its size kept');
 });
 
-test('a selection moved: a point moved through a selected line\'s linked place carries its shapes once, a selected one too', async () => {
-  const { Drawing } = await import('../../site/draw/drawing.js');
-  const { emptyDoc, addPoint, addCircle } = await import('../../site/draw/document.js');
-  const { lineFrom } = await import('./helpers.mjs');
-  const { inverse } = await import('../../site/geodesy.js');
+const { emptyDoc, addPoint, addCircle, moveElements } = await import('../../site/draw/document.js');
+const { lineFrom } = await import('./helpers.mjs');
+
+test('a selection moved: a point moved through a selected line\'s linked place carries its shapes once, a selected one too', () => {
   const doc = emptyDoc(0), p = addPoint(doc, [12, 40]), c = addCircle(doc, [12, 40], { groupId: p.id });
   const l = lineFrom(doc, [11.9, 40], [], p.id);
-  const fake = { sel: new Set([c.id, l.id]), map: { project: ([x, y]) => ({ x, y }) } }; // the circle before the line: met before its point is known to move
-  Drawing.prototype.moveSelection.call(fake, doc, [12, 40], [12.1, 40.05]);
+  moveElements(doc, [c.id, l.id], [12, 40], [12.1, 40.05]); // the circle before the line: met before its point is known to move
   near(inverse(p.position, [12.1, 40.05]).s, 0, 1e-6, 'the point moved with the line\'s place on it');
   near(inverse(p.position, c.position).s, 0, 1e-6, 'its circle carried once: still on it');
+});
+
+test('a point moved: the points its own lines are linked to stay where they are', () => {
+  const doc = emptyDoc(0), p = addPoint(doc, [12, 40]), q = addPoint(doc, [12.2, 40]);
+  const l = lineFrom(doc, [12, 40.01], [], q.id, { groupId: p.id }); // a shape of p, its end on q
+  moveElements(doc, [p.id], [12, 40], [12.1, 40.05]);
+  assert.deepEqual(q.position, [12.2, 40], 'q not dragged along');
+  near(inverse(p.position, [12.1, 40.05]).s, 0, 1e-6, 'the point moved');
+  near(inverse(p.position, l.points[0]).s, inverse([12, 40], [12, 40.01]).s, 1e-6, 'its line carried');
 });

@@ -7,7 +7,7 @@
 
 import { densify, inverse, destination, areaOf, lengthOf } from '../geodesy.js';
 import { mercator, unmercator, D2R, nearestOnSegment, unrollTo } from '../geo.js';
-import { isShown, groupsOf, linkFrom } from './document.js';
+import { isShown, groupsOf, groupsOnlyOf, linkFrom } from './document.js';
 
 const TOL = 1e-4; // a curve is sampled finer until its length changes by less than this, relative
 const MAX_SAMPLES = 4096;
@@ -192,7 +192,7 @@ const PART_ORDER = ['trunk', 'branch', 'root link', 'link'];
 // only: a Set of the ids to count (a group's members), else all of them
 export function breakdown(doc, by = null, only = null) {
   const counted = (el) => !el.guide && (!only || only.has(el.id)); // only: the ids counted (a group's members), else all
-  const keyOf = (el) => (by ? el.properties.find((p) => p.key === by)?.value ?? '' : groupsOf(doc, el).find((g) => !g.position)?.id ?? ''); // a group, not a shape's point
+  const keyOf = (el) => (by ? el.properties.find((p) => p.key === by)?.value ?? '' : groupsOnlyOf(doc, el)[0]?.id ?? ''); // a group, not a shape's point
   const made = madeLines(doc), rows = new Map();
   const rowOf = (key) => { if (!rows.has(key)) rows.set(key, { key, lines: [], parts: new Map(), count: 0, length: 0, hidden: false }); return rows.get(key); };
   const lines = { count: 0, length: 0, hidden: false };

@@ -93,3 +93,27 @@ test('a large import: Zoom to, Duplicate and Paste take hundreds of thousands of
   assert.deepEqual(boundsOf(doc, new Set([g.id])).map((v) => +v.toFixed(4)), [10, 40, 10.999, 40.3]); // its closing leg's geodesic a little north of its ends
   assert.deepEqual(centreOf(clipOf(doc, [g.id])).map((v) => +v.toFixed(7)), [10.4995, 40.1499995]);
 });
+
+// the drawing's Paste on doc, with no map: the screen is longitude, latitude ({ x, y }); what it selects
+async function pasteAt(doc, clip, at) {
+  const { Drawing } = await import('../../site/draw/drawing.js');
+  const fake = { change: (fn) => fn(doc), select: (ids) => { fake.selected = ids; }, map: { unproject: ({ x, y }) => ({ lng: x, lat: y }) } };
+  Drawing.prototype.paste.call(fake, clip, at);
+  return fake.selected;
+}
+
+test('pasted along the ellipsoid: a 100 m rectangle from the equator to 60°N is still 100 m', async () => {
+  const { inverse } = await import('../../site/geodesy.js');
+  const doc = emptyDoc(0), r = addRing(doc, outlinePoints([12, 0], 0, 100, 100));
+  const [id] = await pasteAt(doc, clipOf(doc, [r.id]), { x: 12, y: 60 }), q = doc.lines.find((s) => s.id === id).points;
+  for (let i = 0; i < 4; i++) assert.ok(Math.abs(inverse(q[i], q[(i + 1) % 4]).s - 100) < 1e-3, `side ${i}`);
+  assert.ok(Math.abs(centreOf(clipOf(doc, [id]))[1] - 60) < 1e-6, 'its middle there');
+});
+
+test('pasted, a point and its shapes: the point selected, its shapes with it', async () => {
+  const { addShape } = await import('./helpers.mjs');
+  const doc = emptyDoc(0), { point } = addShape(doc, [12, 40], 'rings'), q = addPoint(doc, [12.1, 40]);
+  const sel = await pasteAt(doc, clipOf(doc, [point.id, q.id]), { x: 13, y: 40 });
+  assert.equal(doc.circles.length, 6);
+  assert.deepEqual(sel.map((id) => doc.points.some((p) => p.id === id)), [true, true]); // the two points, no circle
+});

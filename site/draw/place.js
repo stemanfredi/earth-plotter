@@ -3,9 +3,9 @@
 // placed again as copies (placeCopy). Pure: it changes the document given; the caller keeps the undo
 // step.
 
-import { addPoint, addCircle, addLine, nextName, carry, OUTLINES } from './document.js';
-import { OUTLINE_NAME, outlinePoints } from './outlines.js';
-import { inverse, destination } from '../geodesy.js';
+import { addPoint, addCircle, addLine, nextName, carry } from './document.js';
+import { OUTLINES, OUTLINE_NAME, outlinePoints } from './outlines.js';
+import { inverse } from '../geodesy.js';
 import { unrollTo } from '../geo.js';
 import { clipOf, paste } from './clipboard.js';
 
@@ -33,14 +33,11 @@ export function build(doc, p, kind, d = 0, { aperture = 90, size = null } = {}) 
 }
 
 // A copy of the first point of tpl (a drawing: a preset's, or a rule's copy) and of its shapes, at p
-// facing bearing, in group groupId: moved there along the ellipsoid (each place keeps its distance and
-// bearing from the point), then turned. Returns the point.
+// facing bearing, in group groupId: pasted where it is, then carried there and turned. Returns the point.
 export function placeCopy(doc, tpl, p, bearing = 0, groupId = null) {
-  const src = tpl.points[0], from = src.position;
-  const made = paste(doc, clipOf(tpl, [src.id]), (q) => { const g = inverse(from, q); return g.s ? destination(p, g.azi, g.s) : [...p]; });
-  const pt = made[0].el;
+  const pt = paste(doc, clipOf(tpl, [tpl.points[0].id]), (q) => q)[0].el;
   pt.groupId = groupId;
-  carry(doc, pt, pt.position, bearing);
+  carry(doc, pt, p, bearing);
   return pt;
 }
 

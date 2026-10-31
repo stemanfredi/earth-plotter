@@ -507,6 +507,15 @@ test('operations: new elements, names, IDs', () => {
   assert.equal(label('group', { ...g, name: '' }), `Group ${g.id}`);
 });
 
+test('Group with a point\'s shapes selected (Rings, a box): they stay its, the point grouped once', () => {
+  const doc = emptyDoc(NOW), { point: p, shapes } = addShape(doc, [0, 0], 'rings'), q = addPoint(doc, [1, 0]);
+  const g = makeGroup(doc, [p.id, ...shapes.map((c) => c.id), q.id]);
+  assert.deepEqual(shapes.map((c) => c.groupId), [p.id, p.id, p.id]);
+  assert.deepEqual(membersOf(doc, g.id).map((x) => x.el.id), [p.id, q.id]);
+  const h = makeGroup(doc, [shapes[0].id]); // a shape alone: its point
+  assert.deepEqual([p.groupId, h.groupId, shapes[0].groupId], [h.id, g.id, p.id]);
+});
+
 test('a point holds shapes: its circles and lines, nothing else; they are shown with it, deleted with it, and the tree\'s under it', () => {
   const doc = emptyDoc(NOW);
   const p = addPoint(doc, [0, 0]), q = addPoint(doc, [1, 0]);
@@ -518,6 +527,8 @@ test('a point holds shapes: its circles and lines, nothing else; they are shown 
   assert.deepEqual([p.groupId, c.groupId], [g.id, p.id]); // the point in the group, its shapes in it
   assert.deepEqual(d.leavesOf(doc, [p.id]).map((x) => x.el.id), [p.id, c.id, l.id]); // a point stands for its shapes
   assert.deepEqual(d.leavesOf(doc, [g.id]).map((x) => x.el.id), [p.id, c.id, l.id]);
+  assert.deepEqual([d.groupsOf(doc, c), d.groupsOnlyOf(doc, c)], [[p, g], [g]]); // its groups: through its point
+  assert.deepEqual([c, l, q, g].map((x) => d.isChosen(doc, new Set([p.id]), x)), [true, true, false, false]); // the point selected: its shapes chosen with it
   p.visible = false;
   assert.deepEqual([isShown(doc, c), isShown(doc, l)], [false, false]); // hidden with it
   assert.deepEqual(dependents(doc, [p.id]), new Set([p.id, c.id, l.id])); // deleted with it
@@ -838,4 +849,13 @@ test('order: moved before one of its kind (into its group), or a step among its 
   const z = Object.fromEntries(drawParts(doc).base.filter((f) => f.properties.kind === 'polygon').map((f) => [f.properties.id, f.properties.z]));
   assert.ok(z[a.id] > z[c.id] && z[c.id] > z[b.id], 'the first drawn on top');
   assert.deepEqual(again(doc).doc.lines.map((x) => x.id), [a.id, c.id, b.id]); // the order kept in the file
+});
+
+test('the example in drawing-format.md §15 reads with no word to say, and writes back as it is', async () => {
+  const { readFileSync } = await import('node:fs');
+  const md = readFileSync(new URL('../../docs/drawing-format.md', import.meta.url), 'utf8');
+  const text = /\n## 15\.[\s\S]*?```json\n([\s\S]*?)```/.exec(md)[1];
+  const r = read(text);
+  assert.deepEqual([r.report.skipped, r.report.warnings], [[], []]);
+  assert.deepEqual(toFile(r.doc, r.view), JSON.parse(text));
 });

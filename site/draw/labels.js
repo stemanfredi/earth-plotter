@@ -4,10 +4,10 @@
 // gives the projection (view.project, view.unproject) and the size of a text (view.measure). Pure
 // otherwise: no map, no DOM.
 
-import { isShown, label, lookOf, linkFrom } from './document.js';
+import { isShown, label, lookOf, linkFrom, ringOf } from './document.js';
 import { resolve } from './attach.js';
 import { lineTrace } from './lines.js';
-import { areaOf, circle, sector } from '../geodesy.js';
+import { areaOf } from '../geodesy.js';
 import { fmtArea, fmtBrg, fmtDist } from '../format.js';
 
 const SIZE_PX = { small: 11, medium: 13, large: 16 };
@@ -28,7 +28,7 @@ export function labelValues(doc, to, units = 'km') {
     along: at.along === undefined ? undefined : fmtDist(at.along, units),
     bearing: at.edge ? fmtBrg(at.edge.bearing) : undefined,
     radius: c ? fmtDist(c.radius, units) : undefined,
-    area: c ? fmtArea(areaOf(c.aperture ? sector(c.position, c.radius, c.bearing, c.aperture) : circle(c.position, c.radius)), units) : tr ? fmtArea(tr.area, units) : undefined,
+    area: c ? fmtArea(areaOf(ringOf(c)), units) : tr ? fmtArea(tr.area, units) : undefined,
     perimeter: tr ? fmtDist(tr.length, units) : undefined,
   };
 }

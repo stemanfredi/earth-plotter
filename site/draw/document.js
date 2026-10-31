@@ -14,7 +14,7 @@
 // Elements hold positions only; what ties a place of one to another is in the drawing's links (one
 // table: { from: [id, index], to: a target, attach.js }), applied after each change.
 
-import { inverse, destination } from '../geodesy.js';
+import { moveAbout, circle, sector } from '../geodesy.js';
 import { norm360 } from '../geo.js';
 
 export const FORMAT = 'charts-drawing';
@@ -26,7 +26,7 @@ export const DEFAULT_STYLE = Object.freeze({
   fill: Object.freeze({ color: '#e8590c', opacity: 0.15 }),
   stroke: Object.freeze({ color: '#e8590c', opacity: 1, width: 1.5, dash: 'solid' }),
 });
-// what a guide is drawn with, unless it or its group says otherwise: faint, dashed, one colour
+// what a guide is drawn with, unless its own look says otherwise: faint, dashed, one colour
 export const GUIDE_STROKE = Object.freeze({ color: '#5d6d79', opacity: 1, width: 1, dash: 'dashed' });
 export const GUIDE_STYLE = Object.freeze({ fill: Object.freeze({ color: '#5d6d79', opacity: 0.05 }), stroke: GUIDE_STROKE });
 // what a measurement (a guide showing its values, Measure's tools make) is drawn with
@@ -42,7 +42,6 @@ const LOOK_TEXT = Object.freeze({ name: false, values: false, size: 'medium', co
 export const DEFAULT_LOOK = Object.freeze({ fill: DEFAULT_STYLE.fill, stroke: DEFAULT_STYLE.stroke, text: LOOK_TEXT, offset: 0 });
 export const SYMBOLS = ['diamond', 'square', 'triangle', 'dot', 'none'];
 export const DASHES = ['solid', 'dashed', 'dotted'];
-export const OUTLINES = ['rectangle', 'triangle', 'ellipse', 'aerial-vehicle', 'surface-vehicle', 'underwater-vehicle']; // the Shape tool's outlines (outlines.js)
 // The kinds of element: the document's list each lives in, and its name in the panel. In this order
 // (the file's, and the list's). How each is drawn, exported and moved: features.js; edited: panel.js.
 export const KIND = {
@@ -98,6 +97,8 @@ export function find(doc, id) {
 }
 // the mean of a list of positions (a closed line's centre, for its name and labels)
 export const centroid = (pts) => [pts.reduce((a, q) => a + q[0], 0) / pts.length, pts.reduce((a, q) => a + q[1], 0) / pts.length];
+// a circle's polygon: the whole of it, or a sector centred on its bearing
+export const ringOf = (c) => (c.aperture ? sector(c.position, c.radius, c.bearing, c.aperture) : circle(c.position, c.radius));
 // where an element is: a point's position, a circle's centre, a line's start
 export const placeOf = (kind, el) => (el.position && kind !== 'label' ? el.position : kind === 'line' ? el.points[0] : null);
 // what the panel calls an element: its name, or for an unnamed one its kind and where it is
@@ -123,6 +124,8 @@ export function groupsOf(doc, el) {
   for (let g = groupOf(doc, el); g && g !== el && !out.includes(g); g = groupOf(doc, g)) out.push(g);
   return out;
 }
+// the groups an element is in, the nearest first, without a shape's point (groupsOf)
+export const groupsOnlyOf = (doc, el) => groupsOf(doc, el).filter((g) => !g.position);
 // What is in group gid: its members and subgroups (deep: and theirs, all the way down)
 export function membersOf(doc, gid, deep = false) {
   return elements(doc).filter((x) => (deep ? groupsOf(doc, x.el).some((g) => g.id === gid) : x.el.groupId === gid));
@@ -212,7 +215,7 @@ export const fewestPlaces = (line) => (line.closed ? 3 : 2); // what a line keep
 export function carry(doc, p, position, bearing = p.bearing) {
   const d = bearing - p.bearing, from = p.position;
   if (!d && from[0] === position[0] && from[1] === position[1]) return;
-  const to = (q) => { const g = inverse(from, q); return g.s ? destination(position, g.azi + d, g.s) : [...position]; };
+  const to = moveAbout(from, position, d);
   for (const { kind, el } of membersOf(doc, p.id)) {
     for (const [o, k] of positionsIn(kind, el)) o[k] = to(o[k]);
     if (kind === 'circle') el.bearing = +norm360(el.bearing + d).toFixed(4);
@@ -220,8 +223,29 @@ export function carry(doc, p, position, bearing = p.bearing) {
   p.position = [...position];
   p.bearing = bearing;
 }
+// The elements ids moved as one piece from position `from` to `to`, along the ellipsoid (moveAbout:
+// each position keeps its distance and bearing from `from`), a group everything in it, each position
+// once: a point carries its shapes; a line's place linked to a point moves that point (once, however
+// many places are on it), but for a line held by a point among them (it goes with its point, pulling no
+// other); any other linked place follows what it is on (a label on an element too).
+export function moveElements(doc, ids, from, to) {
+  const leaves = leavesOf(doc, ids), mv = moveAbout(from, to);
+  const tiedOf = (el) => new Map(doc.links.filter((l) => l.from[0] === el.id).map((l) => [l.from[1], l.to.element]));
+  // the points moved, found first so that a point's shapes go with it only (one also among ids is not
+  // moved a second time): those among ids, and what the linked places of the other lines are on
+  const own = new Set(leaves.filter((x) => x.kind === 'point').map((x) => x.el.id)), points = new Set(own);
+  for (const { kind, el } of leaves) if (kind === 'line' && !own.has(el.groupId)) for (const id of tiedOf(el).values()) points.add(id);
+  for (const { kind, el } of leaves) {
+    if (kind === 'point' || points.has(el.groupId)) continue; // a point's shapes: carried with it
+    const tied = tiedOf(el);
+    positionsIn(kind, el).forEach(([o, k], i) => { if (!tied.has(i)) o[k] = mv(o[k]); });
+  }
+  for (const n of doc.points) if (points.has(n.id)) carry(doc, n, mv(n.position));
+}
 // the point holding element el (its shapes'), or null
 export const holderOf = (doc, el) => (el?.groupId ? doc.points.find((p) => p.id === el.groupId) ?? null : null);
+// whether el is chosen by the selection sel (a Set of IDs): selected, or a shape held by a point selected
+export const isChosen = (doc, sel, el) => sel.has(el.id) || (sel.has(el.groupId) && !!holderOf(doc, el));
 // A label pointing at position, linked to `to` (a target, attach.js) when given: on an element its
 // name, and its text up and to the right with a leader; free, the text there, no leader.
 export function addLabel(doc, position, to = null) {
@@ -277,13 +301,15 @@ export function remove(doc, ids, withMembers = false) {
 
 // The nearest group all of xs ({ el }) are in, or null
 function commonGroup(doc, xs) {
-  const chains = xs.map((x) => groupsOf(doc, x.el).filter((g) => !g.position)); // groups, not points
+  const chains = xs.map((x) => groupsOnlyOf(doc, x.el));
   return chains[0]?.find((g) => chains.every((c) => c.includes(g))) ?? null;
 }
 // A group of the elements ids, in the nearest group they are all in (a subgroup of it). A group among
-// them goes in with what is in it.
+// them goes in with what is in it; a point's shape goes as its point, once (never taken from it).
 export function makeGroup(doc, ids) {
-  const picked = ids.map((id) => find(doc, id)).filter(Boolean), chosen = new Set(picked.filter((x) => x.kind === 'group').map((x) => x.el));
+  const tops = new Map();
+  for (const x of ids.map((id) => find(doc, id)).filter(Boolean)) { const p = holderOf(doc, x.el); tops.set(p?.id ?? x.el.id, p ? { kind: 'point', el: p } : x); }
+  const picked = [...tops.values()], chosen = new Set(picked.filter((x) => x.kind === 'group').map((x) => x.el));
   const xs = picked.filter((x) => !groupsOf(doc, x.el).some((g) => chosen.has(g))); // inside a group chosen: it goes with it
   const g = addGroup(doc, undefined, commonGroup(doc, xs)?.id ?? null);
   for (const x of xs) setGroup(doc, x.el.id, g.id);

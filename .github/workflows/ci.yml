@@ -30,7 +30,7 @@ jobs:
       - run: npm run lint            # ESLint's recommended rules
       - if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
         run: npm outdated || true    # newer library versions, in the log
-      - if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+      - if: github.event_name == 'schedule'   # live data: never in a manual run, a redeploy an outage must not block
         run: npm run data-check      # newer density data shows as a notice
 
   browser:                           # headless Chrome against the live tile providers (draw: without them)
@@ -54,7 +54,7 @@ jobs:
           STRICT: ${{ github.event_name == 'schedule' && '1' || '' }} # a run by hand is a redeploy: a provider's outage must not block it
       - run: npm run draw            # the drawing tools, every request but the site's own aborted: no retry
       - run: npm run ui || (echo "::warning title=Retry::ui passed only on its retry"; sleep 60; npm run ui) # no overlaps, 44 px targets, 390/820/1280 px
-      - if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+      - if: github.event_name == 'schedule'   # live data, weekly only (a manual run is a redeploy)
         run: npm run tiles-check     # known trouble spots: seams, zooms, lakes (live data, weekly)
 
   deploy:

@@ -4,8 +4,8 @@ import { near } from './helpers.mjs';
 
 const { placeKind, placeBox, BOX, BUILT_IN, builtInName } = await import('../../site/draw/place.js');
 const { inverse } = await import('../../site/geodesy.js');
-const { emptyDoc, membersOf, OUTLINES, addPoint, addCircle, addLine, carry } = await import('../../site/draw/document.js');
-const { OUTLINE_NAME, outlinePoints } = await import('../../site/draw/outlines.js');
+const { emptyDoc, membersOf, addPoint, addCircle, addLine, carry } = await import('../../site/draw/document.js');
+const { OUTLINES, OUTLINE_NAME, outlinePoints } = await import('../../site/draw/outlines.js');
 const { presetOf } = await import('../../site/draw/presets.js');
 
 const C = [12, 40];

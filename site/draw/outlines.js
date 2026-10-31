@@ -4,6 +4,7 @@
 
 import { destination } from '../geodesy.js';
 export const OUTLINE_NAME = { rectangle: 'Rectangle', triangle: 'Triangle', ellipse: 'Ellipse', 'aerial-vehicle': 'Aerial vehicle', 'surface-vehicle': 'Surface vehicle', 'underwater-vehicle': 'Underwater vehicle' };
+export const OUTLINES = Object.keys(OUTLINE_NAME); // the Shape tool's outlines, by kind
 
 const R2D = 180 / Math.PI;
 // n + 1 points of a curve f(t), t from 0 to 1

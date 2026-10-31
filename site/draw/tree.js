@@ -4,7 +4,7 @@
 // into a group or before one of their kind, shown or hidden by their eye.
 
 import { h, editInPlace } from '../dom.js';
-import { find, elements, groupsOf, membersOf, label, KIND, setGroup, moveBefore, isShown, canHold, holderOf } from './document.js';
+import { find, elements, groupsOf, membersOf, label, KIND, setGroup, moveBefore, isShown, canHold, isChosen } from './document.js';
 import { labelText } from './labels.js';
 import { lineTrace } from './lines.js';
 import { MOD } from '../keys.js';
@@ -190,7 +190,7 @@ export function createTree(drawing, { facts }) {
   }
 
   // a row selected: its element, or a shape with its point
-  const chosen = (el) => drawing.sel.has(el.id) || !!holderOf(drawing.doc, el) && drawing.sel.has(el.groupId);
+  const chosen = (el) => isChosen(drawing.doc, drawing.sel, el);
   function mark() {
     for (const row of list.querySelectorAll('.drow[data-id]')) row.classList.toggle('sel', chosen(find(drawing.doc, row.dataset.id)?.el ?? {}));
     if (drawing.sel.size) list.querySelector(`[data-id="${CSS.escape([...drawing.sel].at(-1))}"]`)?.scrollIntoView({ block: 'nearest' });

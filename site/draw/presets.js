@@ -5,9 +5,8 @@
 // small file of their own moves them to another browser (Download › Presets, Open a file…). Local
 // storage may be missing or refuse: every access is guarded.
 
-import { emptyDoc } from './document.js';
 import { parse, toFile } from './file.js';
-import { clipOf, paste } from './clipboard.js';
+import { alone } from './clipboard.js';
 import { store } from '../dom.js';
 import { note } from '../menu.js';
 
@@ -24,11 +23,7 @@ export function savePresets(list) {
   if (!store.set(KEY, JSON.stringify(kept(list)))) note('The presets could not be saved in this browser (storage full or turned off)');
 }
 // point id of doc as a preset named name: a drawing of it and its shapes, as they are
-export function presetOf(doc, id, name) {
-  const d = emptyDoc(0);
-  paste(d, clipOf(doc, [id]), (q) => q);
-  return { name, doc: d };
-}
+export const presetOf = (doc, id, name) => ({ name, doc: alone(doc, id) });
 // the presets as a file, and back (what is not a preset left out); null: not a presets file
 export const presetsFile = (list) => `${JSON.stringify({ format: PRESETS_FORMAT, presets: kept(list) }, null, 2)}\n`;
 export function readPresets(text) {

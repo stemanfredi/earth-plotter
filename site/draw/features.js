@@ -2,17 +2,15 @@
 // drawing.js), the values shown on the map (valueFeatures, the draw-value layer) and what the GIS export
 // writes (exportFeatures). Pure, like document.js.
 
-import { circle, sector, reachesPole, ccw, areaOf, destination, inverse } from '../geodesy.js';
+import { circle, reachesPole, ccw, areaOf, destination, inverse } from '../geodesy.js';
 
-import { styleOf, lookOf, offsetOf, isShown, leavesOf, groupsOf, centroid, columnsOf, linkFrom, membersOf, positionsIn, holderOf } from './document.js';
+import { styleOf, lookOf, offsetOf, isShown, leavesOf, groupsOnlyOf, centroid, columnsOf, linkFrom, membersOf, positionsIn, holderOf, isChosen, ringOf } from './document.js';
 import { mercator, unrollTo, metresPerPixel, D2R } from '../geo.js';
 import { lineTrace, anchorsOf, pointsAlong } from './lines.js';
 import { labelText } from './labels.js';
 import { resolve } from './attach.js';
 import { fmtArea, fmtBrg, fmtDist } from '../format.js';
 
-// a circle's polygon: the whole of it, or a sector centred on its bearing
-export const ringOf = (c) => (c.aperture ? sector(c.position, c.radius, c.bearing, c.aperture) : circle(c.position, c.radius));
 // whether a circle can be drawn: one reaching a pole cannot be a polygon
 export const drawable = (c, r = c.radius) => !reachesPole(c.position, r);
 // how far a point's shapes reach from it (m): their farthest place, or circle's rim
@@ -40,8 +38,7 @@ const lineProps = (s) => ({ sc: s.color, so: s.opacity, sw: s.width, dash: s.das
 // length), midPx. want: the parts to make (the others come back empty).
 export function drawParts(doc, sel = new Set(), hover = null, display = {}, want = { base: true, zoom: true, marks: true }) {
   const base = [], zoomed = [], marks = [];
-  const heldBy = new Set(doc.points.filter((p) => sel.has(p.id)).map((p) => p.id)); // the points selected: their shapes with them
-  const markOf = (el) => (!want.marks ? null : sel.has(el.id) || heldBy.has(el.groupId) ? 'sel' : hover === el.id ? 'hover' : null);
+  const markOf = (el) => (!want.marks ? null : isChosen(doc, sel, el) ? 'sel' : hover === el.id ? 'hover' : null); // a point's shapes with it
   // What says "selected": the one element selected shows its handles and its own stroke, untouched
   // (as the drawing tools do: the edge is what one aligns to), a point a small white dot at its
   // centre; among several selected (a point's shapes with it), each shows squares as handles look at
@@ -205,7 +202,7 @@ const m = (v) => +v.toFixed(3);
 // the display units).
 export function exportFeatures(doc, units = 'km') {
   const out = [];
-  const groupName = (el) => groupsOf(doc, el).filter((g) => !g.position).reverse().map((g) => g.name).join(' / '); // the groups it is in, outermost first
+  const groupName = (el) => groupsOnlyOf(doc, el).reverse().map((g) => g.name).join(' / '); // the groups it is in, outermost first
   const base = (kind, el) => ({ kind, id: el.id, name: el.name, group: groupName(el), ...(holderOf(doc, el) ? { point: el.groupId } : {}), ...(el.guide ? { guide: true } : {}) });
   const feature = (properties, geometry) => out.push({ type: 'Feature', properties, geometry });
   for (const n of doc.points) if (isShown(doc, n)) feature({ ...base('point', n), ...flatten(n.properties) }, { type: 'Point', coordinates: n.position });

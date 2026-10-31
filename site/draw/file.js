@@ -348,7 +348,7 @@ export function toFile(doc, v = null) {
     format: FORMAT, version: VERSION, created: doc.created, modified: doc.modified,
     meta: lean(doc.meta, META_D),
     view: v ? lean({ center: v.center && pos(v.center), zoom: v.zoom === null ? null : r4(v.zoom), bearing: r4(v.bearing), layers: v.layers && v.layers.map((l) => ({ ...l })),
-      data: v.data && lean({ colour: v.data.colour && { ...v.data.colour }, arrows: v.data.arrows && { ...v.data.arrows }, time: v.data.time, depth: v.data.depth }, VIEW_DATA_D),
+      data: v.data ? lean({ colour: v.data.colour && { ...v.data.colour }, arrows: v.data.arrows && { ...v.data.arrows }, time: v.data.time, depth: v.data.depth }, VIEW_DATA_D) : {}, // none read: none written (not null)
       units: v.units, bearings: v.bearings === true }, { ...VIEW_D, data: {} }) : null,
     look: lookOut(doc.look),
     groups: doc.groups.map((g) => lean({ id: g.id, groupId: g.groupId, name: g.name, properties: g.properties.map((p) => ({ ...p })), visible: g.visible },

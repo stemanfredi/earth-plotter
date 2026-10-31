@@ -25,7 +25,7 @@ import { norm360, samePosition } from '../geo.js';
 import { lineTrace, pointsAlong } from './lines.js';
 import { addPoint, addDot, addLine, addGroup, elements, newId, idsOf, label, remove, setLink, carry, emptyDoc } from './document.js';
 import { BUILT_IN, build, placeCopy } from './place.js';
-import { clipOf, paste } from './clipboard.js';
+import { alone } from './clipboard.js';
 
 // a drawing's rules of each kind
 export const distributions = (doc) => doc.rules.filter((r) => r.kind === 'distribute');
@@ -260,12 +260,6 @@ function templateOf(a, copy = null) {
   build(doc, [0, 0], kind === 'circle' && a.aperture ? 'sector' : kind, a.radius, { aperture: a.aperture }).properties = []; // a copy is the rule's, not a preset's
   return doc;
 }
-// a point and its shapes as a drawing of their own (a copy already made, as a template)
-function alone(doc, p) {
-  const d = emptyDoc(0);
-  paste(d, clipOf(doc, [p.id]), (q) => q);
-  return d;
-}
 // the distribution's copies of tpl made at places, into its Copies group (or the group given): each
 // facing away from what it follows
 function place(doc, a, points, tpl, groupId = a.copiesId) {
@@ -316,7 +310,7 @@ export function editDistribution(doc, id, params) {
     return { distribution: a, remade: false };
   }
   const first = byId.get(a.points.find((x) => byId.has(x.pointId))?.pointId);
-  const tpl = same && first ? alone(doc, first) : templateOf(a, params.copy);
+  const tpl = same && first ? alone(doc, first.id) : templateOf(a, params.copy);
   const old = new Set(a.points.map((x) => x.pointId));
   const built = connections(doc).filter((c) => c.pointIds.some((n) => old.has(n))).map((c) => unconnect(doc, c.id, true));
   // its Copies deleted: the new copies go where the old ones were

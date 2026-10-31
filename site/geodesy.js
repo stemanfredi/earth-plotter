@@ -21,6 +21,12 @@ export function destination(p, azi, s) {
   const d = G.Direct(p[1], p[0], azi, s, MASK);
   return [d.lon2, d.lat2];
 }
+// One rigid move on the ellipsoid: a position as it goes when the anchor a goes to b, turned d degrees
+// about it: its geodesic distance from the anchor kept, its bearing from it turned by d (a shape keeps
+// its size and form at any latitude, as a move in the projection would not)
+export function moveAbout(a, b, d = 0) {
+  return (q) => { const g = inverse(a, q); return g.s ? destination(b, g.azi + d, g.s) : [...b]; };
+}
 
 // a local planar frame about a point (metres east, north), scaled on the ellipsoid there: for what
 // spans a few tens of km at most

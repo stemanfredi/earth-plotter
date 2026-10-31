@@ -2,7 +2,7 @@
 // layers of layers.js from features.js and labels.js, with the placing tools, clicks, hit testing,
 // dragging and the box (Shift-drag); saved in this browser as it changes (saving.js).
 
-import { emptyDoc, addLine, addLabel, find, elements, leavesOf, positionsIn, isShown, nextName, KIND, LABEL_OFFSET, lookOf, setLook, offsetOf, MAX_RADIUS, fewestPlaces, linkFrom, setLink, carry, holderOf, canHold, setGroup } from './document.js';
+import { emptyDoc, addLine, addLabel, find, elements, positionsIn, isShown, nextName, KIND, LABEL_OFFSET, lookOf, setLook, offsetOf, MAX_RADIUS, fewestPlaces, linkFrom, setLink, carry, holderOf, canHold, setGroup, moveElements, isChosen, ringOf } from './document.js';
 import { typing } from '../dom.js';
 import { placeKind, placeBox, build, BOX } from './place.js';
 import { norm360 } from '../geo.js';
@@ -10,14 +10,14 @@ import { serialise } from './file.js';
 import { DrawStore, settleGeometry } from './store.js';
 import { Saving } from './saving.js';
 import { addIcons, measureText, HIT_LAYERS, MARK_LAYERS, HANDLE_LAYERS, CURSOR, FINGER } from './layers.js';
-import { drawParts, GEOMETRY, valueFeatures, ringOf } from './features.js';
+import { drawParts, GEOMETRY, valueFeatures } from './features.js';
 import { lineTrace, nearestAlong } from './lines.js';
 import { labelFeatures } from './labels.js';
-import { inverse, sector, circle } from '../geodesy.js';
+import { inverse, moveAbout } from '../geodesy.js';
 import { snapAt, stepped, neighbours, RADIUS as SNAP_RADIUS } from './snap.js';
 import { attachTo, insertPlace, deletePlace, refNear, lineRef, resolve } from './attach.js';
 import { clipOf, paste, centreOf } from './clipboard.js';
-import { radiusTo, bearingTo, sectorEdgeTo, moved } from './drag.js';
+import { radiusTo, bearingTo, sectorEdgeTo } from './drag.js';
 
 // the ID of the line being drawn, as measured for its values: always the same, so the traces cached by
 // ID (lines.js) keep one entry for it, not one for each move of the pointer
@@ -149,7 +149,7 @@ export class Drawing extends DrawStore {
     this.renderMarks();
   }
   // whether id is selected: itself, or a shape with its point
-  chosen(id) { const x = find(this.doc, id); return this.sel.has(id) || (!!holderOf(this.doc, x?.el) && this.sel.has(x.el.groupId)); }
+  chosen(id) { const x = find(this.doc, id); return !!x && isChosen(this.doc, this.sel, x.el); }
   // the lines drawn beside their real geometry (Offset): their IDs
   offset() { return this.doc.lines.filter((s) => isShown(this.doc, s) && offsetOf(this.doc, s)).map((s) => s.id); }
   // the IDs under a screen point: those right under it first, then those within pad px (lines drawn
@@ -297,7 +297,8 @@ export class Drawing extends DrawStore {
   }
 
   // Copy, paste, duplicate (clipboard.js): the selection kept; pasted with its middle at the pointer
-  // (else the map's centre), or duplicated beside itself (20 px on screen); one undo step, the copy selected
+  // (else the map's centre), moved there along the ellipsoid (moveAbout: it keeps its size at any
+  // latitude), or duplicated beside itself (20 px on screen); one undo step, the copy selected
   copy() {
     if (!this.sel.size) return 0;
     this.clip = clipOf(this.doc, [...this.sel]);
@@ -309,8 +310,9 @@ export class Drawing extends DrawStore {
     const pt = at ?? this.lastPoint ?? this.map.project(this.map.getCenter());
     const to = this.map.unproject(pt);
     let made = [];
-    this.change((doc) => { made = paste(doc, clip, (q) => moved(q, c, [to.lng, to.lat])); });
-    this.select(made.map((x) => x.el.id));
+    this.change((doc) => { made = paste(doc, clip, moveAbout(c, [to.lng, to.lat])); });
+    const ids = new Set(made.map((x) => x.el.id));
+    this.select(made.filter((x) => !ids.has(x.el.groupId)).map((x) => x.el.id)); // a point, its shapes with it (as a click selects)
     return made.length;
   }
   duplicate() {
@@ -509,7 +511,7 @@ export class Drawing extends DrawStore {
     const sec = this.draftSector();
     if (sec) {
       const out = [line([sec.centre, sec.first])];
-      if (this.draft.pts[1] && sec.r > 0) out.push(line(sec.aperture ? sector(sec.centre, sec.r, sec.bearing, sec.aperture) : circle(sec.centre, sec.r)));
+      if (this.draft.pts[1] && sec.r > 0) out.push(line(ringOf({ position: sec.centre, radius: sec.r, bearing: sec.bearing, aperture: sec.aperture })));
       return out;
     }
     const l = this.draftLine();
@@ -633,17 +635,17 @@ export class Drawing extends DrawStore {
       case 'move': return this.moveSelection(doc, d.start, p);
       case 'anchor': { // a free label's point, or where along the edge (a line's leg) it points
         const to = linkFrom(doc, el.id)?.to, x = to && find(doc, to.element);
-        if (!to) el.position = moved(el.position, d.start, p);
+        if (!to) el.position = moveAbout(d.start, p)(el.position);
         else if (x) setLink(doc, el.id, 0, refNear(doc, x, p) ?? to);
         return;
       }
       case 'point': { // a line's place linked to a point's centre: the point moves (its shapes with it), snapped (not onto itself, its shapes or its lines)
         const n = point(d.ref), mine = new Set([n.id, ...doc.links.filter((l) => l.to.element === n.id).map((l) => l.from[0]), ...elements(doc).filter((x) => x.el.groupId === n.id).map((x) => x.el.id)]);
-        carry(doc, n, this.snapped(pt, e, moved(n.position, d.start, p), { exclude: mine }).position);
+        carry(doc, n, this.snapped(pt, e, moveAbout(d.start, p)(n.position), { exclude: mine }).position);
         return;
       }
       case 'vertex': { // a line's place, snapped; on something to attach to, linked there (Alt: free)
-        const i = +d.ref, r = this.snapped(pt, e, moved(el.points[i], d.start, p), { exclude: new Set([el.id]), ...neighbours(el.points, i) });
+        const i = +d.ref, r = this.snapped(pt, e, moveAbout(d.start, p)(el.points[i]), { exclude: new Set([el.id]), ...neighbours(el.points, i) });
         this.putPlace(doc, { kind: 'line', el }, i, { position: r.position, to: attachTo(doc, r.to) });
         return;
       }
@@ -660,26 +662,12 @@ export class Drawing extends DrawStore {
     const r = this.snapFor(pt, e, { exclude: opts.exclude });
     return r.kind ? r : { position: at, to: null };
   }
-  // the selection moved by the pointer's displacement (a group: everything in it), each position once:
-  // a point carries its shapes; a line's place linked moves what it is on when that is a point (once,
-  // however many places are on it), else follows it. Labels: alone in the selection, their text moves
-  // (its offset on screen); with other elements, a free one moves with them, one on an element follows it.
+  // the selection moved with the pointer, about where it was grabbed (document.js moveElements: the
+  // place grabbed stays under the pointer); labels alone in it: their text moves (its offset on screen)
   moveSelection(doc, start, p) {
-    const onlyLabels = [...this.sel].every((id) => find(doc, id)?.kind === 'label');
-    const a = this.map.project(start), b = this.map.project(p), mv = (pos) => moved(pos, start, p);
-    const leaves = leavesOf(doc, this.sel), tiedOf = (el) => new Map(doc.links.filter((l) => l.from[0] === el.id).map((l) => [l.from[1], l.to.element]));
-    // the points moved: selected, or what a selected line's linked place is on; found first, so that a
-    // point's shapes go with it only (one also selected is not moved a second time)
-    const points = new Set(leaves.flatMap((x) => (x.kind === 'point' ? [x.el.id] : x.kind === 'line' ? [...tiedOf(x.el).values()] : [])));
-    for (const { kind, el } of leaves) {
-      if (kind === 'point' || points.has(el.groupId)) continue; // a point's shapes: carried with it
-      if (kind === 'label' && onlyLabels) el.offset = [Math.round(el.offset[0] + b.x - a.x), Math.round(el.offset[1] + b.y - a.y)];
-      else {
-        const tied = tiedOf(el); // a place linked stays on what it is on (a line's: that moves, above; a label's follows it)
-        positionsIn(kind, el).forEach(([o, k], i) => { if (!tied.has(i)) o[k] = mv(o[k]); });
-      }
-    }
-    for (const n of doc.points) if (points.has(n.id)) carry(doc, n, mv(n.position));
+    if (![...this.sel].every((id) => find(doc, id)?.kind === 'label')) return moveElements(doc, this.sel, start, p);
+    const a = this.map.project(start), b = this.map.project(p);
+    for (const id of this.sel) { const { el } = find(doc, id); el.offset = [Math.round(el.offset[0] + b.x - a.x), Math.round(el.offset[1] + b.y - a.y)]; }
   }
 
   // Box select (Select's other kind, B): the next drag on the map, a mouse's or a finger's, draws the

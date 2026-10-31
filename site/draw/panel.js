@@ -6,7 +6,7 @@
 import { h, svg, typing, morph, animate, NARROW } from '../dom.js';
 import { ask, askText, note } from '../menu.js';
 import { FINGER } from './layers.js';
-import { find, elements, groupsOf, membersOf, leavesOf, canHold, label, KIND, lookOf, lookField, setLook, LOOK_FIELDS, SYMBOLS, LABEL_OFFSET, makeGroup, setGroup, moveStep, MAX_RADIUS, MAX_OFFSET, STROKE_WIDTH, linkFrom, setLink, fewestPlaces, carry, holderOf } from './document.js';
+import { find, elements, groupsOf, membersOf, leavesOf, canHold, label, KIND, lookOf, lookField, setLook, LOOK_FIELDS, SYMBOLS, LABEL_OFFSET, makeGroup, setGroup, moveStep, MAX_RADIUS, MAX_OFFSET, STROKE_WIDTH, linkFrom, setLink, fewestPlaces, carry, holderOf, ringOf } from './document.js';
 import { insertPlace, deletePlace, reattach, partName, splitLine, lineRef, resolve, along } from './attach.js';
 import { labelValues, labelText, TOKENS } from './labels.js';
 import { lineTrace, totals, breakdown, nearestAlong } from './lines.js';
@@ -14,7 +14,7 @@ import { profileCsv } from './profile.js';
 import { DISTRIBUTE_D, distribute, lines, planConnection, makeDistribution, editDistribution, connect, reconnect, alongTrace, alongOf,
   distributions, connections, ruleOf, MAX_COPIES, MAX_TREE } from './generator.js';
 import { BUILT_IN, builtInName } from './place.js';
-import { boundsOf, drawable, ringOf, reachOf } from './features.js';
+import { boundsOf, drawable, reachOf } from './features.js';
 import { inverse, destination, areaOf } from '../geodesy.js';
 import { norm180, norm360 } from '../geo.js';
 import { fields, choice, select, check } from '../fields.js';
@@ -561,7 +561,6 @@ export function drawView(root, ctx) {
   function severalInspector(xs) {
     const counts = {};
     for (const x of xs) counts[x.kind] = (counts[x.kind] || 0) + 1;
-    const ids = xs.map((x) => x.el.id);
     // two points: how far apart, and the bearing from the first to the second
     const between = xs.length === 2 && xs.every((x) => x.kind === 'point') ? inverse(xs[0].el.position, xs[1].el.position) : null;
     title = `${xs.length} elements · ${Object.entries(counts).map(([k, n]) => plural(n, KIND[k].name.toLowerCase())).join(', ')}`;
@@ -571,7 +570,7 @@ export function drawView(root, ctx) {
     flat(xs).some((x) => x.kind === 'label') ? leaderRow(flat(xs).filter((x) => x.kind === 'label')) : null,
     actionsRow(connectBtn(flat(xs))),
     lookBlock(xs),
-    groupRow(ids),
+    groupRow(tops(xs)), // a point's shapes stay its
   ];
   }
 

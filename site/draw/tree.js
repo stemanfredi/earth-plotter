@@ -3,7 +3,7 @@
 // (Shift: a range; Ctrl/⌘: add or remove), hovered on the map, renamed (a double-click, F2), dragged
 // into a group or before one of their kind, shown or hidden by their eye.
 
-import { h } from '../dom.js';
+import { h, editInPlace } from '../dom.js';
 import { find, elements, groupsOf, membersOf, label, KIND, pointKind, mainOutline, followedPart, setGroup, moveBefore, isShown } from './document.js';
 import { labelText } from './labels.js';
 import { builtInName } from './place.js';
@@ -11,7 +11,7 @@ import { lineTrace } from './lines.js';
 import { areaOf, pathOf } from '../geodesy.js';
 import { MOD } from '../keys.js';
 import { fmtArea, fmtDist, plural } from '../format.js';
-import { KIND_ICON, UI_ICON, POINT_ICON } from './icons.js';
+import { icon, KIND_ICON, UI_ICON, POINT_ICON } from '../icons.js';
 
 const FILTER_FROM = 30; // the filter field appears past this many elements
 // what a total counts: "15 points, 10 with radii · 3 lines, 12.4 km · 2 areas"
@@ -29,7 +29,7 @@ export const groupPath = (doc, g) => [...groupsOf(doc, g).reverse(), g].map((x) 
 const showAll = (drawing, v, xs) => drawing.change((doc) => { for (const x of xs) find(doc, x.el.id).el.visible = v; });
 // An eye for all of xs() (what: what they are, for its label): every one shown, a click hides them
 // all; some or none, a click shows them all. render() when they change.
-export function eyeFor(drawing, icon, xs, what) {
+export function eyeFor(drawing, xs, what) {
   const seen = (x) => x.el.visible;
   const b = h('button', { type: 'button', class: 'deye', onclick: () => { const all = xs(); showAll(drawing, !all.every(seen), all); } });
   b.render = () => {
@@ -42,12 +42,11 @@ export function eyeFor(drawing, icon, xs, what) {
   return b;
 }
 
-// drawing (drawing.js); ctx: { icon, units() }; facts(): the totals computed for this rendering;
+// drawing (drawing.js); facts(): the totals computed for this rendering;
 // Returns { box, render(), mark() (the selection marked,
 // the last selected scrolled to), shown() (the rows, in order), step(dir) (↑ ↓:
 // the next row selected; false if none), rename(id) }.
-export function createTree(drawing, ctx, { facts }) {
-  const { icon } = ctx;
+export function createTree(drawing, { facts }) {
   let anchor = null; // the row a Shift-click range starts from
   let filter = '';
   const folded = new Set(); // groups folded (this session)
@@ -57,7 +56,7 @@ export function createTree(drawing, ctx, { facts }) {
   // the list's head: the drawing's title, the eye for every element listed, its fold; above the list, past FILTER_FROM elements, the filter and
   // Select all shown
   const listed = () => (filter ? shown() : drawElements());
-  const eyeAll = eyeFor(drawing, icon, listed, 'listed');
+  const eyeAll = eyeFor(drawing, listed, 'listed');
   const filterRow = h('div', { class: 'dfilter' }, filterInput, selectShown);
   // the hover ends when the pointer leaves the list: a row rebuilt under it never says it was left
   const list = h('ul', { class: 'dlist', 'aria-label': 'Elements', onpointerleave: () => drawing.setHover(null) });
@@ -87,10 +86,10 @@ export function createTree(drawing, ctx, { facts }) {
   }
   function shown() {
     const f = filter.trim().toLowerCase();
-    return ordered().filter((x) => !f || shownName(drawing.doc, x.kind, x.el, ctx.units()).toLowerCase().includes(f) || x.el.properties.some((p) => p.value.toLowerCase().includes(f)));
+    return ordered().filter((x) => !f || shownName(drawing.doc, x.kind, x.el, drawing.units()).toLowerCase().includes(f) || x.el.properties.some((p) => p.value.toLowerCase().includes(f)));
   }
   function value(kind, el) {
-    const u = ctx.units();
+    const u = drawing.units();
     if (kind === 'point') {
       // its largest outline's size, its first filled round part's radius (its kind: its icon and name)
       const o = mainOutline(el)?.part, r = el.parts[followedPart(el)];
@@ -108,7 +107,7 @@ export function createTree(drawing, ctx, { facts }) {
   // one row of the list: a group's fold (or its room), its kind, its name, a short value, its eye (shown
   // or hidden: its own flag), dim while not drawn (itself or a group it is in hidden); selected by a click (Ctrl/⌘: adds or removes), outlined on the map while the pointer is
   // over it
-  function elementRow({ id, icon, kindIcon, title, name, value = '', valueTitle, visible, drawn = visible, selected }, on, more = {}) {
+  function elementRow({ id, kindIcon, title, name, value = '', valueTitle, visible, drawn = visible, selected }, on, more = {}) {
     return h('li', { class: `drow${selected ? ' sel' : ''}${drawn ? '' : ' dim'}${more.classes ? ` ${more.classes}` : ''}`, 'data-id': id, draggable: 'true',
       onpointerenter: () => on.hover(id), onpointerleave: () => on.hover(null) },
     more.fold || h('span', { class: 'dfold none', 'aria-hidden': 'true' }),
@@ -123,7 +122,7 @@ export function createTree(drawing, ctx, { facts }) {
     const fold = kind === 'group' ? h('button', { type: 'button', class: 'dfold', 'aria-expanded': String(!folded.has(id)), 'aria-label': `Show the members of ${label(kind, el)}`,
       onclick: () => { if (folded.has(id)) folded.delete(id); else folded.add(id); render(); } }) : null;
     const t = kind === 'group' && facts().totals.groups.get(id);
-    return elementRow({ id, icon, kindIcon: iconOf(kind, el), title: kindTitle(kind, el), name: shownName(drawing.doc, kind, el, ctx.units()), value: value(kind, el), valueTitle: t ? countOf(t, ctx.units()) : undefined,
+    return elementRow({ id, kindIcon: iconOf(kind, el), title: kindTitle(kind, el), name: shownName(drawing.doc, kind, el, drawing.units()), value: value(kind, el), valueTitle: t ? countOf(t, drawing.units()) : undefined,
       visible: el.visible, drawn: isShown(drawing.doc, el), selected: drawing.sel.has(id) }, {
       select: (e) => clickRow(id, e), hover: (x) => drawing.setHover(x),
       visible: (v) => drawing.change((doc) => { find(doc, id).el.visible = v; }),
@@ -138,7 +137,7 @@ export function createTree(drawing, ctx, { facts }) {
     eyeAll.render();
     rootName.textContent = drawing.doc.meta.title || 'Untitled drawing';
     rootVal.textContent = plural(drawElements().filter((x) => x.kind !== 'group').length, 'element');
-    rootVal.title = countOf(facts().totals.all, ctx.units());
+    rootVal.title = countOf(facts().totals.all, drawing.units());
     if (!rows.length) list.append(h('li', { class: 'empty' }, filter ? 'Nothing matches the filter.' : 'Nothing drawn yet: pick a tool, then click on the map.'));
   }
   // A row dragged (drawing-ui.md §4): dropped on a group's row, into that group; on a row of its
@@ -174,38 +173,21 @@ export function createTree(drawing, ctx, { facts }) {
   function rename(id) {
     const row = list.querySelector(`[data-id="${CSS.escape(id)}"]`), x = find(drawing.doc, id);
     if (!row || !x) return;
-    const btn = row.querySelector('.dname'), key = x.kind === 'label' ? 'text' : 'name'; // a label is its text
-    const input = h('input', { class: 'dname', value: x.el[key], 'aria-label': key === 'text' ? 'Text' : 'Name' });
-    let done = false;
-    const finish = (apply) => {
-      if (done) return;
-      done = true;
-      if (apply && input.value !== x.el[key]) drawing.change((doc) => { find(doc, id).el[key] = input.value; });
+    const key = x.kind === 'label' ? 'text' : 'name'; // a label is its text
+    editInPlace(row.querySelector('.dname'), x.el[key], { 'aria-label': key === 'text' ? 'Text' : 'Name' }, (v) => {
+      if (v !== null && v !== x.el[key]) drawing.change((doc) => { find(doc, id).el[key] = v; });
       else render();
-    };
-    input.addEventListener('keydown', (e) => { if (e.key === 'Enter') finish(true); else if (e.key === 'Escape') { e.stopPropagation(); finish(false); } });
-    input.addEventListener('blur', () => finish(true));
-    btn.replaceWith(input);
-    input.focus();
-    input.select();
+    });
   }
 
   // the drawing renamed in its row, as an element is: its title
   function renameDrawing() {
-    const input = h('input', { class: 'dname', value: drawing.doc.meta.title || '', placeholder: 'Untitled drawing', 'aria-label': 'Title' });
-    let done = false;
-    const finish = (apply) => {
-      if (done) return;
-      done = true;
+    const title = drawing.doc.meta.title || '';
+    const input = editInPlace(rootName, title, { placeholder: 'Untitled drawing', 'aria-label': 'Title' }, (v) => {
       input.replaceWith(rootName);
-      if (apply && input.value !== (drawing.doc.meta.title || '')) drawing.change((doc) => { doc.meta.title = input.value; });
+      if (v !== null && v !== title) drawing.change((doc) => { doc.meta.title = v; });
       else render();
-    };
-    input.addEventListener('keydown', (e) => { if (e.key === 'Enter') finish(true); else if (e.key === 'Escape') { e.stopPropagation(); finish(false); } });
-    input.addEventListener('blur', () => finish(true));
-    rootName.replaceWith(input);
-    input.focus();
-    input.select();
+    });
   }
 
   function mark() {

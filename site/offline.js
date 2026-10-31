@@ -4,7 +4,9 @@
 // and a fresh clipping worker the files of the cut elevation; the service worker (sw.js) answers
 // the map from the finished areas. Only the hosts in hosts.js OFFLINE are kept: never Esri's.
 
-import { h } from './dom.js';
+import { h, editInPlace } from './dom.js';
+import { slug } from './format.js';
+import { icon, UI_ICON } from './icons.js';
 import { HOSTS, OFFLINE_PREFIXES } from './hosts.js';
 import { OMT_TILEJSON, DEM_TILES, DEM_LAND_MAX, DEM_SEA_MAX } from './catalog.js';
 import { FONTS, GLYPHS, SEAMARK_TILES, SEAMARKS_MIN, ISOBATH_MAX } from './style.js';
@@ -259,15 +261,14 @@ async function openAreaFile(file) {
 }
 
 // ---- the dialog: Download › Offline areas… ---------------------------------------------------------
-// map; fit(bounds): the map fitted to an area (Show); icon(name): UI_ICON's svg (draw/icons.js); download(blob, name).
+// map; fit(bounds): the map fitted to an area (Show); download(blob, name).
 // Returns { open(), openFile(file) (an area's file, from the bar's Open or a drop) }
-export function offlineDialog({ map, fit, icon, download }) {
+export function offlineDialog({ map, fit, download }) {
   const el = h('dialog', { class: 'offline', 'aria-labelledby': 'offline-title' });
   document.body.append(el);
   let saving = null; // the AbortController of the area being saved or opened
   // what happened, kept across renders (a live region made anew is not read out); busy while saving
   const status = h('p', { class: 'ostatus', role: 'status' });
-  const slug = (t) => t.normalize('NFKD').replace(/[^\p{L}\p{N}\- ]+/gu, '').trim().replace(/\s+/g, '-').slice(0, 60) || 'area';
   const supported = 'serviceWorker' in navigator && 'caches' in self;
   // the year only when it is not this one (as a mail or file list says it)
   const when = (t) => { const d = new Date(t); return d.toLocaleDateString([], { day: 'numeric', month: 'short', year: d.getFullYear() === new Date().getFullYear() ? undefined : 'numeric' }); };
@@ -298,31 +299,20 @@ export function offlineDialog({ map, fit, icon, download }) {
       onclick: (e) => { clearTimeout(timer); timer = setTimeout(() => { el.close(); fit(a.bounds); }, e.detail ? 250 : 0); }, // a key at once; a click waits for a second one
       ondblclick: () => { clearTimeout(timer); rename(); },
       onkeydown: (e) => { if (e.key === 'F2') { e.preventDefault(); rename(); } } }, a.name);
-    function rename() {
-      const input = h('input', { class: 'dname', value: a.name, 'aria-label': 'Name' });
-      let done = false;
-      const finish = async (apply) => {
-        if (done) return;
-        done = true;
-        const v = input.value.trim();
-        if (apply && v && v !== a.name) await renameArea(a.id, v);
-        await render();
-      };
-      input.addEventListener('keydown', (e) => { if (e.key === 'Enter') finish(true); else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); finish(false); } });
-      input.addEventListener('blur', () => finish(true));
-      name.replaceWith(input);
-      input.focus();
-      input.select();
-    }
+    const rename = () => editInPlace(name, a.name, { 'aria-label': 'Name' }, async (v) => {
+      v = v?.trim();
+      if (v && v !== a.name) await renameArea(a.id, v);
+      await render();
+    });
     return h('li', {}, name,
       h('span', { class: 'val' }, `${when(a.saved)} · zooms ${a.from}–${a.top} · ${MB(a.bytes)}`),
       h('button', { type: 'button', class: 'hact', 'aria-label': `Download ${a.name}`, title: 'Download it as a file: a copy that outlives this browser\'s storage, to open here or on another device (without the seamarks)', disabled: !!saving,
-        onclick: async (e) => { const b = e.currentTarget; b.disabled = true; try { download(await areaFile(a.id), `offline-area-${slug(a.name)}.zip`); } catch (err) { say(`Not written: ${err.message}.`, true); } b.disabled = false; } }, icon('download')),
+        onclick: async (e) => { const b = e.currentTarget; b.disabled = true; try { download(await areaFile(a.id), `offline-area-${slug(a.name) || 'area'}.zip`); } catch (err) { say(`Not written: ${err.message}.`, true); } b.disabled = false; } }, icon(...UI_ICON.download)),
       noConnection() ? '' : h('button', { type: 'button', class: 'hact', 'aria-label': `Update ${a.name}`, title: 'Update: save it again, from the providers', disabled: !!saving || !sw(),
-        onclick: () => saveIt({ bounds: a.bounds, from: a.from, top: a.top, name: a.name }, a.id) }, icon('update')),
+        onclick: () => saveIt({ bounds: a.bounds, from: a.from, top: a.top, name: a.name }, a.id) }, icon(...UI_ICON.update)),
       h('button', { type: 'button', class: 'hact del', 'aria-label': `Delete ${a.name}`, title: 'Delete for good', disabled: !!saving, onclick: async () => {
         if (await ask('Delete the area', `Delete “${a.name}” for good? It cannot be brought back.`, [['yes', 'Delete']])) { await deleteArea(a.id); await refresh(); }
-      } }, icon('delete')));
+      } }, icon(...UI_ICON.delete)));
   }
   async function render() {
     const areas = await savedAreas();

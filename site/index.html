@@ -41,6 +41,7 @@
   <link rel="modulepreload" href="clip.js">
   <link rel="modulepreload" href="gebco.js">
   <link rel="modulepreload" href="zarr.js">
+  <link rel="modulepreload" href="zip.js">
   <link rel="modulepreload" href="legend.js">
   <link rel="modulepreload" href="draw/drawing.js">
   <link rel="modulepreload" href="draw/document.js">
@@ -75,7 +76,6 @@
   <link rel="modulepreload" href="frame.js">
   <link rel="modulepreload" href="search.js">
   <link rel="modulepreload" href="offline.js">
-  <link rel="modulepreload" href="zip.js">
   <link rel="modulepreload" href="gis.js">
   <link rel="modulepreload" href="export.js">
   <link rel="modulepreload" href="geotiff.js">
@@ -113,7 +113,7 @@
        its right the map's controls: my position, north when turned (zoom with a mouse; find a place too,
        on a tablet) -->
   <div id="foot" class="foot">
-    <div id="footl" class="footl"><div id="legends" class="legends" aria-label="Legends"></div></div>
+    <div id="footl" class="footl"><div id="legends" class="legends" role="group" aria-label="Legends"></div></div>
     <div id="mapctl" class="mapctl" role="group" aria-label="Map controls">
       <button type="button" id="b-find" aria-label="Find a place" aria-expanded="false"><i data-icon="search"></i></button>
       <button type="button" id="zoom-in" aria-label="Zoom in" title="Zoom in"><i data-icon="plus"></i></button>

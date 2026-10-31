@@ -1,6 +1,6 @@
 import * as maplibregl from './vendor/maplibre-gl.mjs';
 import mlcontour from './vendor/maplibre-contour.mjs';
-import { GROUPS, ITEMS, GIBS, DEM_TILES, DEM_SEA_MAX, DEPTH_SOURCES, DEM_LAND_MAX, OMT_TILEJSON, isobathSteps, DEPTH_SCHEMES, NO_DEPTH, DENSITY, ESRI_META, gibsTiles, gibsDomainUrl, domainEnd, densityTiles, CMEMS, CMEMS_DEPTHS, drawsOf, CLASS_LABELS, EMODNET_DEPTH_STOPS, SEAGRASS } from './catalog.js';
+import { GROUPS, ITEMS, GIBS, DEM_TILES, DEM_SEA_MAX, DEPTH_ZMAX, DEPTH_SOURCES, DEM_LAND_MAX, OMT_TILEJSON, ISOBATH_STEPS, DEPTH_SCHEMES, NO_DEPTH, DENSITY, ESRI_META, gibsTiles, gibsDomainUrl, domainEnd, densityTiles, CMEMS, CMEMS_DEPTHS, drawsOf, CLASS_LABELS, EMODNET_DEPTH_STOPS, SEAGRASS } from './catalog.js';
 import { buildStyle, depthRamp, OPACITY_PROP, SEA_PICTURES, LOCATION_LAYERS, INK, esriAttribution } from './style.js';
 import { cmemsTile, partTimes, partLevels, domainOf, cmemsLegend } from './cmems.js';
 import { workerClipper } from './clip.js';
@@ -19,6 +19,7 @@ import { $, h, svg, typing, NARROW, COMPACT, store, animate } from './dom.js';
 import { keyEntry, openKey, keyList } from './keys.js';
 import { note } from './menu.js';
 import { createFrame } from './frame.js';
+import { select } from './fields.js';
 import { search } from './search.js';
 import { gisExport } from './gis.js';
 import { chartCanvas, chartPng } from './png.js';
@@ -44,8 +45,6 @@ const hour = (t) => Math.floor(t / 36e5) * 36e5; // the hour a time falls in (ms
 const dayOf = (t) => new Date(t).toISOString().slice(0, 10); // its day (UTC)
 
 // ---- state (mirrored in the URL hash) ---------------------------------------
-// the Layers groups open: kept in this browser, as the panel's tab (frame.js), not in the link
-const GROUPS_OPEN = 'charts.groups.open', groupsOpen = store.json(GROUPS_OPEN);
 // a layer as it starts: its first variant, its own opacity, a density dataset's default period
 const defaultsOf = (it) => ({ variant: variantsOf(it)?.[0], opacity: it.opacity ?? undefined, period: DENSITY[it.id]?.defaultPeriod });
 const state = {
@@ -56,7 +55,6 @@ const state = {
   depth: 0, // Copernicus layers with depth: metres below the surface (CMEMS_DEPTHS)
   period: Object.fromEntries(Object.keys(DENSITY).map((id) => [id, defaultsOf(byId[id]).period])), // density datasets
   colour: '', arrows: '', // Ocean data: the entry drawing colours, the one drawing arrows ('item:variant', '' for none)
-  open: new Set(Array.isArray(groupsOpen) ? groupsOpen.filter((g) => GROUPS.some((x) => x.id === g)) : ['base', 'sea']),
 };
 let view = { zoom: 4, center: [12, 41], bearing: 0 };
 // the display's units and each leg's bearing beside its length (the switch beside the scale, the
@@ -66,7 +64,7 @@ const display = { units: 'km', bearings: false };
 function readHash() {
   const q = new URLSearchParams(location.hash.slice(1));
   const v = (q.get('v') || '').split('/').map(Number);
-  if (v.length >= 3 && v.every(Number.isFinite) && Math.abs(v[1]) <= 90) view = { zoom: v[0], center: [v[2], v[1]], bearing: v[3] || 0 }; // a latitude past the pole would throw in MapLibre
+  if (v.length >= 3 && v.every(Number.isFinite) && Math.abs(v[1]) <= 90) view = { zoom: v[0], center: [norm180(v[2]), v[1]], bearing: v[3] || 0 }; // a latitude past the pole would throw in MapLibre; a longitude past 180° is the same place
   if (q.has('on')) state.on = new Set(q.get('on').split(',').filter((id) => byId[id] && byId[id].group !== 'data')); // the data layers: col= and arr= (applyData)
   for (const kv of (q.get('var') || '').split(',')) {
     const { id: k, variant: val } = entryOf(kv) ?? {};
@@ -95,8 +93,8 @@ function writeHash() {
   if (ready) hashTimer = setTimeout(writeHashNow, 250);
 }
 // the address: the view as a drawing's file has it (viewOf, written by viewToAddress: one grammar), the
-// time and the depth only while a layer uses them; then the page's own, the groups open in Layers and
-// whether Layers is the left panel's tab
+// time and the depth only while a layer uses them; nothing of the page's own (the panels, the groups
+// open: kept in this browser)
 function writeHashNow() {
   clearTimeout(hashTimer);
   if (!ready) return;
@@ -162,7 +160,7 @@ const style = buildStyle({
   seaDemUrl: 'clip-sea://{z}/{x}/{y}',
   landDemUrl: 'clip-land://{z}/{x}/{y}',
   // zoom → [interval] in metres (isobaths: traced at the steps their depths need, catalog.js)
-  isobathUrl: seaDem.contourProtocolUrl({ ...contourOpts, thresholds: isobathSteps() }),
+  isobathUrl: seaDem.contourProtocolUrl({ ...contourOpts, thresholds: ISOBATH_STEPS }),
   contourUrl: landDem.contourProtocolUrl({ ...contourOpts, thresholds: { 9: [100, 500], 11: [50, 250], 12: [20, 100] } }),
   date: gibsDay,
   density: Object.fromEntries(Object.keys(DENSITY).map((id) => [id, [state.variant[id], state.period[id]]])),
@@ -247,9 +245,8 @@ function watchLocation(on) {
   }, { enableHighAccuracy: true, maximumAge: 10000 });
 }
 function setLocating(on) {
-  locate.setAttribute('aria-pressed', String(on));
+  locate.setAttribute('aria-pressed', String(on)); // its name stays "Show my location" (index.html): pressed says it is on
   locate.title = on ? 'Hide my location' : 'Show my location';
-  locate.setAttribute('aria-label', locate.title);
   located = false;
   if (!on) showLocation(null);
   watchLocation(on);
@@ -289,13 +286,15 @@ function viewOf() {
 // app's own checked reading of the address applies it (no second way of applying layers). A view
 // that differs from the page's in its camera alone (the same layers, time, depth and units: a
 // drawing opened where it was) moves the map instead. The drawing is saved first: it comes back
-// after the reload.
+// after the reload. One the browser would not keep (storage full) would not: the camera alone moves.
 function applyView(v) {
   const q = new URLSearchParams(location.hash.slice(1)), was = new URLSearchParams(q);
   viewToAddress(v, q);
   const butCamera = (p) => { const r = new URLSearchParams(p); r.delete('v'); return r.toString(); };
-  if (butCamera(q) === butCamera(was)) { map.jumpTo({ center: v.center || map.getCenter(), zoom: v.zoom ?? map.getZoom(), bearing: v.bearing ?? 0 }); writeHashNow(); return; } // the address says it at once
+  const move = () => { map.jumpTo({ center: v.center || map.getCenter(), zoom: v.zoom ?? map.getZoom(), bearing: v.bearing ?? 0 }); writeHashNow(); };
+  if (butCamera(q) === butCamera(was)) { move(); return; } // the address says it at once
   drawing.saving.now();
+  if (drawing.saving.failed) { move(); note('The drawing is not kept in this browser (storage full or turned off): its layers are not applied, as a reload would lose it'); return; }
   setHash(q);
   location.reload();
 }
@@ -354,8 +353,7 @@ function setOn(id, on) {
 // Under depth shading the water fill takes the shallowest band's colour: the tint stops a
 // fraction of a pixel short of the shore (clip.js), and that sliver must not read as white.
 function shoreFill() {
-  const zmax = style.layers.find((l) => l.id === 'depth').maxzoom; // shading hides itself above this
-  map.setPaintProperty('water', 'fill-color', state.on.has('depth') ? ['step', ['zoom'], depthStops()[0][1], zmax, '#ffffff'] : '#ffffff');
+  map.setPaintProperty('water', 'fill-color', state.on.has('depth') ? ['step', ['zoom'], depthStops()[0][1], DEPTH_ZMAX, '#ffffff'] : '#ffffff'); // the shading hidden: white
 }
 // the depth colour scheme is the Depth shading item's variant
 const depthStops = () => DEPTH_SCHEMES[state.variant.depth];
@@ -387,8 +385,8 @@ function isobathInk() {
   if (state.on.has('sat')) return ISOBATH_INK.sat;
   const plain = { line: chartLineColour[LINE_IDS[0]], text: chartLabelPaint[LABEL_IDS[0]]['text-color'], halo: LIGHT_HALO };
   if (!state.on.has('depth')) return plain;
-  const shaded = ISOBATH_INK[state.variant.depth], zmax = style.layers.find((l) => l.id === 'depth').maxzoom;
-  return Object.fromEntries(Object.entries(plain).map(([k, v]) => [k, ['step', ['zoom'], shaded[k], zmax, v]]));
+  const shaded = ISOBATH_INK[state.variant.depth];
+  return Object.fromEntries(Object.entries(plain).map(([k, v]) => [k, ['step', ['zoom'], shaded[k], DEPTH_ZMAX, v]]));
 }
 function depthColours() {
   map.setPaintProperty('depth', 'color-relief-color', depthRamp(depthStops()));
@@ -441,7 +439,7 @@ async function creditEsri() {
 //   show(id)       draws the item as the state says: its source, then its layers' visibility
 //   time(id)       'hour' or 'day' if it changes with the map's time; depth(id): drawn at the map's depth
 //   range(id)      promise of its datasets' spans, [[start, end]] in ms (null where not known)
-//   controls(it)   elements under its row; render(it, el) brings them up to date
+//   controls(it)   what goes under its row, built with the state's values (its own changes keep them)
 //   values(it, box) promise of its values as GeoTIFF over [west, south, east, north], or null:
 //                  in the pictures only
 //   legend(id)     what its legend is now, or null: { key (drawn again only when it changes), ready
@@ -485,11 +483,9 @@ const KINDS = {
   // EMODnet's depth, drawn by EMODnet (tiles); its values from its Zarr store
   // GEBCO's depths, drawn by the depth shading (clip.js); its values from its Zarr store
   gebco: {
-    // the depth shading's legend: while the chart is under it, zoomed out (the shading ends at 13)
-    legend: () => (state.on.has('chart') && map.getZoom() < 13 ? { key: state.variant.depth, paint: (el) => {
-      drawRamp(el, 'Depth shading', 'm · GEBCO 2026', depthStops(), { colour: NO_DEPTH, label: 'lakes: no depth · lagoons: shown as 0–5 m' });
-      return `Depth shading legend: ${depthStops().map(([d]) => d).join(', ')} metres`;
-    } } : null),
+    // the depth shading's legend: while the chart is under it, zoomed out (where the shading is)
+    legend: () => (state.on.has('chart') && map.getZoom() < DEPTH_ZMAX ? { key: state.variant.depth,
+      paint: (el) => drawRamp(el, 'Depth shading', 'm · GEBCO 2026', depthStops(), 'metres', { colour: NO_DEPTH, label: 'lakes: no depth · lagoons: shown as 0–5 m' }) } : null),
     values: (it, box) => gebcoValues(box),
   },
   // where GEBCO's depths come from (its type identifier grid, drawn by gebco.js): a classed layer,
@@ -501,7 +497,7 @@ const KINDS = {
   emodnet: {
     legend(id) {
       const v = state.variant[id], stops = EMODNET_DEPTH_STOPS[v];
-      return { key: v, paint: (el) => { drawRamp(el, byId[id].label, 'm · not linear', stops); return `${byId[id].label} legend: ${stops.map(([d]) => d).join(', ')} metres`; } };
+      return { key: v, paint: (el) => drawRamp(el, byId[id].label, 'm · not linear', stops, 'metres') };
     },
     values: (it, box) => emodnetValues(box),
   },
@@ -511,7 +507,7 @@ const KINDS = {
       // the URL of its service's legend, the URLs of several, or the classes themselves
       const src = byId[id].legend(state.variant[id]), urls = typeof src === 'string' ? [src] : typeof src[0] === 'string' ? src : null;
       return { key: urls ? urls.join(' ') : `${id}:${state.variant[id]}`, ready: urls ? classesOf(urls) : src,
-        paint: (el, cls) => { drawClasses(el, byId[id].label, [byId[id].variants?.[state.variant[id]], byId[id].legendSub].filter(Boolean).join(' · '), cls); return `${byId[id].label} legend: ${cls.map((c) => c.label).join(', ')}`; } };
+        paint: (el, cls) => drawClasses(el, byId[id].label, [byId[id].variants?.[state.variant[id]], byId[id].legendSub].filter(Boolean).join(' · '), cls) };
     },
   },
   // EMODnet and EMSA density: a period of its own (a year or a month), not the map's time
@@ -520,12 +516,11 @@ const KINDS = {
       map.getSource(id).setTiles(densityTiles(id, state.variant[id], state.period[id]));
       applyItem(id);
     },
-    controls: (it) => [h('select', { class: 'period', 'aria-label': `${it.label} period`, onchange: (e) => { state.period[it.id] = e.target.value; refresh(it.id); writeHash(); renderMenu(); } },
-      DENSITY[it.id].periods.map((p) => h('option', { value: p }, DENSITY[it.id].periodLabel(p))))],
-    render(it, el) { $('select.period', el).value = state.period[it.id]; },
+    controls: (it) => select(`${it.label} period`, DENSITY[it.id].periods.map((p) => [p, DENSITY[it.id].periodLabel(p)]), state.period[it.id],
+      (p) => { state.period[it.id] = p; refresh(it.id); writeHash(); renderMenu(); }, { class: 'period' }),
     legend(id) {
       const d = DENSITY[id];
-      return { key: `${state.variant[id]}|${state.period[id]}`, paint: (el) => { drawRamp(el, d.title, `${d.unit} · ${d.types[state.variant[id]]} · ${d.periodLabel(state.period[id])}`, d.stops); return `${d.title} legend: ${d.stops.map(([v]) => v).join(', ')} ${d.unit}`; } };
+      return { key: `${state.variant[id]}|${state.period[id]}`, paint: (el) => drawRamp(el, d.title, `${d.unit} · ${d.types[state.variant[id]]} · ${d.periodLabel(state.period[id])}`, d.stops, d.unit) };
     },
   },
   // NASA daily: the day of the time shown (UTC). Drawn only once its newest day is known, and not
@@ -560,7 +555,7 @@ const KINDS = {
     legend(id) {
       const v = CMEMS[id][state.variant[id]];
       // '<' below the scale only where values go on below it (not under 0 m, 0 m/s)
-      return { key: state.variant[id], ready: cmemsLegend(id, state.variant[id]), paint: (el, cm) => { drawColormap(el, v.label, v.unit, cm, [v.log || v.range[0] + (v.offset || 0) < 0, true], v.log); return `${v.label} legend${v.unit ? `, ${v.unit}` : ''}`; } };
+      return { key: state.variant[id], ready: cmemsLegend(id, state.variant[id]), paint: (el, cm) => drawColormap(el, v.label, v.unit, cm, [v.log || v.range[0] + (v.offset || 0) < 0, true], v.log) };
     },
     values: (it, box) => cmemsValues(it.id, it.at, box), // from its datasets' Zarr stores
   },
@@ -748,7 +743,7 @@ const ICON = {
 for (const el of document.querySelectorAll('[data-icon]')) el.replaceWith(icon(...ICON[el.dataset.icon]));
 // the frame (frame.js): the bar, the left panel (Elements, Layers), the right one (Properties)
 let drawPanel = null; // the drawing's view (below): told when the frame changes
-const frame = createFrame({ left: $('#side'), right: $('#props'), icon, onChange: () => { writeHash(); drawPanel?.render('tool'); },
+const frame = createFrame({ left: $('#side'), right: $('#props'), icon, onChange: () => drawPanel?.render('tool'),
   tabs: [{ id: 'layers', label: 'Layers', paths: ['m12 3 9 5-9 5-9-5z', 'm3 13 9 5 9-5'], badge: h('span', { class: 'spin', 'aria-hidden': 'true' }), body: $('#menu') },
     { id: 'elements', label: 'Elements', paths: [['M4 5.2a.8.8 0 1 0 0 1.6a.8.8 0 1 0 0-1.6z', 'currentColor'], 'M8 6h13', 'M4 8v2a2 2 0 0 0 2 2h2', 'M4 10v6a2 2 0 0 0 2 2h2', ['M10 11.2a.8.8 0 1 0 0 1.6a.8.8 0 1 0 0-1.6z', 'currentColor'], ['M10 17.2a.8.8 0 1 0 0 1.6a.8.8 0 1 0 0-1.6z', 'currentColor'], 'M14 12h7', 'M14 18h7'], body: $('#dview') }] });
 // ---- layers panel -----------------------------------------------------------
@@ -765,10 +760,13 @@ function setVariant(id, v) {
 const shiftDay = (d, n) => new Date(Date.parse(`${d}T00:00:00Z`) + n * 864e5).toISOString().slice(0, 10);
 const today = () => new Date().toISOString().slice(0, 10);
 
+// The panel's controls are built with the state's values and kept so by their own changes: the
+// opacity, the variants, the periods and the menus are written by their controls alone (readHash
+// runs before this, a view applied reloads the page); renderMenu follows what changes beside them.
 // provenance (and the opacity slider) behind an item's ⓘ
 function infoBlock(it) {
   const opacity = it.opacity != null ? h('label', { class: 'opacity' }, h('span', {}, it.id === 'relief' ? 'Strength' : 'Opacity'),
-    h('input', { type: 'range', min: 0, max: 1, step: 0.05, oninput: (e) => { state.opacity[it.id] = +e.target.value; applyItem(it.id); writeHash(); } })) : null;
+    h('input', { type: 'range', min: 0, max: 1, step: 0.05, value: state.opacity[it.id], oninput: (e) => { state.opacity[it.id] = +e.target.value; applyItem(it.id); writeHash(); } })) : null;
   return h('div', { class: 'info', hidden: true }, opacity,
     h('p', {}, h('b', {}, 'Source '), it.info.src),
     h('p', {}, h('b', {}, 'Licence '), it.info.lic),
@@ -780,66 +778,67 @@ function moreButton(label, onclick) {
 }
 // a ⓘ's click: its block shown or hidden
 const toggles = (info) => (e) => { info.hidden = !info.hidden; e.currentTarget.setAttribute('aria-expanded', String(!info.hidden)); };
-// what the item shows (scheme, source, its kind's controls) sits under its row while it is on
+// A group whose items show one at a time (Base, Ocean data): one "Source and licence" row, its ⓘ
+// the provenance of whichever is on (what), kept so as that changes (renderMenu)
+const sourceRows = [];
+function sourceRow(items, what) {
+  const infos = items.map((it) => [it.id, infoBlock(it)]);
+  const render = () => { for (const [id, el] of infos) el.hidden = !(more.getAttribute('aria-expanded') === 'true' && state.on.has(id)); };
+  const more = moreButton(what, (e) => { e.currentTarget.setAttribute('aria-expanded', String(e.currentTarget.getAttribute('aria-expanded') !== 'true')); render(); });
+  sourceRows.push(render);
+  return [h('div', { class: 'line' }, h('span', { class: 'name' }, 'Source and licence'), more), ...infos.map(([, el]) => el)];
+}
+// what the item shows (scheme, source, its kind's controls) sits under its row while it is on; none
+// for an item without them
 function controlsOf(it) {
-  let variant = null;
-  if (it.variants) {
-    variant = h('select', { class: 'variant', 'aria-label': `${it.label} variant`, onchange: (e) => setVariant(it.id, e.target.value) },
-      Object.entries(it.variants).map(([k, label]) => h('option', { value: k }, label)));
-  }
-  return h('div', { class: 'controls' }, variant, kindOf(it.id)?.controls?.(it)); // the time and depth: at the panel's head
+  const kind = kindOf(it.id)?.controls;
+  if (!it.variants && !kind) return null;
+  return h('div', { class: 'controls', hidden: !state.on.has(it.id) }, // the time and depth: at the panel's head
+    it.variants ? select(`${it.label} variant`, Object.entries(it.variants), state.variant[it.id], (v) => setVariant(it.id, v), { class: 'variant' }) : null, kind?.(it));
 }
 function itemRow(it) {
-  const input = h('input', { type: 'checkbox', role: 'switch', class: 'switch', id: `i-${it.id}`, onchange: (e) => setOn(it.id, e.target.checked) });
+  const input = h('input', { type: 'checkbox', role: 'switch', class: 'switch', id: `i-${it.id}`, checked: state.on.has(it.id), onchange: (e) => setOn(it.id, e.target.checked) });
   const info = infoBlock(it), controls = controlsOf(it);
   const row = h('li', { class: 'item' },
     h('div', { class: 'line' }, h('label', { class: 'name', for: input.id }, it.label, h('span', { class: 'hint' })), moreButton(it.label, toggles(info)), input),
     controls, info);
-  rows[it.id] = { row, input, controls };
+  rows[it.id] = { row, controls };
   return row;
 }
 // Base: two cards (a radio group); the satellite source and the provenance below them
 function baseBlock(items) {
-  const infos = Object.fromEntries(items.map((it) => [it.id, infoBlock(it)]));
-  const more = moreButton('this base', (e) => { // the info of whichever base is shown
-    const open = e.currentTarget.getAttribute('aria-expanded') !== 'true';
-    e.currentTarget.setAttribute('aria-expanded', String(open));
-    for (const [id, el] of Object.entries(infos)) el.hidden = !(open && state.on.has(id));
-  });
   const cards = items.map((it) => {
-    const card = h('button', { type: 'button', class: 'basecard', 'data-base': it.id, id: `i-${it.id}`, 'aria-pressed': 'false', onclick: () => setOn(it.id, true) },
+    const card = h('button', { type: 'button', class: 'basecard', 'data-base': it.id, id: `i-${it.id}`, 'aria-pressed': String(state.on.has(it.id)), onclick: () => setOn(it.id, true) },
       h('div', { class: 'thumb' }), h('span', {}, it.label));
-    rows[it.id] = { row: card, input: card, controls: controlsOf(it), infos, more };
+    rows[it.id] = { row: card, card, controls: controlsOf(it) };
     return card;
   });
   return h('div', { class: 'base' },
     h('div', { class: 'bases', role: 'group', 'aria-label': 'Base map' }, cards),
-    h('ul', {}, h('li', { class: 'item' }, ...items.map((it) => rows[it.id].controls),
-      h('div', { class: 'line' }, h('span', { class: 'name' }, 'Source and licence'), more), ...Object.values(infos))));
+    h('ul', {}, h('li', { class: 'item' }, ...items.map((it) => rows[it.id].controls), ...sourceRow(items, 'this base'))));
 }
 // Ocean data: two menus, colours and arrows, their entries under the sections' headings; the
 // source, licence and opacity of what is chosen behind one ⓘ, as for the base
 const picks = {}; // slot → its menu
-let dataMore = null, dataInfos = {};
 function dataBlock(items, sections) {
-  dataInfos = Object.fromEntries(items.map((it) => [it.id, infoBlock(it)]));
-  dataMore = moreButton('the ocean data shown', (e) => { e.currentTarget.setAttribute('aria-expanded', String(e.currentTarget.getAttribute('aria-expanded') !== 'true')); renderMenu(); });
   const pick = (slot, label) => {
     picks[slot] = h('select', { 'aria-label': label, onchange: (e) => { state[slot] = e.target.value; applyData(); labelPaint(); writeHash(); renderMenu(); } },
       h('option', { value: '' }, 'None'),
       sections.map((sec) => {
         const es = ENTRIES[slot].filter((e) => e.it.section === sec);
-        return es.length ? h('optgroup', { label: sec }, es.map((e) => h('option', { value: e.key }, e.label))) : null;
+        return es.length ? h('optgroup', { label: sec }, es.map((e) => h('option', { value: e.key, selected: e.key === state[slot] }, e.label))) : null;
       }));
-    return h('li', { class: 'item pick' }, h('label', { class: 'line' }, h('span', { class: 'name' }, label), picks[slot]));
+    return h('li', { class: 'item pick' }, h('label', { class: 'line' }, h('span', { class: 'name' }, label, h('span', { class: 'hint' })), picks[slot]));
   };
-  return h('ul', {}, pick('colour', 'Colours'), pick('arrows', 'Arrows'),
-    h('li', { class: 'item' }, h('div', { class: 'line' }, h('span', { class: 'name' }, 'Source and licence'), dataMore), ...Object.values(dataInfos)));
+  return h('ul', {}, pick('colour', 'Colours'), pick('arrows', 'Arrows'), h('li', { class: 'item' }, ...sourceRow(items, 'the ocean data shown')));
 }
+// the Layers groups open: kept in this browser, as the panel's tab (frame.js), not in the link
+const GROUPS_OPEN = 'charts.groups.open', keptOpen = store.json(GROUPS_OPEN);
+const groupsOpen = new Set(Array.isArray(keptOpen) ? keptOpen.filter((g) => GROUPS.some((x) => x.id === g)) : ['base', 'sea']);
 function groupBlock(g) {
   const items = ITEMS.filter((it) => it.group === g.id);
-  const det = h('details', { 'data-group': g.id, open: state.open.has(g.id),
-    ontoggle: (e) => { e.target.open ? state.open.add(g.id) : state.open.delete(g.id); store.set(GROUPS_OPEN, JSON.stringify([...state.open])); } },
+  const det = h('details', { 'data-group': g.id, open: groupsOpen.has(g.id),
+    ontoggle: (e) => { e.target.open ? groupsOpen.add(g.id) : groupsOpen.delete(g.id); store.set(GROUPS_OPEN, JSON.stringify([...groupsOpen])); } },
     h('summary', {}, h('span', { class: 'gname' }, g.label), h('span', { class: 'count', title: 'Layers on' })),
     g.sections ? dataBlock(items, g.sections) : g.exclusive ? baseBlock(items) : h('ul', {}, items.map(itemRow)));
   det._items = items;
@@ -854,25 +853,11 @@ menu.append(...groupEls);
 // zoom the rows' zoom hints and the legends (renderZoom)
 function renderMenu() {
   for (const it of ITEMS) {
-    const r = rows[it.id];
-    if (!r) continue; // Ocean data: below
-    const on = state.on.has(it.id);
-    if (it.group === 'base') r.input.setAttribute('aria-pressed', String(on));
-    else r.input.checked = on;
-    r.controls.hidden = !on || !(it.variants || kindOf(it.id)?.controls);
-    if (on) kindOf(it.id)?.render?.(it, r.controls);
-    if (r.infos && r.more.getAttribute('aria-expanded') === 'true') r.infos[it.id].hidden = !on;
-    const sel = r.controls.querySelector('select.variant');
-    if (sel) sel.value = state.variant[it.id];
-    const rng = (r.infos?.[it.id] || r.row).querySelector('input[type=range]');
-    if (rng) rng.value = state.opacity[it.id];
+    const r = rows[it.id], on = state.on.has(it.id);
+    r?.card?.setAttribute('aria-pressed', String(on)); // a base: another chosen turns it off
+    if (r?.controls) r.controls.hidden = !on;
   }
-  for (const slot in picks) picks[slot].value = state[slot];
-  for (const [id, el] of Object.entries(dataInfos)) {
-    el.hidden = !(dataMore.getAttribute('aria-expanded') === 'true' && state.on.has(id));
-    const rng = el.querySelector('input[type=range]');
-    if (rng) rng.value = state.opacity[id];
-  }
+  for (const render of sourceRows) render();
   renderWhen();
   for (const g of groupEls) {
     const n = g._items.filter((it) => state.on.has(it.id)).length;
@@ -900,6 +885,7 @@ function renderZoom() {
 const legends = $('#legends');
 const legendEls = {};
 let legendWant = [];
+// shown once painted, its aria text set (style.css): a bare canvas is 300 × 150 px of nothing
 function legendEl(id) {
   return (legendEls[id] ||= h('canvas', { role: 'img', 'data-legend': id }));
 }
@@ -914,7 +900,7 @@ async function paintLegend(id, el, spec) {
     if (el.dataset.key !== spec.key) return; // switched meanwhile
     el.setAttribute('aria-label', spec.paint(el, data));
     later ? renderLegends() : snapLegends(); // painted after the stack was laid out (await): its size may have changed
-  } catch (e) { el.dataset.key = ''; console.warn(`${byId[id].label} legend:`, e.message); }
+  } catch (e) { el.dataset.key = ''; el.removeAttribute('aria-label'); console.warn(`${byId[id].label} legend:`, e.message); } // not shown (style.css): what it held is not what is drawn
 }
 function renderLegends() {
   const want = [];
@@ -970,8 +956,8 @@ function renderUnits() {
   scaleText();
 }
 
-// ---- the view's outputs, in the bar's Download menu: each says how it went on itself ("Saving…",
-// "Failed"), the menu open meanwhile
+// ---- the view's outputs, in the bar's Download menu: each says "Preparing…" on itself meanwhile, and
+// how it went in the note (onFrame)
 const output = (id, iconName, text, title, run, more = {}) => h('button', { type: 'button', role: 'menuitem', id, title, onclick: (e) => run(e.currentTarget), ...more }, icon(...ICON[iconName]), h('span', {}, text));
 const outputs = [output('png', 'png', 'Picture (PNG)', 'Download the view as a picture', (b) => exportPng(b)),
   output('zip', 'zip', 'GIS data (ZIP)', 'Download the view as GIS data: a georeferenced picture, GeoJSON, GeoTIFF', (b) => exportZip(b))];
@@ -1013,8 +999,7 @@ function free() {
 // find a place: a field in the bar, before About and Properties (/ goes to it; a phone: after ☰, its
 // tools being in the dock); where the bar has no room (a tablet's), behind a lens with the map's
 // controls, shown while it is used, gone when left
-const findBtn = $('#b-find'), searchBox = $('#search');
-$('#mapctl').prepend(findBtn);
+const findBtn = $('#b-find'), searchBox = $('#search'); // the lens: first of the map's controls (index.html)
 const openAbout = () => { about.showModal(); showVersion(); };
 const aboutBtn = h('button', { type: 'button', class: 'aboutbtn', 'aria-label': 'About', title: 'About', onclick: openAbout }, icon(...ICON.info));
 frame.rightBtn.before(aboutBtn);
@@ -1038,27 +1023,7 @@ async function copyLink() {
   writeHashNow(); // the link must be the view as it is now
   try { await navigator.clipboard.writeText(location.href); note(drawing.isEmpty() ? 'Link copied' : 'Link copied: the view and its layers, not the drawing (Download › Drawing for that)'); } catch { prompt('Copy this link', location.href); }
 }
-// a button's own label and tooltip, kept while it says something else for a moment (flash: the text,
-// and why in its tooltip)
-const labelOf = (b) => { b.dataset.label ||= b.querySelector('span').textContent; b.dataset.title ||= b.title; return b.dataset; };
-function flash(b, text, title = '', ms = 1200) {
-  const own = labelOf(b);
-  clearTimeout(b.flashTimer);
-  b.querySelector('span').textContent = text;
-  b.title = title || own.title;
-  b.flashTimer = setTimeout(() => { b.querySelector('span').textContent = own.label; b.title = own.title; }, ms);
-}
 const about = $('#about');
-// the version published: version.json, written by the deploy (ci.yml); none on a development copy.
-// { commit, date }, or null
-async function published() {
-  try {
-    const r = await fetch('version.json', { cache: 'no-store' });
-    if (!r.ok) return null;
-    const v = await r.json();
-    return /^[0-9a-f]{40}$/.test(v?.commit) ? v : null;
-  } catch { return null; }
-}
 // The service worker (sw.js) keeps the page's own files in this browser, so that the page opens
 // without a connection. A new version, once fetched, waits for the page: the chip says it is ready,
 // and a Reload (the chip's, or About's) applies it; closing every tab of the page does too.
@@ -1081,16 +1046,13 @@ function reload() {
   waiting.postMessage('apply');
 }
 for (const b of document.querySelectorAll('[data-reload]')) b.addEventListener('click', reload);
-let versionShown = false;
-async function showVersion() {
-  if (versionShown) return;
-  versionShown = true;
-  const v = await published();
-  if (v) {
-    const { commit, date } = v;
-    $('#version').replaceChildren('version ', h('a', { href: `https://github.com/stemanfredi/charts/commit/${commit}`, target: '_blank', rel: 'noopener' }, commit.slice(0, 7)), date ? ` of ${String(date).slice(0, 10)}` : '');
-  }
-}
+// About's version: the one published, version.json, written by the deploy (ci.yml; none on a
+// development copy), read when About first opens
+let versionShown = null;
+const showVersion = () => (versionShown ||= fetch('version.json', { cache: 'no-store' }).then((r) => (r.ok ? r.json() : null)).then((v) => {
+  if (!/^[0-9a-f]{40}$/.test(v?.commit)) return;
+  $('#version').replaceChildren('version ', h('a', { href: `https://github.com/stemanfredi/charts/commit/${v.commit}`, target: '_blank', rel: 'noopener' }, v.commit.slice(0, 7)), v.date ? ` of ${String(v.date).slice(0, 10)}` : '');
+}, () => {}));
 // Report an issue: a new GitHub issue with this view's link (the area and the layers; never the
 // measurements or the drawing), editable before it is submitted
 $('#issue').addEventListener('click', (e) => {
@@ -1141,13 +1103,19 @@ function metresOf(clip, maxZoom) {
 const depthAt = metresOf(seaClip, DEM_SEA_MAX);
 // the land's height as the relief shading has it (lakes their surface); NaN at sea
 const heightAt = metresOf(landClip, DEM_LAND_MAX);
-// the elevation at p: the sea's depth, else the land's height
-const elevationAt = async (p, z) => { const d = await depthAt(p, z); return Number.isFinite(d) ? d : heightAt(p, z); };
+// the elevation at p: the sea's depth, else the land's height; NaN where neither could be read (a
+// source unreachable leaves a gap in a profile, not the whole profile failed)
+const elevationAt = async (p, z) => { const d = await depthAt(p, z).catch(() => NaN); return Number.isFinite(d) ? d : heightAt(p, z).catch(() => NaN); };
+// the depth asked of the latest click only, and only while it still would be (no tool on, a depth layer on)
+let depthAsked = 0;
+const depthClicks = () => !(drawing.tool || drawing.picking || drawing.repointing) && (state.on.has('depth') || state.on.has('isobaths'));
 map.on('click', async (e) => {
-  if (drawing.tool || drawing.picking || drawing.repointing || !(state.on.has('depth') || state.on.has('isobaths'))) return;
+  if (!depthClicks()) return;
   if (e.cleared || drawing.hitAt(e.point).length) return; // a click on a drawing selects it; one that cleared the selection does only that
   const { lng, lat } = e.lngLat, z = Math.min(DEM_SEA_MAX, Math.floor(map.getZoom()) + 1); // 256 px DEM tiles at z show at map zoom z − 1
+  const asked = ++depthAsked;
   const [v, code] = await Promise.all([depthAt([lng, lat], z).catch(() => null), tidAt(lng, lat).catch(() => null)]);
+  if (asked !== depthAsked || !depthClicks()) return; // another click since, or a tool or the layers switched meanwhile
   if (v === null) { depthPopup.setLngLat(e.lngLat).setDOMContent(h('div', {}, h('b', {}, 'Depth not available'), h('small', {}, 'GEBCO 2026 could not be read'))).addTo(map); return; }
   if (!Number.isFinite(v)) { depthPopup.remove(); return; } // land, a lake, inland water: no depth here
   const source = DEPTH_SOURCES.find(({ ranges }) => ranges.some(([a, b]) => code >= a && code <= b));
@@ -1220,26 +1188,24 @@ map.on('sourcedata', (e) => { if (!e.tile) renderCredits(); });
 // An export from button b: after before() (a library to load), the map's next frame, after pending
 // tiles (so a layer switched on a moment ago is in the picture). fn(canvas) runs while the canvas
 // still holds it, and must read it before awaiting; it returns what it left out, if anything. The
-// button says "Saving…" meanwhile, then "Failed" or "Partial" for a few seconds, its tooltip why.
+// button says "Preparing…" meanwhile; a failure, or what was left out, is said in the note (read out).
 let exporting = false; // one export at a time, however often the buttons are clicked
 async function onFrame(b, fn, before = async () => {}) {
-  if (exporting) { if (!b.hasAttribute('aria-busy')) flash(b, 'Wait…', 'Another export is being saved'); return; } // the other button: told; the one saving: left saying so
+  if (exporting) { if (!b.hasAttribute('aria-busy')) note('Another export is being prepared: wait for it to finish'); return; } // the other button: told; the one preparing: left saying so
   exporting = true;
-  const label = b.querySelector('span'), own = labelOf(b);
-  clearTimeout(b.flashTimer); // a "Failed" still shown: this try replaces it
+  const label = b.querySelector('span'), own = label.textContent;
   b.setAttribute('aria-busy', 'true');
   label.textContent = 'Preparing…';
-  b.title = own.title;
-  const done = (text, title) => {
+  const done = (text) => {
     b.removeAttribute('aria-busy');
-    label.textContent = own.label;
+    label.textContent = own;
     exporting = false;
-    if (text) flash(b, text, title, 5000);
+    if (text) note(`${own}: ${text}`);
   };
-  const failed = (e) => { console.error('export failed:', e.message); done('Failed', `Export failed: ${e.message}`); };
+  const failed = (e) => { console.error('export failed:', e.message); done(`export failed: ${e.message}`); };
   try { await before(); } catch (e) { failed(e); return; }
   // a provider that never answers: the map never idles; after a while the export fails instead of
-  // saying "Saving…" for ever (and dropping every later click)
+  // saying "Preparing…" for ever (and dropping every later click)
   const deadline = setTimeout(() => { map.off('idle', go); failed(new Error('the map did not finish loading')); }, 30000);
   const go = () => {
     clearTimeout(deadline);
@@ -1248,7 +1214,7 @@ async function onFrame(b, fn, before = async () => {}) {
     map.once('render', async () => {
       try {
         const left = await fn(map.getCanvas());
-        done(left?.length ? 'Partial' : '', left?.length ? `Saved without ${left.join('; ')}` : '');
+        done(left?.length ? `saved without ${left.join('; ')}` : '');
       } catch (e) { failed(e); } finally {
         drawing.showMarks(true);
         for (const id of LOCATION_LAYERS.map((l) => l.id)) map.setLayoutProperty(id, 'visibility', 'visible');
@@ -1276,7 +1242,7 @@ function snapshot(src) {
   const layers = drawnItems().map((it) => ({ ...it, assets: [], at: { variant: state.variant[it.id], t, depth: state.depth },
     period: DENSITY[it.id] ? state.period[it.id] : undefined, date: it.kind === 'gibs' ? gibsDay : undefined, draws: it.kind === 'cmems' ? drawnAs(it.id) : undefined }));
   return {
-    when, name: exportName(when, c.lat, c.lng), at: `${dm(c.lat, 'N', 'S')} ${dm(c.lng, 'E', 'W')}`, lat: c.lat,
+    when, name: exportName(when, c.lat, c.lng), at: `${dm(c.lat, 'N', 'S')} ${dm(norm180(c.lng), 'E', 'W')}`, lat: c.lat,
     zoom: map.getZoom(), bearing: map.getBearing(), link: location.href, credits: attributionText(), layers, legends: legendWant.map((id) => legendEls[id]),
     scaleVariation: scaleVariation(),
     corners: [[0, 0], [W, 0], [W, H], [0, H]].map((p) => { const ll = map.unproject(p); return [ll.lng, ll.lat]; }),

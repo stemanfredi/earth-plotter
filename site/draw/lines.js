@@ -1,13 +1,13 @@
-// The lines of a drawing (docs/drawing-format.md §7): a line runs from its start through its
-// vertices to its end, one leg between each two of these anchors. A straight line's legs are
+// The lines of a drawing (docs/drawing-format.md §7): a line runs through its places, one leg
+// between each two of these anchors (a closed one's last back to its first). A straight line's legs are
 // geodesics (as the ruler draws them); a smooth one's are cubic Béziers in the map's projection (Web
 // Mercator) through its anchors, their handles computed from the anchors (Catmull-Rom), ground metres
 // [east, north] at their anchor. Lengths are always geodesic: a curve's, the sum over close samples
 // of it. Pure: no map, no DOM.
 
-import { densify, inverse, destination, areaOf, pathOf, perimeterOf, lengthOf } from '../geodesy.js';
+import { densify, inverse, destination, areaOf, lengthOf } from '../geodesy.js';
 import { mercator, unmercator, D2R, nearestOnSegment, unrollTo } from '../geo.js';
-import { isShown, groupsOf, roundParts, pointKind } from './document.js';
+import { isShown, groupsOf, linkFrom } from './document.js';
 
 const TOL = 1e-4; // a curve is sampled finer until its length changes by less than this, relative
 const MAX_SAMPLES = 4096;
@@ -15,36 +15,35 @@ const MAX_SAMPLES = 4096;
 // the projection's scale (Mercator metres per ground metre) at a latitude
 const scale = (lat) => 1 / Math.cos(lat * D2R);
 
-// a line's positions, start to end (its anchors')
-export const positionsOf = (line) => [line.start.position, ...line.vertices.map((v) => v.position), line.end.position];
-
-// The anchors of a line: [{ position, hIn, hOut }], from its start to its end (an attached end where
-// what it is attached to is: attach.js refreshAttached keeps it there); handles only on a smooth line
-// with a vertex (without one it stays straight, a geodesic).
+// The anchors of a line: [{ position, hIn, hOut }], one a place, from its start to its end (a closed
+// one's first again at its end); handles only on a smooth line of three places or more (with two it
+// stays straight, a geodesic).
 export function anchorsOf(line) {
-  const ps = positionsOf(line), hs = line.smooth && ps.length > 2 ? smoothHandles(ps) : null;
-  return ps.map((position, i) => ({ position, hIn: hs?.[i].hIn ?? null, hOut: hs?.[i].hOut ?? null }));
+  const ps = line.points, hs = line.smooth && ps.length > 2 ? smoothHandles(ps, line.closed) : null;
+  const an = ps.map((position, i) => ({ position, hIn: hs?.[i].hIn ?? null, hOut: hs?.[i].hOut ?? null }));
+  return line.closed ? [...an, an[0]] : an;
 }
-// Catmull-Rom tangents in the projection: at a vertex, parallel to the line from the anchor before to
-// the anchor after, each handle a third of its own leg; at the ends, towards the neighbouring
-// handle's end, a third of the leg. In ground metres, [{ hIn, hOut }] per anchor.
-function smoothHandles(positions) {
+// Catmull-Rom tangents in the projection: at a vertex (every place of a closed line), parallel to
+// the line from the anchor before to the anchor after, each handle a third of its own leg; at an open
+// line's ends, towards the neighbouring handle's end, a third of the leg. In ground metres, [{ hIn,
+// hOut }] per anchor.
+function smoothHandles(positions, closed) {
   const ps = [positions[0]];
   for (const p of positions.slice(1)) ps.push(unrollTo(ps[ps.length - 1], p));
-  const M = ps.map(mercator), last = M.length - 1;
+  const n = ps.length, last = n - 1, P = ps.map(mercator);
+  const M = (i, j) => (j >= 0 && j < n ? P[j] : mercator(unrollTo(ps[i], ps[(j + n) % n]))); // a ring's neighbour across its closing leg, near anchor i
   const sub = (a, b) => [a[0] - b[0], a[1] - b[1]], len = (v) => Math.hypot(v[0], v[1]);
   const unit = (v) => { const l = len(v); return l ? [v[0] / l, v[1] / l] : [0, 0]; };
   const ground = (v, i) => { const c = Math.cos(ps[i][1] * D2R); return [v[0] * c, v[1] * c]; };
   const hIn = [], hOut = [];
-  for (let i = 1; i < last; i++) {
-    const t = unit(sub(M[i + 1], M[i - 1])), a = len(sub(M[i], M[i - 1])) / 3, b = len(sub(M[i + 1], M[i])) / 3;
+  for (let i = closed ? 0 : 1; i < (closed ? n : last); i++) {
+    const t = unit(sub(M(i, i + 1), M(i, i - 1))), a = len(sub(P[i], M(i, i - 1))) / 3, b = len(sub(M(i, i + 1), P[i])) / 3;
     hIn[i] = [-t[0] * a, -t[1] * a];
     hOut[i] = [t[0] * b, t[1] * b];
   }
-  const end = (i, j, h) => { const target = [M[j][0] + h[0], M[j][1] + h[1]], d = unit(sub(target, M[i])), l = len(sub(M[j], M[i])) / 3; return [d[0] * l, d[1] * l]; };
-  hOut[0] = end(0, 1, hIn[1]);
-  hIn[last] = end(last, last - 1, hOut[last - 1]);
-  return M.map((_, i) => ({ hIn: hIn[i] ? ground(hIn[i], i) : null, hOut: hOut[i] ? ground(hOut[i], i) : null }));
+  const end = (i, j, h) => { const target = [P[j][0] + h[0], P[j][1] + h[1]], d = unit(sub(target, P[i])), l = len(sub(P[j], P[i])) / 3; return [d[0] * l, d[1] * l]; };
+  if (!closed) { hOut[0] = end(0, 1, hIn[1]); hIn[last] = end(last, last - 1, hOut[last - 1]); }
+  return P.map((_, i) => ({ hIn: hIn[i] ? ground(hIn[i], i) : null, hOut: hOut[i] ? ground(hOut[i], i) : null }));
 }
 
 // One leg a → b: its points (both ends included, longitudes continuous from a's) and its length.
@@ -77,8 +76,9 @@ export function leg(a, b) {
   return { pts: pts.map((p, i) => (i ? unrollTo(pts[i - 1], p) : p)), length };
 }
 
-// A line's trace: { coords, length, at (distance from the start at each anchor), legs (lengths) },
-// cached by what it depends on (the anchors), so an unchanged line is not computed again.
+// A line's trace: { coords, length, at (distance from the start at each anchor), legs (lengths), area
+// (a closed one's, m²; else 0) }, cached by what it depends on (the anchors), so an unchanged line is
+// not computed again.
 const cache = new Map();
 export function lineTrace(doc, line) {
   const anchors = anchorsOf(line);
@@ -95,7 +95,7 @@ export function lineTrace(doc, line) {
     legs.push(l.length);
     at.push(length);
   }
-  const trace = { coords, length, at, legs };
+  const trace = { coords, length, at, legs, area: line.closed ? areaOf(coords) : 0 };
   if (cache.size > 5000) cache.clear();
   cache.set(line.id, { key, line: trace });
   return trace;
@@ -140,12 +140,12 @@ export function nearestAlong(coords, p) {
   return at;
 }
 
-// Totals: the lines' count and length (guides left out: they are supporting geometry), the points'
-// count (ringed: those with radii) and the areas' count, per group (everything in it, its subgroups'
+// Totals: the open lines' count and length (guides left out: they are supporting geometry), the
+// points' count, the circles' (sectors too) and the closed lines' (areas), per group (everything in it, its subgroups'
 // too) and for the whole drawing. Hidden elements count, and each total says whether it includes any
 // (hidden: true). Groups by ID ('' for not grouped).
 export function totals(doc) {
-  const bucket = () => ({ length: 0, lines: 0, points: 0, ringed: 0, areas: 0, hidden: false });
+  const bucket = () => ({ length: 0, lines: 0, points: 0, circles: 0, areas: 0, hidden: false });
   const groups = new Map(), all = bucket();
   const into = (key) => { if (!groups.has(key)) groups.set(key, bucket()); return groups.get(key); };
   const each = (el, fn) => {
@@ -154,15 +154,15 @@ export function totals(doc) {
   };
   for (const s of doc.lines) {
     if (s.guide) continue;
-    const len = lineTrace(doc, s).length;
-    each(s, (b) => { b.length += len; b.lines++; });
+    const len = s.closed ? 0 : lineTrace(doc, s).length;
+    each(s, (b) => { if (s.closed) b.areas++; else { b.length += len; b.lines++; } });
   }
-  for (const p of doc.points) if (!p.guide) each(p, (b) => { b.points++; if (roundParts(p).length) b.ringed++; });
-  for (const g of doc.areas) if (!g.guide) each(g, (b) => { b.areas++; });
+  for (const p of doc.points) if (!p.guide) each(p, (b) => { b.points++; });
+  for (const c of doc.circles) if (!c.guide) each(c, (b) => { b.circles++; });
   return { groups, all };
 }
 
-// The lines a connection made, by what each is, from its ends: 'trunk' (a tree's, root → hub),
+// The lines a connection made, by what each is, from what its ends are linked to: 'trunk' (a tree's, root → hub),
 // 'branch' (hub → point), 'root link' (a chain's, root → its first point), 'link' (point → point); by
 // line ID
 export function madeLines(doc) {
@@ -173,7 +173,7 @@ export function madeLines(doc) {
     for (const id of c.created) {
       const s = byId.get(id);
       if (!s) continue;
-      const atRoot = roots.has(s.start.element) || roots.has(s.end.element);
+      const atRoot = [0, s.points.length - 1].some((i) => roots.has(linkFrom(doc, id, i)?.to.element));
       out.set(id, { connection: c, part: tree ? (atRoot ? 'trunk' : 'branch') : (atRoot ? 'root link' : 'link') });
     }
   }
@@ -184,37 +184,37 @@ const PART_ORDER = ['trunk', 'branch', 'root link', 'link'];
 // The drawing's lengths and counts laid out for the Totals view (docs/drawing-ui.md §5): the lines
 // by group (or by the values of property `by`), each line listed under its group but for those a
 // connection made, which are summed by what they are (trunks and branches; a chain's root links and
-// the links between points); the areas; the points by kind. Guides are left out; hidden elements are
+// the links between points); the closed lines (areas); the points and circles by kind. Guides are left out; hidden elements are
 // counted, and said. Pure: no formatting, no names (the panel puts those).
 //   { lines: { rows: [{ key, lines: [{ id, length }], parts: [{ part, count, length }], count, length, hidden }],
 //              count, length, hidden }, areas: { rows: [{ id, area, perimeter }], count, area, perimeter, hidden },
-//     points: { count, hidden, kinds: Map kind → count (by a property: its value → count) } }
+//     points: { count, hidden, kinds: Map kind ('Point', 'Circle', 'Sector') → count (by a property: its value → count) } }
 // only: a Set of the ids to count (a group's members), else all of them
 export function breakdown(doc, by = null, only = null) {
   const counted = (el) => !el.guide && (!only || only.has(el.id)); // only: the ids counted (a group's members), else all
-  const keyOf = (el) => (by ? el.properties.find((p) => p.key === by)?.value ?? '' : groupsOf(doc, el)[0]?.id ?? '');
+  const keyOf = (el) => (by ? el.properties.find((p) => p.key === by)?.value ?? '' : groupsOf(doc, el).find((g) => !g.position)?.id ?? ''); // a group, not a shape's point
   const made = madeLines(doc), rows = new Map();
   const rowOf = (key) => { if (!rows.has(key)) rows.set(key, { key, lines: [], parts: new Map(), count: 0, length: 0, hidden: false }); return rows.get(key); };
   const lines = { count: 0, length: 0, hidden: false };
+  const areas = { rows: [], count: 0, area: 0, perimeter: 0, hidden: false };
   for (const s of doc.lines) {
     if (!counted(s)) continue;
+    if (s.closed) {
+      const { area, length: perimeter } = lineTrace(doc, s);
+      areas.rows.push({ id: s.id, area, perimeter });
+      areas.count++; areas.area += area; areas.perimeter += perimeter;
+      if (!isShown(doc, s)) areas.hidden = true;
+      continue;
+    }
     const len = lineTrace(doc, s).length, r = rowOf(keyOf(s)), m = made.get(s.id);
     if (m) { const p = r.parts.get(m.part) || { part: m.part, count: 0, length: 0 }; p.count++; p.length += len; r.parts.set(m.part, p); } else r.lines.push({ id: s.id, length: len });
     r.count++; r.length += len; lines.count++; lines.length += len;
     if (!isShown(doc, s)) r.hidden = lines.hidden = true;
   }
-  const areas = { rows: [], count: 0, area: 0, perimeter: 0, hidden: false };
-  for (const g of doc.areas) {
-    if (!counted(g)) continue;
-    const area = areaOf(pathOf(g.points, true)), perimeter = perimeterOf(g.points);
-    areas.rows.push({ id: g.id, area, perimeter });
-    areas.count++; areas.area += area; areas.perimeter += perimeter;
-    if (!isShown(doc, g)) areas.hidden = true;
-  }
   const points = { count: 0, hidden: false, kinds: new Map() }; // kinds: by kind, or by the property's values
-  for (const p of doc.points) {
+  for (const p of [...doc.points, ...doc.circles]) {
     if (!counted(p)) continue;
-    const k = by ? keyOf(p) : pointKind(p);
+    const k = by ? keyOf(p) : p.radius ? (p.aperture ? 'Sector' : 'Circle') : 'Point';
     points.kinds.set(k, (points.kinds.get(k) || 0) + 1);
     points.count++;
     if (!isShown(doc, p)) points.hidden = true;

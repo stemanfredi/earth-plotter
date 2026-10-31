@@ -3,7 +3,7 @@
 // (file.js). Pure: no map, no DOM.
 
 import { MAX_LAT, norm360, norm180 } from '../geo.js';
-import { DEFAULT_STYLE, MAX_OFFSET, MAX_MIN_SIZE, STROKE_WIDTH, DASHES, MAX_RADIUS, LABEL_SIZES, BACKGROUNDS, ROUND, PART_KINDS, LOOK_FIELDS, SYMBOLS, isoNow } from './document.js';
+import { DEFAULT_STYLE, MAX_OFFSET, STROKE_WIDTH, DASHES, LABEL_SIZES, BACKGROUNDS, LOOK_FIELDS, isoNow } from './document.js';
 
 export const ID = /^[A-Za-z0-9_-]{1,64}$/;
 const COLOUR = /^#[0-9a-fA-F]{6}$/;
@@ -16,7 +16,6 @@ export function time(t) {
   return typeof t === 'string' && !Number.isNaN(Date.parse(t)) ? isoNow(Date.parse(t)) : null;
 }
 const MAX_TEXT = 10000; // characters: a name, a value, a description
-const MAX_PARTS = 100; // parts on one point
 const MAX_PROPERTIES = 200; // properties on one element
 export function text(v, c, what) {
   if (v === undefined || v === null) return '';
@@ -62,14 +61,8 @@ export function angle(a, c, what) {
   if (n !== a) c.warn(`${what} ${a} read as ${n}`);
   return n;
 }
-// a minimum display size in px: 0 to MAX_MIN_SIZE, or null (not valid: warned)
-function minSize(v, c, what) {
-  if (fin(v) && v >= 0) return Math.min(MAX_MIN_SIZE, v);
-  c.warn(`${what}: not a number of pixels ≥ 0, ignored`);
-  return null;
-}
 // a sector's aperture (degrees, above 0 and below 360), or null: circles (360 or more: circles, warned)
-function aperture(a, c) {
+export function aperture(a, c) {
   if (a === undefined || a === null) return null;
   if (!fin(a) || a <= 0) { c.warn('aperture: not an angle above 0; a circle'); return null; }
   if (a >= 360) { if (a > 360) c.warn(`aperture ${a} read as a full circle`); return null; }
@@ -89,8 +82,8 @@ function clamp(v, lo, hi, dflt, c, what) {
   return r;
 }
 // An element's own style: the values it sets, each checked; those it does not set come from the
-// drawing, else the defaults (document.js styleOf). fill: whether it has one (lines have none).
-export function ownStyle(s, c, fill) {
+// drawing, else the defaults (document.js styleOf).
+export function ownStyle(s, c) {
   if (s === undefined || s === null) return {};
   if (!isObj(s)) { c.warn('style: not an object, ignored'); return {}; }
   const out = {};
@@ -102,18 +95,17 @@ export function ownStyle(s, c, fill) {
   };
   const check = (key) => (f, v) => (f === 'color' ? colour(v, undefined, c, `${key} colour`) : f === 'dash' ? (DASHES.includes(v) ? v : (c.warn(`unknown dash "${String(v).slice(0, 20)}", ignored`), undefined))
     : clamp(v, f === 'width' ? STROKE_WIDTH[0] : 0, f === 'width' ? STROKE_WIDTH[1] : 1, undefined, c, `${key} ${f}`));
-  if (fill) part('fill', DEFAULT_STYLE.fill, check('fill'));
-  else if (s.fill !== undefined) c.warn('fill: a line has none; ignored');
+  part('fill', DEFAULT_STYLE.fill, check('fill'));
   part('stroke', DEFAULT_STYLE.stroke, check('stroke'));
   return out;
 }
 // An element's own look as the file has it (the drawing's too, kind 'drawing'): what it sets, each
 // value checked, what its kind draws with (LOOK_FIELDS); what is not valid is left out, a field another
-// kind's warned and not kept (a line's fill, a point's text size)
+// kind's warned and not kept (a point's offset, a line's text size)
 export function look(l, c, kind) {
   if (l === undefined || l === null) return {};
   if (!isObj(l)) { c.warn('look: not an object, ignored'); return {}; }
-  const out = ownStyle({ fill: l.fill, stroke: l.stroke }, c, kind !== 'line');
+  const out = ownStyle({ fill: l.fill, stroke: l.stroke }, c);
   if (l.text !== undefined) {
     const t = isObj(l.text) ? l.text : (c.warn('look text: not an object, ignored'), {}), o = {};
     for (const k of ['name', 'values']) {
@@ -128,7 +120,6 @@ export function look(l, c, kind) {
   }
   const a = offset(l.offset, c);
   if (a !== null) out.offset = a;
-  if (l.minSize != null) { const m = minSize(l.minSize, c, 'look minSize'); if (m !== null) out.minSize = m; }
   const other = [];
   for (const [g, v] of Object.entries(out)) {
     if (!isObj(v)) { if (!LOOK_FIELDS[kind].includes(g)) { other.push(g); delete out[g]; } continue; }
@@ -138,34 +129,6 @@ export function look(l, c, kind) {
   if (other.length) c.warn(`look ${other.join(', ')}: not a ${kind}'s, ignored`);
   return out;
 }
-// what a point is made as (a preset's, a distribution's copy): { symbol, parts, look }
-export function pointSpec(x, c) {
-  const lk = look(x.look, c, 'point');
-  return { symbol: SYMBOLS.includes(x.symbol) ? x.symbol : (x.symbol !== undefined && c.warn(`unknown symbol "${String(x.symbol).slice(0, 20)}", none used`), 'none'),
-    parts: parts(x.parts, c), ...(Object.keys(lk).length && { look: lk }) };
-}
-// a point's parts (document.js makePart), each named by its place in the list (part 1, 2…)
-export function parts(list, c) {
-  if (list === undefined || list === null) return [];
-  if (!Array.isArray(list)) { c.warn('parts: not a list, ignored'); return []; }
-  const out = [];
-  if (list.length > MAX_PARTS) { c.warn(`more than ${MAX_PARTS} parts: the first ${MAX_PARTS} kept`); list = list.slice(0, MAX_PARTS); }
-  list.forEach((r, i) => {
-    const n = i + 1, round = ROUND.includes(r?.kind), size = (v) => fin(v) && v > 0 && v < MAX_RADIUS;
-    const bad = !isObj(r) ? 'not an object' : !PART_KINDS.includes(r.kind) ? `unknown kind "${String(r.kind).slice(0, 20)}"`
-      : round ? (!size(r.radius) ? 'radius not between 0 and 10 000 km' : null) : !size(r.length) || !size(r.width) ? 'length or width not above 0' : null;
-    if (bad) { c.warn(`part ${n} skipped: ${bad}`); return; }
-    const part = { kind: r.kind, fill: r.fill !== false, shown: r.shown !== false, name: text(r.name, c, `part ${n} name`) };
-    if (round) part.radius = r.radius; else { part.length = r.length; part.width = r.width; }
-    if (r.kind === 'sector') {
-      const a = aperture(r.aperture, c);
-      if (a === null) { part.kind = 'circle'; if (r.aperture == null) c.warn(`part ${n}: a sector with no aperture; a circle`); } else part.aperture = a;
-    }
-    out.push(part);
-  });
-  return out;
-}
-
 // The view a drawing was made in: the map's place, its layers and data, the units. known: what the app
 // offers (layers, data, depths), to check them; null: not checked.
 export const VIEW_D = { center: null, zoom: null, bearing: 0, layers: null, data: null, units: 'km', bearings: false };

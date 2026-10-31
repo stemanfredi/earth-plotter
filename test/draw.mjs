@@ -43,7 +43,7 @@ await section('the drawing: the bar, the tools, the kinds, the inspector, its fi
     if (document.querySelector('#bar .pright').getAttribute('aria-pressed') !== 'true') document.querySelector('#bar .pright').click();
     if (document.querySelector('#bar .ptab[data-tab=elements]').getAttribute('aria-pressed') !== 'true') document.querySelector('#bar .ptab[data-tab=elements]').click();
   });
-  await dw.evaluate(async () => { const { addLine } = await import('./draw/document.js'); drawing.change((doc) => addLine(doc, [12, 40.1], [], [12.05, 40.12], { name: 'Distance 1', guide: true, look: { text: { values: true } } })); });
+  await dw.evaluate(async () => { const { addLine } = await import('./draw/document.js'); drawing.change((doc) => addLine(doc, [[12, 40.1], [12.05, 40.12]], { name: 'Distance 1', guide: true, look: { text: { values: true } } })); });
   await dw.keyboard.press('s'); // the Shape tool, a circle (its first kind), its kinds a row under its button
   const sub = await dw.locator('#bar .kinds:not([hidden]) button').evaluateAll((bs) => bs.map((b) => b.getAttribute('aria-label')));
   check(sub.join() === 'Circle,Rings,Sector,Rectangle,Ellipse,Triangle,Aerial vehicle,Surface vehicle,Underwater vehicle',
@@ -78,20 +78,35 @@ await section('the drawing: the bar, the tools, the kinds, the inspector, its fi
     `tools: a kind picked in the row under the tool's button, the row shut (${picked}); the key again: off (${off}); a right-click on the button: on, the row again (${reopened})`);
   await dw.mouse.click(DX + 500, 400);
   await dw.mouse.click(DX + 500, 400); // its centre again: the default size
-  await dw.keyboard.press('Escape');
-  const radius = dw.locator('.dinspect input[aria-label="Part 1 radius"]');
+  const made = await dw.evaluate(() => [drawing.doc.points.length, drawing.doc.circles.map((c) => [c.radius, c.groupId === drawing.doc.points[0].id]).join(), drawing.sel.has(drawing.doc.points[0].id)]);
+  check(made.join() === '1,1000,true,true', `shapes: the Shape tool makes a point holding its circle, the point selected (${made})`);
+  await dw.keyboard.press('Escape'); // the tool off
+  await dw.keyboard.press('Escape'); // nothing selected
+  await settled(dw); // drawn: a click finds it
+  // the first click on a point's shape selects its point (with its shapes), the next the shape alone
+  const inside = await dw.evaluate(async () => { const { destination } = await import('./geodesy.js'); const c = drawing.doc.circles[0], q = map.project(destination(c.position, 90, c.radius / 2)), r = map.getCanvasContainer().getBoundingClientRect(); return [r.left + q.x, r.top + q.y]; });
+  const chosen = () => dw.evaluate(() => [...drawing.sel].map((id) => (drawing.doc.points.some((x) => x.id === id) ? 'point' : 'circle')).join());
+  await dw.mouse.click(...inside);
+  await until(() => drawing.sel.size === 1);
+  const first = await chosen();
+  await dw.mouse.click(...inside);
+  await until(() => drawing.sel.has(drawing.doc.circles[0].id));
+  const second = await chosen();
+  const rows = await dw.evaluate(() => [...document.querySelectorAll('.dlist .drow')].map((r) => r.querySelector('.kind').title).join());
+  check(first === 'point' && second === 'circle' && rows.startsWith('Point,Circle,'), `selection: a shape clicked selects its point first, clicked again the shape alone (${first}, ${second}); the tree shows it under its point (${rows})`);
+  const radius = dw.locator('.dinspect input[aria-label="Radius"]');
   await radius.fill('1.5 NM');
   await radius.press('Enter');
-  const partsShown = await dw.evaluate(() => [document.querySelectorAll('.dinspect [data-grid$=":parts"] tbody tr[data-r]:not(.ladd)').length, !!document.querySelector('.dinspect select[aria-label="Add a part"]')]);
-  check(partsShown.join() === '1,true', `drawing: the inspector lists its parts, one here, and + Part (${partsShown})`);
-  await dw.selectOption('.dinspect select[aria-label="Part 1 kind"]', 'sector'); // the circle as a sector, its radius kept
+  const aperture = dw.locator('.dinspect input[aria-label^="Aperture"]');
+  await aperture.fill('90'); // the circle a sector, its radius kept
+  await aperture.press('Enter');
   const bearing = dw.locator('input[aria-label^=Bearing]');
   await bearing.fill('-30');
   await bearing.press('Enter');
   let d = await written();
-  const pt0 = () => own(featuresOf(d, 'point')[0] || { properties: {} });
-  check(d?.type === 'FeatureCollection' && featuresOf(d, 'point').length === 1 && pt0().parts?.[0].kind === 'sector' && pt0().parts[0].radius === 2778 && pt0().bearing === 330 && pt0().parts[0].aperture === 90,
-    `drawing: a point placed, its radius (1.5 NM), bearing (−30° → 330°) and sector set in the inspector, saved as GeoJSON (${JSON.stringify(pt0())})`);
+  const pt0 = () => own(featuresOf(d, 'circle')[0] || { properties: {} });
+  check(d?.type === 'FeatureCollection' && featuresOf(d, 'point').length === 1 && pt0().radius === 2778 && pt0().bearing === 330 && pt0().aperture === 90 && pt0().group === featuresOf(d, 'point')[0].id,
+    `drawing: a circle's radius (1.5 NM), bearing (−30° → 330°) and aperture set in the inspector, saved as GeoJSON with its point (${JSON.stringify(pt0())})`);
   // the inspector as tables: every value row one line high (nothing wraps); ↑ in a value field nudges it
   const tall = await dw.evaluate(() => [...document.querySelectorAll('.dinspect .vrow')].filter((r) => r.getBoundingClientRect().height > 56).map((r) => r.textContent.slice(0, 30)));
   await bearing.focus();
@@ -143,7 +158,7 @@ await section('the drawing\'s files: imported again, dropped on the map, the lis
   ruler.geometry.coordinates = [[12.2, 40.3], [12.25, 40.31]];
   savedFile.features = [...savedFile.features.filter((f) => !measuredOf(savedFile).includes(f)), ruler];
   const exported = JSON.stringify(savedFile);
-  const measuredNow = () => dw.evaluate(async () => { const { elements, isMeasurement } = await import('./draw/document.js'); return elements(drawing.doc).filter((x) => isMeasurement(drawing.doc, x.el)).map((x) => x.el.start?.position ?? x.el.position ?? x.el.points[0]); });
+  const measuredNow = () => dw.evaluate(async () => { const { elements, isMeasurement } = await import('./draw/document.js'); return elements(drawing.doc).filter((x) => isMeasurement(drawing.doc, x.el)).map((x) => x.el.position ?? x.el.points[0]); });
   await dw.click('#bar .filebtn'); await dw.click('.dmenu .dnew'); // a new drawing, from the bar's Open, nothing asked
   await dw.waitForFunction(() => !drawing.doc.points.length && !drawing.doc.lines.length);
   await dw.evaluate(() => map.jumpTo({ center: [0, 0], zoom: 3 }));
@@ -176,7 +191,7 @@ await section('the drawing\'s files: imported again, dropped on the map, the lis
   check(/for good/.test(asked) && !/null/.test(asked), `drawing: Delete asks first, nothing else in the dialog (${asked})`);
   await dw.reload();
   await dw.waitForFunction(() => window.map?.loaded?.(), null, { timeout: 90000 });
-  check((await dw.locator('.dlist .drow').count()) === 1, 'drawing: restored after a reload');
+  check((await dw.locator('.dlist .drow').count()) === 2, 'drawing: restored after a reload (a point and its sector)');
   await dw.evaluate(() => drawing.select([drawing.doc.points[0].id])); // selected: its highlight must stay out of the picture
   const [dpng] = await Promise.all([dw.waitForEvent('download', { timeout: 120000 }), exportItem(dw, 'png')]);
   const [dzip] = await Promise.all([dw.waitForEvent('download', { timeout: 120000 }), exportItem(dw, 'zip')]);
@@ -205,8 +220,8 @@ await section('lines, groups and the box', async () => {
   await dw.mouse.click(DX + 420, 400); // starts on that point
   await dw.mouse.dblclick(DX + 620, 520);
   await dw.keyboard.press('Escape');
-  const segs = await dw.evaluate(() => drawing.doc.lines.map((s) => [s.start.element, s.end.element, s.vertices.length]));
-  check(segs.length === 3 && segs[0][1] && segs[1][0] === segs[0][1] && segs[2][0] === segs[0][1] && segs[0][2] === 1,
+  const segs = await dw.evaluate(async () => { const { linkFrom } = await import('./draw/document.js'), tie = (s, i) => linkFrom(drawing.doc, s.id, i < 0 ? s.points.length + i : i)?.to.element ?? null; return drawing.doc.lines.map((s) => [tie(s, 0), tie(s, -1), s.points.length]); });
+  check(segs.length === 3 && segs[0][1] && segs[1][0] === segs[0][1] && segs[2][0] === segs[0][1] && segs[0][2] === 3,
     `drawing: three lines drawn with the Line tool, the two later ones attached where the first ends (${JSON.stringify(segs)})`);
   const net = await dw.evaluate(async () => {
     const { totals, lineTrace } = await import('./draw/lines.js');
@@ -215,16 +230,20 @@ await section('lines, groups and the box', async () => {
   });
   check(Math.abs(net.all - net.want) < 1e-6, `drawing: the total, each line once (${(net.all / 1000).toFixed(2)} km)`);
   // the point moved: the lines attached to it follow
-  const follows = await dw.evaluate(() => {
+  const follows = await dw.evaluate(async () => {
+    const { linkFrom } = await import('./draw/document.js'), tie = (s, i) => linkFrom(drawing.doc, s.id, i < 0 ? s.points.length + i : i)?.to.element ?? null;
     const p = drawing.doc.points[0];
     drawing.change((doc) => { doc.points[0].position = [p.position[0] + 0.01, p.position[1]]; });
     const at = drawing.doc.points[0].position;
-    return drawing.doc.lines.every((s) => [s.start, s.end].every((e) => !e.element || (e.position[0] === at[0] && e.position[1] === at[1])));
+    return drawing.doc.lines.every((s) => [0, -1].every((i) => !tie(s, i) || s.points.at(i).join() === at.join()));
   });
   check(follows, 'drawing: a point moved, the lines attached to it follow');
   // Offset: a line drawn beside its geometry by MapLibre, set in pixels; its length stays real. A copy
   // of the first line, the two selected: the field sets both
-  await dw.evaluate(() => drawing.change((doc) => { doc.lines.push({ ...structuredClone(doc.lines[0]), id: 'copy1', name: 'Line 4' }); }));
+  await dw.evaluate(() => drawing.change((doc) => { // its links too
+    doc.lines.push({ ...structuredClone(doc.lines[0]), id: 'copy1', name: 'Line 4' });
+    doc.links.push(...doc.links.filter((l) => l.from[0] === doc.lines[0].id).map((l) => ({ from: ['copy1', l.from[1]], to: { ...l.to } })));
+  }));
   const before = await dw.evaluate(() => drawing.offset().length);
   await dw.evaluate(() => drawing.select([drawing.doc.lines[0].id, 'copy1']));
   const offField = dw.locator('.dinspect input[aria-label="Offset (px)"]');
@@ -272,7 +291,7 @@ await section('lines, groups and the box', async () => {
   check(await dw.evaluate((t) => drawing.doc.groups.length === 1 && drawing.doc.lines.every((s) => s.groupId === t), top), 'drawing: a subgroup deleted alone: its lines back in the group above');
   const [dnet] = await Promise.all([dw.waitForEvent('download'), (async () => { await dw.keyboard.press('Escape'); await exportDrawing(); })()]);
   const back = JSON.parse(await readFile(await dnet.path(), 'utf8'));
-  check(featuresOf(back, 'line').length === 4 && featuresOf(back, 'point').length === 1 && back.charts.groups.length === 1 && featuresOf(back, 'line').filter((f) => own(f).start || own(f).end).length === 4,
+  check(featuresOf(back, 'line').length === 4 && featuresOf(back, 'point').length === 1 && back.charts.groups.length === 1 && new Set(back.charts.links.map((l) => l.from[0])).size === 4 && back.charts.links.every((l) => l.to.element === featuresOf(back, 'point')[0].id),
     'drawing: exported whole, the lines\' ends attached to the point');
 });
 
@@ -305,17 +324,18 @@ await section('the rules: Distribute along, Connect', async () => {
   await mb.press('Enter');
   previewed.push(await dw.evaluate(() => drawing.previewLines?.length ?? 0));
   await dw.click('.dinspect button.done:has-text("Connect")');
-  const gen = await dw.evaluate(() => {
+  const gen = await dw.evaluate(async () => {
+    const { linkFrom } = await import('./draw/document.js'), tie = (s, i) => linkFrom(drawing.doc, s.id, i < 0 ? s.points.length + i : i)?.to.element ?? null;
     const rules = (k) => drawing.doc.rules.filter((r) => r.kind === k), a = rules('distribute')[0], c = rules('connect')[0];
     // what each line the connection made is, from its ends: a trunk at a root, else a branch
     const roots = new Set(c?.roots.map((r) => r.id)), made = drawing.doc.lines.filter((s) => c?.created.includes(s.id));
-    const ofPart = (v) => made.filter((s) => (roots.has(s.start.element) || roots.has(s.end.element)) === (v === 'trunk')), part = (v) => ofPart(v).length;
+    const ofPart = (v) => made.filter((s) => (roots.has(tie(s, 0)) || roots.has(tie(s, -1))) === (v === 'trunk')), part = (v) => ofPart(v).length;
     const names = (gid) => drawing.doc.groups.filter((g) => g.groupId === gid).map((g) => g.name).sort().join();
     return { a: rules('distribute').length, n: a?.points.length, c: rules('connect').length, subgroups: a && names(a.groupId), inCircles: a && a.points.every((x) => drawing.doc.points.find((q) => q.id === x.pointId).groupId === a.copiesId), trunks: part('trunk'), branches: part('branch'),
-      attached: drawing.doc.lines.filter((s) => s.start.element && s.end.element).length, undos: drawing.undos.length, group: drawing.selected()[0]?.kind,
+      attached: drawing.doc.lines.filter((s) => tie(s, 0) && tie(s, -1)).length, undos: drawing.undos.length, group: drawing.selected()[0]?.kind,
       // the branches' shortest (m, near enough at this scale), the hubs: one of its own per trunk
       shortest: Math.min(...ofPart('branch').map((s) => {
-        const [a, b] = [s.start.position, s.end.position], k = Math.cos((a[1] * Math.PI) / 180);
+        const [a, b] = [s.points[0], s.points.at(-1)], k = Math.cos((a[1] * Math.PI) / 180);
         return 111320 * Math.hypot((b[0] - a[0]) * k, b[1] - a[1]);
       })), hubs: c?.hubs.length, minBranch: c?.minBranch };
   });
@@ -332,7 +352,7 @@ await section('the rules: Distribute along, Connect', async () => {
   check(gen.minBranch === 300 && gen.shortest >= 297 && gen.hubs === gen.trunks && gen.branches === gen.n,
     `drawing: Tree, a hub of its own per trunk, a branch to every point, each at least the 300 m set (${Math.round(gen.shortest)} m)`);
   // points round a circle: a circle's inspector offers them; they follow it when it grows
-  const arcOf = await dw.evaluate(() => { const x = drawing.doc.points.at(-1); drawing.select([x.id]); return x.id; });
+  const arcOf = await dw.evaluate(() => { const x = drawing.doc.circles.at(-1); drawing.select([x.id]); return x.id; });
   await dw.click('.dinspect button:has-text("Distribute along…")');
   await dw.click('.dinspect [aria-label="Points by"] button:has-text("Count")');
   const gcount = dw.locator('input[aria-label=Count]');
@@ -342,8 +362,8 @@ await section('the rules: Distribute along, Connect', async () => {
   const onArc = await dw.evaluate(async (id) => {
     const { inverse } = await import('./geodesy.js');
     const a = drawing.doc.rules.find((x) => x.kind === 'distribute' && x.along.element === id);
-    drawing.change((doc) => { doc.points.find((x) => x.id === id).parts[0].radius *= 2; });
-    const c2 = drawing.doc.points.find((x) => x.id === id), r = c2.parts[0].radius;
+    drawing.change((doc) => { doc.circles.find((x) => x.id === id).radius *= 2; });
+    const c2 = drawing.doc.circles.find((x) => x.id === id), r = c2.radius;
     return a.points.map((x) => Math.round(inverse(c2.position, drawing.doc.points.find((n) => n.id === x.pointId).position).s / r * 100) / 100);
   }, arcOf);
   check(onArc.length === 6 && onArc.every((k) => k === 1), `drawing: points along a circle, following it when its radius doubles (${onArc})`);
@@ -358,43 +378,49 @@ await section('the rules: Distribute along, Connect', async () => {
   await dw.keyboard.press('Control+z');
 });
 
-await section('dragging, parts, shapes, attaching', async () => {
-  // dragging: a selected point's radius handle, one undo step; Esc during a drag puts it back
+await section('dragging, shapes, attaching', async () => {
+  // dragging: a selected circle's radius handle, one undo step; Esc during a drag puts it back
   await dw.keyboard.press('Escape');
   await dw.evaluate(() => { drawing.stop(); drawing.variant.shape = 'circle'; }); // a circle, whatever was on
   await dw.keyboard.press('s');
   await dw.mouse.click(DX + 640, 300);
   await dw.mouse.click(DX + 640, 300); // its centre again: the default size
   await dw.keyboard.press('Escape');
+  await dw.evaluate(() => drawing.select([drawing.doc.circles.at(-1).id])); // the circle alone, as a second click selects it
   await settled(dw); // its handles drawn: the drag below starts on one
-  const nd = await dw.evaluate(async () => { const { destination } = await import('./geodesy.js'); const x = drawing.doc.points.at(-1); const q = map.project(destination(x.position, 0, x.parts[0].radius)); return { r: x.parts[0].radius, x: q.x, y: q.y, undos: drawing.undos.length }; });
+  const nd = await dw.evaluate(async () => { const { destination } = await import('./geodesy.js'); const x = drawing.doc.circles.at(-1); const q = map.project(destination(x.position, 0, x.radius)); return { r: x.radius, x: q.x, y: q.y, undos: drawing.undos.length }; });
   await dw.mouse.move(nd.x, nd.y);
   await dw.mouse.down();
   await dw.mouse.move(nd.x, nd.y - 30, { steps: 5 });
   await frames(dw); // the drag's last move applied (on the next frame: draw/drawing.js)
   await dw.mouse.up();
-  const dragged = await dw.evaluate(() => [drawing.doc.points.at(-1).parts[0].radius, drawing.undos.length]);
+  const dragged = await dw.evaluate(() => [drawing.doc.circles.at(-1).radius, drawing.undos.length]);
   await dw.mouse.move(nd.x, nd.y - 30);
   await dw.mouse.down();
   await dw.mouse.move(nd.x, nd.y - 90, { steps: 5 });
   await dw.keyboard.press('Escape');
   await dw.mouse.up();
-  const kept = await dw.evaluate(() => drawing.doc.points.at(-1).parts[0].radius);
+  const kept = await dw.evaluate(() => drawing.doc.circles.at(-1).radius);
   check(dragged[0] > nd.r * 1.1 && dragged[1] === nd.undos + 1 && kept === dragged[0], `drawing: a radius dragged (${Math.round(nd.r)} → ${Math.round(dragged[0])} m), one undo step; Esc puts a drag back`);
-  // parts: a rectangle made a surface vehicle in its inspector, its length kept; a circle added to it,
-  // drawn with it; the preset it was placed from remembered
+  // a rectangle by the Shape tool: a point holding a closed line of four places, the preset it was
+  // placed from remembered; the point's Bearing typed turns its rectangle about it
   await dw.evaluate(() => { drawing.stop(); drawing.variant.shape = 'rectangle'; });
   await dw.keyboard.press('s');
   await dw.mouse.click(DX + 300, 200);
   await dw.mouse.click(DX + 300, 200); // its centre again: the default size
   await dw.keyboard.press('Escape');
-  await dw.selectOption('.dinspect select[aria-label="Part 1 kind"]', 'surface-vehicle');
-  await dw.selectOption('.dinspect select[aria-label="Add a part"]', 'circle');
+  const ringOf = () => dw.evaluate(async () => { const { inverse } = await import('./geodesy.js'); const x = drawing.doc.points.at(-1), r = drawing.doc.lines.find((l) => l.groupId === x.id);
+    return { sel: drawing.sel.has(x.id), n: r?.points.length, closed: r?.closed, preset: x.properties.find((q) => q.key === 'preset')?.value, azi: inverse(x.position, r.points[0]).azi, s: inverse(x.position, r.points[0]).s,
+      drawn: map.querySourceFeatures('drawzoom').some((f) => f.properties.id === r.id && f.properties.kind === 'path') }; });
   await settled(dw);
-  const twoParts = await dw.evaluate(() => { const x = drawing.doc.points.at(-1); return { kinds: x.parts.map((q) => q.kind).join(), len: x.parts[0].length, preset: x.properties.find((q) => q.key === 'preset')?.value,
-    drawn: map.querySourceFeatures('draw').filter((f) => f.properties.id === x.id && f.properties.kind === 'ring').length + map.querySourceFeatures('drawzoom').filter((f) => f.properties.id === x.id && f.properties.kind === 'shape').length }; });
-  check(twoParts.kinds === 'surface-vehicle,circle' && twoParts.len === 100 && twoParts.preset === 'Rectangle' && twoParts.drawn >= 2,
-    `parts: an outline's kind changed, its length kept; a circle added, both drawn; its preset remembered (${JSON.stringify(twoParts)})`);
+  const rect = await ringOf();
+  const turnTo = dw.locator('.dinspect input[aria-label^=Bearing]');
+  await turnTo.fill('45');
+  await turnTo.press('Enter');
+  const turned = await ringOf();
+  check(rect.sel && rect.n === 4 && rect.closed && rect.preset === 'Rectangle' && rect.drawn && Math.abs(turned.azi - rect.azi - 45) < 1e-6 && Math.abs(turned.s - rect.s) < 1e-6,
+    `shapes: the Shape tool's rectangle a point holding a closed line, drawn; the point turned, its rectangle with it (${JSON.stringify(rect)}; ${turned.azi.toFixed(2)}°)`);
+  await dw.locator('.dinsphead .ititle').click(); // out of the field: the keys are the drawing's
   // a rectangle corner to corner: its box from the first click to the second, facing north; Shift: a
   // square, the larger side
   await dw.evaluate(() => { drawing.stop(); drawing.variant.shape = 'rectangle'; });
@@ -402,8 +428,8 @@ await section('dragging, parts, shapes, attaching', async () => {
   await dw.mouse.click(DX + 300, 460);
   await dw.mouse.move(DX + 380, 500, { steps: 3 });
   await dw.mouse.click(DX + 380, 500);
-  const boxOf = (a, b) => dw.evaluate(async ([a, b]) => { const { inverse } = await import('./geodesy.js'); const x = drawing.doc.points.at(-1), p = map.unproject(a), q = map.unproject(b), c = map.project(x.position);
-    return [x.bearing, x.parts[0].length, x.parts[0].width, inverse([p.lng, p.lat], [p.lng, q.lat]).s, inverse([p.lng, p.lat], [q.lng, p.lat]).s, Math.round(c.x), Math.round(c.y)]; }, [a, b]);
+  const boxOf = (a, b) => dw.evaluate(async ([a, b]) => { const { inverse } = await import('./geodesy.js'); const x = drawing.doc.points.at(-1), ps = drawing.doc.lines.find((l) => l.groupId === x.id).points, p = map.unproject(a), q = map.unproject(b), c = map.project(x.position);
+    return [x.bearing, +inverse(ps[0], ps[1]).s.toFixed(3), +inverse(ps[1], ps[2]).s.toFixed(3), inverse([p.lng, p.lat], [p.lng, q.lat]).s, inverse([p.lng, p.lat], [q.lng, p.lat]).s, Math.round(c.x), Math.round(c.y)]; }, [a, b]);
   const sized = await boxOf([DX + 300, 460], [DX + 380, 500]);
   await dw.mouse.click(DX + 300, 560);
   await dw.keyboard.down('Shift');
@@ -412,33 +438,35 @@ await section('dragging, parts, shapes, attaching', async () => {
   const square = await boxOf([DX + 300, 560], [DX + 380, 600]);
   check(sized[0] === 0 && Math.abs(sized[1] - sized[3]) < 2 && Math.abs(sized[2] - sized[4]) < 2 && Math.abs(sized[5] - DX - 340) <= 1 && Math.abs(sized[6] - 480) <= 1 && square[1] === square[2] && Math.abs(square[1] - square[4]) < 2,
     `shapes: a rectangle corner to corner, facing north, centred between them; Shift a square (${sized.map((v) => Math.round(v))}; ${square.slice(1, 3).map(Math.round)})`);
-  // a line closed into an area by a click on its first point; a sector in three clicks
+  // a line closed by a click on its first point (a closed line, "Area n", filled); a sector in three clicks
   await dw.keyboard.press('Escape');
   await dw.evaluate(() => drawing.stop());
   await dw.keyboard.press('g');
-  const areasBefore = await dw.evaluate(() => drawing.doc.areas.length);
+  const ringsBefore = await dw.evaluate(() => drawing.doc.lines.filter((x) => x.closed).length);
   for (const [x, y] of [[450, 450], [520, 450], [500, 520], [451, 451]]) await dw.mouse.click(DX + x, y);
-  const closed = await dw.evaluate(() => [drawing.doc.areas.length, drawing.doc.areas.at(-1)?.points.length, !!drawing.draft]);
+  await settled(dw);
+  const closed = await dw.evaluate(() => { const g = drawing.doc.lines.at(-1); return [drawing.doc.lines.filter((x) => x.closed).length, g.closed && g.points.length, !!drawing.draft, g.name.split(' ')[0],
+    map.querySourceFeatures('draw').some((f) => f.properties.id === g.id && f.properties.kind === 'polygon')]; });
   await dw.keyboard.press('Escape');
   await dw.evaluate(() => { drawing.variant.shape = 'sector'; });
   await dw.keyboard.press('s');
   for (const [x, y] of [[600, 450], [600, 400], [650, 450]]) await dw.mouse.click(DX + x, y);
   await settled(dw);
-  const sec = await dw.evaluate(() => { const x = drawing.doc.points.at(-1); return [x.parts.map((q) => [q.kind, q.fill, Math.round(q.aperture)].join(':')).join(), x.name.split(' ')[0],
-    map.querySourceFeatures('draw').filter((f) => f.properties.id === x.id && f.properties.kind === 'ring').map((f) => f.geometry.type)[0]]; });
+  const sec = await dw.evaluate(() => { const x = drawing.doc.points.at(-1), c = drawing.doc.circles.filter((q) => q.groupId === x.id); return [c.map((q) => Math.round(q.aperture)).join(), x.name.split(' ')[0],
+    map.querySourceFeatures('draw').filter((f) => f.properties.id === c[0]?.id && f.properties.kind === 'ring').map((f) => f.geometry.type)[0]]; });
   await dw.keyboard.press('Escape');
-  check(closed.join() === `${areasBefore + 1},3,false` && sec[0] === 'sector:true:90' && sec[1] === 'Sector' && sec[2] === 'Polygon',
-    `shapes: a line closed into an area on its first point (${closed}); a sector in three clicks (${sec})`);
-  await dw.evaluate(() => drawing.remove([drawing.doc.points.at(-1).id, drawing.doc.areas.at(-1).id])); // the checks after these find the drawing as it was
+  check(closed.join() === `${ringsBefore + 1},3,false,Area,true` && sec[0] === '90' && sec[1] === 'Sector' && sec[2] === 'Polygon',
+    `shapes: a line closed on its first point, filled (${closed}); a sector in three clicks (${sec})`);
+  await dw.evaluate(() => drawing.remove([drawing.doc.points.at(-1).id, drawing.doc.lines.at(-1).id])); // the checks after these find the drawing as it was
   await dw.keyboard.press('Escape');
   await dw.keyboard.press('Escape');
-  // attaching: a line drawn to a shape's corner ends attached there, and follows it when it turns
+  // attaching: a line drawn to a shape's corner ends attached there, and follows it when its point turns
   const sc = await dw.evaluate(async () => {
-    const { addPoint, makePart } = await import('./draw/document.js'), { verticesOf } = await import('./draw/attach.js');
-    let x;
-    drawing.change((d) => { const c = map.unproject([500, 500]); x = addPoint(d, [c.lng, c.lat], { symbol: 'none', parts: [makePart('rectangle', { length: 3000, width: 2000 })] }); });
-    const q = map.project(verticesOf({ kind: 'point', el: x })[0]);
-    return { id: x.id, x: q.x, y: q.y };
+    const { build } = await import('./draw/place.js');
+    let x, r;
+    drawing.change((d) => { const c = map.unproject([500, 500]); x = build(d, [c.lng, c.lat], 'rectangle', 0, { size: [3000, 2000] }); r = d.lines.find((l) => l.groupId === x.id); });
+    const q = map.project(r.points[0]);
+    return { id: r.id, pid: x.id, x: q.x, y: q.y };
   });
   await dw.keyboard.press('Escape');
   await dw.keyboard.press('g');
@@ -446,20 +474,20 @@ await section('dragging, parts, shapes, attaching', async () => {
   await dw.mouse.click(sc.x + 3, sc.y + 2); // within the snapping radius of the corner: snapped there
   await dw.keyboard.press('Enter'); // ended there, attached
   await dw.keyboard.press('Escape');
-  const att = await dw.evaluate((id) => {
-    const s = drawing.doc.lines.at(-1), before = [...s.end.position];
-    drawing.change((d) => { d.points.find((p) => p.id === id).bearing = 30; });
-    const after = drawing.doc.lines.at(-1).end;
-    return [after.element, after.vertex, before.join() !== after.position.join()];
-  }, sc.id);
+  const att = await dw.evaluate(async (pid) => {
+    const { linkFrom, carry } = await import('./draw/document.js'), s = drawing.doc.lines.at(-1), before = [...s.points[1]];
+    drawing.change((d) => { const p = d.points.find((q) => q.id === pid); carry(d, p, p.position, 30); });
+    const to = linkFrom(drawing.doc, s.id, 1)?.to;
+    return [to?.element, to?.vertex, before.join() !== drawing.doc.lines.at(-1).points[1].join()];
+  }, sc.pid);
   check(att[0] === sc.id && att[1] === 0 && att[2], `attaching: a line drawn to a shape's corner is attached to it, and follows it when the shape turns (${JSON.stringify(att)})`);
   // a line drawn onto another line's leg: its end attached along the leg (an edge, no vertex added);
   // then moved by its inspector's Attach to… onto the shape's corner
   const host = await dw.evaluate(async () => {
     const { addLine } = await import('./draw/document.js'), at = (x, y) => { const c = map.unproject([x, y]); return [c.lng, c.lat]; };
     let s;
-    drawing.change((d) => { s = addLine(d, at(250, 200), [], at(550, 200)); });
-    return { id: s.id, n: s.vertices.length, x: 400, y: 200 };
+    drawing.change((d) => { s = addLine(d, [at(250, 200), at(550, 200)]); });
+    return { id: s.id, n: s.points.length, x: 400, y: 200 };
   });
   await settled(dw); // drawn: what snapping looks for is on the map
   await dw.keyboard.press('g');
@@ -467,24 +495,48 @@ await section('dragging, parts, shapes, attaching', async () => {
   await dw.mouse.click(host.x, host.y);
   await dw.keyboard.press('Enter');
   await dw.keyboard.press('Escape');
-  const onLeg = await dw.evaluate((h) => { const s = drawing.doc.lines.at(-1); return { end: s.end, n: drawing.doc.lines.find((x) => x.id === h.id).vertices.length, id: s.id }; }, host);
+  const onLeg = await dw.evaluate(async (h) => { const { linkFrom } = await import('./draw/document.js'), s = drawing.doc.lines.at(-1); return { end: linkFrom(drawing.doc, s.id, 1)?.to ?? {}, n: drawing.doc.lines.find((x) => x.id === h.id).points.length, id: s.id }; }, host);
   check(onLeg.end.element === host.id && onLeg.end.edge === 0 && onLeg.end.at > 0.2 && onLeg.end.at < 0.8 && onLeg.n === host.n,
     `attaching: a line's end on another line's leg, along it, no vertex added (${JSON.stringify(onLeg.end)})`);
   await dw.evaluate((id) => drawing.select([id]), onLeg.id);
   await dw.click('.dinspect [data-grid*=":points"] tbody tr[data-r]:last-child td:first-child'); // its end's row: Attach to… over the table
-  await dw.click('.dinspect .lbar button[aria-label="Attach end to…"]');
-  const corner = await dw.evaluate(async (id) => { const { verticesOf } = await import('./draw/attach.js'); const q = map.project(verticesOf({ kind: 'point', el: drawing.doc.points.find((x) => x.id === id) })[2]); return [q.x, q.y]; }, sc.id);
+  await dw.click('.dinspect .lbar button[aria-label="Attach point 2 to…"]');
+  const corner = await dw.evaluate((id) => { const q = map.project(drawing.doc.lines.find((x) => x.id === id).points[2]); return [q.x, q.y]; }, sc.id);
   await dw.mouse.click(corner[0] + 2, corner[1] + 2);
-  const moved2 = await dw.evaluate((id) => drawing.doc.lines.find((s) => s.id === id).end, onLeg.id);
+  const moved2 = await dw.evaluate(async (id) => { const { linkFrom } = await import('./draw/document.js'); return linkFrom(drawing.doc, id, 1)?.to ?? {}; }, onLeg.id);
   check(moved2.element === sc.id && moved2.vertex === 2, `attaching: Attach to… moves a line's end onto a shape's corner (${JSON.stringify(moved2)})`);
+  // any place of a line: its middle one attached to a point by its row's Attach to…, then following
+  // the point dragged on the map
+  const mid = await dw.evaluate(async () => {
+    const { addLine, addPoint } = await import('./draw/document.js'), at = (x, y) => { const c = map.unproject([x, y]); return [c.lng, c.lat]; };
+    let s, p;
+    drawing.change((d) => { s = addLine(d, [at(250, 300), at(350, 320), at(450, 300)]); p = addPoint(d, at(350, 420), { symbol: 'square' }); });
+    drawing.select([s.id]);
+    const q = map.project(p.position), r = map.getCanvasContainer().getBoundingClientRect();
+    return { id: s.id, pid: p.id, x: r.left + q.x, y: r.top + q.y };
+  });
+  await settled(dw);
+  await dw.click('.dinspect [data-grid*=":points"] tbody tr[data-r="1"] td:first-child');
+  await dw.click('.dinspect .lbar button[aria-label="Attach point 2 to…"]');
+  await dw.mouse.click(mid.x, mid.y);
+  const tiedMid = await dw.evaluate(async (m) => { const { linkFrom } = await import('./draw/document.js'); return linkFrom(drawing.doc, m.id, 1)?.to.element === m.pid && drawing.doc.lines.find((x) => x.id === m.id).points[1].join() === drawing.doc.points.find((x) => x.id === m.pid).position.join(); }, mid);
+  await dw.evaluate((id) => drawing.select([id]), mid.pid);
+  await settled(dw);
+  await dw.mouse.move(mid.x, mid.y);
+  await dw.mouse.down();
+  await dw.mouse.move(mid.x + 80, mid.y + 30, { steps: 5 });
+  await frames(dw);
+  await dw.mouse.up();
+  const followed = await dw.evaluate((m) => { const p = drawing.doc.points.find((x) => x.id === m.pid).position, s = drawing.doc.lines.find((x) => x.id === m.id); const q = map.project(p); return [s.points[1].join() === p.join(), Math.round(q.x), s.points[0].join() !== p.join()]; }, mid);
+  check(tiedMid && followed[0] && followed[2], `attaching: a line's middle place attached to a point by its row's Attach to…, following the point dragged (${tiedMid}, ${followed})`);
   await dw.keyboard.press('Escape');
-  await dw.evaluate((id) => drawing.remove([id]), sc.id);
+  await dw.evaluate((ids) => drawing.remove(ids), [sc.pid, mid.id, mid.pid]); // the shape's point: its shape with it
 });
 
 await section('labels, names, data and totals', async () => {
   // labels: one on the point, its text typed; drawn; its text dragged; names on the map; the point
   // deleted, the label stays where it pointed
-  const nid = await dw.evaluate(() => drawing.doc.points.filter((x) => !x.parts.some((q) => q.length)).at(-1).id);
+  const nid = await dw.evaluate(() => drawing.doc.points.filter((x) => x.name.startsWith('Circle')).at(-1).id);
   await dw.keyboard.press('t');
   await dw.mouse.click(DX + 640, 300);
   await dw.keyboard.type('Hi {name}');
@@ -493,7 +545,8 @@ await section('labels, names, data and totals', async () => {
   // drawn once its glyphs have loaded and it has been placed: a fixed wait was sometimes too short
   await dw.waitForFunction(() => map.queryRenderedFeatures({ layers: ['draw-label-text'] }).length > 0, null, { timeout: 5000 }).catch(() => {});
   const lab = await dw.evaluate((id) => { const a = drawing.doc.labels[0], p = drawing.doc.points.find((x) => x.id === id); const q = map.project(p.position); return { a, point: p.position, x: q.x + a.offset[0], y: q.y + a.offset[1], undos: drawing.undos.length, drawn: map.queryRenderedFeatures({ layers: ['draw-label-text'] }).map((f) => f.properties.text), leader: map.queryRenderedFeatures({ layers: ['draw-leader'] }).length }; }, nid);
-  check(lab.a?.anchor.element === nid && lab.a.text === 'Hi {name}' && lab.drawn.some((t) => /^Hi Circle \d+$/.test(t)) && lab.leader === 1,
+  const labTo = await dw.evaluate(async () => { const { linkFrom } = await import('./draw/document.js'); return linkFrom(drawing.doc, drawing.doc.labels[0].id)?.to.element; });
+  check(labTo === nid && lab.a.text === 'Hi {name}' && lab.drawn.some((t) => /^Hi Circle \d+$/.test(t)) && lab.leader === 1,
     `labels: placed on a point with the Label tool, its text typed, drawn with its name and a leader (${lab.drawn.join(', ')})`);
   await dw.mouse.move(lab.x, lab.y);
   await dw.mouse.down();
@@ -533,36 +586,43 @@ await section('labels, names, data and totals', async () => {
   await dw.selectOption('.dinspect select[aria-label="Totals by"]', 'kind');
   const byKind = await dw.evaluate(() => [...document.querySelectorAll('.dinspect .lgrid.plain td:first-child')].map((td) => td.textContent));
   check(byKind.some((t) => t.endsWith('“x”')) && byKind.some((t) => t.endsWith('No kind')), `drawing: a property added in Data, the totals by its key (${byKind.join(', ')})`);
-  const pointed = await dw.evaluate(async () => { const { resolve } = await import('./draw/attach.js'); return resolve(drawing.doc, drawing.doc.labels[0].anchor).position; });
+  const pointed = await dw.evaluate(() => drawing.doc.labels[0].position);
   await dw.evaluate((id) => drawing.remove([id]), nid);
-  const freed = await dw.evaluate(() => drawing.doc.labels[0]?.anchor);
-  check(!freed?.element && freed?.position?.[0] === pointed[0] && freed.position[1] === pointed[1], 'labels: the point deleted, its label stays, free, where it pointed');
+  const freed = await dw.evaluate(() => [drawing.doc.links.some((l) => l.from[0] === drawing.doc.labels[0]?.id), drawing.doc.labels[0]?.position]);
+  check(!freed[0] && freed[1]?.[0] === pointed[0] && freed[1][1] === pointed[1], 'labels: the point deleted, its label stays, free, where it pointed');
 });
 
 await section('legs typed, list grids', async () => {
   // legs typed after drawing: the leg to a line's point 2 set to 1 km at 090°, that point alone moved
-  // (its end where it was); the edge to a polygon's corner 2 set to 500 m, that corner alone moved
+  // (its end where it was); the leg to a closed line's point 2 set to 500 m, that point alone moved
   const legIds = await dw.evaluate(async () => {
-    const { addLine, addArea } = await import('./draw/document.js');
+    const { addLine } = await import('./draw/document.js');
     let l, a;
-    drawing.change((d) => { l = addLine(d, [13, 41], [[13.02, 41.01]], [13.04, 41]); a = addArea(d, [[13, 40.5], [13.01, 40.5], [13.01, 40.51]]); });
+    drawing.change((d) => { l = addLine(d, [[13, 41], [13.02, 41.01], [13.04, 41]]); a = addLine(d, [[13, 40.5], [13.01, 40.5], [13.01, 40.51]], { closed: true }); });
     return [l.id, a.id];
   });
   await dw.evaluate((id) => drawing.select([id]), legIds[0]);
   const typeIn = async (aria, v) => { const f = dw.locator(`.dinspect input[aria-label="${aria}"]`); await f.fill(v); await f.press('Enter'); };
-  const endAt = () => dw.evaluate((id) => drawing.doc.lines.find((x) => x.id === id).end.position.join(), legIds[0]);
+  const endAt = () => dw.evaluate((id) => drawing.doc.lines.find((x) => x.id === id).points.at(-1).join(), legIds[0]);
   const endBefore = await endAt();
   await typeIn('Point 2 leg length', '1 km');
   await typeIn('Point 2 leg bearing (degrees true)', '90');
-  const leg1 = await dw.evaluate(async (id) => { const { inverse } = await import('./geodesy.js'); const l = drawing.doc.lines.find((x) => x.id === id); const g = inverse(l.start.position, l.vertices[0].position); return [Math.round(g.s), Math.round(g.azi)]; }, legIds[0]);
+  const leg1 = await dw.evaluate(async (id) => { const { inverse } = await import('./geodesy.js'); const l = drawing.doc.lines.find((x) => x.id === id); const g = inverse(l.points[0], l.points[1]); return [Math.round(g.s), Math.round(g.azi)]; }, legIds[0]);
   const endAfter = await endAt();
   await dw.evaluate((id) => drawing.select([id]), legIds[1]);
-  await typeIn('Corner 2 leg length', '500 m');
-  const edge = await dw.evaluate(async (id) => { const { inverse } = await import('./geodesy.js'); const a = drawing.doc.areas.find((x) => x.id === id); return [Math.round(inverse(a.points[0], a.points[1]).s), a.points[2].join()]; }, legIds[1]);
+  await typeIn('Point 2 leg length', '500 m');
+  const edge = await dw.evaluate(async (id) => { const { inverse } = await import('./geodesy.js'); const a = drawing.doc.lines.find((x) => x.id === id); return [Math.round(inverse(a.points[0], a.points[1]).s), a.points[2].join()]; }, legIds[1]);
+  // its values: area and perimeter, no length; Closed unticked, it is an open line again (its length)
+  const rows = () => dw.evaluate(() => [...document.querySelectorAll('.dinspect .flabel')].map((x) => x.textContent).filter((t) => ['Length', 'Area', 'Perimeter'].includes(t)).join());
+  const ringRows = await rows();
+  await dw.locator('.dinspect input[aria-label="Closed"]').click();
+  const opened = [await dw.evaluate((id) => drawing.doc.lines.find((x) => x.id === id).closed, legIds[1]), await rows()];
+  await dw.evaluate(() => drawing.undo());
+  check(ringRows === 'Area,Perimeter' && opened.join() === 'false,Length', `a closed line's values, area and perimeter; Closed unticked, open (${ringRows}; ${opened})`);
   check(leg1.join() === '1000,90' && endAfter === endBefore && edge[0] === 500 && edge[1] === '13.01,40.51',
-    `legs typed after drawing: the leg to a line's point (${leg1}), that point alone moved (its end ${endAfter}); a polygon's edge (${edge[0]}), corner 3 where it was`);
+    `legs typed after drawing: the leg to a line's point (${leg1}), that point alone moved (its end ${endAfter}); a closed line's (${edge[0]}), point 3 where it was`);
   // the points' table as a list grid: ↓ goes to the same column in the next row; the bar over it acts
-  // on the current row (its vertex deleted); a part added from the parts' empty last row
+  // on the current row (its vertex deleted)
   await dw.evaluate((id) => drawing.select([id]), legIds[0]);
   await dw.locator('.dinspect input[aria-label="Point 2 leg length"]').focus();
   await dw.keyboard.press('ArrowDown');
@@ -570,24 +630,8 @@ await section('legs typed, list grids', async () => {
   const movedTo = await dw.evaluate(() => document.activeElement?.getAttribute('aria-label'));
   await dw.locator('.dinspect input[aria-label="Point 2 latitude"]').focus();
   await dw.click('.dinspect .lbar button:has-text("Delete")');
-  const vertsLeft = await dw.evaluate((id) => drawing.doc.lines.find((x) => x.id === id).vertices.length, legIds[0]);
-  const pid = await dw.evaluate(async () => { const { addPoint } = await import('./draw/document.js'); let n; drawing.change((d) => { const c = map.getCenter(); n = addPoint(d, [c.lng, c.lat]); }); drawing.select([n.id]); return n.id; });
-  await dw.selectOption('.dinspect [data-grid$=":parts"] select[aria-label="Add a part"]', 'rectangle');
-  const partsNow = await dw.evaluate((id) => drawing.doc.points.find((x) => x.id === id).parts.map((q) => q.kind).join(), pid);
-  check(movedTo === 'Point 3 leg length' && vertsLeft === 0 && partsNow === 'circle,rectangle',
-    `list grids: ↓ to the next row (${movedTo}); the row's bar deletes its vertex (${vertsLeft} left); a part added from the empty row (${partsNow})`);
-  // a point's parts linked to the map: a part's handle pressed on the map picks its row
-  await dw.click('.dinspect [data-grid$=":parts"] tr[data-r="1"] td:first-child');
-  const partMarked = await dw.evaluate(() => !drawing.placeAt()); // a row clicked draws nothing over: its handles say it
-  const rh = await dw.evaluate((id) => { const x = drawing.doc.points.find((q) => q.id === id); map.jumpTo({ center: x.position, zoom: 14 }); return [0, 0, x.parts[0].radius]; }, pid);
-  await settled(dw);
-  const handle = await dw.evaluate(async ([id]) => { const { destination } = await import('./geodesy.js'); const x = drawing.doc.points.find((q) => q.id === id), q = map.project(destination(x.position, 90, x.parts[0].radius)), r = map.getCanvasContainer().getBoundingClientRect(); return [r.left + q.x, r.top + q.y]; }, [pid]);
-  await dw.mouse.move(handle[0], handle[1]);
-  await dw.mouse.down();
-  await dw.mouse.up();
-  await until(() => document.querySelector('.dinspect .lbar .funit')?.textContent === 'Part 1:');
-  const partPicked = await dw.evaluate(() => document.querySelector('.dinspect .lbar .funit')?.textContent);
-  check(partMarked && partPicked === 'Part 1:', `parts: a row clicked marks nothing on the map (${partMarked}); a part's handle pressed picks its row (${partPicked}, ${Math.round(rh[2])} m)`);
+  const vertsLeft = await dw.evaluate((id) => drawing.doc.lines.find((x) => x.id === id).points.length - 2, legIds[0]);
+  check(movedTo === 'Point 3 leg length' && vertsLeft === 0, `list grids: ↓ to the next row (${movedTo}); the row's bar deletes its vertex (${vertsLeft} left)`);
   // a list's Copy: its rows, tab-separated, a header first
   await dw.evaluate((id) => drawing.select([id]), legIds[0]);
   await dw.click('.dinspect .fblock:has(h3:has-text("Points")) button:has-text("Copy")');
@@ -601,7 +645,7 @@ await section('paging, Properties in place', async () => {
   const longId = await dw.evaluate(async () => {
     const { addLine } = await import('./draw/document.js');
     let s;
-    drawing.change((doc) => { s = addLine(doc, [12, 40], Array.from({ length: 500 }, (_, i) => [12 + (i + 1) / 600, 40 + Math.sin(i / 9) / 200]), [12.9, 40]); });
+    drawing.change((doc) => { s = addLine(doc, [[12, 40], ...Array.from({ length: 500 }, (_, i) => [12 + (i + 1) / 600, 40 + Math.sin(i / 9) / 200]), [12.9, 40]]); });
     drawing.select([s.id]);
     return s.id;
   });
@@ -615,8 +659,8 @@ await section('paging, Properties in place', async () => {
   await dw.click('.dinspect .lpager button[aria-label="Next rows"]'); // › again: the next page (a button kept by morph acts as it says)
   const pageThree = await dw.evaluate(() => document.querySelector('.dinspect .lpager .funit').textContent);
   await dw.click('.dinspect [data-grid*=":points"] tr[data-r="4"] td:first-child'); // point 205
-  const ringed = await dw.evaluate((id) => drawing.placeAt()?.join() === drawing.doc.lines.find((x) => x.id === id).vertices[203].position.join(), longId);
-  const vAt = await dw.evaluate((id) => { const v = drawing.doc.lines.find((x) => x.id === id).vertices[349].position; map.jumpTo({ center: v, zoom: 15 }); return v; }, longId);
+  const ringed = await dw.evaluate((id) => drawing.placeAt()?.join() === drawing.doc.lines.find((x) => x.id === id).points[204].join(), longId);
+  const vAt = await dw.evaluate((id) => { const v = drawing.doc.lines.find((x) => x.id === id).points[350]; map.jumpTo({ center: v, zoom: 15 }); return v; }, longId);
   await settled(dw);
   const vPx = await dw.evaluate((v) => { const q = map.project(v), r = map.getCanvasContainer().getBoundingClientRect(); return [r.left + q.x, r.top + q.y]; }, vAt);
   await dw.mouse.move(vPx[0], vPx[1]);
@@ -625,13 +669,13 @@ await section('paging, Properties in place', async () => {
   await until(() => document.querySelector('.dinspect .lbar .funit')?.textContent === 'Point 351:');
   const pickedRow = await dw.evaluate(() => [document.querySelector('.dinspect .lbar .funit')?.textContent, document.querySelector('.dinspect .lpager .funit').textContent, document.querySelector('.dinspect tr.cur td')?.textContent]);
   await dw.click('.dinspect .lbar button:has-text("Delete")'); // the row picked from the map, not the one current before
-  const deleted = await dw.evaluate(([id, v]) => { const x = drawing.doc.lines.find((l) => l.id === id); return [x.vertices.length, x.vertices.some((q) => q.position.join() === v.join())]; }, [longId, vAt]);
+  const deleted = await dw.evaluate(([id, v]) => { const x = drawing.doc.lines.find((l) => l.id === id); return [x.points.length - 2, x.points.some((q) => q.join() === v.join())]; }, [longId, vAt]);
   check(pageThree === '201–300 of 502' && ringed && pickedRow.join() === 'Point 351:,301–400 of 502,351' && deleted.join() === '499,false',
     `points: › twice (${pageThree}); a row clicked is ringed on the map (${ringed}); a point pressed on the map picks its row, on its page (${pickedRow}); its bar's Delete takes that point (${deleted})`);
   await dw.evaluate((id) => drawing.remove([id]), longId);
   // Properties updated in place (dom.js morph): Tab, or a click into another field, from a field just
   // applied lands there; the same in a list
-  const fl = await dw.evaluate(async () => { const { addLine } = await import('./draw/document.js'); let l; drawing.change((d) => { l = addLine(d, [12.0, 40.3], [[12.05, 40.32]], [12.1, 40.3]); }); drawing.select([l.id]); return l.id; });
+  const fl = await dw.evaluate(async () => { const { addLine } = await import('./draw/document.js'); let l; drawing.change((d) => { l = addLine(d, [[12.0, 40.3], [12.05, 40.32], [12.1, 40.3]]); }); drawing.select([l.id]); return l.id; });
   const focused = () => dw.evaluate(() => document.activeElement?.closest('[aria-label]')?.getAttribute('aria-label'));
   await dw.click('.dinspect input[aria-label="Name"]');
   await dw.keyboard.type('Q');
@@ -696,12 +740,12 @@ await section('with a finger, on a phone', async () => {
   });
   await fp.evaluate(() => drawing.select([]));
   const handles = await fp.evaluate(() => map.getLayoutProperty('draw-handle', 'icon-size'));
-  await fp.evaluate(() => drawing.select([drawing.doc.points[0].id]));
+  await fp.evaluate(() => drawing.select([drawing.doc.circles[0].id]));
   // a drag of the radius handle, then a second finger: everything back
-  const rBefore = await fp.evaluate(() => drawing.doc.points[0].parts[0].radius);
+  const rBefore = await fp.evaluate(() => drawing.doc.circles[0].radius);
   await fp.evaluate(async () => {
     const { destination } = await import('./geodesy.js');
-    const x = drawing.doc.points[0], q = map.project(destination(x.position, 0, x.parts[0].radius)), box = map.getCanvasContainer(), r = box.getBoundingClientRect();
+    const x = drawing.doc.circles[0], q = map.project(destination(x.position, 0, x.radius)), box = map.getCanvasContainer(), r = box.getBoundingClientRect();
     const ev = (type, id, dy = 0) => new PointerEvent(type, { pointerId: id, bubbles: true, button: 0, clientX: r.left + q.x, clientY: r.top + q.y - dy, pointerType: 'touch' });
     box.dispatchEvent(ev('pointerdown', 1));
     window.dispatchEvent(ev('pointermove', 1, 20));
@@ -709,11 +753,11 @@ await section('with a finger, on a phone', async () => {
     box.dispatchEvent(ev('pointerdown', 2)); // a second finger
     window.dispatchEvent(ev('pointerup', 1));
   });
-  const after = await fp.evaluate(() => [drawing.doc.points[0].parts[0].radius, !!drawing.drag]);
+  const after = await fp.evaluate(() => [drawing.doc.circles[0].radius, !!drawing.drag]);
   check(atStart.join() === 'false,false' && dock === 'Undo,Redo,Box select,Point,Line,Shape,Label,Measure' && placed === 1 && drawingDock === 'Back,Undo,Redo,Shape' && undone === 0 && redone === 1 && afterBack === null,
     `finger: the sheet closed to start with; the dock Undo, Redo and the tools (${dock}); a circle placed by two taps, the dock then ${drawingDock}; Undo, Redo (${undone}, ${redone}); Back ends the tool (${atStart}; ${placed}; ${afterBack})`);
-  check(peek[0] && peek[1] && peek[2] < 120 && colOpen.join() === 'true,false' && propsOpen.join() === 'false,true,false' && boxed === 1,
-    `finger: what is selected peeks (${peek}); Elements in its place (${colOpen}); the peek tapped: Properties (${propsOpen}); Box select then a drag selects ${boxed}`);
+  check(peek[0] && peek[1] && peek[2] < 120 && colOpen.join() === 'true,false' && propsOpen.join() === 'false,true,false' && boxed === 2,
+    `finger: what is selected peeks (${peek}); Elements in its place (${colOpen}); the peek tapped: Properties (${propsOpen}); Box select then a drag selects ${boxed} (a point and its circle)`);
   check(handles === 1.75 && after[0] === rBefore && !after[1], `finger: handles drawn larger (${handles}); a second finger during a drag puts it back (${rBefore} → ${after[0]})`);
   check(!fp.errors.length, `finger: no errors ${fp.errors.join(' | ')}`);
   await fctx.close();

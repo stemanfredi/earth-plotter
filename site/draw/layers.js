@@ -92,18 +92,17 @@ const haloLayers = (geom, sides, parts) => sides.flatMap((side) => parts.map(([p
   layout: { 'line-join': 'round' },
   paint: { 'line-color': colour, 'line-width': width, 'line-opacity': opacity,
     'line-offset': ['+', OFF, ['*', side, ['+', ['/', ['get', 'sw'], 2], 3, BAND / 2]]] } })));
-// bottom to top: points' rings, areas, lines (guides, the others), outlines, the hover band,
+// bottom to top: circles, closed lines' fills, lines (guides, the others), the hover band,
 // symbols, handles, the selection's rings; within each, the drawing order (Z)
 // a finger (a coarse pointer): handles drawn larger (14 px from 8), as drawing.js grabs them farther
 export const FINGER = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
 const HANDLE_SIZE = FINGER ? 1.75 : 1;
 export const DRAW_LAYERS = [
   fillLayer('ring', 'draw'), lineLayer('ring', 'draw'),
-  fillLayer('polygon', 'draw'), lineLayer('polygon', 'draw'),
+  fillLayer('polygon', 'draw'), // a closed line's fill: its stroke is a line's
   // under the lines: the lines' click targets, invisible
   { id: 'draw-linehit', type: 'line', source: 'drawzoom', filter: ['==', ['get', 'kind'], 'linehit'], paint: { 'line-width': 10, 'line-opacity': 0, 'line-offset': OFF } },
   lineLayer('guide', 'drawzoom'), lineLayer('path', 'drawzoom'),
-  fillLayer('shape', 'drawzoom'), lineLayer('shape', 'drawzoom'),
   ...haloLayers('Polygon', [-1], HALO), ...haloLayers('LineString', [-1, 1], HALO),
   { id: 'draw-symbol', type: 'symbol', source: 'draw', filter: ['==', ['get', 'kind'], 'symbol'],
     layout: { 'icon-image': ['concat', 'draw-', ['get', 'symbol']], 'icon-allow-overlap': true, 'icon-ignore-placement': true },
@@ -120,7 +119,7 @@ export const DRAW_LAYERS = [
     paint: { 'icon-color': DRAFT, 'icon-opacity': 0.6 } },
   { id: 'draw-pick', type: 'circle', source: 'drawover', filter: ['==', ['get', 'kind'], 'pick'],
     paint: { 'circle-radius': 11, 'circle-opacity': 0, 'circle-stroke-color': MARK, 'circle-stroke-width': 3 } },
-  // while a line is selected: a + halfway along its legs; a rectangle's rotate stalk
+  // while a line is selected: a + halfway along its legs; the stalk that turns a point or a sector
   { id: 'draw-stalk', type: 'line', source: 'drawover', filter: ['==', ['get', 'kind'], 'stalk'], paint: { 'line-color': MARK, 'line-width': 1.5 } },
   { id: 'draw-mid', type: 'symbol', source: 'drawover', filter: ['==', ['get', 'kind'], 'mid'],
     layout: { 'icon-image': 'draw-plus', 'icon-allow-overlap': true, 'icon-ignore-placement': true },
@@ -132,7 +131,7 @@ export const DRAW_LAYERS = [
   { id: 'draw-snapto', type: 'circle', source: 'drawover', filter: ['in', ['get', 'kind'], ['literal', ['snapvertex', 'snapedge']]],
     paint: { 'circle-radius': ['match', ['get', 'kind'], 'snapvertex', 8, 4], 'circle-color': MARK, 'circle-opacity': ['match', ['get', 'kind'], 'snapvertex', 0, 1],
       'circle-stroke-color': ['match', ['get', 'kind'], 'snapvertex', MARK, MARK_CASE], 'circle-stroke-width': ['match', ['get', 'kind'], 'snapvertex', 3, 1.5] } },
-  // the place of the row current in Properties' table (a line's point, an area's corner): ringed, as a
+  // the place of the row current in Properties' table (a line's point): ringed, as a
   // mark (not in the exports)
   { id: 'draw-mark-place', type: 'circle', source: 'drawover', filter: ['==', ['get', 'kind'], 'place'],
     paint: { 'circle-radius': 11, 'circle-opacity': 0, 'circle-stroke-color': MARK, 'circle-stroke-width': 3 } },
@@ -188,9 +187,9 @@ export const DRAW_LAYERS = [
       'text-allow-overlap': true, 'text-ignore-placement': true, 'text-justify': 'center' },
     paint: { 'text-color': '#7a0d55', 'text-halo-color': '#fff', 'text-halo-width': 1.6 } },
 ];
-// what a click can hit, topmost first (drawing-ui.md §5): symbols, outlines, lines, areas, rings
-export const HIT_LAYERS = DRAW_LAYERS.filter((l) => /^draw-(symbol|shape|polygon|path|guide|linehit|ring|label-text)/.test(l.id)).map((l) => l.id).reverse();
+// what a click can hit, topmost first (drawing-ui.md §5): symbols, lines, closed lines' fills, circles
+export const HIT_LAYERS = DRAW_LAYERS.filter((l) => /^draw-(symbol|polygon|path|guide|linehit|ring|label-text)/.test(l.id)).map((l) => l.id).reverse();
 export const MARK_LAYERS = DRAW_LAYERS.filter((l) => /^draw-(mark|handle|stalk|mid|lhandle)/.test(l.id)).map((l) => l.id);
 // what a press can grab, and the cursor over each
 export const HANDLE_LAYERS = ['draw-handle', 'draw-mid', 'draw-lhandle'];
-export const CURSOR = { move: 'move', point: 'grab', end: 'grab', vertex: 'grab', mid: 'copy', radius: 'ew-resize', aperture: 'ew-resize', corner: 'nwse-resize', side: 'ew-resize', rotate: 'crosshair', anchor: 'grab', ppoint: 'grab', pmid: 'copy' };
+export const CURSOR = { move: 'move', point: 'grab', vertex: 'grab', mid: 'copy', radius: 'ew-resize', aperture: 'ew-resize', rotate: 'crosshair', anchor: 'grab' };

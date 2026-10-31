@@ -63,6 +63,11 @@ export function gisExport({ map, layersOf, kindOf, drawing, display, profiled, c
     let clipping;
     onFrame(b, async (src) => {
       const s = snapshot(src), { when, name, corners, layers } = s; // the view as captured, however long the rest takes
+      // the drawing as captured too (it changes in place meanwhile): its visible elements as drawn
+      // (radii and outlines as polygons), each line's profile as read for it, and its file, to import again
+      const { doc } = drawing, drawn = exportFeatures(doc, display.units), drawingFile = drawing.isEmpty() ? null : drawing.text();
+      const profiles = drawn.filter((x) => x.properties.kind === 'line')
+        .map((f) => [f, profiled.peek(JSON.stringify(lineTrace(doc, doc.lines.find((x) => x.id === f.properties.id)).coords))]);
       const plain = h('canvas', { width: src.width, height: src.height });
       plain.getContext('2d').drawImage(src, 0, 0);
       const pictures = Promise.all([pngOf(plain), chartPng(chartCanvas(src, s))]); // encoded now: two full-size canvases are not kept while the rest is read
@@ -99,16 +104,12 @@ export function gisExport({ map, layersOf, kindOf, drawing, display, profiled, c
         const { time, level } = await cmemsDrawn(l.id, l.at);
         Object.assign(l, { time: time == null ? undefined : new Date(time).toISOString(), depth: level == null ? undefined : +Math.abs(+level).toFixed(2) });
       }
-      // the drawing: its visible elements as drawn (radii and outlines as polygons), and its file, to import again
-      const drawn = exportFeatures(drawing.doc, display.units);
       // a line's length along the surface, seabed and ground (profile.js; a lower bound, the data's
-      // relief), where its elevation profile was read as it is now drawn
-      await Promise.all(drawn.filter((x) => x.properties.kind === 'line').map(async (f) => {
-        const line = drawing.doc.lines.find((x) => x.id === f.properties.id), prof = profiled.peek(JSON.stringify(lineTrace(drawing.doc, line).coords));
+      // relief), where its elevation profile was read as it was drawn
+      await Promise.all(profiles.map(async ([f, prof]) => {
         try { if (prof) f.properties.surface_length_m = Math.round((await prof).surface * 1000) / 1000; } catch { /* not read: left out */ }
       }));
       if (drawn.length) vectors.push({ key: 'vector/drawings', title: 'Drawings', file: 'vector/drawings.geojson', data: featureCollection('Drawings', drawn), n: drawn.length, how: 'whole, geodesic values in metres' });
-      const drawingFile = drawing.isEmpty() ? null : drawing.text();
       const item = stacItem({
         id: name, title: `Chart · ${s.at}`, when, data: s.time, corners, zoom: s.zoom, bearing: s.bearing, layers,
         attribution: s.credits, link: s.link,

@@ -299,15 +299,27 @@ export function clipper({ template, mode, omtTileJson, remember = true }) {
   const drawn = (z, x, y) => (mode === 'sea' ? rawCache(`${z}/${x}/${y}/sea`, () => gebcoSeaTile(z, x, y)) : raw(z, x, y));
   // Shared by several requesters (the shading and the contours ask for the same tile): the work goes on
   // while any of them still waits, and stops between its steps once every one has given up (MapLibre
-  // aborts the tiles a quick zoom leaves behind), so the tiles now wanted are not queued behind them
-  const waiting = new Map(); // key → { n: requesters still waiting, ac: aborts the work }
+  // aborts the tiles a quick zoom leaves behind), so the tiles now wanted are not queued behind them.
+  // Work given up is forgotten at once: a request for the tile meanwhile starts it afresh, rather
+  // than joining work bound to fail
+  const waiting = new Map(); // key → { n: requesters still waiting, ac: aborts the work }: work still running
   const elevation = (z, x, y, omtOffset = 1, signal = null) => {
     const key = `${z}/${x}/${y}/${omtOffset}`;
-    let w = waiting.get(key);
-    if (!w) waiting.set(key, w = { n: 0, ac: new AbortController() });
-    w.n++;
-    signal?.addEventListener('abort', () => { if (--w.n === 0) w.ac.abort(); }, { once: true });
-    return cache(key, () => cut(z, x, y, omtOffset, w.ac.signal).finally(() => waiting.delete(key)));
+    const p = cache(key, () => {
+      const w = { n: 0, ac: new AbortController() };
+      waiting.set(key, w);
+      return cut(z, x, y, omtOffset, w.ac.signal).finally(() => { if (waiting.get(key) === w) waiting.delete(key); });
+    });
+    const w = waiting.get(key); // none: the tile is cut
+    if (w) {
+      w.n++; // a requester with no signal (metres) waits to the end
+      signal?.addEventListener('abort', () => {
+        if (--w.n) return;
+        w.ac.abort();
+        if (waiting.get(key) === w) { waiting.delete(key); cache.drop(key); }
+      }, { once: true });
+    }
+    return p;
   };
   const cut = async (z, x, y, omtOffset, signal) => {
     // The land's tile all open sea needs no heights: its water mask from the base map alone says so,

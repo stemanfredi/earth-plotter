@@ -36,9 +36,11 @@ rule in the code are in a comment next to it, not here.
 
 ## Tests, briefly
 
-- **Unit** (`test/unit/`): the drawing model and file, geodesy, the readers and
-  writers (Zarr, GeoTIFF, zip, PNG), the catalogue's consistency, the vendored
-  libraries and the security policy against `package.json` and `site/hosts.js`.
+- **Unit** (`test/unit/`): the drawing model and file (the format doc's
+  example among them), geodesy, the readers and writers (Zarr, GeoTIFF, zip),
+  the clipping cache, the data builds' maths (GEBCO, seagrass), the
+  catalogue's consistency, the vendored libraries and the security policy
+  against `package.json` and `site/hosts.js`.
 - **Smoke** (`test/smoke.mjs`): the page in a browser, in sections that fail
   on their own: layers, time, search, exports compared with the map, the
   elevation profile, the service worker and offline areas.

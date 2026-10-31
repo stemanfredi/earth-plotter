@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { fmtAngle, dm, mercatorVariation, niceLen, parseLatLon, parseCoord, parseDist, distText, exportName, rowsText } from '../../site/format.js';
+import { fmtAngle, dm, fmtPos, mercatorVariation, niceLen, parseLatLon, parseCoord, parseDist, distText, exportName, rowsText } from '../../site/format.js';
 
 test('fmtAngle: degrees, minutes, hemispheres, carry', () => {
   assert.equal(fmtAngle(44, 'N', 'S', 1), '44°N');
@@ -13,6 +13,11 @@ test('dm: decimal minutes, carry into degrees', () => {
   assert.equal(dm(44.5, 'N', 'S'), '44°30.000′N');
   assert.equal(dm(-0.25, 'N', 'S'), '0°15.000′S');
   assert.equal(dm(44.99999995, 'N', 'S'), '45°00.000′N');
+});
+
+test('fmtPos: latitude then longitude, one space, the longitude within ±180°', () => {
+  assert.equal(fmtPos(44.5, 14.25), '44°30.000′N 14°15.000′E');
+  assert.equal(fmtPos(-0.25, 190), '0°15.000′S 170°00.000′W');
 });
 
 test('mercatorVariation: by |lat|, 0 at the equator crossing', () => {

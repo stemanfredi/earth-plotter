@@ -5,7 +5,7 @@ import { buildStyle, depthRamp, OPACITY_PROP, SEA_PICTURES, LOCATION_LAYERS, INK
 import { cmemsTile, partTimes, partLevels, domainOf, cmemsLegend } from './cmems.js';
 import { workerClipper } from './clip.js';
 import { drawRamp, drawColormap, drawClasses, wmsClasses } from './legend.js';
-import { fmtAngle, dm, fmtDepth, mercatorVariation, NOTE_AT, exportName } from './format.js';
+import { fmtAngle, fmtPos, fmtDepth, mercatorVariation, NOTE_AT, exportName } from './format.js';
 import { Drawing } from './draw/drawing.js';
 import { isoNow } from './draw/document.js';
 import { DRAW_LAYERS } from './draw/layers.js';
@@ -25,7 +25,7 @@ import { gisExport } from './gis.js';
 import { chartCanvas, chartPng } from './png.js';
 import { cmemsValues, emodnetValues, gebcoValues } from './values.js';
 import { tidTile, tidAt } from './gebco.js';
-import { offlineDialog, KEPT_SOURCES, noConnection, onConnection } from './offline.js';
+import { offlineDialog, KEPT_SOURCES, noConnection, onConnection, glyphsAsked } from './offline.js';
 import { icon, UI_ICON } from './icons.js';
 
 const byId = Object.assign(Object.create(null), Object.fromEntries(ITEMS.map((it) => [it.id, it]))); // no inherited names: the link names items
@@ -43,6 +43,8 @@ for (const it of DATA) for (const v of variantsOf(it)) for (const slot of drawsO
 
 const hour = (t) => Math.floor(t / 36e5) * 36e5; // the hour a time falls in (ms)
 const dayOf = (t) => new Date(t).toISOString().slice(0, 10); // its day (UTC)
+const today = () => dayOf(Date.now());
+const shiftDay = (d, n) => dayOf(Date.parse(`${d}T00:00:00Z`) + n * 864e5); // day d (YYYY-MM-DD) n days on
 
 // ---- state (mirrored in the URL hash) ---------------------------------------
 // a layer as it starts: its first variant, its own opacity, a density dataset's default period
@@ -172,8 +174,12 @@ const map = new maplibregl.Map({
   maxPitch: 0, pitchWithRotate: false, dragRotate: true, touchPitch: false,
   attributionControl: false, fadeDuration: 150,
   // MapLibre's workers set the page address as the referrer explicitly, past the page's
-  // no-referrer meta tag: ask for none on every request it makes
-  transformRequest: (url) => ({ url, referrerPolicy: 'no-referrer' }),
+  // no-referrer meta tag: ask for none on every request it makes. Its fonts' files noted, for an
+  // offline area to keep (offline.js)
+  transformRequest: (url, type) => {
+    if (type === 'Glyphs') glyphsAsked.add(new URL(url).href);
+    return { url, referrerPolicy: 'no-referrer' };
+  },
 });
 map.touchZoomRotate.disableRotation();
 $('#nostart').remove(); // started (index.html)
@@ -480,7 +486,6 @@ function classesOf(urls) {
 }
 
 const KINDS = {
-  // EMODnet's depth, drawn by EMODnet (tiles); its values from its Zarr store
   // GEBCO's depths, drawn by the depth shading (clip.js); its values from its Zarr store
   gebco: {
     // the depth shading's legend: while the chart is under it, zoomed out (where the shading is)
@@ -494,6 +499,7 @@ const KINDS = {
     legend: (id) => KINDS.classes.legend(id),
     values: (it, box) => gebcoValues(box, 'tid'),
   },
+  // EMODnet's depth, drawn by EMODnet (tiles); its values from its Zarr store
   emodnet: {
     legend(id) {
       const v = state.variant[id], stops = EMODNET_DEPTH_STOPS[v];
@@ -617,12 +623,15 @@ async function updateRange() {
   const key = timeOn().map((it) => `${it.id}:${state.variant[it.id] || ''}`).join(',');
   if (key === rangeKey) return;
   rangeKey = key;
-  const spans = (await Promise.all(timeOn().map((it) => kindOf(it.id).range(it.id)))).flat().filter(Boolean);
+  const all = (await Promise.all(timeOn().map((it) => kindOf(it.id).range(it.id).catch(() => [null])))).flat();
   if (key !== rangeKey) return; // the layers changed meanwhile
-  const starts = spans.map((s) => s[0]).filter(Number.isFinite), ends = spans.map((s) => s[1]).filter(Number.isFinite);
+  const spans = all.filter(Boolean), starts = spans.map((s) => s[0]).filter(Number.isFinite), ends = spans.map((s) => s[1]).filter(Number.isFinite);
   const end = ends.length ? hour(Math.min(...ends)) : RANGE[1];
   range = [Math.min(end, starts.length ? hour(Math.max(...starts)) : RANGE[0]), end];
   if (state.time !== within(state.time)) setTime(state.time); else renderWhen();
+  // a span not read (a provider down, no connection: null, or no end) is asked again at the next
+  // change; forgotten only now, or the render above would ask again at once, and again
+  if (all.some((s) => s?.[1] == null)) rangeKey = '';
 }
 const within = (t) => Math.min(range[1], Math.max(range[0], hour(t)));
 // taken as it changes (a day clicked in the calendar, not when the calendar closes). A time typed
@@ -742,8 +751,6 @@ function setVariant(id, v) {
   writeHash();
   renderMenu();
 }
-const shiftDay = (d, n) => new Date(Date.parse(`${d}T00:00:00Z`) + n * 864e5).toISOString().slice(0, 10);
-const today = () => new Date().toISOString().slice(0, 10);
 
 // The panel's controls are built with the state's values and kept so by their own changes: the
 // opacity, the variants, the periods and the menus are written by their controls alone (readHash
@@ -1088,10 +1095,8 @@ function metresOf(clip, maxZoom) {
 const depthAt = metresOf(seaClip, DEM_SEA_MAX);
 // the land's height as the relief shading has it (lakes their surface); NaN at sea
 const heightAt = metresOf(landClip, DEM_LAND_MAX);
-// the elevation at p: the sea's depth, else the land's height; NaN where neither could be read (a
-// source unreachable leaves a gap in a profile, not the whole profile failed)
-// the sea's depth, else the land's height; a place fails (a gap in the profile) only when the source
-// that would have said it could not be read
+// the elevation at p: the sea's depth, else the land's height; a place fails (a gap in the profile,
+// not the whole profile failed) only when the source that would have said it could not be read
 const elevationAt = async (p, z) => {
   const d = await depthAt(p, z).catch(() => undefined);
   if (Number.isFinite(d)) return d;
@@ -1114,11 +1119,11 @@ map.on('click', async (e) => {
   const source = DEPTH_SOURCES.find(({ ranges }) => ranges.some(([a, b]) => code >= a && code <= b));
   // −1: shallower than 1 m, or sea the data calls dry (clip.js)
   const depth = fmtDepth(v).replace(/^u/, 'U');
-  depthPopup.setLngLat(e.lngLat).setDOMContent(h('div', {}, h('b', {}, depth), h('span', { class: 'at' }, `${dm(lat, 'N', 'S')} ${dm(norm180(lng), 'E', 'W')}`),
+  depthPopup.setLngLat(e.lngLat).setDOMContent(h('div', {}, h('b', {}, depth), h('span', { class: 'at' }, fmtPos(lat, lng)),
     h('small', {}, ['GEBCO 2026', source?.label.toLowerCase()].filter(Boolean).join(' · ')))).addTo(map);
 });
 // cursor position readout
-map.on('mousemove', (e) => { posEl.textContent = `${dm(e.lngLat.lat, 'N', 'S')}  ${dm(norm180(e.lngLat.lng), 'E', 'W')}`; });
+map.on('mousemove', (e) => { posEl.textContent = fmtPos(e.lngLat.lat, e.lngLat.lng); });
 
 // ---- the scale bar: exact only at the centre latitude (Mercator) ---------------------------------
 // relative change of the Mercator scale (∝ 1/cos lat) across the view: from the lowest to the
@@ -1205,13 +1210,15 @@ async function onFrame(b, fn, before = async () => {}) {
     drawing.showMarks(false); // the selection's highlight is not part of the picture, nor the device's location
     for (const id of LOCATION_LAYERS.map((l) => l.id)) map.setLayoutProperty(id, 'visibility', 'none');
     map.once('render', async () => {
+      // fn (async) reads the canvas before its first await (exportPng, gis.js): what it hid comes
+      // back then, not when a GIS export has read its data, seconds later
+      const reading = fn(map.getCanvas());
+      drawing.showMarks(true);
+      for (const id of LOCATION_LAYERS.map((l) => l.id)) map.setLayoutProperty(id, 'visibility', 'visible');
       try {
-        const left = await fn(map.getCanvas());
+        const left = await reading;
         done(left?.length ? `saved without ${left.join('; ')}` : '');
-      } catch (e) { failed(e); } finally {
-        drawing.showMarks(true);
-        for (const id of LOCATION_LAYERS.map((l) => l.id)) map.setLayoutProperty(id, 'visibility', 'visible');
-      }
+      } catch (e) { failed(e); }
     });
     map.triggerRepaint();
   };
@@ -1235,7 +1242,7 @@ function snapshot(src) {
   const layers = drawnItems().map((it) => ({ ...it, assets: [], at: { variant: state.variant[it.id], t, depth: state.depth },
     period: DENSITY[it.id] ? state.period[it.id] : undefined, date: it.kind === 'gibs' ? gibsDay : undefined, draws: it.kind === 'cmems' ? drawnAs(it.id) : undefined }));
   return {
-    when, name: exportName(when, c.lat, c.lng), at: `${dm(c.lat, 'N', 'S')} ${dm(norm180(c.lng), 'E', 'W')}`, lat: c.lat,
+    when, name: exportName(when, c.lat, c.lng), at: fmtPos(c.lat, c.lng), lat: c.lat,
     zoom: map.getZoom(), bearing: map.getBearing(), link: location.href, credits: attributionText(), layers, legends: legendWant.map((id) => legendEls[id]),
     scaleVariation: scaleVariation(),
     corners: [[0, 0], [W, 0], [W, H], [0, H]].map((p) => { const ll = map.unproject(p); return [ll.lng, ll.lat]; }),

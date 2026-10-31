@@ -5,17 +5,19 @@ import { CMEMS, EMODNET_DTM, GEBCO, GEBCO_TID } from './catalog.js';
 import { partTimes, partLevels, regionOf, cmemsStacUrl, storedVariables, partOf } from './cmems.js';
 import { openStore, timeScale, nearest, cellsOf, readCells } from './zarr.js';
 import { geotiff } from './geotiff.js';
+import { gebcoStore } from './gebco.js';
 import { fetchOk, fetchBytes, lru } from './net.js';
 
-// a store's file, or null where the store says 403 or 404: a public bucket answers 403, not 404, for
-// a file it does not hold, so either means a chunk not stored (all land, or a time no longer kept).
-// A store that is not public fails at its metadata (zarr.js openStore), not with empty rasters.
 // One raster record of the export: the cells' grid (cellsOf) as a GeoTIFF of planes, EPSG:4326
 function rasterOf(cells, key, { title, description, names, units, planes, bands }) {
   const w = cells.cols.length, h = cells.rows.length, transform = [cells.dlon, 0, cells.west - cells.dlon / 2, 0, -cells.dlat, cells.north + cells.dlat / 2];
   return { key, file: `${key}.tif`, w, h, transform, names, units, title, description, data: geotiff(planes, w, h, transform, { crs: 4326, bands }) };
 }
 
+// Copernicus's and EMODnet's stores read their files with fetchBytes: null where the store says 403
+// or 404, as a public bucket answers 403, not 404, for a file it does not hold; either means a chunk
+// not stored (all land, or a time no longer kept), read as fill. A store that is not public fails at
+// its metadata (zarr.js openStore), not with empty rasters. (GEBCO's: gebco.js, none missing.)
 const stores = lru(Infinity); // part (or EMODNET_DTM) → promise of its store and coordinates
 function storeOf(part) {
   return stores(part, async () => {
@@ -71,7 +73,7 @@ export async function emodnetValues(box) {
 // several degrees across; a coarser one, means of 2^k × 2^k cells, for wider views: never left out).
 // raster/gebco-source.tif: its type identifier codes, the same way (a coarser level: the most
 // common code of the cells below). The coordinates follow from the grids' regular spacing, so none
-// are downloaded.
+// are downloaded. The map's store (gebco.js): a chunk missing fails the export, not read as fill.
 const GEBCO_GRIDS = {
   elevation: { url: GEBCO, key: 'raster/gebco-depth', title: 'GEBCO depth: values', unit: 'm', band: 'elevation, GEBCO 2026',
     what: (grid) => `elevation (m, negative below mean sea level), ${grid}` },
@@ -79,7 +81,7 @@ const GEBCO_GRIDS = {
     what: (grid) => `type identifier: how each cell's depth was obtained (0 land, 10–17 surveyed, 16 of them read from satellite images, 40–47 estimated, 70–72 other grids or unknown; the codes in GEBCO's documentation), ${grid}` },
 };
 export async function gebcoValues(box, variable = 'elevation') {
-  const g = GEBCO_GRIDS[variable], store = await stores(g.url, () => openStore(g.url, fetchBytes));
+  const g = GEBCO_GRIDS[variable], store = await gebcoStore(g.url);
   for (let k = 0; ; k++) {
     const name = `${k}/${variable}`, m = store.meta(name);
     if (!m) throw new Error('no level of the grid fits this view');

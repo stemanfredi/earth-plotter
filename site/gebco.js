@@ -25,9 +25,9 @@ const SIZE = TILE, CELL = 15 / 3600, LEVELS = 7, KEEP = 96; // KEEP: chunks kept
 const levelFor = (z) => Math.max(0, Math.min(LEVELS - 1, Math.floor(Math.log2(360 / (SIZE * 2 ** z) / CELL))));
 
 const stores = lru(Infinity);
-// every chunk of these stores is written (tools/gebco.mjs): one the host has not got is a failure
-// (a broken upload), never the fill value drawn as the deepest sea
-const store = (url) => stores(url, () => openStore(url, async (u) => { const b = await fetchBytes(u); if (!b) throw new Error(`GEBCO: ${u.slice(u.lastIndexOf('/', u.lastIndexOf('/') - 1) + 1)} is missing`); return b; }));
+// a store, the map's and the GIS export's (values.js): every chunk of it is written (tools/gebco.mjs),
+// so one the host has not got is a failure (a broken upload), never the fill value read as the deepest sea
+export const gebcoStore = (url) => stores(url, () => openStore(url, async (u) => { const b = await fetchBytes(u); if (!b) throw new Error(`GEBCO: ${u.slice(u.lastIndexOf('/', u.lastIndexOf('/') - 1) + 1)} is missing`); return b; }));
 
 const chunks = lru(KEEP); // `store level/row.col` → promise of the chunk's cells
 
@@ -35,7 +35,7 @@ const chunks = lru(KEEP); // `store level/row.col` → promise of the chunk's ce
 // smoothly interpolated (a cubic B-spline; seaOnly: over the cells below sea level alone, where any
 // is), or each pixel its cell's own value (nearest: codes)
 async function gridTile(url, variable, z, x, y, nearest, seaOnly = false) {
-  const s = await store(url), k = levelFor(z), name = `${k}/${variable}`, meta = s.meta(name);
+  const s = await gebcoStore(url), k = levelFor(z), name = `${k}/${variable}`, meta = s.meta(name);
   const [H, W] = meta.shape, [CH, CW] = meta.chunks, cs = CELL * 2 ** k, n = 2 ** z;
   // each pixel centre's place in the grid, in cells (0.5 off a cell's corner is its centre)
   const col = Float64Array.from({ length: SIZE }, (_, i) => (((x + (i + 0.5) / SIZE) / n) * 360) / cs - 0.5);
@@ -118,7 +118,7 @@ export async function tidTile({ url }) {
 
 // GEBCO's type identifier code of the 15″ cell holding lon/lat: how its depth was obtained
 export async function tidAt(lon, lat) {
-  const s = await store(GEBCO_TID), name = '0/tid', meta = s.meta(name), [H, W] = meta.shape, [CH, CW] = meta.chunks;
+  const s = await gebcoStore(GEBCO_TID), name = '0/tid', meta = s.meta(name), [H, W] = meta.shape, [CH, CW] = meta.chunks;
   const r = Math.min(H - 1, Math.max(0, Math.floor((90 - lat) / CELL))), c = ((Math.floor((lon + 180) / CELL) % W) + W) % W;
   const cells = await chunks(`${GEBCO_TID} 0/${Math.floor(r / CH)}.${Math.floor(c / CW)}`, () => s.chunk(name, [Math.floor(r / CH), Math.floor(c / CW)]));
   return cells[(r % CH) * CW + (c % CW)];

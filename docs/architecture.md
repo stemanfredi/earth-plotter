@@ -52,16 +52,22 @@ The map is Web Mercator, so the scale bar is exact only at the centre
 latitude, and the scale bar says so ("≈", in orange) when the scale varies
 across the view.
 
-**The drawing is a document.** `site/draw/document.js` holds points, lines,
-areas, labels and groups as plain data, with a *look cascade*: an element
-draws with its own look, else its group's, else the drawing's, else the
-defaults. Operations on the document are pure functions; the map, the panel
-and the file are views of it. The file is GeoJSON that any GIS opens, with
-the app's own structure under one member (`site/draw/file.js`; the format in
-[drawing-format.md](drawing-format.md)). Attachments (`attach.js`) keep line
-ends on what they touch; rules (`generator.js`) keep copies along a line and
-connections to roots linked to what they were made from; they live in the
-document as `doc.rules`, the state the generator needs to redo them. Undo and
+**The drawing is a document.** `site/draw/document.js` holds points,
+circles (a sector is a circle with an aperture), lines (an area is a closed
+line), labels and groups as plain data. Elements hold only positions; what
+ties a place of one to another is one table, `doc.links` (a line's place, a
+label's anchor), applied after every change (`attach.js`). A point holds its
+shapes as a group holds members, and carries them when it moves or turns,
+each keeping its distance and bearing from it. A look is the element's own,
+else its role's (a guide's, a measurement's), else the drawing's, else the
+defaults: groups have none. Operations on the document are pure functions;
+the map, the panel and the file are views of it. The file is GeoJSON that any
+GIS opens, with the app's own structure under one member (`site/draw/file.js`;
+the format in [drawing-format.md](drawing-format.md)). Rules (`generator.js`)
+keep copies along a line and connections to roots linked to what they were
+made from; they live in the document as `doc.rules`, the state the generator
+needs to redo them. Moving, pasting and dragging are one rigid move on the
+ellipsoid, so a shape keeps its size wherever it goes. Undo and
 the selection are the store's (`store.js`). Drawings are saved in the
 browser as they change (`saving.js`) and never sent.
 
@@ -100,7 +106,8 @@ necessarily says, the area looked at, and the place name typed into search.
 
 | For | Start at |
 |---|---|
-| The page, its state and the URL, legends, the time line, the elevation profile's reads | `site/app.js` |
+| The page, its state and the URL, the time line, the elevation profile's reads | `site/app.js` |
+| Legends: ramps, classes, colour maps | `site/legend.js` |
 | Search: places and typed coordinates | `site/search.js` |
 | The UI's basics: elements, menus and dialogs, fields, keys, icons | `site/dom.js`, `menu.js`, `fields.js`, `keys.js`, `icons.js` |
 | The frame: the bar, the side panels, a phone's sheet | `site/frame.js` |
@@ -110,6 +117,7 @@ necessarily says, the area looked at, and the place name typed into search.
 | Readers and writers: Zarr, GeoTIFF, zip (both ways), PNG (written) | `site/zarr.js`, `site/geotiff.js`, `site/zip.js`, `site/png.js` |
 | The exports | `site/gis.js`, `site/export.js`, `snapshot` in `site/app.js` |
 | The drawing's model, file and rules | `site/draw/document.js`, `file.js`, `generator.js` |
+| Links, snapping, placing, outlines, a line's trace and totals | `site/draw/attach.js`, `snap.js`, `place.js`, `outlines.js`, `lines.js` |
 | Undo, the selection, saving in the browser | `site/draw/store.js`, `saving.js` |
 | The drawing on the map and in the panel | `site/draw/drawing.js`, `layers.js`, `features.js`, `panel.js`, `tree.js` |
 | The bar's tools and its file group (Open, Download, Copy link) | `site/draw/tools.js`, `files.js` |

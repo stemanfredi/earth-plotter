@@ -28,3 +28,15 @@ test('lru: a make that fails is forgotten, so the next ask tries again', async (
   assert.equal(await get('k', make), 'up');
   assert.equal(tries, 2);
 });
+
+test('lru: a failure forgets only its own promise, not one made since under its key', async () => {
+  const get = lru(Infinity);
+  let fail;
+  const old = get('k', () => new Promise((_, reject) => { fail = reject; }));
+  get.drop('k');
+  const now = get('k', () => Promise.resolve('new'));
+  fail(new Error('old'));
+  await assert.rejects(old, /old/);
+  assert.equal(get.peek('k'), now, 'the newer one stays');
+  assert.equal(await get('k', () => Promise.resolve('again')), 'new');
+});

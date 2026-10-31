@@ -49,14 +49,19 @@ export function durationMs(d) {
   if (!m) return NaN;
   return (((+(m[1] || 0) * 24 + +(m[2] || 0)) * 60 + +(m[3] || 0)) * 60 + +(m[4] || 0)) * 1000;
 }
-// The time dimension of `variable` in a WMTS capabilities document: its <Value>s, each
-// start/end/step or one instant → [{ start, end, step }] in ms (step 0 for an instant)
-export function timeDomain(xml, variable) {
+// the <Value>s of dimension dim (time, elevation) of `variable`'s layer in a WMTS capabilities
+// document, as written (none where the layer or the dimension is not there)
+function dimensionValues(xml, variable, dim) {
   const id = xml.indexOf(`/${variable}</ows:Identifier>`);
   if (id < 0) return [];
   const layer = xml.slice(id, xml.indexOf('</Layer>', id));
-  const dim = /<ows:Identifier>time<\/ows:Identifier>([\s\S]*?)<\/Dimension>/.exec(layer)?.[1] || '';
-  return [...dim.matchAll(/<Value>([^<]*)<\/Value>/g)].flatMap(([, v]) => v.split(',')).map((v) => {
+  const d = new RegExp(`<ows:Identifier>${dim}</ows:Identifier>([\\s\\S]*?)</Dimension>`).exec(layer)?.[1] || '';
+  return [...d.matchAll(/<Value>([^<]*)<\/Value>/g)].map((m) => m[1]);
+}
+// The time dimension of `variable` in a WMTS capabilities document: its <Value>s, each
+// start/end/step or one instant → [{ start, end, step }] in ms (step 0 for an instant)
+export function timeDomain(xml, variable) {
+  return dimensionValues(xml, variable, 'time').flatMap((v) => v.split(',')).map((v) => {
     const [a, b, step] = v.trim().split('/');
     return b ? { start: Date.parse(a), end: Date.parse(b), step: durationMs(step) } : { start: Date.parse(a), end: Date.parse(a), step: 0 };
   }).filter((r) => Number.isFinite(r.start) && Number.isFinite(r.end) && Number.isFinite(r.step)); // a step in months is not read: the range is left out
@@ -73,13 +78,7 @@ export function snapTime(domain, t) {
   return best;
 }
 // the depth levels of `variable` in a WMTS capabilities document, as listed (elevation, m, ≤ 0)
-export function depthLevels(xml, variable) {
-  const id = xml.indexOf(`/${variable}</ows:Identifier>`);
-  if (id < 0) return [];
-  const layer = xml.slice(id, xml.indexOf('</Layer>', id));
-  const dim = /<ows:Identifier>elevation<\/ows:Identifier>([\s\S]*?)<\/Dimension>/.exec(layer)?.[1] || '';
-  return [...dim.matchAll(/<Value>([^<]*)<\/Value>/g)].map((m) => m[1]).filter((v) => Number.isFinite(+v));
-}
+export const depthLevels = (xml, variable) => dimensionValues(xml, variable, 'elevation').filter((v) => Number.isFinite(+v));
 // the level nearest to depth (m below the surface): one of levels, or null if there are none
 export const nearestLevel = (levels, depth) => (levels.length ? levels.reduce((a, b) => (Math.abs(-b - depth) < Math.abs(-a - depth) ? b : a)) : null);
 

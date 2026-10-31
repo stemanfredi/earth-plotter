@@ -25,6 +25,10 @@ const BASE_BYTES = 50e6;
 export const TOP_MAX = 14; // the base map's tiles stop there; the map magnifies them above
 const CONTOUR_MAX = Math.min(ISOBATH_MAX, DEM_LAND_MAX); // the contours and isobaths stop there (style.js)
 const RANGES = [0, 256, 512, 768, 1024]; // the fonts' characters for Latin, Greek and Cyrillic
+// and the glyph files the map has asked for since the page opened (app.js transformRequest), as
+// addresses (a space %20): the other scripts its views have shown. Not the browser's list of what it
+// fetched: that keeps 250 entries, gone after a few pans
+export const glyphsAsked = new Set();
 // an area's cache and its manifest (sw.js names them too: the unit tests check they agree)
 export const PACK = 'pack-', MANIFEST_FILE = 'pack.json';
 const MANIFEST = () => new URL(MANIFEST_FILE, document.baseURI).href;
@@ -106,8 +110,7 @@ async function saveArea({ bounds, from, top, name, fresh = false, signal, progre
   signal?.addEventListener('abort', cancel);
   try {
     const omt = (await (await get(OMT_TILEJSON)).json()).tiles[0];
-    const used = performance.getEntriesByType('resource').map((r) => r.name).filter((u) => u.startsWith(`${HOSTS.openfreemap}/fonts/`));
-    const glyphs = new Set([...FONTS.flatMap((f) => RANGES.map((r) => GLYPHS.replace('{fontstack}', encodeURIComponent(f)).replace('{range}', `${r}-${r + 255}`))), ...used]);
+    const glyphs = new Set([...FONTS.flatMap((f) => RANGES.map((r) => GLYPHS.replace('{fontstack}', encodeURIComponent(f)).replace('{range}', `${r}-${r + 255}`))), ...glyphsAsked]);
     const range = (lo, hi, margin = 0) => Array.from({ length: Math.max(0, hi - lo + 1) }, (_, i) => tilesIn(bounds, lo + i, margin)).flat();
     const cut = (mode, op) => (t) => () => clip.ask({ mode, op, zxy: t }).then((v) => v?.close?.()); // a picture made only for its files: let go
     // 256 px raster tiles show at map zoom z − 1: from + 1 to top + 1; the contours' 512 px tiles at z

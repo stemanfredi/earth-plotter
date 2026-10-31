@@ -1,7 +1,7 @@
 // Search: coordinates are read here; place names go to Photon (OpenStreetMap data). search(map,
 // Marker, free) wires the page's search box (#q) and its results (free(): the map's part not under a panel).
 import { $, h, animate } from './dom.js';
-import { dm, parseLatLon } from './format.js';
+import { fmtPos, parseLatLon } from './format.js';
 import { fetchOk } from './net.js';
 import { HOSTS } from './hosts.js';
 import { noConnection } from './offline.js';
@@ -97,7 +97,7 @@ export function search(map, Marker, free) {
     if (!text) { hideResults(); return; }
     const ll = parseLatLon(text);
     if (ll) { // coordinates: nothing leaves the page
-      showResults([{ go: true, name: `${dm(ll.lat, 'N', 'S')}  ${dm(ll.lon, 'E', 'W')}`, where: 'coordinates', at: [ll.lon, ll.lat], zoom: 11 }]);
+      showResults([{ go: true, name: fmtPos(ll.lat, ll.lon), where: 'coordinates', at: [ll.lon, ll.lat], zoom: 11 }]);
     } else if (looksLikeCoords(text)) { // coordinates still being typed: never sent either
       showResults([{ name: 'Coordinates: latitude, then longitude', where: 'kept in the page' }]);
     } else if (text.length >= 3) searchTimer = setTimeout(() => searchPlaces(text), 300);

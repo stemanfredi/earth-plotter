@@ -1,6 +1,6 @@
 // How the page asks other servers for data: no cookies, and no referrer. Workers do not inherit
 // the page's <meta name="referrer" content="no-referrer">, so every fetch says it.
-export const FETCH = { credentials: 'omit', referrerPolicy: 'no-referrer' };
+const FETCH = { credentials: 'omit', referrerPolicy: 'no-referrer' };
 
 // Saving an offline area (offline.js): a file fetched into the area's cache, by whoever reads it (the
 // page, its clipping worker). The copy there first (the page's base tiles, read again by the cut),
@@ -39,16 +39,18 @@ export async function fetchBytes(url) {
 export const tileUrl = (template, z, x, y) => template.replace('{z}', z).replace('{x}', x).replace('{y}', y);
 // A cache of promises (max Infinity: every one kept), the least recently used forgotten past max: get(key, make) gives the
 // one kept or makes it (forgotten if it fails, so the next ask tries again); peek(key) the one kept,
-// if any, without counting as a use.
+// if any, without counting as a use; drop(key) forgets it.
 export function lru(max) {
   const m = new Map();
   const get = (key, make) => {
     if (m.has(key)) { const v = m.get(key); m.delete(key); m.set(key, v); return v; }
-    const v = make().catch((e) => { m.delete(key); throw e; });
+    // forgotten only while it is the one kept: dropped, its key may hold a newer one by the time it fails
+    const v = make().catch((e) => { if (m.get(key) === v) m.delete(key); throw e; });
     m.set(key, v);
     if (m.size > max) m.delete(m.keys().next().value);
     return v;
   };
   get.peek = (key) => m.get(key);
+  get.drop = (key) => m.delete(key);
   return get;
 }

@@ -36,6 +36,9 @@ export function dm(v, p, n) {
   if (m === '60.000') { d += 1; m = '0.000'; } // rounding carries into the degrees
   return `${d}°${m.padStart(6, '0')}′${v >= 0 ? p : n}`;
 }
+// a position as read: latitude, then longitude (any: brought within ±180°), one space between (the
+// page's text shows no more, and the pictures' had one)
+export const fmtPos = (lat, lon) => `${dm(lat, 'N', 'S')} ${dm(norm180(lon), 'E', 'W')}`;
 
 // Relative change of the Mercator scale (∝ 1/cos lat) between latitudes south and north:
 // from the lowest to the highest |lat|, the lowest being 0 when the span crosses the equator.
@@ -159,7 +162,7 @@ export function exportName(when, lat, lng) {
 
 // rows as text a spreadsheet takes: tab-separated, a header line first
 export const rowsText = (head, rows) => [head, ...rows].map((r) => r.map((v) => String(v ?? '').replace(/[\t\n]/g, ' ')).join('\t')).join('\n') + '\n';
-// "1 line", "2 lines"
 // a name as part of a file's name: letters, digits and hyphens, at most 60 ('' when none is left)
 export const slug = (t) => t.normalize('NFKD').replace(/[^\p{L}\p{N}\- ]+/gu, '').trim().replace(/\s+/g, '-').slice(0, 60);
+// "1 line", "2 lines"
 export const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;

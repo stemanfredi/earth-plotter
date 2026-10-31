@@ -400,7 +400,7 @@ svg.profile .pcursor { stroke: var(--magenta); stroke-width: 1; }
   .bar > .filebtn svg:first-child { display: none; }
   .bar > .filebtn svg + svg { display: block; }
 }
-/* Layers' spinner: in its button's corner */
+/* a tool with kinds (draw/tools.js): a mark in its button's corner */
 :is(.bar, .dock) > button.haskinds::after { content: ""; position: absolute; right: 3px; bottom: 3px; border: 2.5px solid transparent; border-right-color: currentColor; border-bottom-color: currentColor; opacity: .55; }
 /* dividers between the tools' groups: short, centred */
 .tsep { width: 1px; height: 22px; background: var(--line); margin: 0 4px; flex: none; }

@@ -243,14 +243,20 @@ export function planConnection(doc, { pointIds, roots = [], newRoots = [], patte
 // ---- making ----------------------------------------------------------------------------------------
 
 // the rules' fields when nothing says otherwise (the file leaves these out: file.js); radius in m
-export const DISTRIBUTE_D = { groupId: null, copiesId: null, spacing: null, count: null, startMargin: 0, endMargin: 0, offset: 0, side: 'left', radius: 500, aperture: null, preset: null, copy: null };
-export const CONNECT_D = { groupId: null, pattern: 'tree', groupSize: 'auto', minBranch: 0, hubs: [] };
+export const DISTRIBUTE_D = { groupId: null, copiesId: null, spacing: null, count: null, startMargin: 0, endMargin: 0, offset: 0, side: 'left', radius: 500, aperture: null, preset: null, copy: null, points: [] };
+export const CONNECT_D = { groupId: null, pattern: 'tree', groupSize: 'auto', minBranch: 0, roots: [], pointIds: [], hubs: [], created: [] };
 export const patternOf = (v) => (v === 'chain' ? 'chain' : 'tree');
 const DISTRIBUTE_KEYS = ['spacing', 'count', 'startMargin', 'endMargin', 'offset', 'side', 'radius', 'aperture', 'preset', 'copy'];
-const D = DISTRIBUTE_D;
-const settings = (p) => ({ spacing: p.count ? null : p.spacing, count: p.count || D.count, startMargin: p.startMargin || D.startMargin, endMargin: p.endMargin || D.endMargin,
-  offset: p.offset || D.offset, side: p.side || D.side, radius: p.radius > 0 ? p.radius : D.radius, aperture: p.aperture ?? D.aperture,
-  preset: typeof p.preset === 'string' ? p.preset : D.preset, copy: p.copy ?? D.copy });
+const D = DISTRIBUTE_D, SIDES = ['left', 'right', 'alternate'];
+// A distribution's settings as taken, from the form or a file: each value of its kind and range,
+// else its default (a count: the spacing goes; a copy without parts: none).
+export function settings(p) {
+  const fin = Number.isFinite, count = Number.isInteger(p.count) && p.count > 0 ? p.count : D.count, m = (k) => (fin(p[k]) && p[k] >= 0 ? p[k] : D[k]);
+  return { spacing: !count && fin(p.spacing) && p.spacing > 0 ? p.spacing : D.spacing, count, startMargin: m('startMargin'), endMargin: m('endMargin'), offset: m('offset'),
+    side: SIDES.includes(p.side) ? p.side : D.side, radius: fin(p.radius) && p.radius > 0 ? p.radius : D.radius,
+    aperture: fin(p.aperture) && p.aperture > 0 && p.aperture < 360 ? p.aperture : D.aperture,
+    preset: typeof p.preset === 'string' ? p.preset : D.preset, copy: p.copy?.parts?.length ? p.copy : D.copy };
+}
 // What a distribution's copies are: { symbol, parts }. Its preset: null or 'circle', a circle of its
 // radius (a sector, with its aperture), a diamond; another built-in kind scaled to its radius (its
 // largest part reaching it); one of the user's ('preset:<name>'): copy, kept as it was chosen, its size
@@ -264,7 +270,6 @@ export function copyOf(a) {
 // whether a point is the copy given (its symbol and parts as the rule gives them; else changed by hand)
 const canon = (v) => JSON.stringify(v, (k, x) => (x && typeof x === 'object' && !Array.isArray(x) ? Object.fromEntries(Object.entries(x).sort()) : x));
 const isCopy = (n, copy) => canon({ symbol: n.symbol, parts: n.parts }) === canon({ symbol: copy.symbol, parts: copy.parts });
-// a group made for a rule, in parent (null: at the top)
 // the distribution's copies made at places, into its Copies group (or the group given): each facing
 // away from what it follows
 function place(doc, a, points, groupId = a.copiesId) {
@@ -359,9 +364,8 @@ export const changedByHand = (doc, pointId) => {
 // Connect points to roots (doc is changed: one undo step for the caller). params: pointIds, roots
 // ([{ id (a point), weight }]), newRoots (positions where a root point is made: square, weight 1),
 // pattern ('tree' or 'chain'), groupSize (a number, or 'auto'), minBranch (a tree's shortest branch,
-// m), id (the connection made again: its own), groupId (made again: its group, kept), parentId (the group a new "Connection" group goes in;
-// undefined: the first point's, a distribution's own for its copies). Returns { connection, groups, groupSize, lines, unused (root IDs), total (m) }, or null (no
-// point or no root).
+// m), id (the connection made again: its own), groupId (made again: its group, kept). Returns
+// { connection, groups, groupSize, lines, unused (root IDs), total (m) }, or null (no point or no root).
 export function connect(doc, params) {
   const byId = new Map(doc.points.map((n) => [n.id, n]));
   const first = params.pointIds.map((id) => byId.get(id)).find(Boolean);
@@ -372,7 +376,7 @@ export function connect(doc, params) {
   // beside their Copies, in its own group)
   const around = distributions(doc).find((a) => a.copiesId && a.copiesId === first.groupId)?.groupId ?? first.groupId ?? null;
   const groupId = doc.groups.some((g) => g.id === params.groupId) ? params.groupId
-    : addGroup(doc, 'Connection', params.parentId !== undefined ? params.parentId : around).id;
+    : addGroup(doc, 'Connection', around).id;
   const inGroup = (el) => { el.groupId = groupId; return el; };
   const before = idsOf(doc);
   const made = (params.newRoots || []).map((pos) => inGroup(addPoint(doc, pos, { symbol: 'square', parts: [] })));
@@ -414,9 +418,7 @@ export function unconnect(doc, id, keepGroup = false) {
   const live = new Set([...doc.points, ...doc.lines].map((x) => x.id));
   remove(doc, c.created.filter((x) => !keep.has(x) && live.has(x)));
   doc.rules = doc.rules.filter((x) => x !== c);
-  if (!keepGroup && !doc.groups.some((g) => g.groupId === c.groupId) && ![...doc.points, ...doc.lines, ...doc.areas, ...doc.labels].some((x) => x.groupId === c.groupId)) {
-    doc.groups = doc.groups.filter((g) => g.id !== c.groupId);
-  }
+  if (!keepGroup) removeEmptyGroup(doc, c.groupId);
   return c;
 }
 
@@ -446,10 +448,6 @@ export function ruleOf(doc, id) {
   }
   return null;
 }
-// the distribution whose copies a connection connects, or null
-export const distributionOf = (doc, c) => distributions(doc).find((a) => c.pointIds.length && c.pointIds.every((n) => a.points.some((x) => x.pointId === n))) ?? null;
-// the connection made on a distribution's copies, or null
-export const connectionOn = (doc, a) => { const ids = new Set(a.points.map((x) => x.pointId)); return connections(doc).find((c) => c.pointIds.length && c.pointIds.every((n) => ids.has(n))) ?? null; };
 
 // ---- after any change: what the tools made follows ---------------------------------------------------
 
@@ -497,6 +495,6 @@ export function refreshGenerated(doc) {
   for (const r of was) if (!kept.has(r)) for (const id of [r.copiesId, r.groupId]) if (id) removeEmptyGroup(doc, id);
 }
 function removeEmptyGroup(doc, id) {
-  if (elements(doc).some(({ el }) => el.groupId === id) || doc.groups.some((g) => g.groupId === id)) return;
+  if (elements(doc).some(({ el }) => el.groupId === id)) return; // a member, or a subgroup
   doc.groups = doc.groups.filter((g) => g.id !== id);
 }

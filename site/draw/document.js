@@ -36,8 +36,7 @@ export const MEASURE_STYLE = Object.freeze({ fill: Object.freeze({ color: MEASUR
 // drawing's); the defaults fill it in. fill, stroke: as a style; text: its name on the map, its values
 // shown, and a label's size, colour (null: the default) and
 // background; offset: a line drawn this many px to the right of where it is (negative: left; 0: on
-// it; display only); minSize: a small outline drawn enlarged below it
-// (px, 0: never; for a vehicle, twice the drawing's).
+// it; display only); minSize: a small outline drawn enlarged below it (px, 0: never).
 const LOOK_TEXT = Object.freeze({ name: false, values: false, size: 'medium', color: '#1f2c36', background: 'halo' }); // the colour: a label's text, the UI's ink (style.css --ink)
 export const DEFAULT_LOOK = Object.freeze({ fill: DEFAULT_STYLE.fill, stroke: DEFAULT_STYLE.stroke, text: LOOK_TEXT, offset: 0, minSize: MIN_DISPLAY_SIZE });
 export const SYMBOLS = ['diamond', 'square', 'triangle', 'dot', 'none'];
@@ -118,7 +117,6 @@ export function find(doc, id) {
   for (const kind of KINDS) { const el = doc[KIND[kind].list].find((x) => x.id === id); if (el) return { kind, el }; }
   return null;
 }
-export const kindName = (kind) => KIND[kind].name;
 // the mean of a list of positions (an area's place, for its name and labels)
 export const centroid = (pts) => [pts.reduce((a, q) => a + q[0], 0) / pts.length, pts.reduce((a, q) => a + q[1], 0) / pts.length];
 // where an element is: a point's position, an area's centroid, a line's start
@@ -159,6 +157,21 @@ export function groupsOf(doc, el) {
 export function membersOf(doc, gid, deep = false) {
   return elements(doc).filter((x) => (deep ? groupsOf(doc, x.el).some((g) => g.id === gid) : x.el.groupId === gid));
 }
+// What the elements ids stand for, none twice, in the document's order: each itself, a group
+// everything in it (its subgroups' too; the groups themselves left out)
+export function leavesOf(doc, ids) {
+  const want = new Set(ids);
+  return elements(doc).filter((x) => x.kind !== 'group' && (want.has(x.el.id) || groupsOf(doc, x.el).some((g) => want.has(g.id))));
+}
+// every position an element has (to move it), as [object, key] pairs: a line's ends as references (an
+// attached one's follows what it is on), a label's where it points
+export function positionsIn(kind, el) {
+  if (kind === 'point') return [[el, 'position']];
+  if (kind === 'area') return el.points.map((_, i) => [el.points, i]);
+  if (kind === 'line') return [[el.start, 'position'], [el.end, 'position'], ...el.vertices.map((v) => [v, 'position'])];
+  if (kind === 'label') return [[el.anchor, 'position']];
+  return [];
+}
 // a measurement: its name not on the map, whatever the drawing's names
 const MEASURE_LOOK = Object.freeze({ ...MEASURE_STYLE, text: Object.freeze({ name: false }) });
 // looks laid one over another, field by field (a later one's values over an earlier one's)
@@ -179,7 +192,6 @@ export function lookOf(doc, el) {
 export const styleOf = (doc, el) => { const l = lookOf(doc, el); return { fill: l.fill, stroke: l.stroke }; };
 // a measurement: a guide showing its values (what Measure makes)
 export const isMeasurement = (doc, el) => !!el.guide && lookOf(doc, el).text.values;
-// a label's colour: its own, else the default (the drawing's look has none: LOOK_FIELDS.drawing)
 // how far a line is drawn from where it is (Offset: px, positive to the right of its direction, 0: on it)
 export const offsetOf = (doc, el) => lookOf(doc, el).offset;
 // the drawing's minimum display size (px)
@@ -213,10 +225,6 @@ export function addPoint(doc, position, opts = {}, taken = idsOf(doc)) {
 }
 // a small dot: where lines meet (a split), a hub
 export const addDot = (doc, position, taken = idsOf(doc)) => addPoint(doc, position, { symbol: 'dot', parts: [] }, taken);
-// a point with one outline drawn to scale, no symbol
-export function addShape(doc, position, kind = 'rectangle') {
-  return addPoint(doc, position, { name: nextName(doc, 'point', 'Shape'), symbol: 'none', parts: [makePart(kind)] });
-}
 // an area through the positions (three or more), its edges geodesics
 export function addArea(doc, points, opts = {}) {
   const g = { ...base(doc, 'area'), points: points.map((q) => [...q]), guide: false, ...opts };
@@ -268,8 +276,9 @@ export function dependents(doc, ids, withMembers = false) {
   return all;
 }
 // Delete ids and what goes with them (dependents); the members and subgroups of a deleted group go to
-// the group above it (or none), unless withMembers, keeping their look. Ends attached to what goes
-// become free, as do labels pointing at it (where they pointed).
+// the group above it (or none), unless withMembers, keeping their look. Ends attached to what goes,
+// and labels pointing at it, become free where they were at the next refresh (attach.js
+// refreshAttached, after every change).
 export function remove(doc, ids, withMembers = false) {
   const all = dependents(doc, ids, withMembers);
   // where each one staying in a deleted group goes: the nearest group above it that stays, read while
@@ -281,9 +290,6 @@ export function remove(doc, ids, withMembers = false) {
   }
   for (const kind of KINDS) doc[KIND[kind].list] = doc[KIND[kind].list].filter((el) => !all.has(el.id));
   for (const [el, gid] of moves) el.groupId = gid;
-  const freed = (r) => ({ position: [...r.position], element: null });
-  for (const s of doc.lines) for (const key of ['start', 'end']) if (s[key].element && all.has(s[key].element)) s[key] = freed(s[key]);
-  for (const a of doc.labels) if (a.anchor.element && all.has(a.anchor.element)) a.anchor = freed(a.anchor);
   return all;
 }
 

@@ -64,7 +64,7 @@ kinds the stacking is fixed (drawing-ui.md §7). The writer writes points, then 
 | Field | Notes |
 |---|---|
 | `charts.format` | `"charts-drawing"`. Written, not checked. |
-| `charts.version` | `1`. A file of another version is refused (§12). Missing (or not a number): read as this version. |
+| `charts.version` | `1`. Missing: read as this version. Anything else (another number, text) is refused (§12). |
 | `charts.created`, `charts.modified` | missing or not a time: the time of import |
 | `charts.meta` | three free-text fields |
 | `charts.view` | §4. Missing: importing leaves the map's view and layers as they are. |
@@ -295,10 +295,11 @@ samples of its curve: the app attaches to its edge. On a point with outlines, `"
 (its place in the point's `parts`); missing: its largest outline.
 
 The position is written in the geometry too, so other tools see the line or the label where it is.
-On reading, **the reference wins**: it goes where what it points at is, and the report counts the
+On reading, **the reference wins**: it goes where what it points at is (a line's end on another
+line's end where that one goes, in any order in the file), and the report counts the
 line ends moved more than 10⁻⁶° ("the file was edited elsewhere"). One pointing at what is not in the
-file, at a vertex or edge it does not have, or (a line's end) at its own line, is free where the
-geometry says (warning). When vertices are added to or taken from what a reference points at, it
+file, at a vertex or edge it does not have, or at itself (a line's end at its own line, a label at
+itself), is free where the geometry says (warning). When vertices are added to or taken from what a reference points at, it
 stays where it was: on the nearest vertex, or the nearest place on an edge.
 
 ### 7.5 Outline
@@ -475,7 +476,7 @@ The import report lists what was refused, skipped and repaired, before the drawi
 ## 12. Reading: refusals and skips
 
 **The whole file is refused** (nothing loads) when it is larger than 64 MB; it is not JSON; its top level is not an object;
-it is not GeoJSON; `charts.version` is a number other than 1; or its lines and areas hold more than
+it is not GeoJSON; `charts.version` is there and not 1; or its lines and areas hold more than
 1 000 000 positions together.
 
 **Limits:** past 20 000 elements the rest are skipped; a text is cut to 10 000 characters; past 200

@@ -1,11 +1,12 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { addShape } from './helpers.mjs';
 
 const d = await import('../../site/draw/document.js');
 const { parse, serialise, toFile } = await import('../../site/draw/file.js');
 const { refreshAttached, lineRef, resolve } = await import('../../site/draw/attach.js');
 const { distributions, connections } = await import('../../site/draw/generator.js');
-const { emptyDoc, addPoint, addDot, addShape, addLine, addArea, addLabel, addPart, removePart, makePart, dependents, remove, idsOf, newId, nextName,
+const { emptyDoc, addPoint, addDot, addLine, addArea, addLabel, addPart, removePart, makePart, dependents, remove, idsOf, newId, nextName,
   label, styleOf, offsetOf, isShown, isMeasurement, placeOf, makeGroup, setGroup, splitLine,
   DEFAULT_STYLE, GUIDE_STYLE, FORMAT, VERSION } = d;
 
@@ -70,7 +71,8 @@ function sample() {
 test('refused: not JSON, not an object, neither GeoJSON nor a drawing, another format version', () => {
   for (const [text, re] of [['{', /not JSON/], ['[1]', /no document/], ['{"format":"x"}', /neither a drawing file nor GeoJSON/],
     ['{"type":"Topology"}', /neither/], [JSON.stringify(collection([], { version: VERSION + 1 })), /format version 2; this app reads version 1/],
-    [JSON.stringify(collection([], { version: 0 })), /format version 0/]]) {
+    [JSON.stringify(collection([], { version: 0 })), /format version 0/], [JSON.stringify(collection([], { version: '1' })), /format version 1;/],
+    [JSON.stringify(collection([], { version: null })), /format version null/]]) {
     const { doc, report } = parse(text, null, NOW);
     assert.equal(doc, null, text);
     assert.match(report.refused, re, text);
@@ -338,7 +340,21 @@ test('attached ends: one that disagrees with what it is on moves to it (counted)
   warned(report, /^3 line ends moved to what they are attached to/);
   warned(report, /line s4: its end is attached to ar, which is not here \(or has no such vertex or edge\); free/);
   warned(report, /line s3: its start is attached to gone/);
-  warned(report, /line s5: its start is attached to s5/);
+  warned(report, /line s5: its start is attached to its own line; free/);
+});
+
+test('attached ends in a chain, listed last to first: each end where the one it is on is, however long the chain', () => {
+  // s4's end on s3's last point, s3's on s2's, s2's on s1's: the file's ends all elsewhere
+  const on = (id) => ({ kind: 'line', end: { element: id, vertex: 1 } });
+  const { doc, report } = read(collection([
+    F('s4', 'LineString', [[4, 0], [9, 9]], on('s3')), F('s3', 'LineString', [[3, 0], [8, 8]], on('s2')),
+    F('s2', 'LineString', [[2, 0], [7, 7]], on('s1')), F('s1', 'LineString', [[1, 0], [1, 1]], { kind: 'line' }),
+    F('a', 'Point', [0, 5], { kind: 'label', anchor: { element: 'a' } }),
+  ]));
+  assert.deepEqual(doc.lines.map((s) => s.end.position), [[1, 1], [1, 1], [1, 1], [1, 1]]);
+  warned(report, /^3 line ends moved/);
+  warned(report, /label a: it points at itself; free/);
+  assert.deepEqual(doc.labels[0].anchor, { position: [0, 5], element: null });
 });
 
 test('labels: on an element, along a line, on a vertex, or free; checked; written back', () => {
@@ -368,7 +384,7 @@ test('labels: on an element, along a line, on a vertex, or free; checked; writte
   assert.deepEqual([l4.anchor, l5.anchor, l6.anchor], [{ position: [12, 42], element: null }, { position: [12, 40], element: 's', edge: 0, at: 0 }, { position: [12, 40], element: 'a' }]);
   assert.deepEqual([l8.anchor, l9.anchor, l10.anchor], [{ position: [12, 43], element: null }, { position: d.centroid(doc.areas[0].points), element: 'ar' }, { position: [13, 42], element: 'ar', vertex: 2 }]);
   assert.ok(!('name' in l1.look.text));
-  for (const re of [/leader: unknown "zigzag"/, /offset: not \[x, y\]/, /size "huge" unknown/, /label l4: what it points at \(gone\) is not here; free/, /label l8: what it points at \(a\) is not here; free/]) warned(report, re);
+  for (const re of [/leader: unknown "zigzag"/, /offset: not \[x, y\]/, /size "huge" unknown/, /label l4: it points at gone, which is not here; free/, /label l8: it points at a, which is not here; free/]) warned(report, re);
   assert.deepEqual(doc.points[0].look, { text: { name: true } });
   const f = toFile(doc), out = (id) => f.features.find((x) => x.id === id);
   assert.deepEqual(out('l2').properties.charts.anchor, { element: 's', edge: 0, at: 0.123457 });
@@ -451,7 +467,7 @@ test('rules (distribute, connect) are kept as records; defaults left out; an unk
   assert.deepEqual(f.rules[3], { id: 'c1', kind: 'connect', groupId: 'g3', groupSize: 3, roots: [{ id: 'n9' }, { id: 'n8', weight: 2 }], pointIds: ['n1'], created: ['gone'] });
   assert.deepEqual(f.rules[0], { id: 'a1', kind: 'distribute', groupId: 'g1', copiesId: 'g2', along: { element: 's', part: 2 }, spacing: 1000, side: 'alternate', radius: 250,
     preset: 'preset:mine', copy, points: [{ pointId: 'n1', t: 0.5, pos: [1, 2] }] });
-  assert.deepEqual(f.rules[1], { id: 'a3', kind: 'distribute', along: { element: 's' }, points: [] });
+  assert.deepEqual(f.rules[1], { id: 'a3', kind: 'distribute', along: { element: 's' } });
   assert.deepEqual(again(doc).doc, doc);
 });
 
@@ -574,6 +590,7 @@ test('attached ends follow their point; a point gone leaves them free where they
   assert.deepEqual(s.start, { position: [0, 0.5], element: a.id });
   assert.deepEqual(dependents(doc, [b.id]), new Set([b.id])); // lines do not go with a point
   assert.deepEqual([...remove(doc, [b.id])], [b.id]);
+  refreshAttached(doc); // after every change
   assert.deepEqual(doc.lines.map((x) => x.id), [s.id, t.id]);
   assert.deepEqual([s.end, t.start], [{ position: [1, 0], element: null }, { position: [1, 0], element: null }]);
   doc.points = []; // gone some other way
@@ -688,6 +705,7 @@ test('delete a group: members ungrouped, keeping their own parts, or deleted wit
   assert.equal(kept.lines[0].end.element, c.id);
   const gone = structuredClone(doc);
   remove(gone, [g.id], true);
+  refreshAttached(gone); // after every change
   assert.deepEqual(gone.points.map((p) => p.id), [a.id]);
   assert.deepEqual(gone.lines[0].end, { position: [2, 0], element: null }); // the line stays, its end free
   assert.equal(s.end.element, c.id); // the original untouched

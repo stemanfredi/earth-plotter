@@ -157,7 +157,7 @@ the drawing.
 
 It shows one element, several (its head counts them by kind; what they share, set on all at once;
 one Look for all; how far apart two points are, and the bearing from the first to the second;
-**Connect…**), a group, or the drawing (title, description, author, when it was created;
+**Connect…**), a group (**Connect…** on the points in it), or the drawing (title, description, author, when it was created;
 **Display**, the drawing's look, the distance units and the leg bearings; **Totals** by group or by a property, Copy). A field applies on Enter
 or when left, one undo step; a value that does not read stays marked and is not applied; Esc puts it
 back. ↑ ↓ nudge a number by its last digit (Shift: ten). Distances show to the decimetre (m), the
@@ -207,8 +207,9 @@ takes one unit by its largest value.
   on screen are drawn enlarged, dotted.
 - A line's **Path**: straight, or smooth (a curve through the vertices, following them).
   **Elevation profile**: the elevation along it, as the shadings draw it (the sea's depths below sea
-  level, the land's heights above; every 30 m, at most 1,000 places), its lowest and highest, a chart
-  linked to the map both ways, its length along the surface, CSV.
+  level, the land's heights above; every 30 m, at most 1,000 places; one that could not be read a
+  gap), its lowest and highest, a chart linked to the map both ways, its length along the surface,
+  CSV. When none could be read it says so, and reads again when next shown.
 - A point's **Parts** are its own: circles, sectors, outlines; a table of Kind, **Size** (a radius, an
   outline's length), **Across** (a sector's aperture in °, an outline's width), and Fill; the row
   current has its name and **Shown** in the bar. One way to add one: the table's empty last row. A
@@ -231,33 +232,38 @@ takes one unit by its largest value.
 
 Both are **rules** (`generator.js`): what they make stays linked to them, follows what it was made
 from, and can be edited again. What a rule makes is in a group of its own; anything it made shows a
-**Made by** row ("Distribute along Line 2 · 12 copies, connected to 1 root") with **Edit…** and
-**Select all**.
+**Made by** row ("Distribute along Line 2 · 12 copies", "Connection · trees, 12 points to 1 root")
+with **Edit…** (its form again) and **Select all**.
 
 **Distribute along…** (a line, or a point round one of its parts, clockwise: a circle's whole round
-from its bearing, a sector's arc, an outline's ring) opens a form in Properties (any tool goes off: a
-click on the map picks a root):
+from its bearing, a sector's arc, an outline's ring) opens a form in Properties (any tool goes off):
 
 - **By** spacing or count; **Margins** at the start and the end; **Offset** left, right or
   alternating (Out, In round a part); **Copy**, a built-in kind or a preset of yours; **Radius**
   (500 m to start with; a preset keeps its size); **Aperture** (a sector facing away; empty: circles);
   **In group**.
-- It makes a group "Distribute along" and the name, holding **Copies** and, when connected,
-  **Connection**.
-- **Connect to roots**: **Tree** (root → hub → each point) or **Chain** (root → point → next
-  point); **Group size** Auto (the cheapest cut; trees up to 32 points) or a number; **Min. branch**
-  (a tree's hubs at least this far from their points and root); **Roots**, each with a **weight**.
-  While roots are picked a click places a new root, or takes or drops a point. The plan cuts the
-  points, in order along the line, into groups of consecutive points, each joined to one root, the
-  cut and the roots chosen together as the cheapest (each group's length divided by its root's
-  weight; a tie goes to the cut whose largest group is smallest). The summary says the groups, the
-  roots used and the total length; a root that wins nothing is reported unused.
-- A faint preview follows the settings; **Create** makes it all in one undo step. Copies follow what
-  they lie along, hubs their points; one moved by hand stops following.
+- It makes a group "Distribute along" and the name, holding **Copies** (and **Connection**, once
+  its copies are connected).
+- A faint preview follows the settings; **Create** makes it in one undo step. Copies follow what
+  they lie along; one moved by hand stops following.
 - **Edit…**: the same count moves the copies (one changed by hand keeps its own, with **↺** for the
-  rule's); another count makes them anew (warned first), and their connection with them. Unticking
-  Connect removes its lines and hubs (the roots stay).
-- **Connect…** (two or more points placed by hand): the Connect half alone, in the order selected.
+  rule's); another count makes them anew (warned first), and their connection with them.
+
+**Connect…** (two or more points selected, or a group holding them: a distribution's own, its
+Copies) opens its form (a click on the map picks a root):
+
+- **Tree** (root → hub → each point) or **Chain** (root → point → next point); **Group size** Auto
+  (the cheapest cut; trees up to 32 points) or a number; **Min. branch** (a tree's hubs at least
+  this far from their points and root); **Roots**, each with a **weight**. While roots are picked a
+  click places a new root, or takes or drops a point. The plan cuts the points, in order (a
+  distribution's along its line, else as selected), into groups of consecutive points, each joined
+  to one root, the cut and the roots chosen together as the cheapest (each group's length divided by
+  its root's weight; a tie goes to the cut whose largest group is smallest). The summary says the
+  groups, the roots used and the total length; a root that wins nothing is reported unused.
+- A faint preview follows the settings; **Connect** makes it in one undo step, in a group
+  "Connection" (a distribution's beside its Copies, else in the points' group). Hubs follow their
+  points; one moved by hand stops following. **Edit…**: **Connect again**, its lines and hubs made
+  anew.
 - **Deleting a root** makes its connection again with the roots left, in the same undo step; the
   last one removes the connection's lines and hubs.
 

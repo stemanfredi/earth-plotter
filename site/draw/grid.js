@@ -1,15 +1,14 @@
-// List grids (docs/drawing-ui.md §5): a small spreadsheet of like things (a line's vertices, an
-// area's corners, a point's parts, its properties). Its columns of fixed widths, its head kept while
+// List grids (docs/drawing-ui.md §5): a small spreadsheet of like things (a line's points, an
+// element's properties, a connection's roots, the totals). Its columns of fixed widths, its head kept while
 // it scrolls down (a long one scrolls in its own box); a current row, marked, whose actions are a
 // bar over the grid (only while a row is current) and keys
 // (Insert, Ctrl/⌘ Delete); ↑, ↓ and Enter go to the same column in the row above or below. The panel builds its inspector again after each change: where the focus goes
 // after a key, and which row is current, are kept by the grid's name and taken up again.
 
-import { h } from '../dom.js';
+import { h, typing } from '../dom.js';
 
 const state = new Map(); // a grid's name → { current (row index, or null), focus ({ row, col }, or null) }
 const stateOf = (name) => { if (!state.has(name)) state.set(name, { current: null, focus: null }); return state.get(name); };
-const typing = (el) => el?.matches?.('input:not([type=checkbox]):not([type=color]):not([type=range]), textarea');
 
 // The focus asked for in grid name (after a key moved it), on the grid as it is now in the page: only
 // when it was lost (the grid built again) or is still where the key was pressed, never taken from

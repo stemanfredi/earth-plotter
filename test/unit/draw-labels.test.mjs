@@ -3,8 +3,7 @@ import assert from 'node:assert/strict';
 import { near, drawFeatures, lineFrom, placeIn, addRing } from './helpers.mjs';
 
 const { labelText, labelValues, TOKENS, leaderFrom, labelFeatures } = await import('../../site/draw/labels.js');
-const { resolve: anchorAt } = await import('../../site/draw/attach.js');
-const { lineRef, targetPosition, refreshAttached, splitLine } = await import('../../site/draw/attach.js');
+const { resolve: anchorAt, lineRef, targetPosition, refreshAttached, splitLine } = await import('../../site/draw/attach.js');
 const { emptyDoc, addPoint, addLine, addCircle, addLabel, makeGroup, centroid, lookOf, LOOK_FIELDS, remove, linkFrom, setLink, carry } = await import('../../site/draw/document.js');
 const { outlinePoints } = await import('../../site/draw/outlines.js');
 const { exportFeatures } = await import('../../site/draw/features.js');

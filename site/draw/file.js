@@ -7,14 +7,13 @@
 // Legs are geodesics, or a smooth curve through the places (other tools draw them straight in
 // longitude and latitude: the geometry holds the places, "smooth" is the app's). Drawings of another format version are not read. Pure: no map, no DOM.
 
-import { FORMAT, VERSION, KINDS, KIND, SYMBOLS, LEADERS, LABEL_OFFSET, META_D, MAX_RADIUS,
+import { FORMAT, VERSION, KINDS, KIND, SYMBOLS, LEADERS, LABEL_OFFSET, META_D, MAX_RADIUS, MAX_LABEL_OFFSET,
   emptyDoc, newId, columnsOf, find, linkFrom, targetOf, elements, canHold } from './document.js';
-import { ID, isObj, fin, Skip, time, text, properties, flag, position, angle, ownStyle, look, aperture, readView, VIEW_D, VIEW_DATA_D } from './check.js';
+import { ID, isObj, fin, Skip, time, text, properties, flag, position, angle, look, aperture, readView, VIEW_D, VIEW_DATA_D } from './check.js';
 import { targetPosition, refreshAttached, placeAt } from './attach.js';
-import { groupSizeOf, patternOf, settings, DISTRIBUTE_D, CONNECT_D } from './generator.js';
+import { settings, connectSettings, DISTRIBUTE_D, CONNECT_D } from './generator.js';
 import { norm180, samePosition, signedArea2 } from '../geo.js';
 
-const MAX_LABEL_OFFSET = 2000; // px: a label's text from its anchor
 const MAX_POSITIONS = 100000; // positions in one line: more would stall the page at every change
 const MAX_FEATURES = 20000; // elements in one file: the rest are skipped (as many points stall the list)
 const MAX_TOTAL_POSITIONS = 1000000; // positions in a file's lines together: more is refused, as soon as read
@@ -127,13 +126,9 @@ function read(raw, app, known, now, report) {
       const el = attempt(kind, fid, (c) => {
         const id = idOf(k ? null : f.id, c);
         const x = { ...commonOf({ ...propertiesFrom(props, mine, c), visible: mine?.visible }, c), id, groupId: typeof mine?.group === 'string' ? mine.group : null }; // checked once all are read
-        x.look = look(mine?.look, c, kind);
-        if (kind !== 'label') { // its colours, opacities and width: the common style names
-          const st = styleFrom(props, c);
-          for (const part of ['fill', 'stroke']) if (st[part]) x.look[part] = { ...x.look[part], ...st[part] };
-          x.guide = flag(mine?.guide, c, 'guide');
-        }
-        return READ[kind](part.coordinates, props, mine || {}, x, c, { foreign: !mine, closed: part.type === 'Polygon' });
+        x.look = look(mine?.look, c, kind, kind === 'label' ? null : styleFrom(props)); // its colours, opacities and width: the common style names, checked and filtered with its look
+        if (kind !== 'label') x.guide = flag(mine?.guide, c, 'guide');
+        return READ[kind](part.coordinates, mine || {}, x, c, { foreign: !mine, closed: part.type === 'Polygon' });
       });
       positions += el?.points?.length ?? 0; // a line's
       if (positions > MAX_TOTAL_POSITIONS) throw new Refused(`This file holds more than ${MAX_TOTAL_POSITIONS.toLocaleString('en')} positions in its lines: it would stall the page at every change.`);
@@ -184,10 +179,7 @@ function read(raw, app, known, now, report) {
           points: Array.isArray(x.points) ? x.points.filter((f) => isObj(f) && ref(f.pointId) && fin(f.t) && pair(f.pos)).map((f) => ({ pointId: f.pointId, t: f.t, left: f.left === true, pos: [f.pos[0], f.pos[1]] })) : [] };
       }
       taken.add(x.id);
-      const pattern = patternOf(x.pattern);
-      return { id: x.id, kind: 'connect', groupId: ref(x.groupId), pattern, groupSize: groupSizeOf(x.groupSize, pattern),
-        minBranch: fin(x.minBranch) && x.minBranch > 0 ? x.minBranch : CONNECT_D.minBranch, pointIds: idList(x.pointIds),
-        roots: Array.isArray(x.roots) ? x.roots.filter((r) => isObj(r) && ref(r.id)).map((r) => ({ id: r.id, weight: fin(r.weight) && r.weight > 0 ? r.weight : 1 })) : [],
+      return { id: x.id, kind: 'connect', groupId: ref(x.groupId), ...connectSettings({ ...x, roots: Array.isArray(x.roots) ? x.roots.filter((r) => isObj(r) && ref(r.id)) : [] }), pointIds: idList(x.pointIds),
         hubs: Array.isArray(x.hubs) ? x.hubs.filter((b) => isObj(b) && ref(b.pointId) && ref(b.rootId) && Array.isArray(b.pointIds) && pair(b.pos))
           .map((b) => ({ pointId: b.pointId, pointIds: idList(b.pointIds), rootId: b.rootId, pos: [b.pos[0], b.pos[1]] })) : [],
         created: idList(x.created) };
@@ -214,13 +206,14 @@ function commonOf(x, c) {
   if (x.visible !== undefined && typeof x.visible !== 'boolean') c.warn('visible is not true or false; true used');
   return { name: text(x.name, c, 'name'), properties: properties(x.properties, c), visible: x.visible !== false };
 }
-// an element's own colours, opacities and stroke width, from the common style names
-function styleFrom(props, c) {
+// an element's own colours, opacities and stroke width from the common style names, as look parts
+// (unchecked: check.js look checks them with its look), or null
+function styleFrom(props) {
   const s = {};
   const put = (part, field, v) => { if (v !== undefined) (s[part] ??= {})[field] = v; };
   put('stroke', 'color', props.stroke); put('stroke', 'width', props['stroke-width']); put('stroke', 'opacity', props['stroke-opacity']);
   put('fill', 'color', props.fill); put('fill', 'opacity', props['fill-opacity']);
-  return ownStyle(s, c);
+  return Object.keys(s).length ? s : null;
 }
 const coord = (p, c, what) => position(Array.isArray(p) ? p.slice(0, 2) : p, c, what);
 
@@ -233,22 +226,22 @@ function refIn(v) {
   return n('vertex') === undefined && n('edge') === undefined ? { element: v.element }
     : targetOf({ element: v.element, vertex: n('vertex'), edge: n('edge'), at: fin(v.at) ? Math.min(1, Math.max(0, v.at)) : 0 });
 }
-// each kind's reader: (coordinates, properties, the app's own, the element so far, ctx, state) → element
+// each kind's reader: (coordinates, the app's own, the element so far, ctx, state) → element
 const READ = {
-  point(coords, props, mine, x, c, { foreign }) {
+  point(coords, mine, x, c, { foreign }) {
     const p = { ...x, position: coord(coords, c, 'position'), bearing: angle(mine.bearing, c, 'bearing') };
     const dflt = foreign ? 'diamond' : 'none'; // a point from another tool: a diamond, to be seen
     p.symbol = SYMBOLS.includes(mine.symbol) ? mine.symbol : (mine.symbol !== undefined && c.warn(`unknown symbol "${String(mine.symbol).slice(0, 20)}", default used`), dflt);
     return p;
   },
   // a circle (a sector with an aperture): its radius above 0 and below 10 000 km, or it is skipped
-  circle(coords, props, mine, x, c) {
+  circle(coords, mine, x, c) {
     if (!fin(mine.radius) || mine.radius <= 0 || mine.radius >= MAX_RADIUS) c.skip('radius not between 0 and 10 000 km');
     const a = aperture(mine.aperture, c);
     return { ...x, position: coord(coords, c, 'position'), radius: mine.radius, aperture: a, bearing: angle(mine.bearing, c, 'bearing') };
   },
   // a LineString, or a Polygon's outer ring (closed): its first place not repeated at its end
-  line(coords, props, mine, x, c, { closed }) {
+  line(coords, mine, x, c, { closed }) {
     if (closed) {
       if (!Array.isArray(coords) || !Array.isArray(coords[0])) c.skip('no ring');
       if (coords.length > 1) c.warn('holes are not read; the outer ring only');
@@ -264,18 +257,21 @@ const READ = {
     const names = Array.isArray(mine.names) ? mine.names : [];
     return { ...x, points, names: points.map((_, k) => text(names[k], c, `place ${k + 1} name`)), smooth: flag(mine.smooth, c, 'smooth'), closed };
   },
-  label(coords, props, mine, x, c) {
+  label(coords, mine, x, c) {
     const o = mine.offset;
     const offset = Array.isArray(o) && o.length >= 2 && fin(o[0]) && fin(o[1]) ? [Math.max(-MAX_LABEL_OFFSET, Math.min(MAX_LABEL_OFFSET, o[0])), Math.max(-MAX_LABEL_OFFSET, Math.min(MAX_LABEL_OFFSET, o[1]))]
       : (o !== undefined && c.warn('offset: not [x, y] pixels, the default used'), [...LABEL_OFFSET]);
     const one = (v, list, d, what) => (v === undefined ? d : list.includes(v) ? v : (c.warn(`${what}: unknown "${String(v).slice(0, 20)}", ${d} used`), d));
-    return { ...x, text: text(mine.text, c, 'text'), position: coord(coords, c, 'position'), offset, leader: one(mine.leader, LEADERS, 'arrow', 'leader') };
+    // a label has no name: it goes by its text (one in the file is dropped, as its guide is)
+    return { ...x, name: '', text: text(mine.text, c, 'text'), position: coord(coords, c, 'position'), offset, leader: one(mine.leader, LEADERS, 'arrow', 'leader') };
   },
 };
 
 // ---- writing ---------------------------------------------------------------------------------
 
-const r7 = (v) => +v.toFixed(7), r3 = (v) => +v.toFixed(3), r4 = (v) => +v.toFixed(4);
+const r7 = (v) => +v.toFixed(7), r3 = (v) => +v.toFixed(3), r4 = (v) => +v.toFixed(4), r2 = (v) => +v.toFixed(2), r1 = (v) => +v.toFixed(1);
+// a link's target as the file has it: an edge's at only when it is not 0 (the default), to 6 decimals
+const refOut = ({ at, ...to }) => { const a = at && +at.toFixed(6); return a ? { ...to, at: a } : to; };
 const pos = (p) => [r7(norm180(p[0])), r7(p[1])]; // a click past ±180° is kept as the map has it, written in range (§2)
 const sameJson = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 // o without the fields equal to their defaults d; an object field against an object default field by
@@ -316,7 +312,7 @@ function styleNames(st) {
 // one element as a Feature
 function feature(kind, el) {
   const { out: cols, changed } = columns(el.properties);
-  const props = Object.assign(Object.create(null), lean({ name: el.name }, { name: '' })); // no prototype: a column named __proto__ is set, not the prototype
+  const props = Object.assign(Object.create(null), kind === 'label' ? {} : lean({ name: el.name }, { name: '' })); // no prototype: a column named __proto__ is set, not the prototype; a label has no name
   Object.assign(props, cols, kind === 'label' ? {} : styleNames(el.look));
   const mine = { kind, ...(changed ? { properties: el.properties.map((p) => ({ ...p })) } : {}),
     ...lean({ group: el.groupId, visible: el.visible, guide: el.guide ?? false, look: lookOut(el.look, kind !== 'label') }, { group: null, visible: true, guide: false, look: {} }) };
@@ -347,9 +343,10 @@ export function toFile(doc, v = null) {
   const app = lean({
     format: FORMAT, version: VERSION, created: doc.created, modified: doc.modified,
     meta: lean(doc.meta, META_D),
-    view: v ? lean({ center: v.center && pos(v.center), zoom: v.zoom === null ? null : r4(v.zoom), bearing: r4(v.bearing), layers: v.layers && v.layers.map((l) => ({ ...l })),
-      data: v.data ? lean({ colour: v.data.colour && { ...v.data.colour }, arrows: v.data.arrows && { ...v.data.arrows }, time: v.data.time, depth: v.data.depth }, VIEW_DATA_D) : {}, // none read: none written (not null)
-      units: v.units, bearings: v.bearings === true }, { ...VIEW_D, data: {} }) : null,
+    view: v ? lean({ center: v.center && pos(v.center), zoom: v.zoom === null ? null : r2(v.zoom), bearing: r1(v.bearing), layers: v.layers && v.layers.map((l) => ({ ...l })), // zoom and bearing as the address keeps them, which applies a file's view
+      // data always written ({} when nothing is chosen), so a reader gets an object and the app clears its data layers
+      data: v.data ? lean({ colour: v.data.colour && { ...v.data.colour }, arrows: v.data.arrows && { ...v.data.arrows }, time: v.data.time, depth: v.data.depth }, VIEW_DATA_D) : {},
+      units: v.units, bearings: v.bearings === true }, VIEW_D) : null,
     look: lookOut(doc.look),
     groups: doc.groups.map((g) => lean({ id: g.id, groupId: g.groupId, name: g.name, properties: g.properties.map((p) => ({ ...p })), visible: g.visible },
       { groupId: null, name: '', properties: [], visible: true })),
@@ -358,7 +355,7 @@ export function toFile(doc, v = null) {
         aperture: a.aperture == null ? null : r4(a.aperture), startMargin: r3(a.startMargin), endMargin: r3(a.endMargin), offset: r3(a.offset),
         points: a.points.map((f) => ({ pointId: f.pointId, t: +f.t.toFixed(9), ...(f.left ? { left: true } : {}), pos: pos(f.pos) })) }, DISTRIBUTE_D)
       : lean({ ...a, roots: a.roots.map((r) => (r.weight === 1 ? { id: r.id } : { id: r.id, weight: +r.weight.toPrecision(6) })), pointIds: [...a.pointIds], hubs: a.hubs.map((b) => ({ ...b, pointIds: [...b.pointIds], pos: pos(b.pos) })), created: [...a.created] }, CONNECT_D))),
-    links: doc.links.map((l) => ({ from: [...l.from], to: l.to.edge != null ? { ...l.to, at: +l.to.at.toFixed(6) } : { ...l.to } })),
+    links: doc.links.map((l) => ({ from: [...l.from], to: refOut(l.to) })),
   }, { meta: {}, view: null, look: {}, groups: [], rules: [], links: [] });
   return { type: 'FeatureCollection', charts: app, features: KINDS.filter((k) => k !== 'group').flatMap((k) => doc[KIND[k].list].map((el) => feature(k, el))) };
 }

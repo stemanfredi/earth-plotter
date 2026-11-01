@@ -598,13 +598,15 @@ test('copies: a built-in kind at the radius (its largest shape), a preset of the
     near(Math.max(...r.points.map((q) => inverse(n.position, q).s)), Math.hypot(400, 200), 1e-3, 'its half length the radius; no aperture on it');
   }
   // one of the user's: its point and shapes, as they are, each copy's own
-  const src = emptyDoc(0), q = addPoint(src, [5, 50], { symbol: 'square' });
+  const src = emptyDoc(0), q = addPoint(src, [5, 50], { symbol: 'square', properties: [{ key: 'a', value: '1' }] });
   addCircle(src, [5, 50], { groupId: q.id, radius: 2000, name: 'outer' });
   const copy = presetOf(src, q.id, 'mine').doc;
   const mine = makeDistribution(doc, { along: { element: guide.id }, count: 3, preset: 'preset:mine', copy, radius: 10 }).distribution;
   assert.equal(mine.preset, 'preset:mine');
   const ns = pointsOf(doc, mine);
-  for (const n of ns) assert.deepEqual([n.symbol, shapesOf(doc, n).map((c) => [c.radius, c.position])], ['square', [[2000, n.position]]]);
+  // each copy as one placed by hand: the preset's properties, the preset named (a built-in's copies have none)
+  for (const n of ns) assert.deepEqual([n.symbol, n.properties, shapesOf(doc, n).map((c) => [c.radius, c.position])], ['square', [{ key: 'a', value: '1' }, { key: 'preset', value: 'mine' }], [[2000, n.position]]]);
+  assert.deepEqual(copy.points[0].properties, [{ key: 'a', value: '1' }], 'the preset untouched');
   assert.notEqual(shapesOf(doc, ns[0])[0], shapesOf(doc, ns[1])[0]);
   // a copy deleted: its shapes with it
   remove(doc, [ns[0].id]);
@@ -690,9 +692,7 @@ test('a distribution makes at most MAX_COPIES points, and says so', () => {
   assert.equal(distribute(doc, s, { count: 10 }).capped, false);
 });
 
-
-test('plan: a root on a point with a shortest branch still plans (no NaN); a set tree is capped; a bad size is Auto; ties are relative', async () => {
-  const { MAX_TREE } = await import('../../site/draw/generator.js');
+test('plan: a root on a point with a shortest branch still plans (no NaN); a set tree is capped; a bad size is Auto; ties are relative', () => {
   const pts = [[12, 40], [12.01, 40], [12.02, 40]];
   const p = plan(pts, [R([12.01, 40])], 3, 'tree', 200); // the root exactly on the middle point
   assert.ok(Number.isFinite(p.total) && p.groups.length >= 1, `a finite plan: ${JSON.stringify(p)}`);

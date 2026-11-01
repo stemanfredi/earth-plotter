@@ -18,8 +18,8 @@ const countOf = (b, u) => [b.points ? plural(b.points, 'point') : '', b.circles 
 // an element's icon and what the panel calls its kind: a circle or a sector; a closed line a polygon
 const iconOf = (kind, el) => (kind === 'circle' ? POINT_ICON[el.aperture ? 'sector' : 'circle'] : KIND_ICON[el.closed ? 'polygon' : kind]);
 export const kindTitle = (kind, el) => (kind === 'circle' && el.aperture ? 'Sector' : KIND[kind].name);
-// an element's name as shown: its own, else a label's text as it reads on the map (its first line)
-export const shownName = (doc, kind, el, units) => (kind === 'label' && !el.name?.trim() ? labelText(doc, el, units).split('\n')[0].trim() || 'Label' : label(kind, el));
+// an element's name as shown: its own; a label's text as it reads on the map (its first line)
+export const shownName = (doc, kind, el, units) => (kind === 'label' ? labelText(doc, el, units).split('\n')[0].trim() || 'Label' : label(kind, el));
 // a group's name with the groups it is in: "A › B"
 export const groupPath = (doc, g) => [...groupsOf(doc, g).reverse(), g].map((x) => label('group', x)).join(' › ');
 
@@ -39,11 +39,12 @@ export function eyeFor(drawing, xs, what) {
   return b;
 }
 
-// drawing (drawing.js); facts(): the totals computed for this rendering;
+// drawing (drawing.js); facts(): the totals computed for this rendering; drawingPicked(): the
+// drawing's row clicked (the selection cleared first).
 // Returns { box, render(), mark() (the selection marked,
 // the last selected scrolled to), shown() (the rows, in order), step(dir) (↑ ↓:
 // the next row selected; false if none), rename(id) }.
-export function createTree(drawing, { facts }) {
+export function createTree(drawing, { facts, drawingPicked = () => {} }) {
   let anchor = null; // the row a Shift-click range starts from
   let filter = '';
   const folded = new Set(); // groups and points folded (this session)
@@ -59,7 +60,7 @@ export function createTree(drawing, { facts }) {
   const list = h('ul', { class: 'dlist', 'aria-label': 'Elements', onpointerleave: () => drawing.setHover(null) });
   // The first row is the drawing (drawing-ui.md §4): its title, how much it holds, the eye for
   // everything listed (Properties shows it while nothing is selected).
-  const rootName = h('button', { type: 'button', class: 'dname', title: 'The drawing: its title, its display, its totals. Double-click to rename.', onclick: () => drawing.select([]), ondblclick: () => renameDrawing() });
+  const rootName = h('button', { type: 'button', class: 'dname', title: 'The drawing: its title, its display, its totals. Double-click to rename.', onclick: () => { drawing.select([]); drawingPicked(); }, ondblclick: () => renameDrawing() });
   const rootVal = h('span', { class: 'val' });
   const rootRow = h('div', { class: 'drow droot' }, h('span', { class: 'kind' }, icon(...UI_ICON.drawing)), rootName, rootVal, eyeAll);
   const listBox = h('div', { class: 'dlistbox' }, rootRow, filterRow, list);
@@ -95,7 +96,7 @@ export function createTree(drawing, { facts }) {
     if (kind === 'circle') return `${el.aperture ? `${+el.aperture.toFixed(1)}° ` : ''}r ${fmtDist(el.radius, u)}`;
     const offset = el.look?.offset ? '⇉' : ''; // Offset set here: found again in the list
     if (kind === 'line') { const tr = lineTrace(drawing.doc, el); return [el.guide ? 'guide' : '', el.closed ? fmtArea(tr.area, u) : fmtDist(tr.length, u), offset].filter(Boolean).join(' · '); }
-    if (kind === 'label') return el.name?.trim() ? labelText(drawing.doc, el, u).split('\n')[0] : ''; // unnamed: its text is its name already
+    if (kind === 'label') return ''; // its text is its name already
     const n = membersOf(drawing.doc, el.id, true).filter((x) => x.kind !== 'group').length; // labels and guides too: the totals leave them out
     return [n ? plural(n, 'element') : 'empty', offset].filter(Boolean).join(' · ');
   }

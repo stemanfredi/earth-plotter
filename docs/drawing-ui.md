@@ -29,7 +29,8 @@ One layout at every width (`site/frame.js`).
   Layers' button turns while the map's layers load.
 - **Properties** (the inspector, §5), on the right: a switch of the user's (its toggle, **I**, or a
   double-click on an element). While on, it shows what is selected, else the drawing (its title,
-  its display, its totals); on a phone it goes when nothing is. The left panel making way for it, or
+  its display, its totals); on a phone it shows the drawing only while on (a tap on the tree's first
+  row turns it on). The left panel making way for it, or
   a label placed (its text there to be typed), shows or hides it for the moment: the switch comes
   back as it was at its next press. Its head: what it shows, then
   **Zoom to**, **Duplicate**, **Group**, **Delete**.
@@ -89,7 +90,7 @@ presets) opens its kinds.
 |---|---|---|
 | Point | symbol, the user's presets without shapes | a point: a marker, the same size at every zoom |
 | Line | none | a line; closed on its first point, a closed line (an area) |
-| Shape | circle, rings, sector, rectangle, ellipse, triangle, three vehicles, the user's presets with shapes | a point with no symbol holding its shapes (circles, a sector, or a closed line: the outline's places), named after its kind, its preset kept as the property `preset` |
+| Shape | circle, rings, sector, rectangle, ellipse, triangle, three vehicles, the user's presets with shapes | a point with no symbol holding its shapes (circles, a sector, or a closed line: the outline's places), named after its kind; a preset of the user's keeps its properties and names itself in the property `preset` |
 | Label | none | a label |
 | Measure | none | nothing, unless kept (§3) |
 
@@ -115,8 +116,9 @@ presets) opens its kinds.
   bearings are typed afterwards, in the points' tables (§5).
 - **Shift**: 15° steps from the leg before (from north for the first). **Alt**: nothing snapped or
   attached.
-- **Esc** (or a right-click with nothing to finish) steps back one level: what is half drawn, else
-  the tool, else a form open, else Attach to… waiting, else the selection.
+- **Esc** (or a right-click with nothing to finish) steps back one level: a drag (put back), else a
+  form open (Distribute along, Connect), else Attach to… waiting, else what is half drawn, else the
+  tool, else Box select, else the selection. A tool started while a form is open closes the form.
 
 ### 2.2 Snapping and attaching
 
@@ -142,7 +144,7 @@ the drawing.
 ## 4. The tree
 
 - Its first row is the drawing: its title ("Untitled drawing" while it has none; a click selects it:
-  Properties, when on, show it; a double-click renames it, as any row), how many elements it
+  Properties, when on, show it, and on a phone it turns them on; a double-click renames it, as any row), how many elements it
   holds, and an eye for everything listed.
 - Then groups first, what is in each one step further in (a group folds), then the rest; a point's
   shapes are rows under it, one step further in (a point with shapes folds). A row: the element's
@@ -203,7 +205,7 @@ takes one unit by its largest value.
 - **What several share** (two or more selected, or a group's members under **Each member**): every
   row two or more of them have, "mixed" where they differ; a value set there goes to each that has
   it. Points: Position each axis alone (a latitude typed puts them all on that parallel, their
-  longitudes kept) and Bearing, their shapes carried; Symbol. Circles: Radius. Lines: Path. All but
+  longitudes kept), Symbol, and Bearing for those holding shapes (carried). Circles: Radius. Lines: Path. All but
   labels: Guide. Labels: Leader.
 - **The look's cascade:** an element's own value, else the drawing's Display, else the default; **↺**
   gives a field back. Fill (a closed line's, not an open one's) and Stroke are rows (a colour, its opacity in %), Width (px) and Dash
@@ -215,19 +217,19 @@ takes one unit by its largest value.
   level, the land's heights above; every 30 m, at most 1,000 places; one that could not be read a
   gap), its lowest and highest, a chart linked to the map both ways, its length along the surface,
   CSV. When none could be read it says so, and reads again when next shown.
-- **A point**: its Position and **Bearing** (typed, or its stalk: its shapes move and turn with it,
-  each keeping its distance and bearing from it), its Symbol, its **Shapes** (each a link to it).
+- **A point**: its Position and, while it holds shapes, its **Bearing** (typed, or its stalk: its shapes move and turn with it,
+  each keeping its distance and bearing from it; a symbol is never turned), its Symbol, its **Shapes** (each a link to it).
   **Save as preset…**. Its look is its symbol's colour. **Data**: its properties as keys and values.
 - **A circle**: its centre, **Radius**, **Aperture** (a sector that wide, centred on its **Bearing**;
-  empty: the whole circle), its **Area**; **Distribute along…**. Its look is its own, as any
+  empty or 360: the whole circle, as the file reads it), its **Area**; **Distribute along…**. Its look is its own, as any
   element's: Fill (an opacity of 0: not filled), Stroke, Width, Dash, Show values (its radius).
-- **A shape's Point** (a circle or a closed line): the point holding it, and **Detach** (free where it
+- **A shape's Point** (a circle or a line): the point holding it, and **Detach** (free where it
   is, in the point's group); free, **Attach to…** (the next click on a point makes that point hold
   it). A shape held by a point has no In group: it is in its point's.
 - A **label**: its text, with value codes ({name}, {along}…: **+ name** and the like insert them) and,
   while it has any, what it **reads** under it; **Attached to** what and where (a line's point or leg,
   as its table numbers them), or its **Position**; **Along**, on
-  a line; **Text offset**, where its text was dragged to (↺: back); **Leader**, when attached. Look:
+  a line; **Text offset**, where its text was dragged to (↺: back); **Leader**. Look:
   text size, colour, background (halo or box).
 - A **group**: **Members** as the tree counts them (everything in it, its subgroups' too) and its
   subgroups, with the group's eye (as its row's); **Totals** as the drawing's, its members only, by subgroup
@@ -284,7 +286,7 @@ Copies) opens its form (a click on the map picks a root):
   element), full for the selection and for targets. The one element selected shows its handles; among
   several, the same squares at their key points, inert. What is not made yet is dashed and dark. Selecting never moves the
   map; Zoom to does.
-- **Clicks**, no tool on: the topmost element; the same place again, the next one down. A shape a
+- **Clicks**, no tool on: the topmost element (Ctrl/⌘: added or removed, as in the tree); the same place again, the next one down. A shape a
   point holds: the first click selects its point (with its shapes, marked with it), the next the
   shape alone.
 - **Dragging** a selected element moves it (several together) as one piece along the ellipsoid: each
@@ -315,7 +317,7 @@ Copies) opens its form (a click on the map picks a root):
 | ↑ ↓ | previous, next element in the tree |
 | Delete (Mac: also ⌘ Backspace) | deletes the place current (a line's point: pressed on the map or its row), else the selection |
 | F2 | rename |
-| Ctrl/⌘ Z, Ctrl/⌘ Shift Z (or Ctrl Y) | undo, redo |
+| Ctrl/⌘ Z, Ctrl/⌘ Shift Z | undo, redo |
 | Ctrl/⌘ C, V, D | copy, paste, duplicate |
 | Ctrl/⌘ ], [ | the selection up or down in the drawing order |
 
@@ -333,8 +335,8 @@ lives in this page, so it pastes into another drawing opened in it.
 **Save as preset…** (a point's Properties) keeps the point and its shapes as they are (their sizes,
 their places and bearings about it, their own looks) under a name, a small drawing of its own;
 Distribute along copies all of it. One with shapes joins Shape's kinds, one without Point's. Placing
-one makes a copy of it facing north about the place clicked, the point named after it, with the
-preset's name as a property; pressed again while current among the kinds (or right-clicked), it is renamed or deleted. Saving one
+one makes a copy of it facing north about the place clicked, the point named after it, its properties
+kept with the preset's name as `preset`, every element shown and none a guide; pressed again while current among the kinds (or right-clicked), it is renamed or deleted. Saving one
 under a name in use asks before replacing it (a file's replaces). Presets
 live in this browser only; **Download** › **Presets (JSON)** and **Open a file…** move them.
 

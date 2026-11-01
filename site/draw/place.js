@@ -14,13 +14,13 @@ const KIND_NAME = { circle: 'Circle', rings: 'Rings', sector: 'Sector', ...OUTLI
 export const builtInName = (kind) => KIND_NAME[kind];
 export const BUILT_IN = Object.keys(KIND_NAME);
 
-// A built-in kind at p: a point (no symbol, named after the kind, its kind kept as the property preset)
-// and its shapes, facing north, the largest reaching d metres (a circle's radius, an outline's half
+// A built-in kind at p: a point (no symbol, named after the kind, no property: only a preset of the
+// user's names itself, presetProperty) and its shapes, facing north, the largest reaching d metres (a circle's radius, an outline's half
 // length; 0: its own size). Its own size: a circle of 1 km; rings at 1, 2 and 3 km (the first
 // filled); a sector of 1 km, aperture wide; an outline 100 × 50 m (a triangle equilateral, 100 m a
 // side), or size ([length, width]: a box's). Returns the point.
 export function build(doc, p, kind, d = 0, { aperture = 90, size = null } = {}) {
-  const pt = addPoint(doc, p, { symbol: 'none', name: nextName(doc, 'point', KIND_NAME[kind]), properties: [{ key: 'preset', value: KIND_NAME[kind] }] });
+  const pt = addPoint(doc, p, { symbol: 'none', name: nextName(doc, 'point', KIND_NAME[kind]) });
   const r3 = (v) => Math.round(Math.max(v, 0.001) * 1000) / 1000, held = { groupId: pt.id };
   if (OUTLINES.includes(kind)) {
     const [l, w] = size ?? (kind === 'triangle' ? [50 * Math.sqrt(3), 100] : [100, 50]), k = d > 0 ? (2 * d) / l : 1;
@@ -41,16 +41,23 @@ export function placeCopy(doc, tpl, p, bearing = 0, groupId = null) {
   return pt;
 }
 
+// A copy placed from a preset of the user's keeps its properties, with the property preset naming
+// the preset (set, or replaced: the preset's point may have been placed from another)
+export function presetProperty(pt, name) {
+  pt.properties = [...pt.properties.filter((x) => x.key !== 'preset'), { key: 'preset', value: name }];
+}
+
 // What the Point or the Shape tool places at p, by the tool's kind: a built-in kind (Shape), a preset
-// of the user's ('preset:<name>'), else a diamond (Point). Each remembers its preset in the property
-// preset, and faces north: its bearing is set afterwards (the stalk, the inspector), so that a shape
-// does not swing while it is sized. d (the Shape tool's second click, metres from the centre): a
-// built-in's largest shape reaches it; 0: its own size. A preset of the user's keeps its size.
+// of the user's ('preset:<name>', which names itself in the property preset: a built-in sets none),
+// else a diamond (Point). Each faces north: its bearing is set afterwards (the stalk, the inspector),
+// so that a shape does not swing while it is sized. d (the Shape tool's second click, metres from the
+// centre): a built-in's largest shape reaches it; 0: its own size. A preset of the user's keeps its size.
 export function placeKind(doc, p, kind, presets, d = 0) {
   const mine = kind?.startsWith('preset:') && presets.find((x) => x.name === kind.slice(7));
   if (mine) {
     const pt = placeCopy(doc, mine.doc, p);
-    Object.assign(pt, { name: nextName(doc, 'point', mine.name.replace(/[^\p{L}\p{N} ]+/gu, '').trim() || 'Point'), properties: [{ key: 'preset', value: mine.name }] });
+    pt.name = nextName(doc, 'point', mine.name.replace(/[^\p{L}\p{N} ]+/gu, '').trim() || 'Point');
+    presetProperty(pt, mine.name);
     return pt;
   }
   return KIND_NAME[kind] ? build(doc, p, kind, d) : addPoint(doc, p); // a symbol

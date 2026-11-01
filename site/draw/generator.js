@@ -24,7 +24,7 @@ import { inverse, destination, localFrame, lengthOf } from '../geodesy.js';
 import { norm360, samePosition } from '../geo.js';
 import { lineTrace, pointsAlong } from './lines.js';
 import { addPoint, addDot, addLine, addGroup, elements, newId, idsOf, label, remove, setLink, carry, emptyDoc } from './document.js';
-import { BUILT_IN, build, placeCopy } from './place.js';
+import { BUILT_IN, build, placeCopy, presetProperty } from './place.js';
 import { alone } from './clipboard.js';
 
 // a drawing's rules of each kind
@@ -148,7 +148,7 @@ let lastPlan = null; // the last plan, by its inputs: the form previews it, then
 export function plan(points, roots, groupSize = 'auto', pattern = 'tree', minBranch = 0) {
   const n = points.length, R = roots.length;
   if (!n || !R) return { groups: [], unused: roots.map((_, i) => i), total: 0, groupSize };
-  const key = JSON.stringify([points, roots.map((r) => [r.position, r.weight > 0 ? r.weight : 1]), groupSize, pattern, minBranch]); // the weights as taken: the form's preview and Connect ask alike
+  const key = JSON.stringify([points, roots.map((r) => [r.position, r.weight]), groupSize, pattern, minBranch]); // the form's preview and Connect ask alike (the weights as connectSettings gives them)
   if (lastPlan?.key === key) return structuredClone(lastPlan.value);
   const value = planNow(points, roots, groupSizeOf(groupSize, pattern), pattern, minBranch);
   lastPlan = { key, value: structuredClone(value) };
@@ -158,7 +158,7 @@ function planNow(points, roots, groupSize, pattern, minBranch) {
   const n = points.length, R = roots.length;
   const chain = pattern === 'chain';
   const k = Math.min(n, groupSize === 'auto' ? (chain ? n : MAX_TREE) : groupSize);
-  const weight = (r) => (roots[r].weight > 0 ? roots[r].weight : 1);
+  const weight = (r) => roots[r].weight;
   const f = localFrame(points[n >> 1]), P = points.map(f.to), Q = roots.map((r) => f.to(r.position));
   const dist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
   const along = [0]; // along[i]: the chain from the first point to point i
@@ -240,7 +240,7 @@ export function planConnection(doc, { pointIds, roots = [], newRoots = [], patte
 export const DISTRIBUTE_D = { groupId: null, copiesId: null, spacing: null, count: null, startMargin: 0, endMargin: 0, offset: 0, side: 'left', radius: 500, aperture: null, preset: null, points: [] };
 export const CONNECT_D = { groupId: null, pattern: 'tree', groupSize: 'auto', minBranch: 0, roots: [], pointIds: [], hubs: [], created: [] };
 export const patternOf = (v) => (v === 'chain' ? 'chain' : 'tree');
-const DISTRIBUTE_KEYS = ['spacing', 'count', 'startMargin', 'endMargin', 'offset', 'side', 'radius', 'aperture', 'preset'];
+const DISTRIBUTE_KEYS = Object.keys(DISTRIBUTE_D).filter((k) => !['groupId', 'copiesId', 'points'].includes(k)); // its settings: what the form sets
 const D = DISTRIBUTE_D, SIDES = ['left', 'right', 'alternate'];
 // A distribution's settings as taken, from the form or a file: each value of its kind and range,
 // else its default (a count: the spacing goes).
@@ -251,13 +251,22 @@ export function settings(p) {
     aperture: fin(p.aperture) && p.aperture > 0 && p.aperture < 360 ? p.aperture : D.aperture,
     preset: typeof p.preset === 'string' ? p.preset : D.preset };
 }
+// A connection's settings as taken, from the form or a file: its pattern, its group size, a tree's
+// shortest branch (a chain has none), each of its kind and range, else its default; its roots (as
+// given) each with a weight above 0, else 1. The planner takes these as they are.
+export function connectSettings(p) {
+  const pattern = patternOf(p.pattern), fin = Number.isFinite;
+  return { pattern, groupSize: groupSizeOf(p.groupSize, pattern), minBranch: pattern === 'tree' && fin(p.minBranch) && p.minBranch > 0 ? p.minBranch : CONNECT_D.minBranch,
+    roots: (p.roots || []).map((r) => ({ id: r.id, weight: fin(r.weight) && r.weight > 0 ? r.weight : 1 })) };
+}
 // What a distribution's copies are: a drawing whose first point (with its shapes) each copies. copy:
-// one of the user's presets, as chosen (its drawing); else its preset, a built-in kind (null:
-// 'circle', a sector with its aperture) its largest shape reaching its radius
+// one of the user's presets, as chosen (its drawing: the point named after it in the property
+// preset, as one placed by hand); else its preset, a built-in kind (null: 'circle', a sector with
+// its aperture) its largest shape reaching its radius, no property
 function templateOf(a, copy = null) {
-  if (copy) return copy;
+  if (copy) { const doc = alone(copy, copy.points[0].id); presetProperty(doc.points[0], a.preset.slice(7)); return doc; }
   const doc = emptyDoc(0), kind = BUILT_IN.includes(a.preset) ? a.preset : 'circle';
-  build(doc, [0, 0], kind === 'circle' && a.aperture ? 'sector' : kind, a.radius, { aperture: a.aperture }).properties = []; // a copy is the rule's, not a preset's
+  build(doc, [0, 0], kind === 'circle' && a.aperture ? 'sector' : kind, a.radius, { aperture: a.aperture });
   return doc;
 }
 // the distribution's copies of tpl made at places, into its Copies group (or the group given): each
@@ -330,8 +339,8 @@ export function connect(doc, params) {
   const byId = new Map(doc.points.map((n) => [n.id, n]));
   const first = params.pointIds.map((id) => byId.get(id)).find(Boolean);
   if (!first) return null;
-  const pattern = patternOf(params.pattern);
-  if (!planConnection(doc, { ...params, pattern }).plan) return null;
+  const { pattern, groupSize, minBranch, roots: given } = connectSettings({ ...params, roots: (params.roots || []).filter((r) => byId.has(r.id)) });
+  if (!planConnection(doc, { ...params, pattern, groupSize, minBranch }).plan) return null;
   // its group: the one it had, else a new "Connection" in the points' group (a distribution's copies:
   // beside their Copies, in its own group)
   const around = distributions(doc).find((a) => a.copiesId && a.copiesId === first.groupId)?.groupId ?? first.groupId ?? null;
@@ -340,8 +349,8 @@ export function connect(doc, params) {
   const inGroup = (el) => { el.groupId = groupId; return el; };
   const before = idsOf(doc);
   const made = (params.newRoots || []).map((pos) => inGroup(addPoint(doc, pos, { symbol: 'square' })));
-  const roots = [...(params.roots || []).filter((r) => byId.has(r.id)).map((r) => ({ id: r.id, weight: r.weight > 0 ? r.weight : 1 })), ...made.map((n) => ({ id: n.id, weight: 1 }))];
-  const { nodes, plan: p } = planConnection(doc, { ...params, roots, newRoots: [], pattern });
+  const roots = [...given, ...made.map((n) => ({ id: n.id, weight: 1 }))];
+  const { nodes, plan: p } = planConnection(doc, { pointIds: params.pointIds, roots, pattern, groupSize, minBranch });
   const rootPoints = roots.map((r) => doc.points.find((n) => n.id === r.id));
   // a straight line from a to b, its ends linked to both (what it is, a trunk or a branch: lines.js madeLines)
   const line = (a, b) => { const s = inGroup(addLine(doc, [a.position, b.position])); setLink(doc, s.id, 0, { element: a.id }); setLink(doc, s.id, 1, { element: b.id }); };
@@ -361,8 +370,7 @@ export function connect(doc, params) {
   }
   const keep = new Set(roots.map((r) => r.id));
   const created = [...doc.points, ...doc.lines].map((x) => x.id).filter((id) => !before.has(id) && !keep.has(id));
-  const minBranch = pattern === 'tree' && params.minBranch > 0 ? params.minBranch : 0;
-  const connection = { id: params.id || newId(doc), kind: 'connect', groupId, pattern, groupSize: groupSizeOf(params.groupSize, pattern), minBranch, roots, pointIds: nodes.map((n) => n.id), hubs, created };
+  const connection = { id: params.id || newId(doc), kind: 'connect', groupId, pattern, groupSize, minBranch, roots, pointIds: nodes.map((n) => n.id), hubs, created };
   doc.rules.push(connection);
   return { connection, groups: p.groups.length, groupSize: p.groupSize, lines: doc.lines.filter((x) => created.includes(x.id)).length,
     unused: p.unused.map((i) => roots[i].id), total: p.total };

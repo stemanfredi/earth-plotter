@@ -1,12 +1,14 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { lineFrom, placeIn, addRing } from './helpers.mjs';
+import { lineFrom, placeIn, addRing, addShape } from './helpers.mjs';
 
 const { emptyDoc, addPoint, addLabel, addCircle, addLine, makeGroup } = await import('../../site/draw/document.js');
 const { outlinePoints } = await import('../../site/draw/outlines.js');
 const { clipOf, paste, centreOf } = await import('../../site/draw/clipboard.js');
 const { refreshAttached } = await import('../../site/draw/attach.js');
 const { loadPresets, savePresets, presetOf, presetsFile, readPresets } = await import('../../site/draw/presets.js');
+const { boundsOf } = await import('../../site/draw/features.js');
+const { inverse, moveAbout } = await import('../../site/geodesy.js');
 
 const shift = (q) => [q[0] + 1, q[1]];
 
@@ -85,8 +87,7 @@ test('presets: a point and its shapes kept under a name, as they are; stored; a 
   delete globalThis.localStorage;
 });
 
-test('a large import: Zoom to, Duplicate and Paste take hundreds of thousands of positions', async () => {
-  const { boundsOf } = await import('../../site/draw/features.js');
+test('a large import: Zoom to, Duplicate and Paste take hundreds of thousands of positions', () => {
   const doc = emptyDoc(0);
   const pts = Array.from({ length: 300000 }, (_, i) => [10 + (i % 1000) / 1000, 40 + i / 1e6]);
   const g = addRing(doc, pts);
@@ -94,26 +95,21 @@ test('a large import: Zoom to, Duplicate and Paste take hundreds of thousands of
   assert.deepEqual(centreOf(clipOf(doc, [g.id])).map((v) => +v.toFixed(7)), [10.4995, 40.1499995]);
 });
 
-// the drawing's Paste on doc, with no map: the screen is longitude, latitude ({ x, y }); what it selects
-async function pasteAt(doc, clip, at) {
-  const { Drawing } = await import('../../site/draw/drawing.js');
-  const fake = { change: (fn) => fn(doc), select: (ids) => { fake.selected = ids; }, map: { unproject: ({ x, y }) => ({ lng: x, lat: y }) } };
-  Drawing.prototype.paste.call(fake, clip, at);
-  return fake.selected;
-}
+// the clipboard pasted into doc with its middle moved to `to`, as the drawing's Paste moves it (along
+// the ellipsoid: geodesy.js moveAbout): what is made
+const pasteAt = (doc, clip, to) => paste(doc, clip, moveAbout(centreOf(clip), to));
 
-test('pasted along the ellipsoid: a 100 m rectangle from the equator to 60°N is still 100 m', async () => {
-  const { inverse } = await import('../../site/geodesy.js');
+test('pasted along the ellipsoid: a 100 m rectangle from the equator to 60°N is still 100 m', () => {
   const doc = emptyDoc(0), r = addRing(doc, outlinePoints([12, 0], 0, 100, 100));
-  const [id] = await pasteAt(doc, clipOf(doc, [r.id]), { x: 12, y: 60 }), q = doc.lines.find((s) => s.id === id).points;
+  const [{ el }] = pasteAt(doc, clipOf(doc, [r.id]), [12, 60]), q = el.points;
   for (let i = 0; i < 4; i++) assert.ok(Math.abs(inverse(q[i], q[(i + 1) % 4]).s - 100) < 1e-3, `side ${i}`);
-  assert.ok(Math.abs(centreOf(clipOf(doc, [id]))[1] - 60) < 1e-6, 'its middle there');
+  assert.ok(Math.abs(centreOf(clipOf(doc, [el.id]))[1] - 60) < 1e-6, 'its middle there');
 });
 
-test('pasted, a point and its shapes: the point selected, its shapes with it', async () => {
-  const { addShape } = await import('./helpers.mjs');
+test('pasted, a point and its shapes: the copy of the point holds the copies of its shapes', () => {
   const doc = emptyDoc(0), { point } = addShape(doc, [12, 40], 'rings'), q = addPoint(doc, [12.1, 40]);
-  const sel = await pasteAt(doc, clipOf(doc, [point.id, q.id]), { x: 13, y: 40 });
-  assert.equal(doc.circles.length, 6);
-  assert.deepEqual(sel.map((id) => doc.points.some((p) => p.id === id)), [true, true]); // the two points, no circle
+  const made = pasteAt(doc, clipOf(doc, [point.id, q.id]), [13, 40]);
+  const pts = made.filter((x) => x.kind === 'point'), circles = made.filter((x) => x.kind === 'circle');
+  assert.deepEqual([doc.circles.length, pts.length, circles.length], [6, 2, 3]);
+  assert.ok(circles.every((c) => c.el.groupId === pts[0].el.id && c.el.groupId !== point.id), 'held by the new point, not the old');
 });

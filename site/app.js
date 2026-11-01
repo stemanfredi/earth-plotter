@@ -961,7 +961,7 @@ const offline = offlineDialog({ map, fit: ([w, s, e, n]) => map.fitBounds([[w, s
 // ---- the drawing (draw/panel.js): its tools in the bar, the tree, its properties -------------------
 drawPanel = drawView($('#dview'), {
   drawing, display, setDisplay, map,
-  free: () => free(), bar: $('#bar'), props: $('#props'), frame,
+  free: () => free(), bar: $('#bar'), props: $('#props'), foot: $('#footl'), dock: $('#dock'), frame,
   // the bar's file group (draw/files.js): the view's outputs in Download, Copy link, About (a phone's ☰)
   outputs, offlineItem, copyLink: () => copyLink(), about: () => openAbout(),
   // a drawing imported, or one of the list, opened with its view: where it was, its layers, time,

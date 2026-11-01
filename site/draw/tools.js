@@ -11,12 +11,13 @@ import { savePresets, presetTool } from './presets.js';
 import { keyOf, MOD } from '../keys.js';
 import { icon, KIND_ICON, POINT_ICON, SELECT_ICON, BOX_ICON, UI_ICON } from '../icons.js';
 
-// drawing (drawing.js); ctx: { bar, frame, props }; del(ids): delete, asked
+// drawing (drawing.js); ctx: { bar, frame, props, foot (the map's foot's left stack: the touch row goes
+// there), dock (a phone's bar along the bottom) }; del(ids): delete, asked
 // first (the touch row's); fileBtns: the bar's file group (files.js). Returns { press,
 // renderTools, renderTouch }.
 export function createTools(drawing, ctx, { del, fileBtns }) {
   // the bar's hints: a name and its key, no more (drawing-ui.md says the rest)
-  const TOOLS = { point: ['Point'], line: ['Line'], shape: ['Shape'], label: ['Label'], measure: ['Measure'] };
+  const TOOLS = { point: 'Point', line: 'Line', shape: 'Shape', label: 'Label', measure: 'Measure' };
   // the kinds each tool makes, by name. Shape: round a centre, the outlines to scale, the vehicles, the
   // user's presets with extent
   const presetsOf = (tool) => drawing.presets.filter((x) => presetTool(x) === tool).map((x) => [`preset:${x.name}`, x.name]);
@@ -40,7 +41,7 @@ export function createTools(drawing, ctx, { del, fileBtns }) {
   const choose = (tool, v) => { kindsOpen = false; drawing.setVariant(tool, v); };
   drawing.map.getCanvasContainer().addEventListener('pointerdown', () => { if (kindsOpen) { kindsOpen = false; renderKinds(); } }, true);
   // the bar's tools
-  const toolBtns = Object.entries(TOOLS).map(([k, [text]]) => h('button', { type: 'button', 'data-tool': k, 'aria-pressed': 'false', 'aria-label': text, title: `${text} (${keyOf(k)})`,
+  const toolBtns = Object.entries(TOOLS).map(([k, text]) => h('button', { type: 'button', 'data-tool': k, 'aria-pressed': 'false', 'aria-label': text, title: `${text} (${keyOf(k)})`,
     onclick: () => press(k), oncontextmenu: (e) => { e.preventDefault(); openKinds(k); } }, icon(...(k === 'measure' ? UI_ICON.ruler : KIND_ICON[k]))));
   const undoBtn = h('button', { type: 'button', class: 'urbtn', 'aria-label': 'Undo', title: `Undo (${MOD} Z)`, onclick: () => drawing.undo() }, icon(...UI_ICON.undo));
   const redoBtn = h('button', { type: 'button', class: 'urbtn', 'aria-label': 'Redo', title: `Redo (${MOD} Shift Z)`, onclick: () => drawing.redo() }, icon(...UI_ICON.redo));
@@ -65,7 +66,7 @@ export function createTools(drawing, ctx, { del, fileBtns }) {
   };
   touch.done.classList.add('done');
   const touchbar = h('div', { class: 'touchbar', role: 'group', 'aria-label': 'Actions' });
-  document.querySelector('#footl').append(touchbar); // the map's foot, under the legends
+  ctx.foot.append(touchbar); // the map's foot, under the legends
   function renderTouch() {
     const sel = drawing.sel.size > 0, tool = !!drawing.tool, phone = NARROW.matches;
     touch.done.hidden = !(['line', 'measure'].includes(drawing.tool) && drawing.draft);
@@ -76,7 +77,7 @@ export function createTools(drawing, ctx, { del, fileBtns }) {
     touchbar.hidden = phone || [touch.done, touch.back, touch.del, touch.dup].every((b) => b.hidden);
   }
   // a kind's button: its name; a preset's, pressed again while current (or right-clicked), renames or deletes it
-  const kindBtn = (tool, v, name, onclick, pressed) => {
+  const kindBtn = (v, name, onclick, pressed) => {
     const preset = v.startsWith('preset:');
     return h('button', { type: 'button', 'aria-pressed': String(pressed), title: preset ? `${name} (preset: again to rename or delete)` : name, 'aria-label': name,
       onclick: preset && pressed ? () => presetMenu(name) : onclick, oncontextmenu: preset ? (e) => { e.preventDefault(); presetMenu(name); } : null },
@@ -86,8 +87,8 @@ export function createTools(drawing, ctx, { del, fileBtns }) {
     const tool = drawing.button;
     const vs = variants(tool);
     kindsRow.hidden = vs.length < 2 || !kindsOpen;
-    kindsRow.setAttribute('aria-label', `${TOOLS[tool]?.[0] ?? ''}: what it makes`);
-    kindsRow.replaceChildren(...vs.map(([v, name]) => kindBtn(tool, v, name, () => choose(tool, v), current(tool) === v)));
+    kindsRow.setAttribute('aria-label', `${TOOLS[tool] ?? ''}: what it makes`);
+    kindsRow.replaceChildren(...vs.map(([v, name]) => kindBtn(v, name, () => choose(tool, v), current(tool) === v)));
     // under its tool's button, as the bar's menus hang under theirs (4 px below the button, its left
     // edge on the button's), within the window
     // (a phone: above the dock, style.css)
@@ -117,9 +118,8 @@ export function createTools(drawing, ctx, { del, fileBtns }) {
   const historySep = sep(), makesSep = sep(), measureSep = sep();
   ctx.bar.replaceChildren(...fileBtns, sep(), ...ctx.frame.tabBtns, historySep, undoBtn, redoBtn, sep(), selectBtn, boxBtn, makesSep, ...makes, measureSep, measure, h('span', { class: 'grow' }), ctx.frame.rightBtn, kindsRow);
   // a phone: Undo, Redo and the tools in the dock (Back and Done with them); else in the bar, those two in the touch row
-  const dock = document.querySelector('#dock');
   function placeTools() {
-    if (NARROW.matches) dock.replaceChildren(touch.back, undoBtn, redoBtn, boxBtn, ...toolBtns, touch.done, kindsRow);
+    if (NARROW.matches) ctx.dock.replaceChildren(touch.back, undoBtn, redoBtn, boxBtn, ...toolBtns, touch.done, kindsRow);
     else {
       historySep.after(undoBtn, redoBtn);
       makesSep.after(...makes);

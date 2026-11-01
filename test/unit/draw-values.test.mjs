@@ -2,7 +2,6 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { addRing } from './helpers.mjs';
 
-// on the page GeographicLib is a classic script on window; here the same pinned package
 const { inverse, areaOf } = await import('../../site/geodesy.js');
 const { emptyDoc, addLine, addCircle, isMeasurement } = await import('../../site/draw/document.js');
 const { valueFeatures } = await import('../../site/draw/features.js');

@@ -95,7 +95,7 @@ Without a `charts` member the file is still read: it is plain GeoJSON (§11).
 |---|---|
 | `center`, `zoom`, `bearing` | the map's view; `zoom` 0–24; `bearing` the map's rotation (0: north up) |
 | `layers` | the layers shown, by the app's layer ID; `variant`, `period` and `opacity` (0–1) only where that layer has them and they differ from its default |
-| `data` | the data layers chosen: what draws colours and what draws arrows (`{ id, variant }` or `null`), the hour shown and `depth` in metres (one the app offers), each only while a layer shown uses it |
+| `data` | the data layers chosen: what draws colours and what draws arrows (`{ id, variant }` or `null`), the hour shown and `depth` in metres (one the app offers), each only while a layer shown uses it. The app always writes it with the view (`{}` when nothing is chosen), so that opening the file clears the data layers; left out (a file written by hand), the map's stay |
 | `units` | `"km"` or `"nm"` (nautical miles) |
 | `bearings` | whether each leg's bearing is shown with its length |
 
@@ -125,7 +125,7 @@ An unknown layer, variant, period, data entry or depth is skipped with a warning
 
 | Property | Notes |
 |---|---|
-| `name` | free text |
+| `name` | free text; not on a label, which goes by its text (one in a file is dropped) |
 | its properties | one column each, in their order, values as text (a description, a category: properties like any other; the totals can count by any key). A key equal to one of the names in this table, or `charts`, is written `p_<key>`; a repeated key `<key>_2`, `<key>_3`… |
 | `stroke`, `stroke-width`, `stroke-opacity` | the element's own stroke colour, width and opacity (§6) |
 | `fill`, `fill-opacity` | the element's own fill (circles and lines: drawn while a line is closed) |
@@ -217,7 +217,7 @@ A `Point` geometry. One position, its symbol and its bearing:
 |---|---|
 | `bearing` | the point's: turning it turns the shapes it holds |
 | `symbol` | `"diamond"`, `"square"`, `"triangle"`, `"dot"`, `"none"`, drawn at a fixed screen size, never turned. Default: `"none"`, written only when it is another. A point from a feature without `charts` is a `"diamond"`. With no symbol a small dot still shows the centre. |
-| `properties` | placed from a preset, the property `preset` names it (`"Rings"`, or one of the user's) |
+| `properties` | placed from a preset of the user's (by the tools or Distribute along), the point keeps the preset's properties and the property `preset` names it; a built-in kind (Circle, Rings, Rectangle…) sets none |
 
 **Its shapes.** A circle or a line whose `group` is a point's ID is **held** by that point, as an
 element is by its group: it is the point's shape. It is listed under the point, hidden, deleted and
@@ -285,7 +285,7 @@ a label's `0` (where it points). A place has one link at most. `to` is the targe
 |---|---|
 | `{ "element": "a" }` | its centre: a point's position, a circle's centre, a closed line's centroid (the mean of its places), an open line's middle |
 | `{ "element": "a", "vertex": 2 }` | vertex 2: a line's place 2 |
-| `{ "element": "a", "edge": 1, "at": 0.25 }` | a place on edge 1 (from vertex 1 to the next: a line's leg, as drawn, a closed line's last back to its first), a fraction `at` (0–1, 6 decimals) along it, so that it turns and stretches with it |
+| `{ "element": "a", "edge": 1, "at": 0.25 }` | a place on edge 1 (from vertex 1 to the next: a line's leg, as drawn, a closed line's last back to its first), a fraction `at` (0–1, 6 decimals; missing: 0) along it, so that it turns and stretches with it |
 
 A bare ID (`"a"`) is read as `{ "element": "a" }`. Indices count from 0. A closed line's places are
 counted in its own order (§7.6: the geometry's ring reversed when `reversed` is set); the Shape
@@ -361,7 +361,7 @@ A `Point` geometry where the label points, with `"kind": "label"`:
   nowhere: the default) and `background` (`"halo"` or `"box"`), as
   any look (§6).
 
-A label has no stroke or fill names in its properties, and no `guide`.
+A label has no `name` (its text names it), no stroke or fill names in its properties, and no `guide`.
 
 ## 8. Rules
 
@@ -395,7 +395,8 @@ They are checked loosely: one without a valid, unused `id` is skipped.
 | `points` | each copy made: `t` its place along (0–1), `left` its side, `pos` where it was last put |
 
 Each copy is an ordinary point holding its own shapes (§7.2), turned to face away from what it
-follows; the copies are in the drawing, the rule keeps no copy of its own. The panel's **Edit…**
+follows, its properties as one placed by hand (a preset of the user's names itself in `preset`, a
+built-in kind sets none); the copies are in the drawing, the rule keeps no copy of its own. The panel's **Edit…**
 with the same `preset`, `radius` and `aperture` and as many copies moves them, as they are; with
 another number it makes them anew as the first copy left is; with another copy it makes them anew
 of it.
@@ -444,8 +445,9 @@ it.
 - Every value equal to its default (§16) is left out, and an object when nothing in it differs: a
   point that is only an ID and a position is written as `"charts": { "kind": "point" }`.
 - Rounding: positions 7 decimals (about 1 cm); metres (radii, a distribution's margins, `offset`,
-  `spacing` and `radius`) 3; angles (bearings, apertures, the view's zoom) 4;
-  opacities and widths 3; an edge's `at` 6; a copy's `t` 9.
+  `spacing` and `radius`) 3; angles (bearings, apertures) 4; the view's `zoom` 2 and its `bearing` 1
+  (as the address keeps them, which applies a file's view); opacities and widths 3; an edge's `at` 6
+  (left out when 0); a copy's `t` 9.
   The reader takes any precision.
 - The text is indented JSON, each position on one line.
 - A drawing read back is the same drawing (tested in `test/unit/draw-document.test.mjs`).
@@ -536,7 +538,8 @@ beside it `vector/drawings.geojson`: the drawing **as drawn**, for tools that kn
 - A line: a `LineString` along its legs as drawn (geodesics and curves densified), with `length_m` and
   `surface_length_m` (its length along the surface, seabed and ground, from the depths and heights the
   shadings draw: a lower bound; only for a line whose elevation profile was opened as it is now drawn:
-  an export reads no elevation).
+  an export reads no elevation). The names of its places (§7.3 `names`) are not in it: they are in
+  the drawing's file alone.
 - A closed line: a `Polygon` along its legs as drawn, counter-clockwise, with `area_m2` and
   `perimeter_m` (and `surface_length_m` as a line's) in place of `length_m`.
 - A label: a `Point` where it points, with `text` (values filled in, in the display units), `anchor`
@@ -560,7 +563,7 @@ tied by three links. Written by the app (`serialise`), then shortened only in la
     "created": "2026-10-22T09:30:00Z",
     "modified": "2026-10-22T09:30:00Z",
     "meta": { "title": "Example" },
-    "view": { "center": [12.5, 41.9], "zoom": 9 },
+    "view": { "center": [12.5, 41.9], "zoom": 9, "data": {} },
     "links": [
       { "from": ["l1", 0], "to": { "element": "a" } },
       { "from": ["l1", 2], "to": { "element": "r", "vertex": 2 } },
@@ -594,8 +597,7 @@ tied by three links. Written by the app (`serialise`), then shortened only in la
         "charts": { "kind": "line", "reversed": true } } },
     { "type": "Feature", "id": "t1",
       "geometry": { "type": "Point", "coordinates": [12.4500078, 41.8900109] },
-      "properties": { "name": "Label 1",
-        "charts": { "kind": "label", "text": "{name}" } } }
+      "properties": { "charts": { "kind": "label", "text": "{name}" } } }
   ]
 }
 ```
@@ -621,7 +623,7 @@ What a value is when the file leaves it out. Writing it with this value means th
 | collection | `charts.view` | none: the map stays as it is |
 | collection | `charts.look` | `{}`: the defaults |
 | collection | `charts.groups`, `rules`, `links` | `[]` |
-| view | `center`, `zoom`, `layers`, `data` | none: the map's |
+| view | `center`, `zoom`, `layers`, `data` | none: the map's (`data` is left out only by a file written by hand: the app writes it with every view, `{}` when nothing is chosen) |
 | view | `bearing`; `units`; `bearings` | `0`; `"km"`; `false` |
 | view layer | `variant`, `opacity`, `period` | the layer's own default |
 | view data | `colour`, `arrows`, `time`, `depth` | `null`: none chosen; no layer shown uses the time or the depth |

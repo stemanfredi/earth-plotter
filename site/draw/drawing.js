@@ -2,13 +2,14 @@
 // layers of layers.js from features.js and labels.js, with the placing tools, clicks, hit testing,
 // dragging and the box (Shift-drag); saved in this browser as it changes (saving.js).
 
-import { emptyDoc, addLine, addLabel, find, elements, positionsIn, isShown, nextName, KIND, LABEL_OFFSET, lookOf, setLook, offsetOf, MAX_RADIUS, fewestPlaces, linkFrom, setLink, carry, holderOf, canHold, setGroup, moveElements, isChosen, ringOf } from './document.js';
+import { emptyDoc, addLine, addLabel, find, elements, positionsIn, isShown, nextName, KIND, LABEL_OFFSET, MAX_LABEL_OFFSET, lookOf, setLook, offsetOf, MAX_RADIUS, fewestPlaces, linkFrom, setLink, carry, holderOf, canHold, setGroup, moveElements, isChosen, ringOf } from './document.js';
 import { typing } from '../dom.js';
 import { placeKind, placeBox, build, BOX } from './place.js';
 import { norm360 } from '../geo.js';
 import { serialise } from './file.js';
 import { DrawStore, settleGeometry } from './store.js';
 import { Saving } from './saving.js';
+import { note } from '../menu.js';
 import { addIcons, measureText, HIT_LAYERS, MARK_LAYERS, HANDLE_LAYERS, CURSOR, FINGER } from './layers.js';
 import { drawParts, GEOMETRY, valueFeatures } from './features.js';
 import { lineTrace, nearestAlong } from './lines.js';
@@ -172,12 +173,14 @@ export class Drawing extends DrawStore {
       const { id } = this.repointing, pid = this.pointAt(e.point);
       this.cancelRepoint();
       if (pid && canHold(this.doc, pid, id)) this.change((doc) => setGroup(doc, id, pid));
+      else note('Nothing there to attach to'); // a miss: nothing moves
       return this.onChange('sel');
     }
     if (this.repointing) { // a place linked to what is clicked (its inspector's Attach to…)
       const { id, index } = this.repointing, label = find(this.doc, id)?.kind === 'label';
       const r = label ? this.anchorFor(e.point, p) : this.snapFor(e.point, e.originalEvent, { exclude: new Set([id]) });
       this.cancelRepoint();
+      if (!r.to) { note('Nothing there to attach to'); return this.onChange('sel'); } // a miss: the place stays where it is
       this.change((doc) => {
         const x = find(doc, id);
         if (!x) return;
@@ -188,7 +191,7 @@ export class Drawing extends DrawStore {
       return;
     }
     if (this.tool) return this.place(this.snapFor(e.point, e.originalEvent).position);
-    const add = e.originalEvent.shiftKey || e.originalEvent.ctrlKey || e.originalEvent.metaKey;
+    const add = e.originalEvent.ctrlKey || e.originalEvent.metaKey; // as the tree: Ctrl/⌘ adds or removes (Shift is the box's and the 15° steps')
     const hits = this.hitAt(e.point);
     // nothing there: the selection cleared, and said on the click (app.js: a click that only clears it reads no depth)
     if (!hits.length) { this.last = null; if (!add) { if (this.sel.size) e.cleared = true; this.select([]); } return; }
@@ -274,6 +277,7 @@ export class Drawing extends DrawStore {
 
   // ---- tools -----------------------------------------------------------------------------
   start(tool) {
+    if (this.keepSel) this.onChange('cancel'); // a form open (Distribute, Connect): closed, as Esc closes it
     if (this.tool) this.stop();
     this.boxNext = false;
     clearTimeout(this.dblZoom); // stop()'s, which would turn it on again after this
@@ -666,8 +670,8 @@ export class Drawing extends DrawStore {
   // place grabbed stays under the pointer); labels alone in it: their text moves (its offset on screen)
   moveSelection(doc, start, p) {
     if (![...this.sel].every((id) => find(doc, id)?.kind === 'label')) return moveElements(doc, this.sel, start, p);
-    const a = this.map.project(start), b = this.map.project(p);
-    for (const id of this.sel) { const { el } = find(doc, id); el.offset = [Math.round(el.offset[0] + b.x - a.x), Math.round(el.offset[1] + b.y - a.y)]; }
+    const a = this.map.project(start), b = this.map.project(p), px = (v) => Math.max(-MAX_LABEL_OFFSET, Math.min(MAX_LABEL_OFFSET, Math.round(v))); // within the file's reach
+    for (const id of this.sel) { const { el } = find(doc, id); el.offset = [px(el.offset[0] + b.x - a.x), px(el.offset[1] + b.y - a.y)]; }
   }
 
   // Box select (Select's other kind, B): the next drag on the map, a mouse's or a finger's, draws the

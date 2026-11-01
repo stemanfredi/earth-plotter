@@ -2,7 +2,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { near, addShape, lineFrom, addRing } from './helpers.mjs';
 
-const { anchorsOf, lineTrace, leg, pointsAlong, nearestAlong, totals } = await import('../../site/draw/lines.js');
+const { anchorsOf, lineTrace, leg, pointsAlong, nearestAlong, totals, breakdown } = await import('../../site/draw/lines.js');
+const { connect } = await import('../../site/draw/generator.js');
 const { emptyDoc, addPoint, addDot, addCircle, makeGroup, remove, linkFrom } = await import('../../site/draw/document.js');
 const { splitLine } = await import('../../site/draw/attach.js');
 const { settleGeometry } = await import('../../site/draw/store.js');
@@ -213,8 +214,6 @@ test('totals: a group counts everything in it, its subgroups\' too', () => {
 });
 
 test('breakdown: lines by group with each listed, a connection\'s summed by what they are; areas; points by kind', async () => {
-  const { breakdown } = await import('../../site/draw/lines.js');
-  const { connect } = await import('../../site/draw/generator.js');
   const doc = emptyDoc(0);
   const a = lineFrom(doc, [12, 40], [], [12.1, 40], { name: 'A' });
   lineFrom(doc, [12, 40.2], [], [12.1, 40.2], { visible: false });

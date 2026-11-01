@@ -19,12 +19,13 @@ export function stepped(text, up, big, lo = -Infinity) {
 }
 
 // fields({ note(text), units() ('km' | 'nm') }): the field builders, saying what was not applied
-// through note
+// through note. A number's field (a coordinate, a distance, an angle, a number) has the class num
+// (style.css: one mono font, one width)
 export function fields({ note, units }) {
   // a text input: show() its text; read(text) the value, or undefined; apply(value). attrs: the
-  // input's own, bad: what a valid value is ("a distance above 0"), and nudge(text, up, big): the
-  // text ↑ or ↓ makes of it (Shift: big), or null: in a value grid's row (docs/drawing-ui.md §5),
-  // the arrows step it, each step applied
+  // input's own, bad: what a valid value is ("a distance above 0"; a function: asked after a read
+  // refused, for its reason), and nudge(text, up, big): the text ↑ or ↓ makes of it (Shift: big), or
+  // null: in a value grid's row (docs/drawing-ui.md §5), the arrows step it, each step applied
   function field(show, read, apply, { bad, nudge, ...attrs } = {}) {
     const input = h('input', { value: show(), spellcheck: 'false', ...attrs });
     let shown = input.value; // what Esc puts back
@@ -38,7 +39,7 @@ export function fields({ note, units }) {
       if (input.value === applied) return;
       const v = read(input.value);
       if (v === undefined) { // marked, and why, on the field (its tooltip) and in the panel's note
-        const why = `${attrs['aria-label'] || 'Value'} not applied: ${bad || 'not valid'}`;
+        const why = `${attrs['aria-label'] || 'Value'} not applied: ${(typeof bad === 'function' ? bad() : bad) || 'not valid'}`;
         input.classList.add('bad'); input.setAttribute('aria-invalid', 'true'); input.title = why;
         note(why);
         return;
@@ -66,36 +67,38 @@ export function fields({ note, units }) {
     return t;
   };
   // a distance in the display units (a suffix may say another: 500 m, 1.2 NM). zero: 0 allowed;
-  // check(m): an error text, or null; in: a unit of its own ('m', 'km', 'nm'), its number alone shown
+  // check(m): why m is refused (text), or null; in: a unit of its own ('m', 'km', 'nm'), its number alone shown
   // to the metre, or to the unit's thousandth (a table's column, its unit in the head)
   // The number alone is shown; its unit is beside it (the field's unitText(): the panel's row says
   // it), or in a table's head
   const dist = (get, put, aria, { zero = false, check = () => null, in: fixed = null, ...attrs } = {}) => {
-    let unit;
+    let unit, why = null; // why the check refused the last read, said as the reason
     const input = field(() => { const v = get(); if (v == null) { unit = fixed || (units() === 'nm' ? 'nm' : 'km'); return ''; } if (fixed) { unit = fixed; return inUnit(v, fixed); } const t = distText(v, units()); unit = t.unit; return zero && !v ? '0' : `${t.value}`; }, (t) => {
       const m = zero && t.trim() === '0' ? 0 : parseDist(t, unit);
-      return m === null || (zero ? m < 0 : m <= 0) || check(m) ? undefined : m;
-    }, put, { 'aria-label': aria, class: 'dist', nudge: (t, up, big) => stepped(t, up, big, 0), bad: zero ? 'a distance, 0 or more, with m, km or NM' : 'a distance above 0, with m, km or NM',
+      why = m === null || (zero ? m < 0 : m <= 0) ? null : check(m);
+      return m === null || (zero ? m < 0 : m <= 0) || why ? undefined : m;
+    }, put, { 'aria-label': aria, class: 'num', nudge: (t, up, big) => stepped(t, up, big, 0), bad: () => why || (zero ? 'a distance, 0 or more, with m, km or NM' : 'a distance above 0, with m, km or NM'),
       title: 'In the unit beside it, or with one', placeholder: 'mixed', ...attrs });
     input.unitText = () => UNIT_TEXT[unit];
     input.dataset.unit = unit; // morph (dom.js) replaces the field when the unit it reads in changes
     return input;
   };
   // degrees: wrap (a bearing: any number, read modulo 360), else strictly between lo and hi; fixed:
-  // its decimals always shown (a table's column)
+  // its decimals always shown (a table's column); none: empty, or hi itself (an aperture of 360: a
+  // whole circle, as the file reads it), is null, a value of its own
   const angle = (get, put, aria, { lo = 0, hi = 360, wrap = true, fixed = null, none = false } = {}) => field(() => { const v = get(); return v == null ? '' : fixed == null ? `${+v.toFixed(4)}` : v.toFixed(fixed); }, (t) => {
     const v = num(t.replace('°', ''));
-    if (t.trim() === '' && none) return null; // none: empty is a value of its own (no sector)
+    if (t.trim() === '' && none) return null;
     if (t.trim() === '' || !Number.isFinite(v)) return undefined;
     if (wrap) return norm360(v);
-    return v > lo && v < hi ? v : undefined;
-  }, put, { 'aria-label': aria, class: 'angle', inputmode: 'decimal', placeholder: 'mixed', nudge: (t, up, big) => { const v = num(t.replace('°', '')); return Number.isFinite(v) ? `${+(v + (up ? 1 : -1) * (big ? 10 : 1)).toFixed(4)}` : null; }, bad: wrap ? 'degrees' : `degrees between ${lo} and ${hi}` });
+    return v > lo && v < hi ? v : none && v === hi ? null : undefined;
+  }, put, { 'aria-label': aria, class: 'num', inputmode: 'decimal', placeholder: 'mixed', nudge: (t, up, big) => { const v = num(t.replace('°', '')); return Number.isFinite(v) ? `${+(v + (up ? 1 : -1) * (big ? 10 : 1)).toFixed(4)}` : null; }, bad: wrap ? 'degrees' : `degrees between ${lo} and ${hi}` });
   // one coordinate (axis 'lat' or 'lon'): decimal degrees, degrees and minutes, DMS, a hemisphere letter;
   // fixed: its decimals always shown (a table's column: 6, a decimetre)
   const coord = (axis, get, put, aria = axis === 'lat' ? 'Latitude' : 'Longitude', fixed = null) => field(() => { const v = get(); return v == null ? '' : fixed == null ? `${+v.toFixed(7)}` : v.toFixed(fixed); }, (t) => {
     const v = parseCoord(t, axis);
     return v === null || (axis === 'lat' && Math.abs(v) > MAX_LAT) ? undefined : v;
-  }, put, { 'aria-label': aria, class: 'coord', placeholder: 'mixed', bad: axis === 'lat' ? 'a latitude between −85.05 and 85.05 (N or S)' : 'a longitude between −180 and 180 (E or W)',
+  }, put, { 'aria-label': aria, class: 'num', placeholder: 'mixed', bad: axis === 'lat' ? 'a latitude between −85.05 and 85.05 (N or S)' : 'a longitude between −180 and 180 (E or W)',
     title: 'Degrees, or 37 17.48N' });
   // a position [lon, lat]: its latitude, then its longitude, each applied alone (fixed: decimals shown)
   const position = (get, put, aria = '', fixed = null) => [
@@ -106,7 +109,7 @@ export function fields({ note, units }) {
     if (!t.trim()) return undefined;
     const v = num(t);
     return Number.isFinite(v) && (!whole || Number.isInteger(v)) && (above ? v > min : v >= min) && v <= max ? v : undefined;
-  }, put, { 'aria-label': aria, class: 'angle', inputmode: whole ? 'numeric' : 'decimal', nudge: (t, up, big) => stepped(t, up, big, min), bad: bad || `${whole ? 'a whole number' : 'a number'} ${above ? 'above' : 'from'} ${min}${max < Infinity ? ` to ${max}` : ''}`, ...attrs });
+  }, put, { 'aria-label': aria, class: 'num', inputmode: whole ? 'numeric' : 'decimal', nudge: (t, up, big) => stepped(t, up, big, min), bad: bad || `${whole ? 'a whole number' : 'a number'} ${above ? 'above' : 'from'} ${min}${max < Infinity ? ` to ${max}` : ''}`, ...attrs });
   return { field, text, dist, angle, coord, position, number };
 }
 
@@ -117,21 +120,17 @@ export function select(aria, options, value, pick, attrs = {}) {
     value === null ? h('option', { value: '', selected: true, disabled: true }, 'mixed') : null,
     options.map(([v, text]) => h('option', { value: v, selected: value !== null && String(v) === String(value) }, text)));
 }
-// A box with its text after it: value true, false or null ("mixed": shown indeterminate), put(checked)
-// on a change; attrs on the box (aria-label, title…), title also on the label (its tooltip)
-export function check(text, value, put, attrs = {}) {
+// A box (its text is its row's label): value true, false or null ("mixed": shown indeterminate),
+// put(checked) on a change; attrs on the box (aria-label, title…), title also on the label (its tooltip)
+export function check(value, put, attrs = {}) {
   const box = h('input', { type: 'checkbox', checked: value === true, ...attrs, onchange: (e) => put(e.target.checked) });
   box.indeterminate = value === null;
-  return h('label', { class: 'fcheck', title: attrs.title }, box, text);
+  return h('label', { class: 'fcheck', title: attrs.title }, box);
 }
 
 // A choice between a few values, as pressed buttons (a segmented control). options: [[value, label
-// (text or nodes), title]]; get() the value now (null: none pressed, as for "mixed"); pick(value).
-// The element's render() presses get()'s again.
-export function choice(aria, options, get, pick) {
-  const el = h('div', { class: 'seg', role: 'group', 'aria-label': aria },
-    options.map(([v, label, title]) => h('button', { type: 'button', title, 'data-v': String(v), onclick: () => pick(v) }, label)));
-  el.render = () => { const now = get(); for (const [i, b] of [...el.children].entries()) b.setAttribute('aria-pressed', String(options[i][0] === now)); };
-  el.render();
-  return el;
+// (text or nodes), title]]; value the one pressed (null: none, as for "mixed"); pick(value).
+export function choice(aria, options, value, pick) {
+  return h('div', { class: 'seg', role: 'group', 'aria-label': aria },
+    options.map(([v, label, title]) => h('button', { type: 'button', title, 'data-v': String(v), 'aria-pressed': String(v === value), onclick: () => pick(v) }, label)));
 }

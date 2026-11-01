@@ -48,9 +48,9 @@ export function paste(doc, clip, mv) {
   return made;
 }
 // point id of doc and its shapes, as they are, in a drawing of their own (a preset; a rule's copy as its
-// template)
+// template): every one shown and no guide, as a copy placed from it is
 export function alone(doc, id) {
   const d = emptyDoc(0);
-  paste(d, clipOf(doc, [id]), (q) => q);
+  for (const { kind, el } of paste(d, clipOf(doc, [id]), (q) => q)) { el.visible = true; if (kind !== 'label') el.guide = false; }
   return d;
 }

@@ -21,20 +21,20 @@ test('a click of Point: a diamond; of Shape, with no size: a point and its shape
   const s = placeKind(doc, C, 'symbol', []);
   assert.deepEqual([s.symbol, shapes(doc, s), s.properties], ['diamond', [], []]);
   const c = placeKind(doc, C, 'circle', []);
-  assert.deepEqual([c.name, c.symbol, c.bearing, c.properties, shapes(doc, c).map(round), shapes(doc, c)[0].position], ['Circle 1', 'none', 0, preset('Circle'), [[1000, null, null]], C]);
+  assert.deepEqual([c.name, c.symbol, c.bearing, c.properties, shapes(doc, c).map(round), shapes(doc, c)[0].position], ['Circle 1', 'none', 0, [], [[1000, null, null]], C]); // a built-in kind: no property
   const rings = placeKind(doc, C, 'rings', []);
-  assert.deepEqual([rings.name, shapes(doc, rings).map(round), rings.properties], ['Rings 1', [[1000, null, null], [2000, null, 0], [3000, null, 0]], preset('Rings')]);
+  assert.deepEqual([rings.name, shapes(doc, rings).map(round), rings.properties], ['Rings 1', [[1000, null, null], [2000, null, 0], [3000, null, 0]], []]);
   const sec = placeKind(doc, C, 'sector', []);
-  assert.deepEqual([sec.name, shapes(doc, sec).map(round), shapes(doc, sec)[0].name, sec.properties], ['Sector 1', [[1000, 90, null]], 'Sector 1', preset('Sector')]);
+  assert.deepEqual([sec.name, shapes(doc, sec).map(round), shapes(doc, sec)[0].name, sec.properties], ['Sector 1', [[1000, 90, null]], 'Sector 1', []]);
   const r = placeKind(doc, C, 'rectangle', []), ring = shapes(doc, r)[0];
-  assert.deepEqual([r.name, r.bearing, r.properties, ring.closed, ring.name, ring.points.length], ['Rectangle 1', 0, preset('Rectangle'), true, 'Rectangle 1', 4]);
+  assert.deepEqual([r.name, r.bearing, r.properties, ring.closed, ring.name, ring.points.length], ['Rectangle 1', 0, [], true, 'Rectangle 1', 4]);
   sides(ring).forEach((v, k) => near(v, [100, 50][k], 1e-3, 'its sides'));
   near(inverse(C, ring.points[0]).azi, Math.atan2(25, 50) * 180 / Math.PI, 1e-6, 'facing north');
   const t = shapes(doc, placeKind(doc, C, 'triangle', []))[0];
   for (const k of [0, 1, 2]) near(inverse(t.points[k], t.points[(k + 1) % 3]).s, 100, 1e-3, 'equilateral, 100 m a side');
   for (const k of OUTLINES) {
     const o = placeKind(doc, C, k, []);
-    assert.deepEqual([o.symbol, o.properties, o.name, shapes(doc, o).length], ['none', preset(OUTLINE_NAME[k]), `${OUTLINE_NAME[k]} ${k === 'rectangle' || k === 'triangle' ? 2 : 1}`, 1]);
+    assert.deepEqual([o.symbol, o.properties, o.name, shapes(doc, o).length], ['none', [], `${OUTLINE_NAME[k]} ${k === 'rectangle' || k === 'triangle' ? 2 : 1}`, 1]);
     assert.equal(shapes(doc, o)[0].points.length, outlinePoints(C, 0, 100, 50, k).length, k);
   }
 });
@@ -67,6 +67,15 @@ test('a preset of the user\'s: its point and shapes copied at their own size, ab
   assert.deepEqual(shapes(doc, placeKind(doc, C, 'preset:Gone', [mine])), []);
 });
 
+test('a preset of the user\'s keeps its point\'s properties, preset replaced by its name; placed shown and no guide, whatever it was saved from', () => {
+  const src = emptyDoc(0), p = addPoint(src, [5, 50], { properties: [{ key: 'a', value: '1' }, { key: 'preset', value: 'Old' }], visible: false, guide: true });
+  addCircle(src, [5, 50], { groupId: p.id, radius: 20, visible: false, guide: true });
+  const mine = presetOf(src, p.id, 'Mine'), doc = emptyDoc(0);
+  assert.deepEqual([mine.doc.points[0].visible, mine.doc.points[0].guide, mine.doc.circles[0].visible, mine.doc.circles[0].guide], [true, false, true, false]);
+  const q = placeKind(doc, C, 'preset:Mine', [mine]), [c] = shapes(doc, q);
+  assert.deepEqual([q.properties, q.visible, q.guide, c.visible, c.guide], [[{ key: 'a', value: '1' }, { key: 'preset', value: 'Mine' }], true, false, true, false]);
+});
+
 test('a point turned turns its shapes about it; moved, they move with it, each its distance and bearing from it kept', () => {
   const doc = emptyDoc(0), p = placeKind(doc, C, 'rectangle', []), ring = shapes(doc, p)[0];
   const sec = addCircle(doc, C, { groupId: p.id, aperture: 90, bearing: 10 }), off = addCircle(doc, [12, 40.001], { groupId: p.id });
@@ -91,7 +100,7 @@ test('corner to corner: a rectangle or an ellipse, its box from one corner to th
   near(r.position[0], 12.01, 1e-9, 'centre lon'); near(r.position[1], 40.005, 1e-9, 'centre lat');
   near(len, inverse([12.01, 40], [12.01, 40.01]).s, 0.01, 'length: north-south');
   near(wid, inverse([12, 40.005], [12.02, 40.005]).s, 0.01, 'width: east-west');
-  assert.deepEqual([r.bearing, r.name, r.properties], [0, 'Rectangle 1', preset('Rectangle')]);
+  assert.deepEqual([r.bearing, r.name, r.properties], [0, 'Rectangle 1', []]);
   const e = shapes(doc, placeBox(doc, b, a, 'ellipse', true))[0]; // either corner first; a circle
   const reach = (az) => Math.max(...e.points.map((q) => { const g = inverse([12.01, 40.005], q); return g.s * Math.abs(Math.cos((g.azi - az) * Math.PI / 180)); }));
   near(reach(0), reach(90), 0.05, 'as long as wide');

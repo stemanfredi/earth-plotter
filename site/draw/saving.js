@@ -14,7 +14,7 @@ const KEY = (id) => `charts.drawing.${id}`;
 
 const newKey = () => [...crypto.getRandomValues(new Uint8Array(6))].map((b) => b.toString(36).padStart(2, '0')).join('');
 // the index as kept, but for what is not an entry (null, a value written by hand): it would break the list
-const readIndex = () => { try { const v = JSON.parse(store.get(INDEX)); return Array.isArray(v) ? v.filter((x) => typeof x?.id === 'string') : []; } catch { return []; } };
+const readIndex = () => { const v = store.json(INDEX); return Array.isArray(v) ? v.filter((x) => typeof x?.id === 'string') : []; };
 const latestFirst = (list) => list.sort((a, b) => (a.modified < b.modified ? 1 : -1));
 
 // a drawing kept, read: the last one read is kept, so the open drawing is read once at load (for its

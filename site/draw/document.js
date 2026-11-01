@@ -21,6 +21,7 @@ export const FORMAT = 'charts-drawing';
 export const VERSION = 1; // the drawing's version: this code writes and reads it, and no other
 
 export const MAX_OFFSET = 50; // px: Offset's reach either side of a line
+export const MAX_LABEL_OFFSET = 2000; // px: a label's text from where it points, either way
 export const STROKE_WIDTH = [0.5, 20]; // px: a stroke's width, least and most
 export const DEFAULT_STYLE = Object.freeze({
   fill: Object.freeze({ color: '#e8590c', opacity: 0.15 }),
@@ -103,8 +104,8 @@ export const ringOf = (c) => (c.aperture ? sector(c.position, c.radius, c.bearin
 export const placeOf = (kind, el) => (el.position && kind !== 'label' ? el.position : kind === 'line' ? el.points[0] : null);
 // what the panel calls an element: its name, or for an unnamed one its kind and where it is
 export function label(kind, el) {
+  if (kind === 'label') return el.text.split('\n')[0].trim() || 'Label'; // a label has no name: its text as written (tree.js shownName: as it reads)
   if (el.name?.trim()) return el.name;
-  if (kind === 'label') return el.text.split('\n')[0].trim() || 'Label'; // its text as written (tree.js shownName: as it reads)
   const at = placeOf(kind, el);
   return at ? `${KIND[kind].name} · ${at[1].toFixed(4)}, ${at[0].toFixed(4)}` : `${KIND[kind].name} ${el.id}`;
 }
@@ -232,9 +233,13 @@ export function moveElements(doc, ids, from, to) {
   const leaves = leavesOf(doc, ids), mv = moveAbout(from, to);
   const tiedOf = (el) => new Map(doc.links.filter((l) => l.from[0] === el.id).map((l) => [l.from[1], l.to.element]));
   // the points moved, found first so that a point's shapes go with it only (one also among ids is not
-  // moved a second time): those among ids, and what the linked places of the other lines are on
-  const own = new Set(leaves.filter((x) => x.kind === 'point').map((x) => x.el.id)), points = new Set(own);
-  for (const { kind, el } of leaves) if (kind === 'line' && !own.has(el.groupId)) for (const id of tiedOf(el).values()) points.add(id);
+  // moved a second time): those among ids, then what the linked places of free lines are on, then
+  // what those of lines held by a point not moving are on (a point's lines carried with it pull nothing)
+  const points = new Set(leaves.filter((x) => x.kind === 'point').map((x) => x.el.id));
+  const pull = (held) => leaves.filter(({ kind, el }) => kind === 'line' && !!holderOf(doc, el) === held && !points.has(el.groupId))
+    .flatMap(({ el }) => [...tiedOf(el).values()]).forEach((id) => points.add(id));
+  pull(false);
+  pull(true);
   for (const { kind, el } of leaves) {
     if (kind === 'point' || points.has(el.groupId)) continue; // a point's shapes: carried with it
     const tied = tiedOf(el);

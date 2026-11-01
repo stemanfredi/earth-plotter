@@ -402,8 +402,8 @@ await section('dragging, shapes, attaching', async () => {
   await dw.mouse.up();
   const kept = await dw.evaluate(() => drawing.doc.circles.at(-1).radius);
   check(dragged[0] > nd.r * 1.1 && dragged[1] === nd.undos + 1 && kept === dragged[0], `drawing: a radius dragged (${Math.round(nd.r)} → ${Math.round(dragged[0])} m), one undo step; Esc puts a drag back`);
-  // a rectangle by the Shape tool: a point holding a closed line of four places, the preset it was
-  // placed from remembered; the point's Bearing typed turns its rectangle about it
+  // a rectangle by the Shape tool: a point holding a closed line of four places, no property (a
+  // built-in kind sets none); the point's Bearing typed turns its rectangle about it
   await dw.evaluate(() => { drawing.stop(); drawing.variant.shape = 'rectangle'; });
   await dw.keyboard.press('s');
   await dw.mouse.click(DX + 300, 200);
@@ -418,7 +418,7 @@ await section('dragging, shapes, attaching', async () => {
   await turnTo.fill('45');
   await turnTo.press('Enter');
   const turned = await ringOf();
-  check(rect.sel && rect.n === 4 && rect.closed && rect.preset === 'Rectangle' && rect.drawn && Math.abs(turned.azi - rect.azi - 45) < 1e-6 && Math.abs(turned.s - rect.s) < 1e-6,
+  check(rect.sel && rect.n === 4 && rect.closed && rect.preset === undefined && rect.drawn && Math.abs(turned.azi - rect.azi - 45) < 1e-6 && Math.abs(turned.s - rect.s) < 1e-6,
     `shapes: the Shape tool's rectangle a point holding a closed line, drawn; the point turned, its rectangle with it (${JSON.stringify(rect)}; ${turned.azi.toFixed(2)}°)`);
   await dw.locator('.dinsphead .ititle').click(); // out of the field: the keys are the drawing's
   // a rectangle corner to corner: its box from the first click to the second, facing north; Shift: a
@@ -572,9 +572,9 @@ await section('labels, names, data and totals', async () => {
   check(byDefault[0] === true && byDefault[1] === undefined && named > 0, `drawing: names on in the drawing's Display, shown for a point with none of its own (${named})`);
   // a property added in its Data; the drawing's totals by that key
   await dw.evaluate((id) => drawing.select([id]), nid);
-  // Data: folded while it has nothing of the user's, the preset said under it; opened, its empty row
+  // Data: folded while it has nothing of the user's (a built-in kind names no preset under it); opened, its empty row
   const folded = await dw.evaluate(() => [!document.querySelector('.dinspect input[aria-label="Add a key"]'), document.querySelector('.dinspect .fblock:has(.hfold) .note')?.textContent ?? '']);
-  check(folded[0] && /^from preset /.test(folded[1]), `data: folded while it has nothing of the user's, its preset said (${folded[1]})`);
+  check(folded[0] && folded[1] === '', `data: folded while it has nothing of the user's, no preset said for a built-in kind (${folded[1]})`);
   await dw.click('.dinspect button[aria-label="Open Data"]');
   const addKey = dw.locator('.dinspect input[aria-label="Add a key"]'); // Data's empty last row: a key typed there adds one
   await addKey.fill('kind');

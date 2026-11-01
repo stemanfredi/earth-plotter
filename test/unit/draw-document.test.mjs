@@ -7,6 +7,8 @@ const { parse, serialise, toFile } = await import('../../site/draw/file.js');
 const { refreshAttached, lineRef, resolve, splitLine, insertPlace, deletePlace } = await import('../../site/draw/attach.js');
 const { distributions, connections } = await import('../../site/draw/generator.js');
 const { outlinePoints } = await import('../../site/draw/outlines.js');
+const { drawParts } = await import('../../site/draw/features.js');
+const { readFileSync } = await import('node:fs');
 const { emptyDoc, addPoint, addDot, addLabel, addCircle, addLine, carry, membersOf, dependents, remove, idsOf, newId, nextName,
   label, styleOf, offsetOf, isShown, isMeasurement, placeOf, makeGroup, setGroup, linkFrom,
   DEFAULT_STYLE, GUIDE_STYLE, FORMAT, VERSION } = d;
@@ -236,6 +238,22 @@ test('skipped: latitudes out of range, positions missing, too few positions, wha
   assert.match(why.odd, /Curve: not read/);
 });
 
+test('a label has no name: one in a file is dropped, none is written, and it goes by its text', () => {
+  const { doc } = read(collection([F('t', 'Point', [0, 0], { kind: 'label', text: 'Hi\nthere' }, { name: 'Named' })]));
+  const [a] = doc.labels;
+  assert.deepEqual([a.name, label('label', a)], ['', 'Hi']);
+  a.name = 'Set by hand';
+  assert.deepEqual([label('label', a), 'name' in toFile(doc).features[0].properties], ['Hi', false]);
+});
+
+test('the common style names go through the kind\'s look filter: a point keeps no fill or stroke width', () => {
+  const { doc, report } = read(collection([F('p', 'Point', [0, 0], { kind: 'point' }, { fill: '#00ff00', 'fill-opacity': 0.5, 'stroke-width': 3, stroke: '#ff0000' })]));
+  assert.deepEqual(doc.points[0].look, { stroke: { color: '#ff0000' } });
+  warned(report, /look fill\.color, fill\.opacity, stroke\.width: not a point's, ignored/);
+  const back = toFile(doc).features[0].properties;
+  assert.deepEqual([back.fill, back['fill-opacity'], back['stroke-width'], back.stroke], [undefined, undefined, undefined, '#ff0000']);
+});
+
 test('repairs: symbol, angles, sizes, Offset, style values, circles, flags', () => {
   const st = { stroke: '#FF0000', 'stroke-width': 99, 'stroke-opacity': 2, fill: 'red' };
   const { doc, report } = read(collection([
@@ -251,7 +269,7 @@ test('repairs: symbol, angles, sizes, Offset, style values, circles, flags', () 
   ]));
   const [p1, p2] = doc.points, [, s1, s2, s3] = doc.lines;
   assert.deepEqual([p1.symbol, p1.bearing, p1.look.minSize, p1.look.text, d.lookOf(doc, p1).text.name], ['none', 270, undefined, undefined, false]); // not valid: left out, the drawing's applies
-  assert.deepEqual([p1.look.fill, p1.look.stroke], [undefined, { color: '#ff0000', width: 20, opacity: 1 }]); // the bad colour and dash dropped: the defaults; a fill a point has none of
+  assert.deepEqual([p1.look.fill, p1.look.stroke], [undefined, { color: '#ff0000', opacity: 1 }]); // the bad colour and dash dropped: the defaults; a fill and a stroke width a point has none of
   assert.ok(!('parts' in p2));
   assert.deepEqual(doc.circles.map((c) => [c.id, c.radius, c.aperture, c.bearing]), [['c1', 100, null, 0], ['c5', 300, null, 10], ['c6', 5, null, 0], ['c7', 60, null, 0], ['c8', 70, 45, 0]]); // a sector of 360° or more: a circle; only a circle's fields kept
   assert.ok(!('length' in doc.circles[4]));
@@ -427,6 +445,23 @@ test('view: layers, variants and data checked against what the app offers', () =
   assert.deepEqual(v.data, { colour: { id: 'waves', variant: 'height' }, arrows: null, time: '2026-10-22T09:00:00Z', depth: null });
   for (const re of [/layer "gone" not known/, /variant "t99" not known/, /arrows: "wind" not known/, /depth 15 not offered/]) warned(report, re);
   assert.deepEqual(read(serialise(emptyDoc(NOW), v), known).view, v, 'written and read again as it is');
+});
+
+test('view: a layer\'s opacity that is not a number is left out (its default), one out of range clamped', () => {
+  const { view: v, report } = read(collection([], { view: { layers: [{ id: 'a', opacity: 'dim' }, { id: 'b', opacity: 3 }, { id: 'c' }] } }));
+  assert.deepEqual(v.layers, [{ id: 'a' }, { id: 'b', opacity: 1 }, { id: 'c' }]);
+  warned(report, /layer a opacity: not a number, default used/);
+  warned(report, /layer b opacity 3 clamped to 1/);
+});
+
+test('view: data is always written ({} when nothing is chosen), so that it is read as an object of nulls, not left as the map\'s', () => {
+  const none = { colour: null, arrows: null, time: null, depth: null };
+  for (const data of [null, none]) {
+    const f = toFile(emptyDoc(NOW), { ...VIEW, data });
+    assert.deepEqual(f.charts.view.data, {}, `written as {} from ${JSON.stringify(data)}`);
+    assert.deepEqual(read(f).view.data, none, 'read back: an object, every field null');
+  }
+  assert.equal(read(collection([], { view: { zoom: 5 } })).view.data, null, 'a hand-written file without it: none (the map\'s)');
 });
 
 test('rules (distribute, connect) are kept as records; defaults left out; an unknown kind or a distribution along nothing skipped', () => {
@@ -810,6 +845,17 @@ test('hardening: a property key named like Object.prototype\'s is a column like 
   assert.deepEqual(back.properties, p.properties, 'read back as they were');
 });
 
+test('a connection\'s settings: one rule for the file and Connect (a chain has no shortest branch); the view\'s zoom to 2 decimals, its bearing to 1; an edge\'s at left out when 0', () => {
+  const { doc } = read(collection([], { rules: [{ id: 'c', kind: 'connect', pattern: 'chain', minBranch: 200, roots: [{ id: 'a', weight: 'x' }] }],
+    view: { zoom: 7.123456, bearing: 12.3456 } }));
+  assert.deepEqual([doc.rules[0].minBranch, doc.rules[0].roots], [0, [{ id: 'a', weight: 1 }]]);
+  const f = toFile(doc, { ...VIEW, zoom: 7.123456, bearing: 12.3456 });
+  assert.deepEqual([f.charts.view.zoom, f.charts.view.bearing], [7.12, 12.3]);
+  const d2 = emptyDoc(NOW), l = lineFrom(d2, [12, 40], [], [12.1, 40]), t = labelAt(d2, { element: l.id, edge: 0, at: 0 });
+  assert.deepEqual(toFile(d2).charts.links, [{ from: [t.id, 0], to: { element: l.id, edge: 0 } }]);
+  assert.deepEqual(again(d2).doc.links, [{ from: [t.id, 0], to: { element: l.id, edge: 0, at: 0 } }]);
+});
+
 test('root weights: read as given, small ones kept; 0, a negative, text read as 1; written as read', () => {
   const pts = ['a', 'b', 'c', 'd', 'e'].map((id) => ({ type: 'Feature', id, geometry: { type: 'Point', coordinates: [12, 40] }, properties: { charts: { kind: 'point' } } }));
   const { doc } = read(collection(pts, { rules: [{ id: 'c1', kind: 'connect', pointIds: ['a'],
@@ -832,7 +878,6 @@ test('a feature whose geometry type is not text is skipped with a reason, not th
 });
 
 test('order: moved before one of its kind (into its group), or a step among its siblings; drawn first on top', async () => {
-  const { drawParts } = await import('../../site/draw/features.js');
   const doc = emptyDoc(NOW);
   const [a, b, c] = [0, 1, 2].map((i) => addRing(doc, [[i, 0], [i + 1, 0], [i, 1]]));
   const p = addPoint(doc, [5, 5]);
@@ -852,7 +897,6 @@ test('order: moved before one of its kind (into its group), or a step among its 
 });
 
 test('the example in drawing-format.md §15 reads with no word to say, and writes back as it is', async () => {
-  const { readFileSync } = await import('node:fs');
   const md = readFileSync(new URL('../../docs/drawing-format.md', import.meta.url), 'utf8');
   const text = /\n## 15\.[\s\S]*?```json\n([\s\S]*?)```/.exec(md)[1];
   const r = read(text);

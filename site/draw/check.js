@@ -101,11 +101,15 @@ export function ownStyle(s, c) {
 }
 // An element's own look as the file has it (the drawing's too, kind 'drawing'): what it sets, each
 // value checked, what its kind draws with (LOOK_FIELDS); what is not valid is left out, a field another
-// kind's warned and not kept (a point's offset, a line's text size)
-export function look(l, c, kind) {
-  if (l === undefined || l === null) return {};
-  if (!isObj(l)) { c.warn('look: not an object, ignored'); return {}; }
-  const out = ownStyle({ fill: l.fill, stroke: l.stroke }, c);
+// kind's warned and not kept (a point's offset, a line's text size, a point's fill). style: the
+// feature's common style names as { fill, stroke } parts, over the look's own, checked and filtered
+// with them (one place for the rule)
+export function look(l, c, kind, style = null) {
+  if (l !== undefined && l !== null && !isObj(l)) { c.warn('look: not an object, ignored'); l = null; }
+  if (!l && !style) return {};
+  l ??= {};
+  const part = (k) => { if (!style?.[k]) return l[k]; if (l[k] !== undefined && !isObj(l[k])) c.warn(`${k}: not an object, ignored`); return { ...(isObj(l[k]) ? l[k] : {}), ...style[k] }; };
+  const out = ownStyle({ fill: part('fill'), stroke: part('stroke') }, c);
   if (l.text !== undefined) {
     const t = isObj(l.text) ? l.text : (c.warn('look text: not an object, ignored'), {}), o = {};
     for (const k of ['name', 'values']) {
@@ -155,7 +159,8 @@ export function readView(v, known, c) {
         if (k && !list?.includes(l[key])) c.warn(`layer ${l.id}: ${key} "${String(l[key]).slice(0, 40)}" not known here; default used`);
         else out[key] = String(l[key]);
       }
-      if (l.opacity !== undefined) out.opacity = clamp(l.opacity, 0, 1, 1, c, `layer ${l.id} opacity`);
+      const opacity = clamp(l.opacity, 0, 1, undefined, c, `layer ${l.id} opacity`); // not a number: left out, as a missing one (the layer's default)
+      if (opacity !== undefined) out.opacity = opacity;
       view.layers.push(out);
     }
   } else if (v.layers !== undefined) c.warn('layers: not a list, ignored');

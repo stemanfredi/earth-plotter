@@ -85,6 +85,7 @@ export function fileGroup(drawing, ctx, presetsChanged) {
       const names = new Set(presets.map((x) => x.name));
       drawing.presets = [...drawing.presets.filter((x) => !names.has(x.name)), ...presets];
       savePresets(drawing.presets);
+      note(`${plural(presets.length, 'preset')} added`); // the kinds' rows have no other sign
       return presetsChanged();
     }
     const { doc, view, report } = parse(text, drawing.known);

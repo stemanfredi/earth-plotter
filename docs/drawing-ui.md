@@ -28,7 +28,7 @@ One layout at every width (`site/frame.js`).
   button in the bar (or **L**, **E**) chose: pressed again, it closes. At first it is open on Layers;
   Layers' button turns while the map's layers load.
 - **Properties** (the inspector, §5), on the right: a switch of the user's (its toggle, **I**, or a
-  double-click on an element). While on, it shows what is selected, else the drawing (its title,
+  double-click on an element), off at first. While on, it shows what is selected, else the drawing (its title,
   its display, its totals); on a phone it shows the drawing only while on (a tap on the tree's first
   row turns it on). The left panel making way for it, or
   a label placed (its text there to be typed), shows or hides it for the moment: the switch comes

@@ -124,7 +124,6 @@ async function write() {
   console.log('site/vendor/, the policy, the preloads and the service worker\'s files written');
 }
 
-
 // newest period the WMS offers for each density dataset vs the newest one catalog.js lists
 async function dataReport() {
   const { DENSITY, HA_WMS } = await import('../site/catalog.js');

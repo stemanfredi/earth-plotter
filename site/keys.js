@@ -10,7 +10,7 @@ export const mac = typeof navigator !== 'undefined' && /Mac|iP(hone|ad)/.test(na
 export const MOD = mac ? '⌘' : 'Ctrl';
 
 const KEYS = [
-  { line: 1, key: '/', show: '[/]', text: 'search', open: 'search' },
+  { line: 1, key: '/', show: '[/]', text: 'find a place', open: 'search' },
   { line: 1, key: 'l', text: 'layers', open: 'layers' },
   { line: 1, key: 'e', text: 'elements', open: 'elements' },
   { line: 1, key: 'i', text: 'properties', open: 'props' },

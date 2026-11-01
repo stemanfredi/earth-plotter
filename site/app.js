@@ -461,10 +461,12 @@ function latestGibs(key) {
 // Copernicus: each dataset at its own step for the hour shown, its time resolution (cmems.js draws
 // the tiles)
 const cmemsDepth = (id) => !!CMEMS[id][state.variant[id]].depth;
-// the time and level the item draws at: { variant, t, depth } as captured: its regional part's, drawn on top
+// the time and level the item draws at: { variant, t, depth } as captured: its regional part's, drawn
+// on top. A part whose steps could not be read (partTimes: undefined) is drawn all the same, at no
+// known time: none said for it, rather than another part's
 async function cmemsDrawn(id, at) {
   const [times, levels] = await Promise.all([partTimes(id, at.variant, at.t), partLevels(id, at.variant, at.depth)]);
-  const k = times.length - 1 - [...times].reverse().findIndex((pt) => pt != null);
+  const k = times.length - 1 - [...times].reverse().findIndex((pt) => pt !== null);
   return { time: times[k], level: levels[k] };
 }
 
@@ -526,7 +528,7 @@ const KINDS = {
       (p) => { state.period[it.id] = p; refresh(it.id); writeHash(); renderMenu(); }, { class: 'period' }),
     legend(id) {
       const d = DENSITY[id];
-      return { key: `${state.variant[id]}|${state.period[id]}`, paint: (el) => drawRamp(el, d.title, `${d.unit} · ${d.types[state.variant[id]]} · ${d.periodLabel(state.period[id])}`, d.stops, d.unit) };
+      return { key: `${state.variant[id]}|${state.period[id]}`, paint: (el) => drawRamp(el, byId[id].label, `${d.unit} · ${d.types[state.variant[id]]} · ${d.periodLabel(state.period[id])}`, d.stops, d.unit) };
     },
   },
   // NASA daily: the day of the time shown (UTC). Drawn only once its newest day is known, and not
@@ -775,10 +777,15 @@ const toggles = (info) => (e) => { info.hidden = !info.hidden; e.currentTarget.s
 const sourceRows = [];
 function sourceRow(items, what) {
   const infos = items.map((it) => [it.id, infoBlock(it)]);
-  const render = () => { for (const [id, el] of infos) el.hidden = !(more.getAttribute('aria-expanded') === 'true' && state.on.has(id)); };
+  const render = () => {
+    line.hidden = !items.some((it) => state.on.has(it.id)); // none on (Ocean data at None): nothing to show
+    for (const [id, el] of infos) el.hidden = !(more.getAttribute('aria-expanded') === 'true' && state.on.has(id));
+  };
   const more = moreButton(what, (e) => { e.currentTarget.setAttribute('aria-expanded', String(e.currentTarget.getAttribute('aria-expanded') !== 'true')); render(); });
+  const line = h('div', { class: 'line' }, h('span', { class: 'name' }, 'Source and licence'), more);
   sourceRows.push(render);
-  return [h('div', { class: 'line' }, h('span', { class: 'name' }, 'Source and licence'), more), ...infos.map(([, el]) => el)];
+  render();
+  return [line, ...infos.map(([, el]) => el)];
 }
 // what the item shows (scheme, source, its kind's controls) sits under its row while it is on; none
 // for an item without them
@@ -805,7 +812,7 @@ function baseBlock(items) {
     rows[it.id] = { row: card, card, controls: controlsOf(it) };
     return card;
   });
-  return h('div', { class: 'base' },
+  return h('div', {},
     h('div', { class: 'bases', role: 'group', 'aria-label': 'Base map' }, cards),
     h('ul', {}, h('li', { class: 'item' }, ...items.map((it) => rows[it.id].controls), ...sourceRow(items, 'this base'))));
 }

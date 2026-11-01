@@ -33,6 +33,7 @@ export const glyphsAsked = new Set();
 export const PACK = 'pack-', MANIFEST_FILE = 'pack.json';
 const MANIFEST = () => new URL(MANIFEST_FILE, document.baseURI).href;
 const putManifest = (cache, m) => cache.put(MANIFEST(), new Response(JSON.stringify(m), { headers: { 'content-type': 'application/json' } }));
+const manifestOf = async (cache) => (await cache.match(MANIFEST()))?.json(); // undefined: an area never finished
 // a new area's cache, named by the time it was begun (savedAreas: one never finished goes after an hour)
 const newPack = async () => { const id = `${PACK}${Date.now().toString(36)}`; return { id, cache: await caches.open(id) }; };
 const isBaseTile = (url) => url.startsWith(`${HOSTS.openfreemap}/planet/`); // not the fonts, not the description
@@ -99,12 +100,20 @@ const CHANGING = [OFFLINE_PREFIXES.openfreemap, OFFLINE_PREFIXES.openseamap];
 // from finished areas only, so another tab's map never lands in this one.
 async function saveArea({ bounds, from, top, name, fresh = false, signal, progress = () => {} }) {
   if (!sw()) throw new Error('this browser keeps no files for this page');
-  if (baseTiles(bounds, from, top) > BASE_TILES) throw new Error(`more than ${BASE_TILES.toLocaleString()} tiles of the base map`);
+  if (baseTiles(bounds, from, top) > BASE_TILES) throw new Error(`more than ${BASE_TILES.toLocaleString('en')} tiles of the base map`);
   const { id, cache } = await newPack();
-  // the bytes put in the area as they come, the base map's with its fonts (OpenFreeMap's terms: over
-  // them, it stops); the count from the cache, at the end, is the one kept
-  let bytes = 0, baseBytes = 0, clip = null;
-  const area = { cache, reload: fresh ? CHANGING : [], stored: (n, url) => { bytes += n; if (url.startsWith(OFFLINE_PREFIXES.openfreemap)) baseBytes += n; } };
+  // what the area holds, counted as its files are put in it (net.js fetchInto, by the page and its
+  // worker: each file once, the one the cache keeps, should two reads of it overlap): its bytes, the
+  // base map's with its fonts (OpenFreeMap's terms: over them, it stops), and its tiles alone
+  let bytes = 0, baseBytes = 0, tiles = 0, clip = null;
+  const urls = new Set();
+  const area = { cache, reload: fresh ? CHANGING : [], stored: (n, url) => {
+    if (urls.has(url)) return;
+    urls.add(url);
+    bytes += n;
+    if (url.startsWith(OFFLINE_PREFIXES.openfreemap)) baseBytes += n;
+    if (isBaseTile(url)) tiles++;
+  } };
   const get = async (url) => { const r = await fetchInto(area, url, { signal }); if (!r.ok) throw new Error(`HTTP ${r.status}`); return r; };
   const cancel = () => clip?.stop(); // what the worker was doing fails at once
   signal?.addEventListener('abort', cancel);
@@ -147,19 +156,10 @@ async function saveArea({ bounds, from, top, name, fresh = false, signal, progre
     }
     if (signal?.aborted) throw new Error('cancelled');
     if (full) throw new Error('this browser\'s storage is full');
-    if (baseBytes > BASE_BYTES) throw new Error(`the base map is over ${MB(BASE_BYTES)} here: choose less detail or a smaller view`);
+    if (baseBytes > BASE_BYTES || tiles > BASE_TILES) throw new Error(`the base map is over its ${BASE_TILES.toLocaleString('en')} tiles or ${MB(BASE_BYTES)} here: choose less detail or a smaller view`);
     if (failed) throw new Error(`${failed} of ${total} could not be fetched`);
-    // what it holds, counted from the cache itself: the base map's bytes with its fonts (as above), its tiles alone
-    let size = 0, baseSize = 0, tiles = 0;
-    for (const req of await cache.keys()) {
-      const n = (await (await cache.match(req)).blob()).size;
-      size += n;
-      if (req.url.startsWith(OFFLINE_PREFIXES.openfreemap)) baseSize += n;
-      if (isBaseTile(req.url)) tiles++;
-    }
     if (!tiles) throw new Error('nothing of the base map was kept'); // never an empty area listed
-    if (baseSize > BASE_BYTES || tiles > BASE_TILES) throw new Error(`the base map is over its ${BASE_TILES.toLocaleString()} tiles or ${MB(BASE_BYTES)} here: choose less detail or a smaller view`);
-    const manifest = { name, saved: new Date().toISOString(), bounds, from, top, bytes: size };
+    const manifest = { name, saved: new Date().toISOString(), bounds, from, top, bytes };
     await putManifest(cache, manifest);
     tell('packs');
     return { id, ...manifest };
@@ -173,7 +173,6 @@ async function saveArea({ bounds, from, top, name, fresh = false, signal, progre
   }
 }
 
-
 // the saved areas, newest first: [{ id, name, saved, bounds, from, top, bytes }]. One whose saving
 // never ended (its page closed meanwhile) has no manifest: never listed, its storage given back
 // once it is an hour old (younger, another tab may be saving it)
@@ -181,22 +180,25 @@ async function savedAreas() {
   if (!('caches' in self)) return [];
   const out = [];
   for (const id of (await caches.keys()).filter((k) => k.startsWith(PACK))) {
-    const m = await (await caches.open(id)).match(MANIFEST());
-    if (m) out.push({ id, ...(await m.json()) });
+    const m = await manifestOf(await caches.open(id));
+    if (m) out.push({ id, ...m });
     else if (Date.now() - parseInt(id.slice(PACK.length), 36) > 3600e3) await caches.delete(id);
   }
   return out.sort((a, b) => b.saved.localeCompare(a.saved));
 }
 async function deleteArea(id) { await caches.delete(id); tell('packs'); }
 async function renameArea(id, name) {
-  const cache = await caches.open(id), manifest = await (await cache.match(MANIFEST())).json();
-  await putManifest(cache, { ...manifest, name });
+  const cache = await caches.open(id);
+  await putManifest(cache, { ...(await manifestOf(cache)), name });
 }
 
 // ---- an area as a file: the copy that outlives the browser's storage, and moves to another device ----
 // A zip: area.json (what the manifest says, and each file's address and type), the files under
-// files/, and README.txt with the credits. The seamarks stay out of files until OpenSeaMap has said
-// they may be shared (ROADMAP, Offline areas); opened again, an area has none.
+// files/, and README.txt with the credits, every one stored as it is: the cache's own blobs, none
+// deflated (a backup, not a download: tiles would shrink by half at the cost of the whole area
+// compressed in memory). The seamarks stay out of files until OpenSeaMap has said they may be
+// shared (ROADMAP, Offline areas); opened again, an area has none. areaFile is exported for the
+// unit tests.
 const FORMAT = 'charts-offline-area', KEPT_HOSTS = Object.values(OFFLINE_PREFIXES);
 const NOT_IN_FILES = [OFFLINE_PREFIXES.openseamap];
 const README = `An area saved by Charts (https://charts.makaw.org) for use without a connection.
@@ -209,15 +211,15 @@ Depths: GEBCO Compilation Group (2026) GEBCO 2026 Grid (doi:10.5285/4f68d5c7-45e
 Fonts: Noto Sans, SIL Open Font License 1.1.
 Not for navigation.
 `;
-async function areaFile(id) {
-  const cache = await caches.open(id), { name, saved, bounds, from, top } = await (await cache.match(MANIFEST())).json(), list = [], files = [];
+export async function areaFile(id) {
+  const cache = await caches.open(id), { name, saved, bounds, from, top } = await manifestOf(cache), list = [], files = [];
   for (const req of await cache.keys()) {
     if (req.url === MANIFEST() || NOT_IN_FILES.some((h) => req.url.startsWith(h))) continue;
     const r = await cache.match(req), entry = `files/${list.length}`;
     list.push({ name: entry, url: req.url, type: r.headers.get('content-type') || '' });
     files.push({ name: entry, data: await r.blob() });
   }
-  return zip([{ name: 'area.json', data: JSON.stringify({ format: FORMAT, version: 1, name, saved, bounds, from, top, files: list }) }, { name: 'README.txt', data: README }, ...files]);
+  return zip([{ name: 'area.json', data: JSON.stringify({ format: FORMAT, version: 1, name, saved, bounds, from, top, files: list }) }, { name: 'README.txt', data: README }, ...files], { store: true });
 }
 // what an area keeps, by its address (saveArea): the base map's description, a tile, a font's
 // glyphs, a depth store's metadata or chunk, on a saved host and written as a browser writes it (no

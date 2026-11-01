@@ -35,7 +35,7 @@ jobs:
 
   browser:                           # headless Chrome against the live tile providers (draw: without them)
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 40              # smoke waits up to 10 min for an area save, and may run twice (its retry sleeps a minute), then draw and ui
     env:
       CHROME: /usr/bin/google-chrome
     steps:

@@ -35,7 +35,10 @@ export async function cmemsValues(id, at, box) {
   const v = CMEMS[id][at.variant];
   const [times, levels] = await Promise.all([partTimes(id, at.variant, at.t), partLevels(id, at.variant, at.depth)]);
   return (await Promise.all(v.parts.map(async (part, i) => {
-    if (times[i] == null) return null;
+    // partTimes: undefined where the dataset's steps could not be read (the map asked for its tiles
+    // anyway): said, not left out in silence; null where it has nothing at this time
+    if (times[i] === undefined) throw new Error('its time steps could not be read');
+    if (times[i] === null) return null;
     const { store, times: ts, lat, lon, elevation } = await storeOf(part);
     const ti = nearest(ts, times[i], 6e4), zi = elevation && levels[i] != null ? nearest(elevation, +levels[i]) : 0;
     const cells = cellsOf(lat, lon, box);

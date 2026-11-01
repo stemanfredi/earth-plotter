@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { fmtAngle, dm, fmtPos, mercatorVariation, niceLen, parseLatLon, parseCoord, parseDist, distText, exportName, rowsText } from '../../site/format.js';
+import { near } from './helpers.mjs';
 
 test('fmtAngle: degrees, minutes, hemispheres, carry', () => {
   assert.equal(fmtAngle(44, 'N', 'S', 1), '44°N');
@@ -34,16 +35,16 @@ test('niceLen: 1/2/5 steps not above the input', () => {
 });
 
 test('parseLatLon: decimal, DM, DMS, hemispheres before or after, either order', () => {
-  const near = (r, lat, lon) => assert.ok(r && Math.abs(r.lat - lat) < 1e-9 && Math.abs(r.lon - lon) < 1e-9, JSON.stringify(r));
-  near(parseLatLon('35.898, 14.513'), 35.898, 14.513);
-  near(parseLatLon('-31.2 -51.3'), -31.2, -51.3);
-  near(parseLatLon('35 53.9N 14 30.8E'), 35 + 53.9 / 60, 14 + 30.8 / 60);
-  near(parseLatLon('35°53\'54"N 014°30\'48"W'), 35 + 53 / 60 + 54 / 3600, -(14 + 30 / 60 + 48 / 3600));
-  near(parseLatLon('N35 53.9 E14 30.8'), 35 + 53.9 / 60, 14 + 30.8 / 60);
-  near(parseLatLon('14.513E 35.898S'), -35.898, 14.513);
-  near(parseLatLon('35°53.9′N, 14°30.8′E'), 35 + 53.9 / 60, 14 + 30.8 / 60);
-  near(parseLatLon('35 54 14 31'), 35 + 54 / 60, 14 + 31 / 60);
-  near(parseLatLon('-0 30 10 0'), -0.5, 10);
+  const at = (r, lat, lon) => { near(r?.lat, lat, 1e-9, 'lat'); near(r?.lon, lon, 1e-9, 'lon'); };
+  at(parseLatLon('35.898, 14.513'), 35.898, 14.513);
+  at(parseLatLon('-31.2 -51.3'), -31.2, -51.3);
+  at(parseLatLon('35 53.9N 14 30.8E'), 35 + 53.9 / 60, 14 + 30.8 / 60);
+  at(parseLatLon('35°53\'54"N 014°30\'48"W'), 35 + 53 / 60 + 54 / 3600, -(14 + 30 / 60 + 48 / 3600));
+  at(parseLatLon('N35 53.9 E14 30.8'), 35 + 53.9 / 60, 14 + 30.8 / 60);
+  at(parseLatLon('14.513E 35.898S'), -35.898, 14.513);
+  at(parseLatLon('35°53.9′N, 14°30.8′E'), 35 + 53.9 / 60, 14 + 30.8 / 60);
+  at(parseLatLon('35 54 14 31'), 35 + 54 / 60, 14 + 31 / 60);
+  at(parseLatLon('-0 30 10 0'), -0.5, 10);
 });
 
 test('parseLatLon: not coordinates', () => {
@@ -67,15 +68,15 @@ test('parseLatLon: a decimal comma, where the text has no decimal point', () => 
 });
 
 test('parseCoord: one coordinate, each notation, its own hemisphere only', () => {
-  const near = (v, want) => assert.ok(v !== null && Math.abs(v - want) < 1e-9, `${v} vs ${want}`);
-  near(parseCoord('37.2913083', 'lat'), 37.2913083);
-  near(parseCoord('-9.5', 'lon'), -9.5);
-  near(parseCoord('37,29', 'lat'), 37.29); // decimal comma
-  near(parseCoord('37 17.48N', 'lat'), 37 + 17.48 / 60);
-  near(parseCoord('N37 17.48', 'lat'), 37 + 17.48 / 60);
-  near(parseCoord('37° 17\' 28.71"S', 'lat'), -(37 + 17 / 60 + 28.71 / 3600));
-  near(parseCoord('009° 31\' 28.34"E', 'lon'), 9 + 31 / 60 + 28.34 / 3600);
-  near(parseCoord('-0 30', 'lat'), -0.5);
+  const coord = (s, kind, want) => near(parseCoord(s, kind), want, 1e-9, s);
+  coord('37.2913083', 'lat', 37.2913083);
+  coord('-9.5', 'lon', -9.5);
+  coord('37,29', 'lat', 37.29); // decimal comma
+  coord('37 17.48N', 'lat', 37 + 17.48 / 60);
+  coord('N37 17.48', 'lat', 37 + 17.48 / 60);
+  coord('37° 17\' 28.71"S', 'lat', -(37 + 17 / 60 + 28.71 / 3600));
+  coord('009° 31\' 28.34"E', 'lon', 9 + 31 / 60 + 28.34 / 3600);
+  coord('-0 30', 'lat', -0.5);
   assert.equal(parseCoord('37N', 'lon'), null); // a latitude's letter in a longitude field
   assert.equal(parseCoord('91', 'lat'), null);
   assert.equal(parseCoord('181', 'lon'), null);

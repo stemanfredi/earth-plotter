@@ -41,7 +41,6 @@ const cmemsCapsUrl = (part) => `${CMEMS_WMTS}/${partOf(part).id}?SERVICE=WMTS&RE
 const REGIONS = [{ name: 'Mediterranean', test: /^MEDSEA_|_MED_/, area: [[-5.6, 30.1, 36.3, 40.9], [-1, 40.9, 27, 46]] }];
 export const regionOf = (part) => REGIONS.find((r) => r.test.test(partOf(part).product)) || null;
 
-
 // ---- what a dataset's own capabilities say: its time steps, its depth levels ------------------
 // ISO 8601 duration (P1D, PT1H, PT900S, PT10800S, PT15M) → milliseconds
 export function durationMs(d) {

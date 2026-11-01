@@ -3,34 +3,33 @@ import assert from 'node:assert/strict';
 import { affine, worldFile, footprint, stacItem, pngText } from '../../site/export.js';
 import { mercator } from '../../site/geo.js';
 import { crc32 } from '../../site/zip.js';
-
-const close = (a, b, eps, what) => assert.ok(Math.abs(a - b) < eps, `${what}: ${a} vs ${b}`);
+import { near } from './helpers.mjs';
 
 test('mercator: EPSG:3857 metres', () => {
   const [x, y] = mercator([180, 85.0511287798066]);
-  close(x, 20037508.342789244, 1e-6, 'x at 180°');
-  close(y, 20037508.342789244, 1e-3, 'y at the Web Mercator limit');
-  for (const v of mercator([0, 0])) close(v, 0, 1e-6, 'origin');
+  near(x, 20037508.342789244, 1e-6, 'x at 180°');
+  near(y, 20037508.342789244, 1e-3, 'y at the Web Mercator limit');
+  for (const v of mercator([0, 0])) near(v, 0, 1e-6, 'origin');
 });
 
 test('affine and world file: north-up view, pixel corners vs pixel centres', () => {
   // 1° × 1° at the equator in 100 × 100 px
   const t = affine([[10, 1], [11, 1], [11, 0], [10, 0]], 100, 100);
   const [x0, y0] = mercator([10, 1]), [x1] = mercator([11, 1]), [, y1] = mercator([10, 0]);
-  close(t[0], (x1 - x0) / 100, 1e-9, 'a'); assert.equal(t[1], 0); close(t[2], x0, 1e-6, 'c');
-  assert.equal(t[3], 0); close(t[4], (y1 - y0) / 100, 1e-9, 'e'); close(t[5], y0, 1e-6, 'f');
+  near(t[0], (x1 - x0) / 100, 1e-9, 'a'); assert.equal(t[1], 0); near(t[2], x0, 1e-6, 'c');
+  assert.equal(t[3], 0); near(t[4], (y1 - y0) / 100, 1e-9, 'e'); near(t[5], y0, 1e-6, 'f');
   const w = worldFile(t).trim().split('\n').map(Number);
   assert.equal(w.length, 6);
-  close(w[4], x0 + t[0] / 2, 1e-6, 'C: centre of the first pixel');
-  close(w[5], y0 + t[4] / 2, 1e-6, 'F: centre of the first pixel');
+  near(w[4], x0 + t[0] / 2, 1e-6, 'C: centre of the first pixel');
+  near(w[5], y0 + t[4] / 2, 1e-6, 'F: centre of the first pixel');
 });
 
 test('affine: a rotated view keeps its rotation terms; across the antimeridian', () => {
   // rotated 90°: the image's top edge runs south along a meridian
   const r = affine([[10, 1], [10, 0], [11, 0], [11, 1]], 100, 100);
-  close(r[0], 0, 1e-9, 'a'); assert.ok(r[3] < 0, 'd: south along the row'); assert.ok(r[1] > 0, 'b: east down the column'); close(r[4], 0, 1e-9, 'e');
+  near(r[0], 0, 1e-9, 'a'); assert.ok(r[3] < 0, 'd: south along the row'); assert.ok(r[1] > 0, 'b: east down the column'); near(r[4], 0, 1e-9, 'e');
   const across = affine([[179.5, 1], [180.5, 1], [180.5, 0], [179.5, 0]], 100, 100);
-  close(across[0] * 100, mercator([1, 0])[0], 1e-6, 'one degree wide');
+  near(across[0] * 100, mercator([1, 0])[0], 1e-6, 'one degree wide');
 });
 
 test('footprint: counter-clockwise ring, bbox west > east across the antimeridian', () => {

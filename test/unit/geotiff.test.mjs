@@ -30,21 +30,24 @@ test('gridTransform: north-up, pixel corners in EPSG:3857', () => {
   assert.deepEqual(gridTransform({ x0: 256, y0: 0, pix }), [pix, 0, 0, 0, -pix, HALF]);
 });
 
+// the first IFD's tags of a little-endian TIFF: tag → its values
+function tagsOf(b) {
+  const dv = new DataView(b.buffer), ifd = dv.getUint32(4, true), tags = {}, size = { 2: 1, 3: 2, 4: 4, 12: 8 };
+  for (let k = 0; k < dv.getUint16(ifd, true); k++) {
+    const e = ifd + 2 + k * 12, type = dv.getUint16(e + 2, true), cnt = dv.getUint32(e + 4, true);
+    const at = cnt * size[type] > 4 ? dv.getUint32(e + 8, true) : e + 8;
+    tags[dv.getUint16(e, true)] = Array.from({ length: cnt }, (_, i) => (type === 2 ? b[at + i] : type === 3 ? dv.getUint16(at + i * 2, true) : type === 4 ? dv.getUint32(at + i * 4, true) : dv.getFloat64(at + i * 8, true)));
+  }
+  return tags;
+}
+
 test('geotiff: a baseline TIFF with GeoKeys, Float32 data and NaN no data', () => {
   const vals = Float32Array.from([1.5, -2, NaN, 4, 5, 6]);
   const pix = 10;
   const b = geotiff(vals, 3, 2, [pix, 0, 1000, 0, -pix, 2000], { description: 'Depth' });
-  const dv = new DataView(b.buffer);
   assert.equal(String.fromCharCode(b[0], b[1]), 'II');
-  assert.equal(dv.getUint16(2, true), 42);
-  const ifd = dv.getUint32(4, true), n = dv.getUint16(ifd, true), tags = {};
-  const size = { 2: 1, 3: 2, 4: 4, 12: 8 };
-  for (let k = 0; k < n; k++) {
-    const e = ifd + 2 + k * 12, tag = dv.getUint16(e, true), type = dv.getUint16(e + 2, true), cnt = dv.getUint32(e + 4, true);
-    const at = cnt * size[type] > 4 ? dv.getUint32(e + 8, true) : e + 8;
-    tags[tag] = Array.from({ length: cnt }, (_, i) => (type === 2 ? b[at + i] : type === 3 ? dv.getUint16(at + i * 2, true) : type === 4 ? dv.getUint32(at + i * 4, true) : dv.getFloat64(at + i * 8, true)));
-  }
-  const keys = Object.keys(tags).map(Number);
+  assert.equal(new DataView(b.buffer).getUint16(2, true), 42);
+  const tags = tagsOf(b), keys = Object.keys(tags).map(Number);
   assert.deepEqual(keys, [...keys].sort((x, y) => x - y), 'tags in ascending order');
   assert.deepEqual([tags[256][0], tags[257][0], tags[258][0], tags[339][0], tags[277][0]], [3, 2, 32, 3, 1]);
   assert.deepEqual(tags[33550], [10, 10, 0]);
@@ -59,12 +62,7 @@ test('geotiff: a baseline TIFF with GeoKeys, Float32 data and NaN no data', () =
 test('geotiff: EPSG:4326 in degrees, two bands pixel by pixel, each with its unit', () => {
   const u = Float32Array.from([1, 2, 3, 4]), v = Float32Array.from([-1, -2, NaN, -4]);
   const b = geotiff([u, v], 2, 2, [0.5, 0, 10, 0, -0.25, 45], { crs: 4326, bands: [{ description: 'eastward', unit: 'm/s' }, { description: 'northward', unit: 'm/s' }] });
-  const dv = new DataView(b.buffer), ifd = dv.getUint32(4, true), tags = {}, size = { 2: 1, 3: 2, 4: 4, 12: 8 };
-  for (let k = 0; k < dv.getUint16(ifd, true); k++) {
-    const e = ifd + 2 + k * 12, type = dv.getUint16(e + 2, true), cnt = dv.getUint32(e + 4, true);
-    const at = cnt * size[type] > 4 ? dv.getUint32(e + 8, true) : e + 8;
-    tags[dv.getUint16(e, true)] = Array.from({ length: cnt }, (_, i) => (type === 2 ? b[at + i] : type === 3 ? dv.getUint16(at + i * 2, true) : type === 4 ? dv.getUint32(at + i * 4, true) : dv.getFloat64(at + i * 8, true)));
-  }
+  const tags = tagsOf(b);
   assert.deepEqual([tags[277][0], tags[258], tags[339], tags[338]], [2, [32, 32], [3, 3], [0]]);
   assert.ok(tags[34735].join().includes('2048,0,1,4326') && tags[34735].join().includes('1024,0,1,2'), 'geographic EPSG:4326');
   assert.deepEqual([tags[33550], tags[33922]], [[0.5, 0.25, 0], [0, 0, 0, 10, 45, 0]]);

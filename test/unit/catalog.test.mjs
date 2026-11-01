@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { GROUPS, ITEMS, DEPTH_SCHEMES, DEM_TILES, EMODNET_DEPTH_STOPS, domainEnd, gibsDomainUrl, CMEMS, drawsOf } from '../../site/catalog.js';
+import { GROUPS, ITEMS, DEPTH_SCHEMES, DEM_TILES, EMODNET_DEPTH_STOPS, domainEnd, gibsDomainUrl, CMEMS, drawsOf, DENSITY, densityTiles } from '../../site/catalog.js';
 import { cmemsStyle } from '../../site/cmems.js';
 import { buildStyle, SEA_PICTURES } from '../../site/style.js';
 import { CSP_HOSTS } from '../../tools/deps.mjs';
@@ -63,7 +63,6 @@ test('depth schemes: ascending depths; atlas darkens with depth, nautical lighte
 });
 
 test('density datasets: "all types" first, codes map to WMS layers and times, sensible defaults', async () => {
-  const { DENSITY, densityTiles } = await import('../../site/catalog.js');
   for (const id of Object.keys(DENSITY)) {
     const it = ITEMS.find((i) => i.id === id);
     assert.equal(Object.keys(it.variants)[0], 'all', `${id}: the app's default variant is the first key`);

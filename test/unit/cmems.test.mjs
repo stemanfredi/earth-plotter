@@ -51,3 +51,13 @@ test('Copernicus depth: levels from capabilities, the nearest one to the depth c
   assert.equal(nearestLevel([], 100), null, 'a variable without depth');
   assert.deepEqual(depthLevels(xml.replace('elevation', 'x'), 'thetao'), []);
 });
+
+test('cmemsValues: a dataset whose time steps could not be read is said, not left out in silence', async () => {
+  const { cmemsValues } = await import('../../site/values.js');
+  const was = globalThis.fetch;
+  globalThis.fetch = async () => { throw new TypeError('offline'); }; // its capabilities: not had (partTimes: undefined)
+  try {
+    const [id, variant] = [Object.keys(CMEMS)[0], Object.keys(CMEMS[Object.keys(CMEMS)[0]])[0]];
+    await assert.rejects(cmemsValues(id, { variant, t: Date.UTC(2026, 9, 1), depth: 0 }, [0, 40, 1, 41]), /time steps could not be read/);
+  } finally { globalThis.fetch = was; }
+});

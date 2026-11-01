@@ -15,7 +15,7 @@
 
 import { NO_DEPTH_M } from './catalog.js';
 import { HOSTS } from './hosts.js';
-import { gebcoTile, gebcoSeaTile } from './gebco.js';
+import { gebcoTile } from './gebco.js';
 import { latOf, tileBounds, TILE } from './geo.js';
 import { fetchOk, fetchBytes, tileUrl, lru } from './net.js';
 
@@ -289,14 +289,16 @@ const NEEDS_HEIGHTS = () => { throw HEIGHTS; };
 // saved must hold what any tile asked first would read)
 export function clipper({ template, mode, omtTileJson, remember = true }) {
   const omtTemplate = () => omtTemplateOf(omtTileJson);
-  // 64 tiles each: a view and its surroundings (raw 256 kB, cut 320 kB: two clippers, two cuts of a sea tile)
+  // 64 tiles each: a view and its surroundings (raw 256 kB, the sea's 512 kB: as read and as drawn; cut 320 kB: two clippers, two cuts of a sea tile)
   const rawCache = lru(64), cache = lru(64), waterLevel = remember ? new Map() : { has: () => false, set() {} }; // waterLevel: OSM id → DEPTH, FLAT or LAKE
-  // a tile's elevation in metres as the data has it (no mask): also what inland water is classified
-  // from, at lower zooms too
-  const raw = (z, x, y) => rawCache(`${z}/${x}/${y}`, () => (mode === 'sea' ? gebcoTile(z, x, y) : demMetres(tileUrl(template, z, x, y))));
-  // the sea's depths as drawn: blended from water cells alone (gebco.js), so the shore's land cells do
-  // not pull them shallower; the land's are its DEM as it is
-  const drawn = (z, x, y) => (mode === 'sea' ? rawCache(`${z}/${x}/${y}/sea`, () => gebcoSeaTile(z, x, y)) : raw(z, x, y));
+  // a tile's elevation in metres, { raw, drawn }: raw as the data has it (no mask), also what inland
+  // water is classified from, at lower zooms too; drawn the sea's depths blended from water cells
+  // alone (gebco.js), so the shore's land cells do not pull them shallower; the land's its DEM, as it
+  // is, for both
+  const tile = (z, x, y) => rawCache(`${z}/${x}/${y}`, () => (mode === 'sea' ? gebcoTile(z, x, y).then(({ raw, sea }) => ({ raw, drawn: sea }))
+    : demMetres(tileUrl(template, z, x, y)).then((m) => ({ raw: m, drawn: m }))));
+  const raw = (z, x, y) => tile(z, x, y).then((t) => t.raw);
+  const drawn = (z, x, y) => tile(z, x, y).then((t) => t.drawn);
   // Shared by several requesters (the shading and the contours ask for the same tile): the work goes on
   // while any of them still waits, and stops between its steps once every one has given up (MapLibre
   // aborts the tiles a quick zoom leaves behind), so the tiles now wanted are not queued behind them.

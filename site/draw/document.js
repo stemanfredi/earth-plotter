@@ -39,7 +39,8 @@ export const MEASURE_STYLE = Object.freeze({ fill: Object.freeze({ color: MEASUR
 // shown, and a label's size, colour (null: the default) and
 // background; offset: a line drawn this many px to the right of where it is (negative: left; 0: on
 // it; display only).
-const LOOK_TEXT = Object.freeze({ name: false, values: false, size: 'medium', color: '#1f2c36', background: 'halo' }); // the colour: a label's text, the UI's ink (style.css --ink)
+export const INK = '#1f2c36'; // the UI's ink (style.css --ink), not the chart's (style.js INK): a label's text, and the drawing's handles and drafts (layers.js), follow the page, not the map
+const LOOK_TEXT = Object.freeze({ name: false, values: false, size: 'medium', color: INK, background: 'halo' });
 export const DEFAULT_LOOK = Object.freeze({ fill: DEFAULT_STYLE.fill, stroke: DEFAULT_STYLE.stroke, text: LOOK_TEXT, offset: 0 });
 export const SYMBOLS = ['diamond', 'square', 'triangle', 'dot', 'none'];
 export const DASHES = ['solid', 'dashed', 'dotted'];

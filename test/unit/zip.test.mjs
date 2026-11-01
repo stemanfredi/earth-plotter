@@ -1,9 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { zip, crc32 } from '../../site/zip.js';
+import { zip, crc32, unzip, inflate } from '../../site/zip.js';
 
-// a reader for what zip() writes: central directory → { name: bytes }
-async function unzip(blob) {
+// the test's own reader of what zip() writes: central directory → { name: { data, method } }
+async function readZip(blob) {
   const b = new Uint8Array(await blob.arrayBuffer()), v = new DataView(b.buffer);
   const end = b.length - 22;
   assert.equal(v.getUint32(end, true), 0x06054b50);
@@ -31,7 +31,7 @@ test('crc32: the standard check value', () => {
 test('zip: text deflated, incompressible data stored, UTF-8 names round-trip', async () => {
   const text = '{"type":"Feature"}\n'.repeat(500);
   const noise = crypto.getRandomValues(new Uint8Array(4096));
-  const files = await unzip(await zip([{ name: 'item.json', data: text }, { name: 'raster/città.bin', data: noise }, { name: 'empty.txt', data: '' }]));
+  const files = await readZip(await zip([{ name: 'item.json', data: text }, { name: 'raster/città.bin', data: noise }, { name: 'empty.txt', data: '' }]));
   assert.deepEqual(Object.keys(files), ['item.json', 'raster/città.bin', 'empty.txt']);
   assert.equal(new TextDecoder().decode(files['item.json'].data), text);
   assert.equal(files['item.json'].method, 8);
@@ -40,8 +40,19 @@ test('zip: text deflated, incompressible data stored, UTF-8 names round-trip', a
   assert.equal(files['empty.txt'].data.length, 0);
 });
 
+test('zip({ store }): every file stored as it is, Blobs included, and read back by unzip', async () => {
+  const text = '{"type":"Feature"}\n'.repeat(500), bytes = crypto.getRandomValues(new Uint8Array(3000));
+  const z = await zip([{ name: 'a.json', data: text }, { name: 'files/0', data: new Blob([bytes]) }, { name: 'files/1', data: bytes.subarray(0, 10) }], { store: true });
+  const files = await readZip(z);
+  assert.deepEqual(Object.values(files).map((f) => f.method), [0, 0, 0]);
+  assert.equal(new TextDecoder().decode(files['a.json'].data), text);
+  assert.deepEqual(files['files/0'].data, bytes);
+  const r = await unzip(z);
+  assert.deepEqual(await r.get('files/0')(), bytes);
+  assert.deepEqual(await r.get('files/1')(), bytes.subarray(0, 10));
+});
+
 test('unzip: what zip() writes read back, stored and deflated; a damaged file refused', async () => {
-  const { unzip } = await import('../../site/zip.js');
   const big = new Uint8Array(5000).fill(7), files = [{ name: 'a/b.txt', data: 'hello, zip' }, { name: 'big.bin', data: big }, { name: 'ü.json', data: '{}' }];
   const z = await zip(files), read = await unzip(z);
   assert.deepEqual([...read.keys()], ['a/b.txt', 'big.bin', 'ü.json']);
@@ -59,7 +70,6 @@ test('unzip: what zip() writes read back, stored and deflated; a damaged file re
 });
 
 test('inflate: exactly the size said, raw or zlib; a size beyond deflate\'s 1032 to 1 refused before it starts', async () => {
-  const { inflate } = await import('../../site/zip.js');
   const data = new Uint8Array(100000).fill(3), pack = async (f) => new Uint8Array(await new Response(new Blob([data]).stream().pipeThrough(new CompressionStream(f))).arrayBuffer());
   const raw = await pack('deflate-raw'), zlib = await pack('deflate');
   assert.deepEqual(await inflate(raw, data.length), data);

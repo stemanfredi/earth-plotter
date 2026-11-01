@@ -17,7 +17,7 @@ function canvas(el, h) {
   el.style.height = `${el.height / dpr}px`;
   const g = el.getContext('2d');
   g.scale(el.width / W, el.height / h);
-  g.fillStyle = 'rgba(255,255,255,0.92)';
+  g.fillStyle = 'rgba(255,255,255,0.85)'; // as the status chips' (style.css) and the PNG's (png.js) backing
   g.fillRect(0, 0, W, h);
   g.font = '600 11px system-ui, sans-serif';
   g.textBaseline = 'alphabetic';

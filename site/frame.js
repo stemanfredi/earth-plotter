@@ -23,8 +23,8 @@ export function createFrame({ left, right, tabs, onChange = () => {} }) {
   const saved = store.json(KEY) ?? {};
   const st = {
     tab: NARROW.matches ? null : saved.tab === null || tabs.some((t) => t.id === saved.tab) ? saved.tab : 'layers', // the left's tab, or null: closed (at first: Layers)
-    props: NARROW.matches ? false : saved.props !== false, // Properties shown now (on a phone: off to start with)
-    wants: saved.props !== false, // the user's switch, saved; what the app shows for a moment (showProps) does not change it
+    props: NARROW.matches ? false : saved.props === true, // Properties shown now (off until the user turns it on, and on a phone)
+    wants: saved.props === true, // the user's switch, saved; what the app shows for a moment (showProps) does not change it
     has: false, // Properties has something to show
     lw: clamp(saved.lw, LEFT), rw: clamp(saved.rw, RIGHT), sh: clamp(saved.sh, SHEET),
   };

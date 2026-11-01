@@ -1,7 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { tilesIn, baseTiles, fromZoom, areaOf, isAreaHead, isKeptFile, BASE_TILES, TOP_MAX, PACK, MANIFEST_FILE } from '../../site/offline.js';
+import { tilesIn, baseTiles, fromZoom, areaOf, isAreaHead, isKeptFile, areaFile, BASE_TILES, TOP_MAX, PACK, MANIFEST_FILE } from '../../site/offline.js';
+import { unzip } from '../../site/zip.js';
 
 test('tilesIn: the tiles an area covers at a zoom, a margin of tiles more, clamped to the world', () => {
   assert.deepEqual(tilesIn([-180, -85, 180, 85], 0), [[0, 0, 0]]);
@@ -57,4 +58,24 @@ test('areaOf: the view\'s bounds in the world, a centre beyond ±180° (a hand-e
 test('the service worker names the saved areas\' caches and their manifest as the page does', async () => {
   const sw = await readFile(new URL('../../site/sw.js', import.meta.url), 'utf8');
   assert.ok(sw.includes(`PACK = '${PACK}'`) && sw.includes(`new URL('${MANIFEST_FILE}', self.registration.scope)`));
+});
+
+test('areaFile: the area\'s files as the cache holds them, stored, with area.json listing them; the manifest and the seamarks out', async () => {
+  const tile = crypto.getRandomValues(new Uint8Array(2000)), manifest = { name: 'A', saved: '2026-10-30T10:00:00.000Z', bounds: [9, 44, 10, 45], from: 8, top: 12, bytes: 2000 };
+  const held = new Map([ // a Cache, as far as areaFile reads one
+    ['https://charts.makaw.org/pack.json', new Response(JSON.stringify(manifest), { headers: { 'content-type': 'application/json' } })],
+    ['https://tiles.openfreemap.org/planet/20261025_080012_pt/12/2170/1480.pbf', new Response(tile, { headers: { 'content-type': 'application/x-protobuf' } })],
+    ['https://tiles.openseamap.org/seamark/12/2170/1480.png', new Response(new Uint8Array(5))],
+  ]);
+  const cache = { keys: async () => [...held.keys()].map((url) => ({ url })), match: async (req) => held.get(typeof req === 'string' ? req : req.url) ?? null };
+  const was = { caches: globalThis.caches, baseURI: globalThis.document.baseURI };
+  globalThis.caches = { open: async () => cache }; globalThis.document.baseURI = 'https://charts.makaw.org/';
+  try {
+    const files = await unzip(await areaFile('pack-x'));
+    assert.deepEqual([...files.keys()], ['area.json', 'README.txt', 'files/0']);
+    const head = JSON.parse(new TextDecoder().decode(await files.get('area.json')()));
+    assert.ok(isAreaHead(head));
+    assert.deepEqual(head.files, [{ name: 'files/0', url: 'https://tiles.openfreemap.org/planet/20261025_080012_pt/12/2170/1480.pbf', type: 'application/x-protobuf' }]);
+    assert.deepEqual(await files.get('files/0')(), tile);
+  } finally { globalThis.caches = was.caches; globalThis.document.baseURI = was.baseURI; }
 });

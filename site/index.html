@@ -94,7 +94,7 @@
   <!-- top left: places (OpenStreetMap, via Photon) or coordinates (read here, never sent) -->
   <div id="search" class="search" role="search">
     <i data-icon="search"></i>
-    <input id="q" type="search" role="combobox" aria-label="Search places or coordinates" aria-autocomplete="list" aria-controls="results-list" aria-expanded="false" autocomplete="off" spellcheck="false" placeholder="Place, or 35 54N 14 31E">
+    <input id="q" type="search" role="combobox" aria-label="Find a place" aria-autocomplete="list" aria-controls="results-list" aria-expanded="false" autocomplete="off" spellcheck="false" placeholder="Place, or 35 54N 14 31E">
     <button type="button" id="q-clear" class="x" aria-label="Clear search" title="Clear" hidden>×</button>
     <div id="results" class="results" hidden>
       <ul id="results-list" role="listbox" aria-label="Results"></ul>
@@ -139,7 +139,7 @@
     <p class="site">© 2026 <a href="https://github.com/stemanfredi" target="_blank" rel="noopener">Stefano Manfredi</a> · <a href="https://github.com/stemanfredi/charts" target="_blank" rel="noopener">Source code</a> · <a href="https://github.com/stemanfredi/charts/blob/main/LICENSE" target="_blank" rel="noopener">GPL-3.0-or-later</a>, no warranty · <span id="version">a development copy</span> ·
       <a id="issue" href="https://github.com/stemanfredi/charts/issues/new" target="_blank" rel="noopener" title="Opens a new issue on GitHub with this view's link filled in: it shows the area viewed and the layers, and can be deleted before submitting. Never the drawing.">Report an issue</a> ·
       <button type="button" class="linkbtn" data-reload title="Load the page again (an app installed on a phone has no reload button of its own)">Reload</button></p>
-    <button type="button" class="action" data-close>Close</button>
+    <div class="fbuttons"><button type="button" data-close>Close</button></div>
   </dialog>
   <noscript>This chart needs JavaScript and WebGL.</noscript>
 </body>

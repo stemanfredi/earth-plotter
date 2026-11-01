@@ -7,10 +7,11 @@
 //               in floating point, so no precision is lost however far the map zooms in, and
 //               isobaths curve through GEBCO's whole metres instead of breaking at its cells (a
 //               straight-line interpolation left a wave one cell long on flat shelves); the
-//               spline barely moves anything smaller than a cell, below what the data resolves
-//   gebcoSeaTile the same, blending water cells only: a land cell beside the shore (tens of metres
-//               up) no longer pulls the water next to it shallower over a cell's width (the sea's
-//               drawn depths; the plain blend stays what inland water is classified from)
+//               spline barely moves anything smaller than a cell, below what the data resolves.
+//               Two blends from the one pass: raw, over every cell, what inland water is classified
+//               from; sea, over the water cells only, the sea's drawn depths: a land cell beside the
+//               shore (tens of metres up) no longer pulls the water next to it shallower over a
+//               cell's width
 //   tidTile     where the depths come from (the type identifier grid): each cell's own code,
 //               coloured by its group (catalog.js DEPTH_SOURCES), a MapLibre tile handler
 //   tidAt       the code of the cell at a point (the depth on a click)
@@ -32,9 +33,10 @@ export const gebcoStore = (url) => stores(url, () => openStore(url, async (u) =>
 const chunks = lru(KEEP); // `store level/row.col` → promise of the chunk's cells
 
 // a grid's values at the pixel centres of 256 px Web Mercator tile z/x/y, row-major, north up:
-// smoothly interpolated (a cubic B-spline; seaOnly: over the cells below sea level alone, where any
-// is), or each pixel its cell's own value (nearest: codes)
-async function gridTile(url, variable, z, x, y, nearest, seaOnly = false) {
+// each pixel its cell's own value (nearest: codes), or smoothly interpolated (a cubic B-spline), as
+// { raw, sea }: over every cell, and over the cells below sea level alone where any is (exported
+// for the unit tests)
+export async function gridTile(url, variable, z, x, y, nearest) {
   const s = await gebcoStore(url), k = levelFor(z), name = `${k}/${variable}`, meta = s.meta(name);
   const [H, W] = meta.shape, [CH, CW] = meta.chunks, cs = CELL * 2 ** k, n = 2 ** z;
   // each pixel centre's place in the grid, in cells (0.5 off a cell's corner is its centre)
@@ -69,6 +71,7 @@ async function gridTile(url, variable, z, x, y, nearest, seaOnly = false) {
     for (let j = 0; j < SIZE; j++) for (let i = 0; i < SIZE; i++) out[j * SIZE + i] = at(Math.round(row[j]), Math.round(col[i]));
     return out;
   }
+  const seaOut = new Float32Array(SIZE * SIZE);
   // cubic B-spline weights of the four cells around t ∈ [0, 1): the columns' once for the tile
   const bs = (t, w, o) => { const t2 = t * t, t3 = t2 * t; w[o] = (1 - t) ** 3 / 6; w[o + 1] = (3 * t3 - 6 * t2 + 4) / 6; w[o + 2] = (-3 * t3 + 3 * t2 + 3 * t + 1) / 6; w[o + 3] = t3 / 6; };
   const wc = new Float64Array(SIZE * 4), cx = new Int32Array(SIZE), wr = new Float64Array(4);
@@ -90,16 +93,16 @@ async function gridTile(url, variable, z, x, y, nearest, seaOnly = false) {
           if (v < 0) { sea += w * v; ws += w; }
         }
       }
-      out[j * SIZE + i] = seaOnly && ws > 0 ? sea / ws : sum;
+      out[j * SIZE + i] = sum;
+      seaOut[j * SIZE + i] = ws > 0 ? sea / ws : sum;
     }
   }
-  return out;
+  return { raw: out, sea: seaOut };
 }
 
-// metres at the pixel centres of tile z/x/y; rejects if the store cannot be read (the tile fails,
-// as any tile does: the map reports it)
+// metres at the pixel centres of tile z/x/y, { raw, sea } as above; rejects if the store cannot be
+// read (the tile fails, as any tile does: the map reports it)
 export const gebcoTile = (z, x, y) => gridTile(GEBCO, 'elevation', z, x, y, false);
-export const gebcoSeaTile = (z, x, y) => gridTile(GEBCO, 'elevation', z, x, y, false, true);
 
 // MapLibre tile handler for gebco-tid://z/x/y: each cell coloured by the group of its code; land and
 // no data transparent

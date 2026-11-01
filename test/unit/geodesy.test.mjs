@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { near } from './helpers.mjs';
 
-const { inverse, destination, circle, sector, reachesPole } = await import('../../site/geodesy.js');
+const { inverse, destination, circle, sector, reachesPole, localFrame } = await import('../../site/geodesy.js');
 
 const norm = (a) => ((a % 360) + 360) % 360;
 // the difference between two azimuths, the short way round
@@ -57,7 +57,6 @@ test('reachesPole: a circle up to the pole and no further', () => {
 });
 
 test('localFrame: across ±180° the short way round', async () => {
-  const { localFrame } = await import('../../site/geodesy.js');
   const f = localFrame([179.9, -16]);
   const [x] = f.to([-179.9, -16]);
   near(x, inverse([179.9, -16], [-179.9, -16]).s, 100, 'east across the antimeridian, not round the world');

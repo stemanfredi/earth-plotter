@@ -19,16 +19,17 @@ const bytesOf = async (data) => (typeof data === 'string' ? utf8.encode(data) : 
 const deflate = async (b) => new Uint8Array(await new Response(new Blob([b]).stream().pipeThrough(new CompressionStream('deflate-raw'))).arrayBuffer());
 
 // files: [{ name, data: string | Uint8Array | Blob }] → Blob (application/zip). Each file is
-// deflated, or stored when that is no smaller (PNG is compressed already). Times are local, as
-// zip has no time zone.
-export async function zip(files, date = new Date()) {
+// deflated, or stored when that is no smaller (PNG is compressed already); store: every file
+// stored as it is, no deflate, a Blob's bytes in memory only for its CRC (an area's backup: its
+// cache's own blobs, however many). Times are local, as zip has no time zone.
+export async function zip(files, { date = new Date(), store = false } = {}) {
   const time = (date.getHours() << 11) | (date.getMinutes() << 5) | (date.getSeconds() >> 1);
   const day = ((date.getFullYear() - 1980) << 9) | ((date.getMonth() + 1) << 5) | date.getDate();
   const out = [], central = [];
   let offset = 0;
   for (const f of files) {
     const raw = await bytesOf(f.data), name = utf8.encode(f.name), crc = crc32(raw);
-    const packed = await deflate(raw), stored = packed.length >= raw.length, body = stored ? raw : packed;
+    const packed = store ? raw : await deflate(raw), stored = packed.length >= raw.length, body = stored ? raw : packed;
     // the fields local and central headers share, from "version needed" to the name length
     const common = (v, at) => {
       v.setUint16(at, 20, true); // version needed: 2.0 (deflate)

@@ -29,7 +29,7 @@ const MONTHS = 'Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec'.split(' ');
 export const DENSITY = {
   // EMODnet vessel density: hours ships spend per km², annual averages of monthly totals
   traffic: {
-    title: 'Vessel density (Europe)', unit: 'h/km² per month',
+    unit: 'h/km² per month',
     types: { all: 'All ship types', t09: 'Cargo', t10: 'Tanker', t08: 'Passenger', t01: 'Fishing', t05: 'Pleasure craft',
       t04: 'Sailing', t06: 'High-speed craft', t07: 'Tug and towing', t02: 'Service', t03: 'Dredging, underwater ops',
       t11: 'Military, law enforcement', t00: 'Other', t12: 'Unknown' },
@@ -40,9 +40,9 @@ export const DENSITY = {
   },
   // EMSA route density: number of ship routes crossing each 1 km cell, monthly totals
   routes: {
-    title: 'Route density (Europe)', unit: 'routes per 1 km cell per month',
+    unit: 'routes per 1 km cell per month',
     types: { all: 'All ship types', t01: 'Cargo', t04: 'Tanker', t03: 'Passenger', t02: 'Fishing', t05: 'Other' },
-    periods: months('2019-01', '2026-07'), // newest month in the WMS on 2026-10-20; npm run deps reports newer ones
+    periods: months('2019-01', '2026-07'), // newest month in the WMS on 2026-10-20; npm run data-check reports newer ones
     get defaultPeriod() { return this.periods[0]; },
     periodLabel: (p) => `${MONTHS[+p.slice(5) - 1]} ${p.slice(0, 4)}`,
     layer: (type) => `routedensity_${type.replace(/^t/, '')}`, time: (p) => `${p}-01`, stops: STOPS,

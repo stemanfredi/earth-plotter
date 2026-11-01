@@ -1,11 +1,13 @@
-import test from 'node:test';
+import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { randomBytes } from 'node:crypto';
+import { createServer } from 'node:http';
 import { bloscEncode, mean2, mode2, build, verify } from '../../tools/gebco.mjs';
 import { unblosc, openStore, readCells } from '../../site/zarr.js';
+import { gridTile } from '../../site/gebco.js';
 
 // an uncompressed, single-strip TIFF of h × w signed integers (as GEBCO's files are laid out)
 function tiff(values, w, h) {
@@ -101,6 +103,31 @@ test('build: a synthetic world → both stores, every cell and every level as za
     assert.equal(await verify(dir, 'elevation', { samples: 300, log: () => {} }), true);
     assert.equal(await verify(dir, 'tid', { samples: 300, log: () => {} }), true);
   } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('gridTile: one pass gives the plain blend and the water-only blend of the same cells', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'gebco-'));
+  // a world of 1200 × 2400 cells, so its rows reach the tiles' northernmost latitude at zoom 8 (level 0
+  // read as GEBCO's 15″ cells): sea 500 m deep west of the meridian, land 500 m high east of it
+  world(dir, 'elevation', 'gebco_2026', 600, Int16Array, (r, c) => (c < 1200 ? -500 : 500));
+  await build(dir, 'elevation', { workers: 2, levels: 1, log: () => {} });
+  // the store served as the data host serves it: plain files
+  const server = createServer((req, res) => { try { res.end(readFileSync(join(dir, decodeURIComponent(new URL(req.url, 'http://x').pathname)))); } catch { res.statusCode = 404; res.end(); } });
+  await new Promise((ok) => server.listen(0, '127.0.0.1', ok));
+  try {
+    const url = `http://127.0.0.1:${server.address().port}/zarr/gebco-2026/elevation.zarr`;
+    const { raw, sea } = await gridTile(url, 'elevation', 8, 3, 0, false); // columns 1012–1349: across the shore
+    assert.equal(raw.length, 65536); assert.equal(sea.length, 65536);
+    let shore = 0;
+    for (let p = 0; p < raw.length; p++) {
+      if (Math.abs(raw[p] - 500) < 1e-2) assert.ok(Math.abs(sea[p] - 500) < 1e-2, `${p}: all land, drawn as read`);
+      else { assert.ok(Math.abs(sea[p] + 500) < 1e-2, `${p}: water in reach (${raw[p]}): the water's depth alone`); if (raw[p] > -499) shore++; }
+    }
+    assert.ok(shore > 0, 'a band of pixels where the plain blend mixes land in');
+  } finally {
+    server.close();
     rmSync(dir, { recursive: true, force: true });
   }
 });

@@ -2,7 +2,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { near, lineFrom } from './helpers.mjs';
 
-const { radiusTo, bearingTo, sectorEdgeTo } = await import('../../site/draw/drag.js');
+const drag = await import('../../site/draw/drag.js');
+const { radiusTo, bearingTo, sectorEdgeTo } = drag;
 const { destination, inverse, moveAbout } = await import('../../site/geodesy.js');
 const { emptyDoc, addPoint, addCircle, moveElements } = await import('../../site/draw/document.js');
 
@@ -61,4 +62,31 @@ test('a point moved only through a selected line\'s place: its own lines, select
   moveElements(doc, [ring.id, l.id], [12, 40], [12.1, 40.05]); // the ring before the line: met before p is known to move
   near(inverse(p.position, [12.1, 40.05]).s, 0, 1e-6, 'p moved with the line\'s place on it');
   assert.deepEqual(q.position, [12.2, 40], 'q not dragged along by p\'s ring');
+});
+
+test('a held shape\'s place dragged resizes it, the farthest place kept, the centre moving; Shift the proportions too; never past the kept place', () => {
+  const { scaledPlaces } = drag;
+  // a 100 × 50 rectangle facing 30°: corners 50 along, 25 across; the back left corner (−50, −25) is the farthest from the front right (50, 25)
+  const B = 30, at = (a, x) => destination(C, B + Math.atan2(x, a) * 180 / Math.PI, Math.hypot(a, x));
+  const rect = [at(50, -25), at(50, 25), at(-50, 25), at(-50, -25)];
+  const local = (q) => { const g = inverse(C, q), r = (g.azi - B) * Math.PI / 180; return [g.s * Math.cos(r), g.s * Math.sin(r)]; };
+  const r = scaledPlaces(C, B, rect, 1, at(150, 75)); // the front right corner to (150, 75): 200 × 100, the back left kept
+  const out = r.points.map(local);
+  [[150, -25], [150, 75], [-50, 75], [-50, -25]].forEach(([a, x], i) => { near(out[i][0], a, 1e-3, `along ${i}`); near(out[i][1], x, 1e-3, `across ${i}`); });
+  near(local(r.centre)[0], 50, 1e-3, 'the centre along'); near(local(r.centre)[1], 25, 1e-3, 'the centre across');
+  const even = scaledPlaces(C, B, rect, 1, at(150, 75), true).points.map(local); // one factor: the distances' ratio from the kept corner
+  const f = Math.hypot(200, 100) / Math.hypot(100, 50);
+  near(even[1][0], -50 + 100 * f, 1e-3, 'even along'); near(even[1][1], -25 + 50 * f, 1e-3, 'even across');
+  const past = scaledPlaces(C, B, rect, 1, at(-60, 25)).points.map(local); // dragged past the kept corner: 5 % at least along, no flip
+  near(past[1][0], -50 + 100 * 0.05, 1e-3, 'at least 5 %'); near(past[1][1], 25, 1e-3, 'across as dragged');
+});
+
+test('a point\'s shape selected alone and moved: its point moves instead, every shape with it', () => {
+  const doc = emptyDoc(0), p = addPoint(doc, [12, 40]), c = addCircle(doc, [12, 40], { groupId: p.id, radius: 500 });
+  const ring = lineFrom(doc, [12, 40.01], [[12.01, 40]], [11.99, 40], { groupId: p.id, closed: true });
+  const before = ring.points.map((q) => inverse([12, 40], q));
+  moveElements(doc, new Set([c.id]), [12, 40.003], [12.1, 40.053]); // grabbed on the circle's rim; a Set, as the selection is
+  near(inverse(p.position, c.position).s, 0, 1e-6, 'the circle still on its point');
+  ring.points.forEach((q, i) => near(inverse(p.position, q).s, before[i].s, 1e-6, `the ring's place ${i} as far from the point`));
+  near(inverse([12, 40], p.position).s, inverse([12, 40.003], [12.1, 40.053]).s, 50, 'the point moved as the pointer');
 });

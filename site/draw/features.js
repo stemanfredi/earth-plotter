@@ -14,6 +14,8 @@ import { fmtArea, fmtBrg, fmtDist } from '../format.js';
 // whether a circle can be drawn: one reaching a pole cannot be a polygon
 export const drawable = (c, r = c.radius) => !reachesPole(c.position, r);
 // how far a point's shapes reach from it (m): their farthest place, or circle's rim
+// how far they reach along its bearing: where its stalk starts
+export const frontOf = (doc, p) => Math.max(0, ...membersOf(doc, p.id).flatMap(({ kind, el }) => positionsIn(kind, el).map(([o, k]) => { const g = inverse(p.position, o[k]); return g.s * Math.cos((g.azi - p.bearing) * D2R) + (el.radius ?? 0); })));
 export const reachOf = (doc, p) => Math.max(0, ...membersOf(doc, p.id).flatMap(({ kind, el }) => positionsIn(kind, el).map(([o, k]) => inverse(p.position, o[k]).s + (el.radius ?? 0))));
 
 const HANDLE_GAP = 12; // px
@@ -75,8 +77,12 @@ export function drawParts(doc, sel = new Set(), hover = null, display = {}, want
     });
     return out;
   };
+  // the one element selected shows its handles (a point's shapes theirs with it); among several, dots
+  // say which, and a drag moves them all
+  const own = new Set();
+  if (sel.size === 1) { const [id] = sel; own.add(id); if (doc.points.some((n) => n.id === id)) membersOf(doc, id).forEach((m) => own.add(m.el.id)); }
   const handles = (id, items, thin = false) => {
-    if (!sel.has(id) || sel.size !== 1) return; // the one element selected: among several, dots say which, and a drag moves them all
+    if (!own.has(id)) return;
     const kept = thin ? new Set(thinned(items.map((h) => h.p))) : null;
     for (const h of items) {
       if (kept && !kept.has(h.p)) continue;
@@ -114,7 +120,7 @@ export function drawParts(doc, sel = new Set(), hover = null, display = {}, want
     const items = [...(c.aperture ? [c.bearing] : [0, 90, 180, 270]).map((az) => ({ p: destination(c.position, az, c.radius), role: 'radius' })),
       ...(c.aperture ? [-0.5, 0.5].map((k) => ({ p: destination(c.position, c.bearing + k * c.aperture, c.radius), role: 'aperture', ref: k })) : [])];
     mark(c, { type: 'Polygon', coordinates: [ccw(rg)] }, { sw: st.stroke.width }, () => items.map((h) => h.p));
-    if (sel.has(c.id) && sel.size === 1) handles(c.id, [...items, ...(c.aperture ? stalk(c.id, c.position, c.bearing, c.radius) : [])]);
+    if (own.has(c.id)) handles(c.id, [...items, ...(c.aperture ? stalk(c.id, c.position, c.bearing, c.radius) : [])]);
   }
   // lines: a guide dashed and faint, the others solid; every visible line also has an invisible stroke
   // wide enough to click, a closed one its fill (with the circles, under the lines). A line's halo is on
@@ -133,8 +139,10 @@ export function drawParts(doc, sel = new Set(), hover = null, display = {}, want
       if (named(sg)) name(zoomNames, sg, sg.closed ? { type: 'Point', coordinates: centroid(sg.points) } : g, st.color, sg.closed ? { ctr: 1 } : {}); // a closed one's at its centre
       zoomed.push({ type: 'Feature', properties: { id: sg.id, kind: sg.guide ? 'guide' : 'path', z: Z.get(sg.id), off, ...lineProps(st) }, geometry: g });
     }
-    if (mark(sg, g, { sw: st.width, off }, () => sg.points) && sel.has(sg.id)) {
+    if (mark(sg, g, { sw: st.width, off }, () => sg.points) && own.has(sg.id)) {
       const ps = sg.points;
+      // held by a point, it is rigid: each place resizes it, the farthest kept (no + either)
+      if (holderOf(doc, sg)) { handles(sg.id, ps.map((p, i) => ({ p, role: 'scale', ref: i }))); continue; }
       // its places: one linked to a point's centre moves the point; another (free, or linked to a
       // vertex, a leg) itself, linked again where it is dropped
       const role = (to) => (to && to.edge == null && to.vertex == null && doc.points.some((p) => p.id === to.element) ? { role: 'point', ref: to.element } : null);
@@ -150,18 +158,19 @@ export function drawParts(doc, sel = new Set(), hover = null, display = {}, want
       }
     }
   }
-  // points: the symbol (none: a small dot, so that the centre is always seen) and the name; selected
-  // with shapes, a stalk beyond their reach along its bearing turns it with them
+  // points: the symbol (none: a small dot, so that the centre is always seen, unless its shapes show
+  // it: then neither the dot nor its ring) and the name; selected with shapes, a stalk beyond their
+  // front along its bearing turns it with them
   for (const n of doc.points) {
     if (!isShown(doc, n)) continue;
-    const p = { type: 'Point', coordinates: n.position };
+    const p = { type: 'Point', coordinates: n.position }, holds = membersOf(doc, n.id).length > 0, bare = n.symbol === 'none' && holds;
     if (want.base) {
       const st = styleOf(doc, n);
-      base.push({ type: 'Feature', properties: { id: n.id, kind: 'symbol', symbol: n.symbol === 'none' ? 'centre' : n.symbol, sc: st.stroke.color, so: st.stroke.opacity }, geometry: p });
+      if (!bare) base.push({ type: 'Feature', properties: { id: n.id, kind: 'symbol', symbol: n.symbol === 'none' ? 'centre' : n.symbol, sc: st.stroke.color, so: st.stroke.opacity }, geometry: p });
       if (named(n)) name(baseNames, n, p, st.stroke.color);
     }
-    mark(n, p);
-    if (sel.has(n.id) && sel.size === 1 && membersOf(doc, n.id).length) handles(n.id, stalk(n.id, n.position, n.bearing, reachOf(doc, n)));
+    if (!bare) mark(n, p);
+    if (own.has(n.id) && holds) handles(n.id, stalk(n.id, n.position, n.bearing, frontOf(doc, n)));
   }
   return { base: [...base, ...baseNames], zoom: [...zoomed, ...zoomNames], marks };
 }

@@ -15,7 +15,7 @@ import { DISTRIBUTE_D, distribute, lines, planConnection, makeDistribution, edit
   distributions, connections, ruleOf, MAX_COPIES, MAX_TREE } from './generator.js';
 import { BUILT_IN, builtInName } from './place.js';
 import { boundsOf, drawable, reachOf } from './features.js';
-import { inverse, destination, areaOf } from '../geodesy.js';
+import { inverse, destination, areaOf, moveAbout } from '../geodesy.js';
 import { norm180, norm360 } from '../geo.js';
 import { fields, choice, select, check } from '../fields.js';
 import { mac, MOD } from '../keys.js';
@@ -97,7 +97,8 @@ export function drawView(root, ctx) {
   // two fields read as one value, side by side (a pair, §2), sep between them
   const pair = (a, sep, b) => h('span', { class: 'vpair' }, ...[a].flat(), h('span', { class: 'vsep' }, sep), ...[b].flat());
   const textField = (id, key, aria, area = false) => F.text(() => now(id)[key], (v) => set(id, (el) => { el[key] = v; }), aria, area ? 2 : 0);
-  const coordFields = (id, key) => { const [, lat, , lon] = F.position(() => now(id)[key], (p) => set(id, (el) => { el[key] = p; }), '', 6); return row('Position', pair(lat, '·', lon)); };
+  // a circle's centre: a held one's moves its point (its shapes with it), as a drag does
+  const coordFields = (id, key) => { const [, lat, , lon] = F.position(() => now(id)[key], (p) => set(id, (el, doc) => { const n = holderOf(doc, el); if (n) carry(doc, n, moveAbout(el[key], p)(n.position)); else el[key] = p; }), '', 6); return row('Position', pair(lat, '·', lon)); };
   // a value's unit beside it, in grey (drawing-ui.md §5: never inside the text): a distance field's
   // (fields.js unitText), or a formatted value's ("10.08 km" → 10.08 · km)
   const funit = (t) => h('span', { class: 'funit' }, t);

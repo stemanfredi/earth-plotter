@@ -231,7 +231,8 @@ export function carry(doc, p, position, bearing = p.bearing) {
 // many places are on it), but for a line held by a point among them (it goes with its point, pulling no
 // other); any other linked place follows what it is on (a label on an element too).
 export function moveElements(doc, ids, from, to) {
-  const leaves = leavesOf(doc, ids), mv = moveAbout(from, to);
+  // a point's shape moves only with its point (Detach it to move it apart): the point moved instead
+  const leaves = leavesOf(doc, [...new Set([...ids].map((id) => holderOf(doc, find(doc, id)?.el)?.id ?? id))]), mv = moveAbout(from, to);
   const tiedOf = (el) => new Map(doc.links.filter((l) => l.from[0] === el.id).map((l) => [l.from[1], l.to.element]));
   // the points moved, found first so that a point's shapes go with it only (one also among ids is not
   // moved a second time): those among ids, then what the linked places of free lines are on, then
@@ -288,9 +289,15 @@ export function dependents(doc, ids, withMembers = false) {
 // Delete ids and what goes with them (dependents); the members and subgroups of a deleted group go to
 // the group above it (or none), unless withMembers, keeping their look. The links from and to what
 // goes are dropped at the next refresh (attach.js refreshAttached, after every change): what was
-// linked to it is free where it was.
+// linked to it is free where it was. A point with no symbol whose every shape goes, goes with them:
+// nothing of it would be left to see (as a group emptied is removed in drawing tools).
 export function remove(doc, ids, withMembers = false) {
   const all = dependents(doc, ids, withMembers);
+  for (const p of doc.points) {
+    if (all.has(p.id) || p.symbol !== 'none') continue;
+    const held = membersOf(doc, p.id);
+    if (held.length && held.every((m) => all.has(m.el.id))) all.add(p.id);
+  }
   // where each one staying in a deleted group goes: the nearest group above it that stays, read while
   // the group is still there
   const moves = [];

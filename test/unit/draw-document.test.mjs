@@ -524,7 +524,7 @@ test('operations: new elements, names, IDs', () => {
   const c = addCircle(doc, [12, 41]), sec = addCircle(doc, [12, 41], { aperture: 90 });
   assert.deepEqual([c.name, c.radius, c.aperture, c.bearing, c.groupId, sec.name], ['Circle 1', 1000, null, 0, null, 'Sector 1']);
   const h = addShape(doc, [12, 41]);
-  assert.deepEqual([h.point.name, h.point.symbol, h.shapes.map((x) => [x.name, x.closed, x.points.length, x.groupId])], ['Rectangle 1', 'none', [['Rectangle 1', true, 4, h.point.id]]]);
+  assert.deepEqual([h.point.name, h.point.symbol, h.shapes.map((x) => [x.name, x.closed, x.points.length, x.groupId])], ['Rectangle 1', 'none', [['', true, 4, h.point.id]]]); // the held shape nameless: the point names it
   const j = addDot(doc, [12, 42]);
   assert.equal(j.symbol, 'dot');
   const ids = idsOf(doc);
@@ -722,6 +722,19 @@ test('delete a group: members ungrouped, a point keeping its shapes, or deleted 
   assert.deepEqual([gone.points.map((p) => p.id), gone.circles], [[a.id], []]);
   assert.deepEqual(placeIn(gone, gone.lines[0], -1), { position: [2, 0], to: null }); // the line stays, its end free
   assert.equal(placeIn(doc, s, -1).to.element, c.id); // the original untouched
+});
+
+test('delete a shape: a point with no symbol and nothing left to hold goes with it; with a symbol, or another shape, it stays', () => {
+  const doc = emptyDoc(NOW);
+  const a = addPoint(doc, [0, 0], { symbol: 'none' }), b = addPoint(doc, [1, 0], { symbol: 'none' }), c = addPoint(doc, [2, 0]);
+  const ac = addCircle(doc, [0, 0], { groupId: a.id, radius: 50 });
+  const b1 = addCircle(doc, [1, 0], { groupId: b.id, radius: 50 }), b2 = addCircle(doc, [1, 0], { groupId: b.id, radius: 80 });
+  const cc = addCircle(doc, [2, 0], { groupId: c.id, radius: 50 });
+  assert.deepEqual([...remove(doc, [ac.id])].sort(), [ac.id, a.id].sort()); // its last shape: the point too
+  remove(doc, [b1.id]);
+  assert.ok(doc.points.some((p) => p.id === b.id) && doc.circles.some((x) => x.id === b2.id)); // one shape left: the point stays
+  remove(doc, [cc.id]);
+  assert.ok(doc.points.some((p) => p.id === c.id)); // a symbol: a marker in its own right
 });
 
 test('delete a group: members ungrouped keep the group\'s style and colour as their own', () => {

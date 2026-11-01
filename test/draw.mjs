@@ -191,7 +191,8 @@ await section('the drawing\'s files: imported again, dropped on the map, the lis
   check(/for good/.test(asked) && !/null/.test(asked), `drawing: Delete asks first, nothing else in the dialog (${asked})`);
   await dw.reload();
   await dw.waitForFunction(() => window.map?.loaded?.(), null, { timeout: 90000 });
-  check((await dw.locator('.dlist .drow').count()) === 2, 'drawing: restored after a reload (a point and its sector)');
+  const restored = await dw.evaluate(() => [...document.querySelectorAll('.dlist .drow')].map((r) => [r.querySelector('.kind').title, r.querySelector('.dfold[aria-expanded]')?.getAttribute('aria-expanded')].join(':')).join());
+  check(restored === 'Point:false', `drawing: restored after a reload (a point, its sector under its fold: ${restored})`);
   await dw.evaluate(() => drawing.select([drawing.doc.points[0].id])); // selected: its highlight must stay out of the picture
   const [dpng] = await Promise.all([dw.waitForEvent('download', { timeout: 120000 }), exportItem(dw, 'png')]);
   const [dzip] = await Promise.all([dw.waitForEvent('download', { timeout: 120000 }), exportItem(dw, 'zip')]);

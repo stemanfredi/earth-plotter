@@ -18,7 +18,7 @@ import { inverse, moveAbout } from '../geodesy.js';
 import { snapAt, stepped, neighbours, RADIUS as SNAP_RADIUS } from './snap.js';
 import { attachTo, insertPlace, deletePlace, refNear, lineRef, resolve } from './attach.js';
 import { clipOf, paste, centreOf } from './clipboard.js';
-import { radiusTo, bearingTo, sectorEdgeTo } from './drag.js';
+import { radiusTo, bearingTo, sectorEdgeTo, scaledPlaces } from './drag.js';
 
 // the ID of the line being drawn, as measured for its values: always the same, so the traces cached by
 // ID (lines.js) keep one entry for it, not one for each move of the pointer
@@ -195,12 +195,12 @@ export class Drawing extends DrawStore {
     const hits = this.hitAt(e.point);
     // nothing there: the selection cleared, and said on the click (app.js: a click that only clears it reads no depth)
     if (!hits.length) { this.last = null; if (!add) { if (this.sel.size) e.cleared = true; this.select([]); } return; }
-    // the same place again: the next one down. A point's shape: first its point (with its shapes),
-    // clicked again the shape alone
+    // the same place again: the next one down. A point's shape: its point (with its shapes), whatever
+    // is selected; the same place again, the shape alone (as a group is entered in drawing tools)
     const again = this.last && Math.hypot(this.last.x - e.point.x, this.last.y - e.point.y) < 3 && this.last.hits.join() === hits.join();
     let id = again && !add ? hits[(hits.indexOf(this.last.id) + 1) % hits.length] : hits[0];
     const held = holderOf(this.doc, find(this.doc, id)?.el);
-    if (held && !(this.sel.size === 1 && this.sel.has(held.id))) id = held.id;
+    if (held && !(again && this.last.id === held.id)) id = held.id;
     this.last = { x: e.point.x, y: e.point.y, hits, id };
     this.select([id], add ? 'toggle' : 'replace');
   }
@@ -559,7 +559,7 @@ export class Drawing extends DrawStore {
       if (!grab) return;
       // a line's point (a handle of it) pressed: its row in Properties' table made current (place: the
       // element and the row's index, a line's start 0)
-      if (h?.role === 'vertex') { this.setPlace({ id: h.id, index: +h.ref }); this.onChange('place'); }
+      if (h?.role === 'vertex' || h?.role === 'scale') { this.setPlace({ id: h.id, index: +h.ref }); this.onChange('place'); }
       map.dragPan.disable();
       const ll = map.unproject([pt.x, pt.y]);
       this.drag = { ...grab, start: [ll.lng, ll.lat], from: pt, orig: JSON.stringify(this.doc), moved: false, pointer: e.pointerId };
@@ -653,6 +653,7 @@ export class Drawing extends DrawStore {
         this.putPlace(doc, { kind: 'line', el }, i, { position: r.position, to: attachTo(doc, r.to) });
         return;
       }
+      case 'scale': { const n = holderOf(doc, el), r = scaledPlaces(n.position, n.bearing, el.points, +d.ref, p, e.shiftKey); carry(doc, n, r.centre); el.points = r.points; return; } // a held shape's place: the shape resized, the farthest place kept (Shift: its proportions too); its point moves to stay its centre, its other shapes with it
       case 'mid': { const q = this.snapped(pt, e, p, { exclude: new Set([el.id]) }).position; insertPlace(doc, el.id, +d.ref + 1, q); return; } // a place added halfway along a leg
       case 'radius': el.radius = Math.max(1, Math.min(MAX_RADIUS - 1, radiusTo(el.position, p))); return; // a circle's size only: a sector's ends and the stalk turn it
       case 'aperture': Object.assign(el, sectorEdgeTo(el.position, el.bearing, el.aperture, +d.ref, p, snap)); return; // one end of a sector's arc: its aperture, and its bearing (its middle)

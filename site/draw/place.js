@@ -21,13 +21,13 @@ export const BUILT_IN = Object.keys(KIND_NAME);
 // side), or size ([length, width]: a box's). Returns the point.
 export function build(doc, p, kind, d = 0, { aperture = 90, size = null } = {}) {
   const pt = addPoint(doc, p, { symbol: 'none', name: nextName(doc, 'point', KIND_NAME[kind]) });
-  const r3 = (v) => Math.round(Math.max(v, 0.001) * 1000) / 1000, held = { groupId: pt.id };
+  const r3 = (v) => Math.round(Math.max(v, 0.001) * 1000) / 1000, held = { groupId: pt.id, name: '' }; // a held shape has no name of its own: the point's names them
   if (OUTLINES.includes(kind)) {
     const [l, w] = size ?? (kind === 'triangle' ? [50 * Math.sqrt(3), 100] : [100, 50]), k = d > 0 ? (2 * d) / l : 1;
-    addLine(doc, outlinePoints(p, 0, r3(l * k), r3(w * k), kind), { ...held, closed: true, name: nextName(doc, 'line', KIND_NAME[kind]) });
+    addLine(doc, outlinePoints(p, 0, r3(l * k), r3(w * k), kind), { ...held, closed: true });
   } else {
     const radii = kind === 'rings' ? [1000, 2000, 3000] : [1000], k = d > 0 ? d / radii.at(-1) : 1;
-    radii.forEach((r, i) => addCircle(doc, p, { ...held, radius: r3(r * k), ...(kind === 'sector' ? { aperture, name: nextName(doc, 'circle', 'Sector') } : {}), ...(i ? { look: { fill: { opacity: 0 } } } : {}) }));
+    radii.forEach((r, i) => addCircle(doc, p, { ...held, radius: r3(r * k), ...(kind === 'sector' ? { aperture } : {}), ...(i ? { look: { fill: { opacity: 0 } } } : {}) }));
   }
   return pt;
 }

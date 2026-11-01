@@ -4,7 +4,7 @@
 // into a group or before one of their kind, shown or hidden by their eye.
 
 import { h, editInPlace } from '../dom.js';
-import { find, elements, groupsOf, membersOf, label, KIND, setGroup, moveBefore, isShown, canHold, isChosen } from './document.js';
+import { find, elements, groupsOf, membersOf, holderOf, label, KIND, setGroup, moveBefore, isShown, canHold, isChosen } from './document.js';
 import { labelText } from './labels.js';
 import { lineTrace } from './lines.js';
 import { MOD } from '../keys.js';
@@ -18,8 +18,10 @@ const countOf = (b, u) => [b.points ? plural(b.points, 'point') : '', b.circles 
 // an element's icon and what the panel calls its kind: a circle or a sector; a closed line a polygon
 const iconOf = (kind, el) => (kind === 'circle' ? POINT_ICON[el.aperture ? 'sector' : 'circle'] : KIND_ICON[el.closed ? 'polygon' : kind]);
 export const kindTitle = (kind, el) => (kind === 'circle' && el.aperture ? 'Sector' : KIND[kind].name);
-// an element's name as shown: its own; a label's text as it reads on the map (its first line)
-export const shownName = (doc, kind, el, units) => (kind === 'label' ? labelText(doc, el, units).split('\n')[0].trim() || 'Label' : label(kind, el));
+// an element's name as shown: its own; a label's text as it reads on the map (its first line); a
+// nameless shape held by a point its kind alone (its point names it; its row's value says its size)
+export const shownName = (doc, kind, el, units) => (kind === 'label' ? labelText(doc, el, units).split('\n')[0].trim() || 'Label'
+  : !el.name?.trim() && holderOf(doc, el) ? kindTitle(kind, el) : label(kind, el));
 // a group's name with the groups it is in: "A › B"
 export const groupPath = (doc, g) => [...groupsOf(doc, g).reverse(), g].map((x) => label('group', x)).join(' › ');
 
@@ -47,7 +49,8 @@ export function eyeFor(drawing, xs, what) {
 export function createTree(drawing, { facts, drawingPicked = () => {} }) {
   let anchor = null; // the row a Shift-click range starts from
   let filter = '';
-  const folded = new Set(); // groups and points folded (this session)
+  const folded = new Set(), opened = new Set(); // groups folded, points opened (this session): a point's shapes are under its fold to start with
+  const isOpen = (kind, id) => (kind === 'group' ? !folded.has(id) : opened.has(id) || membersOf(drawing.doc, id).some((m) => drawing.sel.has(m.el.id))); // a shape selected shows its row
   const filterInput = h('input', { type: 'search', placeholder: 'Filter by name or value', 'aria-label': 'Filter the list', oninput: (e) => { filter = e.target.value; render(); } });
   const selectShown = h('button', { type: 'button', class: 'small', title: 'Select every element the filter leaves in the list (Shift: add to the selection)',
     onclick: (e) => drawing.select(shown().map((x) => x.el.id), e.shiftKey ? 'add' : 'replace') }, 'Select all shown');
@@ -76,11 +79,11 @@ export function createTree(drawing, { facts, drawingPicked = () => {} }) {
       for (const g of drawing.doc.groups.filter((x) => (x.groupId ?? null) === gid && !seen.has(x))) {
         seen.add(g);
         out.push({ kind: 'group', el: g, depth });
-        if (!folded.has(g.id) || filter) under(g.id, depth + 1);
+        if (isOpen('group', g.id) || filter) under(g.id, depth + 1);
       }
       for (const x of all.filter((y) => y.kind !== 'group' && (y.el.groupId ?? null) === gid)) {
         out.push({ ...x, depth });
-        if (x.kind === 'point' && (!folded.has(x.el.id) || filter)) under(x.el.id, depth + 1); // its shapes
+        if (x.kind === 'point' && (isOpen('point', x.el.id) || filter)) under(x.el.id, depth + 1); // its shapes
       }
     };
     under(null, 0);
@@ -116,10 +119,12 @@ export function createTree(drawing, { facts, drawingPicked = () => {} }) {
   }
   function rowOf({ kind, el, depth = 0 }) {
     const id = el.id;
-    const fold = kind === 'group' || held.get(id) ? h('button', { type: 'button', class: 'dfold', 'aria-expanded': String(!folded.has(id)), 'aria-label': `Show the members of ${label(kind, el)}`,
-      onclick: () => { if (folded.has(id)) folded.delete(id); else folded.add(id); render(); } }) : null;
+    const open = isOpen(kind, id), set = kind === 'group' ? folded : opened; // a group's set says folded, a point's opened
+    const fold = kind === 'group' || held.get(id) ? h('button', { type: 'button', class: 'dfold', 'aria-expanded': String(open), 'aria-label': `Show the members of ${label(kind, el)}`,
+      onclick: () => { if (open === (kind === 'group')) set.add(id); else set.delete(id); render(); } }) : null;
     const t = kind === 'group' && facts().totals.groups.get(id);
-    return elementRow({ id, kindIcon: iconOf(kind, el), title: kindTitle(kind, el), name: shownName(drawing.doc, kind, el, drawing.units()), value: value(kind, el), valueTitle: t ? countOf(t, drawing.units()) : undefined,
+    const first = kind === 'point' && el.symbol === 'none' ? membersOf(drawing.doc, id)[0] : null; // with no symbol, the row shows what it holds
+    return elementRow({ id, kindIcon: first ? iconOf(first.kind, first.el) : iconOf(kind, el), title: kindTitle(kind, el), name: shownName(drawing.doc, kind, el, drawing.units()), value: value(kind, el), valueTitle: t ? countOf(t, drawing.units()) : undefined,
       visible: el.visible, drawn: isShown(drawing.doc, el), selected: chosen(el) }, {
       select: (e) => clickRow(id, e), hover: (x) => drawing.setHover(x),
       visible: (v) => drawing.change((doc) => { find(doc, id).el.visible = v; }),
@@ -193,6 +198,7 @@ export function createTree(drawing, { facts, drawingPicked = () => {} }) {
   // a row selected: its element, or a shape with its point
   const chosen = (el) => isChosen(drawing.doc, drawing.sel, el);
   function mark() {
+    if ([...drawing.sel].some((id) => find(drawing.doc, id) && !list.querySelector(`[data-id="${CSS.escape(id)}"]`))) render(); // a shape selected under its point's fold: its row shown
     for (const row of list.querySelectorAll('.drow[data-id]')) row.classList.toggle('sel', chosen(find(drawing.doc, row.dataset.id)?.el ?? {}));
     if (drawing.sel.size) list.querySelector(`[data-id="${CSS.escape([...drawing.sel].at(-1))}"]`)?.scrollIntoView({ block: 'nearest' });
   }

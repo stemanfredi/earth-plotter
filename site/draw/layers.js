@@ -194,4 +194,4 @@ export const HIT_LAYERS = DRAW_LAYERS.filter((l) => /^draw-(symbol|polygon|path|
 export const MARK_LAYERS = DRAW_LAYERS.filter((l) => /^draw-(mark|handle|stalk|mid|lhandle)/.test(l.id)).map((l) => l.id);
 // what a press can grab, and the cursor over each
 export const HANDLE_LAYERS = ['draw-handle', 'draw-mid', 'draw-lhandle'];
-export const CURSOR = { move: 'move', point: 'grab', vertex: 'grab', mid: 'copy', radius: 'ew-resize', aperture: 'ew-resize', rotate: 'crosshair', anchor: 'grab' };
+export const CURSOR = { move: 'move', point: 'grab', vertex: 'grab', mid: 'copy', scale: 'nwse-resize', radius: 'ew-resize', aperture: 'ew-resize', rotate: 'crosshair', anchor: 'grab' };

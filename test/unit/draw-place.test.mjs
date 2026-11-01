@@ -25,9 +25,9 @@ test('a click of Point: a diamond; of Shape, with no size: a point and its shape
   const rings = placeKind(doc, C, 'rings', []);
   assert.deepEqual([rings.name, shapes(doc, rings).map(round), rings.properties], ['Rings 1', [[1000, null, null], [2000, null, 0], [3000, null, 0]], []]);
   const sec = placeKind(doc, C, 'sector', []);
-  assert.deepEqual([sec.name, shapes(doc, sec).map(round), shapes(doc, sec)[0].name, sec.properties], ['Sector 1', [[1000, 90, null]], 'Sector 1', []]);
+  assert.deepEqual([sec.name, shapes(doc, sec).map(round), shapes(doc, sec)[0].name, sec.properties], ['Sector 1', [[1000, 90, null]], '', []]);
   const r = placeKind(doc, C, 'rectangle', []), ring = shapes(doc, r)[0];
-  assert.deepEqual([r.name, r.bearing, r.properties, ring.closed, ring.name, ring.points.length], ['Rectangle 1', 0, [], true, 'Rectangle 1', 4]);
+  assert.deepEqual([r.name, r.bearing, r.properties, ring.closed, ring.name, ring.points.length], ['Rectangle 1', 0, [], true, '', 4]);
   sides(ring).forEach((v, k) => near(v, [100, 50][k], 1e-3, 'its sides'));
   near(inverse(C, ring.points[0]).azi, Math.atan2(25, 50) * 180 / Math.PI, 1e-6, 'facing north');
   const t = shapes(doc, placeKind(doc, C, 'triangle', []))[0];

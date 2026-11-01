@@ -90,7 +90,7 @@ presets) opens its kinds.
 |---|---|---|
 | Point | symbol, the user's presets without shapes | a point: a marker, the same size at every zoom |
 | Line | none | a line; closed on its first point, a closed line (an area) |
-| Shape | circle, rings, sector, rectangle, ellipse, triangle, three vehicles, the user's presets with shapes | a point with no symbol holding its shapes (circles, a sector, or a closed line: the outline's places), named after its kind; a preset of the user's keeps its properties and names itself in the property `preset` |
+| Shape | circle, rings, sector, rectangle, ellipse, triangle, three vehicles, the user's presets with shapes | a point with no symbol holding its shapes (circles, a sector, or a closed line: the outline's places), the point named after its kind, its shapes nameless (the tree shows them by kind and size); a preset of the user's keeps its properties and names itself in the property `preset` |
 | Label | none | a label |
 | Measure | none | nothing, unless kept (§3) |
 
@@ -147,9 +147,10 @@ the drawing.
   Properties, when on, show it, and on a phone it turns them on; a double-click renames it, as any row), how many elements it
   holds, and an eye for everything listed.
 - Then groups first, what is in each one step further in (a group folds), then the rest; a point's
-  shapes are rows under it, one step further in (a point with shapes folds). A row: the element's
-  icon, its name (else its kind and place), a short value (a point's shapes, a radius, length, area,
-  text, a group's count), its eye.
+  shapes are rows under it, one step further in, folded to start with: its caret opens them, and a
+  shape selected shows its row. A row: the element's icon (a point with no symbol: its first
+  shape's), its name (else its kind and place), a short value (a point's shapes, a radius, length,
+  area, text, a group's count), its eye.
 - **Order**: the first of a kind is drawn on top; between kinds the stacking is fixed (§7). A row
   dragged onto a group goes into it, a shape's onto a point into that point; onto a row of its kind,
   before it and into its group; onto another, into its group. Ctrl/⌘ ] and [ move the selection a
@@ -225,7 +226,9 @@ takes one unit by its largest value.
   element's: Fill (an opacity of 0: not filled), Stroke, Width, Dash, Show values (its radius).
 - **A shape's Point** (a circle or a line): the point holding it, and **Detach** (free where it
   is, in the point's group); free, **Attach to…** (the next click on a point makes that point hold
-  it). A shape held by a point has no In group: it is in its point's.
+  it). A shape held by a point has no In group: it is in its point's. It moves only with its point:
+  dragged or its Position typed, its point moves and carries every shape (Detach it to move it
+  apart); alone, its own handles still size it.
 - A **label**: its text, with value codes ({name}, {along}…: **+ name** and the like insert them) and,
   while it has any, what it **reads** under it; **Attached to** what and where (a line's point or leg,
   as its table numbers them), or its **Position**; **Along**, on
@@ -287,16 +290,20 @@ Copies) opens its form (a click on the map picks a root):
   several, the same squares at their key points, inert. What is not made yet is dashed and dark. Selecting never moves the
   map; Zoom to does.
 - **Clicks**, no tool on: the topmost element (Ctrl/⌘: added or removed, as in the tree); the same place again, the next one down. A shape a
-  point holds: the first click selects its point (with its shapes, marked with it), the next the
-  shape alone.
+  point holds: a click selects its point (with its shapes, marked with it); the same place again,
+  the shape alone.
 - **Dragging** a selected element moves it (several together) as one piece along the ellipsoid: each
   place keeps its distance and bearing from where it was grabbed, which stays under the pointer, so
   it keeps its size at any latitude. One undo step; Esc puts it back; positions snap (Alt: free;
-  Shift: 15° steps). A point moved or turned carries its shapes.
+  Shift: 15° steps). A point moved or turned carries its shapes; a shape it holds, dragged, moves it.
   **Handles**: a circle's radius; a sector's two ends and its stalk (its bearing); a point's stalk,
-  beyond its shapes (it turns them with it); a line's points (one attached to a point's centre moves
+  just beyond its shapes' front (it turns them with it); a line's points (one attached to a point's centre moves
   the point; another, dropped on something, attaches there) and a **+** halfway along a leg (a closed
-  line's last leg too); a label's text and, free or on a line, its point.
+  line's last leg too); a label's text and, free or on a line, its point. A point selected shows its
+  shapes' handles with its own. A shape a point holds is rigid: a place dragged resizes it, its form
+  kept and the place farthest from it staying put (a rectangle's opposite corner; Shift: its
+  proportions too), the point moving to stay its centre; no **+**. The point itself shows no dot
+  while it holds shapes.
 - **Display only** (never in lengths or exports): **Offset**, a line drawn beside itself (−50 to 50
   px, as QGIS offsets a line symbol; ⇉ in the tree). A point's symbol keeps its shapes found at any
   zoom: none is drawn larger than it is. Names collide
@@ -342,7 +349,8 @@ live in this browser only; **Download** › **Presets (JSON)** and **Open a file
 
 ## 10. Deleting, and drawings in this browser
 
-- Delete goes at once (Undo brings it back). A point takes its shapes with it. Lines attached to what
+- Delete goes at once (Undo brings it back). A point takes its shapes with it; a point with no
+  symbol goes with its last shape, as nothing of it would be left to see. Lines attached to what
   goes stay, their points free where they were; labels on it stay, free. A group with members asks first: the group only (what is
   in it goes to the group above), or everything in it.
 - Each drawing is saved as it changes, never sent anywhere; the open one comes back with the page.

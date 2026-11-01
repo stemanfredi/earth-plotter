@@ -119,19 +119,22 @@ test('selection and hover: a halo just outside, handles, a mark at the centre, n
   assert.deepEqual(f.filter((x) => !marks.includes(x)), drawFeatures(doc).features);
 });
 
-test('a point selected: its shapes with it (dots), a stalk beyond their reach turns it; a shape clicked again alone: its own handles', () => {
+test('a point selected: its shapes with it (dots) and their handles, a stalk beyond their front turns it; a shape clicked again alone: its own handles', () => {
   const doc = emptyDoc(0);
   const { point: p, shapes: [r] } = addShape(doc, [12, 40], 'rectangle', 500);
   const c = addCircle(doc, [12, 40], { groupId: p.id, radius: 2000, aperture: 40 });
   near(reachOf(doc, p), 2000, 1e-6, 'its reach: the sector\'s rim');
   const f = drawFeatures(doc, new Set([p.id]), null, { zoom: 14 }).features;
-  assert.deepEqual(f.filter((x) => x.properties.kind === 'handle').map((x) => [x.properties.id, x.properties.role]), [[p.id, 'rotate']]);
-  const stalk = f.find((x) => x.properties.kind === 'stalk').geometry.coordinates;
-  near(inverse([12, 40], stalk[0]).s, 2000, 1e-6, 'from its reach');
+  assert.deepEqual(f.filter((x) => x.properties.kind === 'handle').map((x) => [x.properties.id, x.properties.role]),
+    [[c.id, 'radius'], [c.id, 'aperture'], [c.id, 'aperture'], [c.id, 'rotate'], [r.id, 'scale'], [r.id, 'scale'], [r.id, 'scale'], [r.id, 'scale'], [p.id, 'rotate']]); // its shapes' handles with its stalk
+  const stalk = f.filter((x) => x.properties.kind === 'stalk').at(-1).geometry.coordinates;
+  near(inverse([12, 40], stalk[0]).s, 2000, 1e-6, 'from its front: the sector\'s rim');
   near(inverse([12, 40], stalk[1]).azi, 0, 1e-6, 'along its bearing');
   assert.deepEqual([r.id, c.id].map((id) => f.filter((x) => x.properties.id === id && x.properties.kind === 'dot').length), [4, 3]); // its shapes marked with it
   const alone = drawFeatures(doc, new Set([r.id]), null, { zoom: 14 }).features;
-  assert.deepEqual(alone.filter((x) => x.properties.kind === 'handle').map((x) => x.properties.role), ['vertex', 'vertex', 'vertex', 'vertex']); // a line's places
+  assert.deepEqual(alone.filter((x) => x.properties.kind === 'handle').map((x) => x.properties.role), ['scale', 'scale', 'scale', 'scale']); // a held line is rigid: its places scale it
+  assert.equal(alone.filter((x) => x.properties.kind === 'mid').length, 0, 'no + on a held line');
+  assert.equal(f.filter((x) => x.properties.id === p.id && ['symbol', 'dot', 'ring'].includes(x.properties.kind)).length, 0, 'a point holding shapes shows no dot and no ring');
   const sec = drawFeatures(doc, new Set([c.id]), null, { zoom: 14 }).features.filter((x) => x.properties.kind === 'handle');
   assert.deepEqual(sec.map((x) => x.properties.role), ['radius', 'aperture', 'aperture', 'rotate']); // a sector alone: its own stalk
   assert.equal(drawFeatures(doc, new Set([addPoint(doc, [13, 40]).id]), null, { zoom: 14 }).features.filter((x) => x.properties.kind === 'stalk').length, 0); // no shapes: nothing to turn
@@ -307,7 +310,7 @@ test('the parts: what never depends on the zoom, what may, the marks; only those
   const p = drawParts(doc, new Set(['n']), null, { zoom: 10 });
   assert.deepEqual(kindsOf(p.base), [['c', 'ring'], ['q', 'polygon'], ['n', 'symbol']]);
   assert.deepEqual(kindsOf(p.zoom), [['s', 'linehit'], ['s', 'path'], ['q', 'linehit'], ['q', 'path']]);
-  assert.deepEqual(p.marks.map((x) => x.properties.kind), ['dot', 'dot', 'dot', 'dot', 'sel', 'stalk', 'handle']); // its circle with it; its ring; the stalk; no band
+  assert.deepEqual(p.marks.map((x) => x.properties.kind), ['dot', 'dot', 'dot', 'dot', 'handle', 'handle', 'handle', 'handle', 'sel', 'stalk', 'handle']); // its circle with it, its radius handles too; its ring; the stalk; no band
   const only = drawParts(doc, new Set(['n']), null, { zoom: 10 }, { zoom: true });
   assert.deepEqual([only.base, only.marks], [[], []]);
   assert.deepEqual(only.zoom, p.zoom);

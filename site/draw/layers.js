@@ -8,6 +8,8 @@ import { INK } from './document.js';
 // what a click would hit at full; the handles white, edged in the UI's ink (INK); what is not made yet
 // (being drawn, a form's preview) dashed, in that ink. Measurements keep magenta: content.
 const MARK = '#ffc400', WHITE = '#ffffff', HOVER = 0.7; // HOVER: every hover mark's strength (band, ring, label)
+const FREE = '#5d6d79'; // a snap that attaches nothing: the place only put there (the guides' grey)
+const SNAPPED = ['case', ['==', ['get', 'free'], 1], FREE, MARK]; // a snap mark: attaches, or not
 const HALO_W = 1.5; // the case of a text or a symbol on the map (names, symbols, labels, values, the + marks)
 
 // the symbols and the label box, added to the map once its style is loaded
@@ -139,16 +141,17 @@ export const DRAW_LAYERS = [
     paint: { 'icon-color': MARK, 'icon-halo-color': WHITE, 'icon-halo-width': HALO_W } },
   // the line being drawn (Line tool)
   draftLayer('draw-draft', 'draft'),
-  // where a click or a drag snaps (snap.js): a ring on a vertex, a dot on an edge, a cross at a crossing
+  // where a click or a drag snaps (snap.js): a ring on a vertex, a dot on an edge, a cross at a crossing;
+  // in the marks' colour where a click attaches there, grey where it only puts its place there (free)
   { id: 'draw-snapto', type: 'circle', source: 'drawover', filter: ['in', ['get', 'kind'], ['literal', ['snapvertex', 'snapedge']]],
-    paint: { 'circle-radius': ['match', ['get', 'kind'], 'snapvertex', 8, 4], 'circle-color': MARK, 'circle-opacity': ['match', ['get', 'kind'], 'snapvertex', 0, 1],
-      'circle-stroke-color': ['match', ['get', 'kind'], 'snapvertex', MARK, WHITE], 'circle-stroke-width': ['match', ['get', 'kind'], 'snapvertex', 3, 1.5] } },
+    paint: { 'circle-radius': ['match', ['get', 'kind'], 'snapvertex', 8, 4], 'circle-color': SNAPPED, 'circle-opacity': ['match', ['get', 'kind'], 'snapvertex', 0, 1],
+      'circle-stroke-color': ['match', ['get', 'kind'], 'snapvertex', SNAPPED, WHITE], 'circle-stroke-width': ['match', ['get', 'kind'], 'snapvertex', 3, 1.5] } },
   // the place of the row current in Properties' table (a line's point): ringed, as a
   // mark (not in the exports)
   ringLayer('draw-mark-place', 'place'),
   { id: 'draw-snapcross', type: 'symbol', source: 'drawover', filter: ofKind('snapcrossing'),
     layout: { 'icon-image': 'draw-plus', 'icon-rotate': 45, 'icon-size': 1.4, 'icon-allow-overlap': true, 'icon-ignore-placement': true },
-    paint: { 'icon-color': MARK, 'icon-halo-color': WHITE, 'icon-halo-width': 2 } }, // a wider case than HALO_W: the cross lies on the two lines that cross
+    paint: { 'icon-color': SNAPPED, 'icon-halo-color': WHITE, 'icon-halo-width': 2 } }, // a wider case than HALO_W: the cross lies on the two lines that cross
   { id: 'draw-draftpt', type: 'circle', source: 'drawover', filter: ofKind('draftpt'),
     paint: { 'circle-radius': 3.5, 'circle-color': WHITE, 'circle-stroke-color': INK, 'circle-stroke-width': 1.5 } },
   // names on the map (features.js): along lines, beside points, at shapes' centres; MapLibre leaves out

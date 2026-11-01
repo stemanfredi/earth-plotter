@@ -21,7 +21,8 @@ const F = (id, type, coordinates, charts, props = {}) => ({ type: 'Feature', id,
 const collection = (features, charts = { format: FORMAT, version: VERSION }) => ({ type: 'FeatureCollection', ...(charts ? { charts } : {}), features });
 const read = (o, known = null) => parse(typeof o === 'string' ? o : JSON.stringify(o), known, NOW);
 const VIEW = { center: [12.5, 41.9], zoom: 7.25, bearing: 10, layers: [{ id: 'chart' }], data: null, units: 'nm', bearings: true }; // a view the scene's file carries
-const again = (doc, known = null) => parse(serialise(doc, VIEW), known, NOW);
+// written and read back, as the app would after a change (every point's shape in its frame)
+const again = (doc, known = null) => { d.frames(doc); return parse(serialise(doc, VIEW), known, NOW); };
 // a label pointing at r: a target (with its position, else where the target is), or { position } free
 const labelAt = (doc, r) => addLabel(doc, r.position ?? resolve(doc, r).position, r.element ? r : null);
 
@@ -30,8 +31,11 @@ const labelAt = (doc, r) => addLabel(doc, r.position ?? resolve(doc, r).position
 const r = (n) => (v) => (typeof v === 'number' ? +v.toFixed(n) : v);
 const ROUND = { position: 7, pos: 7, center: 7, points: 7,
   radius: 3, width: 3, at: 6, offset: 3, opacity: 3, bearing: 4, aperture: 4, zoom: 4 };
+// a shape's frame as the file keeps it: degrees to 7 decimals, metres to 4
+const roundFrame = (f) => ({ places: f.places.map(([a, m]) => [r(7)(a) || 0, r(4)(m)]), ...(f.turn != null ? { turn: r(4)(f.turn) } : {}) }); // as JSON writes it: no -0
 function rounded(x, n = null) {
   if (Array.isArray(x)) return x.map((y) => rounded(y, n));
+  if (x && typeof x === 'object' && x.frame) return { ...rounded({ ...x, frame: null }, n), frame: roundFrame(x.frame) };
   if (x && typeof x === 'object') return Object.fromEntries(Object.entries(x).map(([k, v]) => [k, rounded(v, k in ROUND ? ROUND[k] : n)]));
   return n === null ? x : r(n)(x);
 }
@@ -71,13 +75,16 @@ function sample() {
   labelAt(doc, { position: [12, 40], element: doc.circles[0].id }); // on a circle's centre
   makeGroup(doc, [b.id]);
   // measurements: guides showing their values
-  const m = () => ({ guide: true, look: { text: { values: true } } });
+  const m = () => ({ guide: true, measure: true, look: { text: { values: true } } });
   addCircle(doc, [12, 41], { name: 'Ring 1', radius: 500, ...m() });
   lineFrom(doc, [12, 41], [[12.5, 41]], [13, 41], { name: 'Distance 1', ...m() });
   addRing(doc, [[12, 41], [12.5, 41], [13, 42]], m());
   doc.look = { offset: 2 }; // the drawing's
   for (const l of doc.lines) l.points = l.points.map((q) => q.map(r(7))); // as the file writes them
   refreshAttached(doc); // each reference where it points
+  for (const x of [...doc.circles, ...doc.lines]) delete x.frame; // made again from the places as rounded
+  d.frames(doc); // every point's shape in its frame, as the file writes it
+  for (const x of [...doc.circles, ...doc.lines]) if (x.frame) x.frame = roundFrame(x.frame);
   return doc;
 }
 
@@ -135,6 +142,11 @@ test('round trip: values come back rounded as the file writes them', () => {
   assert.deepEqual(at, resolve(back, linkFrom(back, back.labels[0].id).to).position);
   assert.ok(Math.abs(at[0] - doc.labels[0].position[0]) < 1e-6 && Math.abs(at[1] - doc.labels[0].position[1]) < 1e-6);
   want.labels[0].position = at;
+  // the circle's frame: about its point as the file writes it (its bearing to 4 decimals), so that it
+  // reads back where it was written, 4,600 km from its point
+  assert.deepEqual(back.circles[0].position, want.circles[0].position, 'the circle where it was written');
+  assert.ok(Math.abs(back.circles[0].frame.places[0][1] - doc.circles[0].frame.places[0][1]) < 1, 'its distance from its point');
+  want.circles[0].frame = back.circles[0].frame;
   assert.deepEqual(back, want);
   assert.equal(back.lines[0].points.at(-1)[0], back.points[0].position[0]); // the linked end where its point is
 });
@@ -327,7 +339,7 @@ test('the app\'s own written back as text by another tool is read again', () => 
   assert.deepEqual(back, doc);
 });
 
-test('links read: a place that disagrees with its target moves to it (counted); one from or to what is not there (or no such vertex), to its own element, or from a place already linked, is dropped', () => {
+test('links read: a place that disagrees with its target moves to it (counted); one from or to what is not there (or no such vertex), to its own element, from a place already linked, or from a line\'s place to what is neither a point nor a point\'s shape, is dropped', () => {
   const L = (from, to) => ({ from, to });
   const { doc, report } = read(collection([
     F('a', 'Point', [0, 0], { kind: 'point' }), F('b', 'Point', [1, 0], { kind: 'point' }), F('ar', 'Polygon', [[[0, 0], [1, 0], [1, 1], [0, 0]]], { kind: 'area' }),
@@ -336,15 +348,19 @@ test('links read: a place that disagrees with its target moves to it (counted); 
     F('s3', 'LineString', [[3, 3], [2, 2]], { kind: 'line' }),
     F('s4', 'LineString', [[3, 3], [2, 2]], { kind: 'line' }),
     F('s5', 'LineString', [[4, 4], [5, 5]], { kind: 'line' }),
-  ], { links: [L(['s1', 0], { element: 'a' }), L(['s1', 2], 'b'), L(['s1', 1], { element: 'ar', vertex: 2 }), // a bare ID: its centre; a middle place as an end
+    F('t', 'Point', [9, 9], { kind: 'label' }),
+  ], { links: [L(['s1', 0], { element: 'a' }), L(['s1', 2], 'b'), L(['s1', 1], { element: 'ar', vertex: 2 }), // a bare ID: its point; a vertex: not a point
     L(['s2', 0], 'a'), L(['s2', 1], { element: 'ar' }), L(['s3', 0], 'gone'), L(['s4', 1], { element: 'ar', vertex: 3 }),
-    L(['s5', 0], { element: 's5', vertex: 1 }), L(['s5', 2], 'a'), L(['s1', 0], 'b'), L(['a', 0], 'b'), 'junk'] }));
+    L(['s5', 0], { element: 's5', vertex: 1 }), L(['s5', 2], 'a'), L(['s1', 0], 'b'), L(['a', 0], 'b'), 'junk',
+    L(['t', 0], { element: 'ar', vertex: 2 })] }));
   const [, s1, s2, s3, s4, s5] = doc.lines;
-  assert.deepEqual([0, 1, 2].map((i) => placeIn(doc, s1, i)), [{ position: [0, 0], to: { element: 'a' } }, { position: [1, 1], to: { element: 'ar', vertex: 2 } }, { position: [1, 0], to: { element: 'b' } }]);
-  assert.deepEqual([placeIn(doc, s2, 0).to, placeIn(doc, s2, 1)], [{ element: 'a' }, { position: d.centroid(doc.lines[0].points), to: { element: 'ar' } }]);
+  assert.deepEqual([0, 1, 2].map((i) => placeIn(doc, s1, i)), [{ position: [0, 0], to: { element: 'a' } }, { position: [0.5, 0.5], to: null }, { position: [1, 0], to: { element: 'b' } }]);
+  assert.deepEqual([placeIn(doc, s2, 0).to, placeIn(doc, s2, 1)], [{ element: 'a' }, { position: [2, 2], to: null }]);
   assert.deepEqual([placeIn(doc, s3, 0), placeIn(doc, s4, 1), placeIn(doc, s5, 0)], [{ position: [3, 3], to: null }, { position: [2, 2], to: null }, { position: [4, 4], to: null }]);
-  assert.equal(doc.links.length, 5);
-  warned(report, /^4 places moved to what they are linked to/);
+  assert.deepEqual(placeIn(doc, doc.labels[0]), { position: [1, 1], to: { element: 'ar', vertex: 2 } }); // a label: any target
+  assert.equal(doc.links.length, 4);
+  warned(report, /^3 places moved to what they are linked to/);
+  warned(report, /link from a line's place to ar, which is neither a point nor a point's shape: dropped/);
   warned(report, /link to ar, which is not here \(or has no such vertex or edge\): dropped/);
   warned(report, /link to gone, which is not here/);
   warned(report, /link to its own element: dropped/);
@@ -353,18 +369,13 @@ test('links read: a place that disagrees with its target moves to it (counted); 
   warned(report, /link from a place already linked: dropped/);
 });
 
-test('links in a chain, listed last to first: each place where the one it is on is, however long the chain', () => {
-  // s4's end on s3's last point, s3's on s2's, s2's on s1's: the file's ends all elsewhere
-  const on = (id, to) => ({ from: [id, 1], to: { element: to, vertex: 1 } });
+test('links read in one pass: a label on a line\'s place listed before that place\'s link, where the place goes', () => {
   const { doc, report } = read(collection([
-    F('s4', 'LineString', [[4, 0], [9, 9]], { kind: 'line' }), F('s3', 'LineString', [[3, 0], [8, 8]], { kind: 'line' }),
-    F('s2', 'LineString', [[2, 0], [7, 7]], { kind: 'line' }), F('s1', 'LineString', [[1, 0], [1, 1]], { kind: 'line' }),
-    F('a', 'Point', [0, 5], { kind: 'label' }),
-  ], { links: [on('s4', 's3'), on('s3', 's2'), on('s2', 's1'), { from: ['a', 0], to: 'a' }] }));
-  assert.deepEqual(doc.lines.map((s) => s.points[1]), [[1, 1], [1, 1], [1, 1], [1, 1]]);
-  warned(report, /^3 places moved/);
-  warned(report, /link to its own element: dropped/);
-  assert.deepEqual(placeIn(doc, doc.labels[0]), { position: [0, 5], to: null });
+    F('p', 'Point', [5, 5], { kind: 'point' }), F('s', 'LineString', [[1, 0], [2, 2]], { kind: 'line' }),
+    F('s2', 'LineString', [[3, 0], [8, 8]], { kind: 'line' }), F('t', 'Point', [0, 0], { kind: 'label' }),
+  ], { links: [{ from: ['t', 0], to: { element: 's', vertex: 1 } }, { from: ['s', 1], to: 'p' }, { from: ['s2', 1], to: { element: 's', vertex: 1 } }] }));
+  assert.deepEqual([doc.lines[0].points[1], doc.labels[0].position, doc.lines[1].points[1]], [[5, 5], [5, 5], [8, 8]]);
+  warned(report, /link from a line's place to s, which is neither a point nor a point's shape: dropped/); // no chains of lines: through a point
 });
 
 test('labels: on an element, along a line, on a vertex, or free; checked; written back', () => {
@@ -431,7 +442,7 @@ test('groups in the file: a group holds nothing of its own; a point holds shapes
   for (const re of [/point p: group m not found; now standalone/, /label t: group c not found/, /group nowhere not found; now standalone/]) warned(report, re);
   assert.ok(!('parts' in toFile(doc).charts.groups[0]) && !('radii' in toFile(doc).charts.groups[0]));
   assert.deepEqual(toFile(doc).features.find((x) => x.id === 'c').properties.charts.group, 'm'); // its point
-  assert.deepEqual(again(doc).doc, doc);
+  assert.deepEqual(again(doc).doc, rounded(doc)); // its shapes' frames as the file keeps them
 });
 
 test('view: layers, variants and data checked against what the app offers', () => {
@@ -467,7 +478,7 @@ test('view: data is always written ({} when nothing is chosen), so that it is re
 test('rules (distribute, connect) are kept as records; defaults left out; an unknown kind or a distribution along nothing skipped', () => {
   const { doc, report } = read(collection([], { rules: [
     { id: 'a1', kind: 'distribute', groupId: 'g1', copiesId: 'g2', along: { element: 's', part: 2 }, spacing: 1000, side: 'alternate', radius: 250, preset: 'preset:mine', copy: { symbol: 'square' },
-      points: [{ pointId: 'n1', t: 0.5, pos: [1, 2] }] },
+      pointIds: ['n1', 'bad id!', 7] },
     { id: 'a2', kind: 'distribute' }, { id: 'a3', kind: 'distribute', along: { element: 's' } }, { id: 'a4', kind: 'distribute', along: { element: 's', part: 1.5 } },
     { id: 'a5', kind: 'distribute', along: {} },
     { id: 'c1', kind: 'connect', groupId: 'g3', groupSize: 3, roots: [{ id: 'n9' }, { id: 'n8', weight: 2 }, 'x'], pointIds: ['n1'], created: ['gone'] }, { id: 'c1', kind: 'connect' },
@@ -477,16 +488,16 @@ test('rules (distribute, connect) are kept as records; defaults left out; an unk
   assert.deepEqual(distributions(doc).map((x) => x.id), ['a1', 'a3', 'a4']); // a2, a5 are along nothing
   assert.deepEqual(report.skipped.filter((x) => x.kind === 'rule').map((x) => x.id), ['a2', 'a5', 'c1', 'x1', 'x2']);
   assert.ok(report.skipped.some((x) => x.id === 'x1' && /unknown kind "spiral"/.test(x.reason)));
-  assert.deepEqual([a.kind, a.groupId, a.copiesId, a.along, a.spacing, a.side, a.offset, a.count, a.radius, a.aperture, a.preset, a.points[0].left],
-    ['distribute', 'g1', 'g2', { element: 's' }, 1000, 'alternate', 0, null, 250, null, 'preset:mine', false]); // what it is along: an element, nothing else
+  assert.deepEqual([a.kind, a.groupId, a.copiesId, a.along, a.spacing, a.side, a.offset, a.count, a.radius, a.aperture, a.preset, a.pointIds],
+    ['distribute', 'g1', 'g2', { element: 's' }, 1000, 'alternate', 0, null, 250, null, 'preset:mine', ['n1']]); // what it is along: an element, nothing else
   assert.ok(!('copy' in a)); // its copies are in the drawing: no copy kept
   assert.deepEqual(distributions(doc).slice(1).map((x) => [x.groupId, x.copiesId, x.preset]), [[null, null, null], [null, null, null]]);
   assert.equal(connections(doc).length, 1); // the second c1: its ID used
-  assert.deepEqual([c.kind, c.groupId, c.pattern, c.groupSize, c.created, c.hubs, c.roots], ['connect', 'g3', 'tree', 3, ['gone'], [], [{ id: 'n9', weight: 1 }, { id: 'n8', weight: 2 }]]); // deleted since: not an error; a weight of 1 unless given
+  assert.deepEqual([c.kind, c.groupId, c.pattern, c.groupSize, c.created, 'hubs' in c, c.roots], ['connect', 'g3', 'tree', 3, ['gone'], false, [{ id: 'n9', weight: 1 }, { id: 'n8', weight: 2 }]]); // deleted since: not an error; a weight of 1 unless given
   const f = toFile(doc).charts;
   assert.deepEqual(f.rules[3], { id: 'c1', kind: 'connect', groupId: 'g3', groupSize: 3, roots: [{ id: 'n9' }, { id: 'n8', weight: 2 }], pointIds: ['n1'], created: ['gone'] });
   assert.deepEqual(f.rules[0], { id: 'a1', kind: 'distribute', groupId: 'g1', copiesId: 'g2', along: { element: 's' }, spacing: 1000, side: 'alternate', radius: 250,
-    preset: 'preset:mine', points: [{ pointId: 'n1', t: 0.5, pos: [1, 2] }] });
+    preset: 'preset:mine', pointIds: ['n1'] });
   assert.deepEqual(f.rules[1], { id: 'a3', kind: 'distribute', along: { element: 's' } });
   assert.deepEqual(again(doc).doc, doc);
 });
@@ -647,17 +658,19 @@ test('split a line at a place: a dot carrying the place\'s name, both lines link
 });
 
 test('measurements: guides showing their values (a line, an area, a circle with its radius), drawn as while measured', () => {
-  const doc = emptyDoc(NOW), m = () => ({ guide: true, look: { text: { values: true } } });
+  const doc = emptyDoc(NOW), m = () => ({ guide: true, measure: true, look: { text: { values: true } } });
   const r1 = lineFrom(doc, [12, 44], [[12.5, 44.2]], [13, 44], { ...m(), name: 'Distance 1' });
   const c = addCircle(doc, [14, 40], { ...m(), radius: 5000 });
   const a = addRing(doc, [[12, 44], [13, 44], [12.5, 45]], m());
   assert.ok([r1, c, a].every((x) => isMeasurement(doc, x)));
-  assert.ok(!isMeasurement(doc, addCircle(doc, [0, 0], { look: { text: { values: true } } })) && !isMeasurement(doc, addCircle(doc, [0, 0], { guide: true })));
+  const shows = addCircle(doc, [0, 0], { guide: true, look: { text: { values: true } } }); // a guide showing its values: a guide still
+  assert.ok(!isMeasurement(doc, addCircle(doc, [0, 0], { look: { text: { values: true } } })) && !isMeasurement(doc, addCircle(doc, [0, 0], { guide: true })) && !isMeasurement(doc, shows));
+  assert.deepEqual(styleOf(doc, shows), GUIDE_STYLE, 'its values on: its colour unchanged');
   assert.deepEqual(styleOf(doc, r1), d.MEASURE_STYLE); // drawn as while it was measured
   r1.look.stroke = { color: '#000000' };
   assert.deepEqual(styleOf(doc, r1).stroke, { ...d.MEASURE_STYLE.stroke, color: '#000000' });
-  r1.look.text.values = false; // a guide not showing its values: faint, dashed
-  assert.deepEqual(styleOf(doc, r1).stroke, { ...GUIDE_STYLE.stroke, color: '#000000' });
+  r1.look.text.values = false; // its values off: a measurement still, its colour its own
+  assert.deepEqual(styleOf(doc, r1).stroke, { ...d.MEASURE_STYLE.stroke, color: '#000000' });
   r1.look.text.values = true;
   assert.equal(nextName(doc, 'line', 'Distance'), 'Distance 2');
   assert.deepEqual(again(doc).doc, doc);
@@ -810,7 +823,7 @@ test('nested groups in the file: the parent kept; one missing or making a loop p
 test('the look: the drawing\'s defaults, then its own (a group adds nothing); a measurement keeps its name off; written where each belongs', () => {
   const doc = emptyDoc(NOW);
   const a = addPoint(doc, [0, 0]), b = addPoint(doc, [1, 0]);
-  const m = lineFrom(doc, [0, 0], [], [1, 1], { guide: true, look: { text: { values: true } } });
+  const m = lineFrom(doc, [0, 0], [], [1, 1], { guide: true, measure: true, look: { text: { values: true } } });
   const s = lineFrom(doc, a.id, [], b.id);
   doc.look = { text: { name: true }, offset: 4 };
   assert.deepEqual([d.lookOf(doc, a).text.name, d.lookOf(doc, m).text.name, offsetOf(doc, s)], [true, false, 4]);
@@ -945,4 +958,66 @@ test('reading: find, groupsOf, membersOf and holderOf answer as a scan does, the
   assert.equal(D.reading(doc, () => D.find(doc, 'nothing')), null);
   D.addPoint(doc, [13, 40]); // an edit after: seen, the index not kept
   assert.equal(ask().length, scanned.length + 1);
+});
+
+// ---- a point's shapes in its frame ------------------------------------------------------------------
+
+test('a point\'s shape in its frame: turned a thousand times and moved round the world, exactly where its frame puts it', async () => {
+  const { inverse, destination } = await import('../../site/geodesy.js');
+  const doc = d.emptyDoc(NOW);
+  const { point: p, shapes: [sh] } = addShape(doc, [12, 41], 'rectangle', 500);
+  d.frames(doc);
+  const frame = structuredClone(sh.frame);
+  for (let i = 0; i < 1000; i++) d.carry(doc, p, destination(p.position, 7 * i, 900), p.bearing + 13);
+  assert.deepEqual(sh.frame, frame, 'the frame never changes');
+  sh.frame.places.forEach(([a, m], i) => {
+    const g = inverse(p.position, sh.points[i]);
+    assert.ok(Math.abs(g.s - m) < 1e-6 && Math.abs((((g.azi - p.bearing - a) % 360) + 540) % 360 - 180) < 1e-9, `place ${i}`);
+  });
+});
+
+test('a point\'s shape pasted far away: its frame copied, so it is the same shape about the copy\'s point', async () => {
+  const { paste, clipOf } = await import('../../site/draw/clipboard.js');
+  const { moveAbout } = await import('../../site/geodesy.js');
+  const doc = d.emptyDoc(NOW);
+  const { point: p, shapes: [sh] } = addShape(doc, [12, 0], 'rectangle', 5000);
+  d.carry(doc, p, p.position, 30);
+  const made = paste(doc, clipOf(doc, [p.id]), moveAbout([12, 0], [12, 70])), copy = made.find((x) => x.kind === 'line').el;
+  assert.deepEqual(copy.frame, sh.frame);
+  const q = made.find((x) => x.kind === 'point').el;
+  assert.deepEqual(copy.points, d.framed(q, copy).places);
+});
+
+test('a point\'s shape: a frame once a point holds it, none once free; Attach to… a point puts it in that point\'s frame where it is', () => {
+  const doc = d.emptyDoc(NOW);
+  const p = d.addPoint(doc, [12, 41]), c = d.addCircle(doc, [12.01, 41], { radius: 300, aperture: 60, bearing: 100 });
+  d.setGroup(doc, c.id, p.id);
+  assert.equal(c.frame.places.length, 1);
+  assert.ok(Math.abs(c.frame.places[0][0] - 90) < 0.01 && Math.abs(c.frame.turn - 100) < 1e-9);
+  assert.deepEqual(c.position, [12.01, 41], 'where it was');
+  d.carry(doc, p, p.position, 90); // turned: the circle about the point, its sector turned as much
+  assert.ok(Math.abs(c.bearing - 190) < 1e-9);
+  d.setGroup(doc, c.id, null);
+  assert.equal('frame' in c, false);
+  const l = addRing(doc, [[12, 41.01], [12.01, 41.01], [12.01, 41.02]], { groupId: p.id });
+  d.frames(doc); // after any change
+  assert.equal(l.frame.places.length, 3);
+});
+
+test('read: a point\'s shape where its frame says; moved in another tool, it goes back (counted); no frame or a broken one, made from where it is', () => {
+  const doc = d.emptyDoc(NOW);
+  const { point: p, shapes: [sh] } = addShape(doc, [12, 41], 'rectangle', 500);
+  d.carry(doc, p, p.position, 20);
+  const raw = JSON.parse(serialise(doc));
+  const f = raw.features.find((x) => x.id === sh.id);
+  f.geometry.coordinates[0] = f.geometry.coordinates[0].map(([x, y]) => [x + 0.001, y]); // moved in a GIS
+  const back = read(raw);
+  warned(back.report, /^4 places of shapes moved to where their points hold them/);
+  assert.ok(back.doc.lines[0].points.every((q, i) => Math.abs(q[0] - sh.points[i][0]) < 1e-6 && Math.abs(q[1] - sh.points[i][1]) < 1e-6));
+  delete f.properties.charts.frame; // a file by hand: where it is
+  const plain = read(raw);
+  assert.deepEqual(plain.report.warnings, []);
+  assert.equal(plain.doc.lines[0].frame.places.length, 4);
+  f.properties.charts.frame = { places: [[0, 1]] }; // too few places
+  warned(read(raw).report, /frame not read; made from where it is/);
 });

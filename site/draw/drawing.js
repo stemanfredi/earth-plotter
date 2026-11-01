@@ -2,7 +2,7 @@
 // layers of layers.js from features.js and labels.js, with the placing tools, clicks, hit testing,
 // dragging and the box (Shift-drag); saved in this browser as it changes (saving.js).
 
-import { emptyDoc, addLine, addLabel, find, elements, positionsIn, isShown, nextName, KIND, LABEL_OFFSET, MAX_LABEL_OFFSET, lookOf, setLook, offsetOf, MAX_RADIUS, fewestPlaces, linkFrom, setLink, carry, holderOf, canHold, setGroup, moveElements, isChosen, ringOf, drawnOf } from './document.js';
+import { emptyDoc, addLine, addLabel, find, elements, positionsIn, isShown, nextName, KIND, LABEL_OFFSET, MAX_LABEL_OFFSET, lookOf, setLook, offsetOf, MAX_RADIUS, fewestPlaces, linkFrom, setLink, carry, holderOf, canHold, setGroup, moveElements, isChosen, ringOf, drawnOf, refit } from './document.js';
 import { typing } from '../dom.js';
 import { placeKind, placeBox, build, BOX } from './place.js';
 import { norm360 } from '../geo.js';
@@ -16,7 +16,7 @@ import { lineTrace, nearestAlong } from './lines.js';
 import { labelFeatures } from './labels.js';
 import { inverse, destination, moveAbout } from '../geodesy.js';
 import { snapAt, stepped, neighbours, RADIUS as SNAP_RADIUS } from './snap.js';
-import { attachTo, insertPlace, deletePlace, refNear, lineRef, resolve } from './attach.js';
+import { tieTo, tieable, insertPlace, deletePlace, refNear, lineRef, resolve } from './attach.js';
 import { clipOf, paste, centreOf } from './clipboard.js';
 import { radiusTo, bearingTo, sectorEdgeTo, scaledPlaces } from './drag.js';
 
@@ -126,7 +126,7 @@ export class Drawing extends DrawStore {
       for (const q of this.previewPts || []) over.push({ type: 'Feature', properties: { kind: 'ghost' }, geometry: { type: 'Point', coordinates: q } });
       for (const q of this.picked || []) over.push({ type: 'Feature', properties: { kind: 'pick' }, geometry: { type: 'Point', coordinates: q } });
       // where a click or a drag would snap: a ring on a vertex, a cross at a crossing, a dot on an edge
-      if (this.snapMark) over.push({ type: 'Feature', properties: { kind: `snap${this.snapMark.kind}` }, geometry: { type: 'Point', coordinates: this.snapMark.position } });
+      if (this.snapMark) over.push({ type: 'Feature', properties: { kind: `snap${this.snapMark.kind}`, free: this.snapMark.free ? 1 : 0 }, geometry: { type: 'Point', coordinates: this.snapMark.position } });
       // the place current (a line's point): ringed
       const pm = this.placeAt();
       if (pm) over.push({ type: 'Feature', properties: { kind: 'place' }, geometry: { type: 'Point', coordinates: pm } });
@@ -178,15 +178,15 @@ export class Drawing extends DrawStore {
     }
     if (this.repointing) { // a place linked to what is clicked (its inspector's Attach to…)
       const { id, index } = this.repointing, label = find(this.doc, id)?.kind === 'label';
-      const r = label ? this.anchorFor(e.point, p) : this.snapFor(e.point, e.originalEvent, { exclude: new Set([id]) });
+      const r = label ? this.anchorFor(e.point, p) : this.snapFor(e.point, e.originalEvent, { exclude: new Set([id]), ties: true });
       this.cancelRepoint();
-      if (!r.to) { note('Nothing there to attach to'); return this.onChange('sel'); } // a miss: the place stays where it is
+      if (!(label ? r.to : tieable(this.doc, r.to) && !holderOf(this.doc, find(this.doc, id)?.el))) { note('Nothing there to attach to'); return this.onChange('sel'); } // a miss (or a point's shape, whose places are tied to nothing): the place stays where it is
       this.change((doc) => {
         const x = find(doc, id);
         if (!x) return;
         // free text set on an element: its text moves off it, with an arrow
         if (label && r.to && !x.el.offset[0] && !x.el.offset[1]) { x.el.offset = [...LABEL_OFFSET]; if (x.el.leader === 'none') x.el.leader = 'arrow'; }
-        this.putPlace(doc, x, index, label ? r : { position: r.position, to: attachTo(doc, r.to) });
+        this.putPlace(doc, x, index, label ? r : { position: r.position, to: tieTo(doc, r) });
       });
       return;
     }
@@ -207,8 +207,8 @@ export class Drawing extends DrawStore {
   pointer(e) {
     this.lastPoint = e.point; // where a paste goes
     if (['line', 'measure', 'sector'].includes(this.tool) || (this.tool === 'shape' && this.draft)) {
-      let r = this.snapFor(e.point, e.originalEvent, this.tool === 'shape' ? {} : this.tool === 'sector' ? { from: this.draft?.pts[0] ?? null } : this.lastLeg()); // as on the click: a shape's size, Shift steps nothing; a sector's edges step round its centre
-      if (this.closesPath(e.point)) { r = { position: this.pathPoints()[0], to: null, kind: 'vertex' }; this.snapMark = { kind: 'vertex', position: r.position }; } // a click closes it
+      let r = this.snapFor(e.point, e.originalEvent, this.tool === 'shape' ? {} : this.tool === 'sector' ? { from: this.draft?.pts[0] ?? null } : { ...this.lastLeg(), ties: this.tool === 'line' }); // as on the click: a shape's size, Shift steps nothing; a sector's edges step round its centre
+      if (this.closesPath(e.point)) { r = { position: this.pathPoints()[0], to: null, kind: 'vertex' }; this.snapMark = { kind: 'vertex', position: r.position, free: false }; } // a click closes it
       this.cursor = { point: e.point, p: r.position, snap: r, shift: !!e.originalEvent?.shiftKey };
       this.renderMarks();
       if (this.draft) this.onChange('draft');
@@ -254,7 +254,7 @@ export class Drawing extends DrawStore {
   // its fewest); false when it cannot be (Delete takes the element)
   removePlace() {
     const c = this.currentPlace, x = c && this.sel.size === 1 && this.sel.has(c.id) && find(this.doc, c.id);
-    if (!x?.el.points?.[c.index] || x.el.points.length <= fewestPlaces(x.el)) return false;
+    if (!x?.el.points?.[c.index] || x.el.points.length <= fewestPlaces(x.el) || holderOf(this.doc, x.el)) return false; // a point's shape: rigid
     this.change((doc) => deletePlace(doc, c.id, c.index));
     return true;
   }
@@ -332,14 +332,16 @@ export class Drawing extends DrawStore {
   }
   // Snapping at a screen point: { position, to (what a line's place would attach to), kind }. e: the
   // event (Alt: as it is, nothing snapped or attached; Shift, drawing from `from`: in 15° steps from
-  // the leg before, prev → from); exclude: elements never snapped to. Marks the target on the map.
-  snapFor(point, e, { from = null, prev = null, exclude = new Set() } = {}) {
+  // the leg before, prev → from); exclude: elements never snapped to; ties: a line's place, attached
+  // where it snaps when it can be. Marks the target on the map: as a click there attaches (the mark's
+  // colour), or only puts the place there (grey: free).
+  snapFor(point, e, { from = null, prev = null, exclude = new Set(), ties = false } = {}) {
     const ll = this.map.unproject(point), raw = [ll.lng, ll.lat];
     let r;
     if (e?.altKey) r = { position: raw, to: null, kind: null }; // Alt: free
     else if (e?.shiftKey && from) r = { position: stepped(from, raw, prev), to: null, kind: null };
     else r = snapAt(this.doc, [point.x, point.y], this.view(), { ids: new Set(this.hitAt(point, SNAP_PX)), exclude, radius: SNAP_PX }) || { position: raw, to: null, kind: null };
-    this.snapMark = r.kind ? { kind: r.kind, position: r.position } : null;
+    this.snapMark = r.kind ? { kind: r.kind, position: r.position, free: !(ties && tieable(this.doc, r.to)) } : null;
     return r;
   }
   // the leg being drawn: where it starts, and the leg before it (for Shift)
@@ -366,15 +368,15 @@ export class Drawing extends DrawStore {
   // lengths shown as it is drawn), selected: saved and printed with it, deleted as anything else.
   lineClick(point, e) {
     if (this.closesPath(point)) return this.finishLine(true);
-    const r = this.snapFor(point, e, this.lastLeg()), p = r.position, to = this.tool === 'line' ? r.to : null;
+    const r = this.snapFor(point, e, { ...this.lastLeg(), ties: this.tool === 'line' }), p = r.position, to = this.tool === 'line' ? r.to : null;
     const d = (this.draft ??= { pts: [], tos: [] }), last = d.pts.at(-1); // a double-click's second click: the same place
     if (!last || last[0] !== p[0] || last[1] !== p[1]) { d.pts.push(p); d.tos.push(to ?? null); }
     this.renderMarks();
     this.onChange('draft');
   }
-  // the line made (closed: "Area n"; a measurement "Distance n"): its first and last places linked to
-  // what they snapped to (another line's free end: a point made there, once for both when it is the
-  // same one), one undo step; the tool stays on for the next
+  // the line made (closed: "Area n"; a measurement "Distance n"): its first and last places tied to
+  // the points they snapped to (on another line, a point shared there: attach.js tieTo), one undo
+  // step; the tool stays on for the next
   finishLine(closed = false) {
     const d = this.draft, measured = this.tool === 'measure';
     if (!(d?.pts.length > 1)) return; // no second point: nothing to make yet
@@ -383,9 +385,8 @@ export class Drawing extends DrawStore {
     this.change((doc) => {
       const name = closed ? 'Area' : measured ? 'Distance' : null;
       seg = addLine(doc, d.pts, { closed, ...(name ? { name: nextName(doc, 'line', name) } : {}), ...(measured ? guideWithValues() : {}) });
-      const [a, b] = [d.tos[0], d.tos.at(-1)], first = attachTo(doc, a);
-      setLink(doc, seg.id, 0, first);
-      setLink(doc, seg.id, d.pts.length - 1, a?.end && JSON.stringify(a) === JSON.stringify(b) ? first : attachTo(doc, b));
+      setLink(doc, seg.id, 0, tieTo(doc, { position: d.pts[0], to: d.tos[0] }));
+      setLink(doc, seg.id, d.pts.length - 1, tieTo(doc, { position: d.pts.at(-1), to: d.tos.at(-1) }));
     });
     this.select([seg.id]);
     this.onChange('draft');
@@ -648,27 +649,28 @@ export class Drawing extends DrawStore {
         carry(doc, n, this.snapped(pt, e, moveAbout(d.start, p)(n.position), { exclude: mine }).position);
         return;
       }
-      case 'vertex': { // a line's place, snapped; on something to attach to, linked there (Alt: free)
-        const i = +d.ref, r = this.snapped(pt, e, moveAbout(d.start, p)(el.points[i]), { exclude: new Set([el.id]), ...neighbours(el.points, i) });
-        this.putPlace(doc, { kind: 'line', el }, i, { position: r.position, to: attachTo(doc, r.to) });
+      case 'vertex': { // a line's place, snapped; on a point or another line, tied there (Alt: free)
+        const i = +d.ref, r = this.snapped(pt, e, moveAbout(d.start, p)(el.points[i]), { exclude: new Set([el.id]), ties: true, ...neighbours(el.points, i) });
+        this.putPlace(doc, { kind: 'line', el }, i, { position: r.position, to: tieTo(doc, r) });
         return;
       }
-      case 'scale': { // its places as drawn resized; their real ones that over its Scale, about the point's new place
+      case 'scale': { // its places as drawn resized; their real ones that over its Scale, about the point's new place; its frame from them
         const n = holderOf(doc, el), t = drawnOf(doc, el), r = scaledPlaces(n.position, n.bearing, el.points.map(t.f), +d.ref, p, e.shiftKey);
         carry(doc, n, r.centre); el.points = r.points.map((q) => { const g = inverse(r.centre, q); return g.s ? destination(r.centre, g.azi, g.s / t.k) : [...r.centre]; });
+        refit(doc, 'line', el);
         return;
       } // a held shape's place: the shape resized, the farthest place kept (Shift: its proportions too); its point moves to stay its centre, its other shapes with it
       case 'mid': { const q = this.snapped(pt, e, p, { exclude: new Set([el.id]) }).position; insertPlace(doc, el.id, +d.ref + 1, q); return; } // a place added halfway along a leg
       case 'radius': { const c = drawnCircle(doc, el); el.radius = Math.max(1, Math.min(MAX_RADIUS - 1, radiusTo(c.position, p) * el.radius / c.radius)); return; } // a circle's size only: a sector's ends and the stalk turn it
-      case 'aperture': Object.assign(el, sectorEdgeTo(drawnCircle(doc, el).position, el.bearing, el.aperture, +d.ref, p, snap)); return; // one end of a sector's arc: its aperture, and its bearing (its middle)
-      case 'rotate': if (el.radius) el.bearing = bearingTo(drawnCircle(doc, el).position, p, snap); else carry(doc, el, el.position, bearingTo(el.position, p, snap)); // a sector; a point, its shapes with it
+      case 'aperture': Object.assign(el, sectorEdgeTo(drawnCircle(doc, el).position, el.bearing, el.aperture, +d.ref, p, snap)); refit(doc, 'circle', el); return; // one end of a sector's arc: its aperture, and its bearing (its middle; a point's: its frame too)
+      case 'rotate': if (el.radius) { el.bearing = bearingTo(drawnCircle(doc, el).position, p, snap); refit(doc, 'circle', el); } else carry(doc, el, el.position, bearingTo(el.position, p, snap)); // a sector; a point, its shapes with it
     }
   }
   // a dragged position: snapped where the pointer is near something (snapFor), else where the drag
   // puts it (at: the grabbed thing moved as the pointer), in steps with Shift
   snapped(pt, e, at, opts) {
     if (e.shiftKey && opts.from) { this.snapMark = null; return { position: stepped(opts.from, at, opts.prev), to: null }; }
-    const r = this.snapFor(pt, e, { exclude: opts.exclude });
+    const r = this.snapFor(pt, e, { exclude: opts.exclude, ties: !!opts.ties });
     return r.kind ? r : { position: at, to: null };
   }
   // the selection moved with the pointer, about where it was grabbed (document.js moveElements: the
@@ -778,5 +780,5 @@ export class Drawing extends DrawStore {
 }
 
 const ALL_PARTS = { base: true, zoom: true, marks: true }, MARKS_ONLY = { marks: true };
-const guideWithValues = () => ({ guide: true, look: { text: { values: true } } }); // what Measure makes; how what is drawn shows its values
+const guideWithValues = () => ({ guide: true, measure: true, look: { text: { values: true } } }); // what Measure makes (a measurement: a guide of its own colour, its values shown); how what is drawn shows its values
 

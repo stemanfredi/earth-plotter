@@ -149,10 +149,9 @@ function drawPartsIn(doc, sel = new Set(), hover = null, display = {}, want = { 
       const ps = sg.points.map(t.f); // its handles where it is drawn
       // held by a point, it is rigid: each place resizes it, the farthest kept (no + either)
       if (holderOf(doc, sg)) { handles(sg.id, ps.map((p, i) => ({ p, role: 'scale', ref: i }))); continue; }
-      // its places: one linked to a point's centre moves the point; another (free, or linked to a
-      // vertex, a leg) itself, linked again where it is dropped
-      const role = (to) => (to && to.edge == null && to.vertex == null && doc.points.some((p) => p.id === to.element) ? { role: 'point', ref: to.element } : null);
-      handles(sg.id, ps.map((p, i) => ({ p, ...(role(linkFrom(doc, sg.id, i)?.to) ?? { role: 'vertex', ref: i }) })), true);
+      // its places: one tied to a point moves the point; another (free, or on a point's shape) itself,
+      // tied where it is dropped
+      handles(sg.id, ps.map((p, i) => { const to = linkFrom(doc, sg.id, i)?.to; return { p, ...(to && to.vertex == null && to.edge == null ? { role: 'point', ref: to.element } : { role: 'vertex', ref: i }) }; }), true);
       // a + halfway along each leg long enough on screen, on the line as drawn (a smooth line's curve):
       // dragging it adds a point there
       if (mpp) {
@@ -246,21 +245,21 @@ function exportFeaturesIn(doc, units = 'km') {
 
 // ---- each kind's geometry -------------------------------------------------------------------
 // What bounds an element (Zoom to) and whether it lies inside a screen box (Shift-drag). bounds(doc,
-// el): its points, at real size. inside(doc, el, inBox): all of it in the box (inBox(position): on
-// screen inside it; a point and a circle by their centre). A group: its members are, or are not.
+// el): its points, as drawn. inside(doc, el, inBox): all of it, as drawn, in the box (inBox(position):
+// on screen inside it; a point and a circle by their centre). A group: its members are, or are not.
 export const GEOMETRY = {
   group: { inside: () => false },
   point: {
     bounds: (doc, n) => [n.position],
     inside: (doc, n, inBox) => inBox(n.position),
   },
-  circle: { // as drawn (its Scale's), so that Zoom to frames what is seen
+  circle: { // as drawn (its Scale's), so that Zoom to frames what is seen and a box takes it
     bounds: (doc, c) => { const d = drawnCircle(doc, c); return drawable(d) ? circle(d.position, d.radius, 16) : [d.position]; },
-    inside: (doc, c, inBox) => inBox(c.position),
+    inside: (doc, c, inBox) => inBox(drawnCircle(doc, c).position),
   },
   line: {
     bounds: (doc, sg) => lineTrace(doc, sg).coords.map(drawnOf(doc, sg).f),
-    inside: (doc, sg, inBox) => lineTrace(doc, sg).coords.every(inBox),
+    inside: (doc, sg, inBox) => { const f = drawnOf(doc, sg).f; return lineTrace(doc, sg).coords.every((q) => inBox(f(q))); },
   },
   label: {
     bounds: (doc, a) => [a.position],

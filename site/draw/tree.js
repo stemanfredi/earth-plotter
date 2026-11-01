@@ -17,8 +17,9 @@ const FILTER_FROM = 30; // the filter field appears past this many elements
 const countOf = (b, u) => [b.points ? plural(b.points, 'point') : '', b.circles ? plural(b.circles, 'circle') : '',
   b.shapes ? plural(b.shapes, 'shape') : '', b.lines ? `${plural(b.lines, 'line')}, ${fmtDist(b.length, u)}` : '', b.areas ? plural(b.areas, 'area') : '', b.hidden ? 'incl. hidden' : ''].filter(Boolean).join(' · ');
 // an element's icon and what the panel calls its kind: a circle or a sector; a closed line a polygon
-const iconOf = (kind, el) => (kind === 'circle' ? POINT_ICON[el.aperture ? 'sector' : 'circle'] : KIND_ICON[el.closed ? 'polygon' : kind]);
-export const kindTitle = (kind, el) => (kind === 'circle' && el.aperture ? 'Sector' : kind === 'line' && el.closed ? 'Polygon' : KIND[kind].name);
+// a closed line: a point's (in its frame) an outline, the Shape tool's icon; drawn on its own, an area
+const iconOf = (kind, el) => (kind === 'circle' ? POINT_ICON[el.aperture ? 'sector' : 'circle'] : KIND_ICON[el.closed ? (el.frame ? 'shape' : 'polygon') : kind]);
+export const kindTitle = (kind, el) => (kind === 'circle' && el.aperture ? 'Sector' : kind === 'line' && el.closed ? (el.frame ? 'Outline' : 'Area') : KIND[kind].name);
 // an element's name as shown: its own; a label's text as it reads on the map (its first line); a
 // nameless shape held by a point its kind alone (its point names it; its row's value says its size)
 export const shownName = (doc, kind, el, units) => (kind === 'label' ? labelText(doc, el, units).split('\n')[0].trim() || 'Label'

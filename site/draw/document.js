@@ -15,7 +15,7 @@
 // table: { from: [id, index], to: a target, attach.js }), applied after each change.
 
 import { moveAbout, circle, sector, inverse, destination } from '../geodesy.js';
-import { norm360 } from '../geo.js';
+import { norm360, norm180 } from '../geo.js';
 
 export const FORMAT = 'charts-drawing';
 export const VERSION = 1; // the drawing's version: this code writes and reads it, and no other
@@ -185,13 +185,13 @@ function layered(looks) {
 // defaults.
 export function lookOf(doc, el) {
   const own = [el.look], under = [DEFAULT_LOOK, doc.look];
-  const role = !el.guide ? null : layered([...under, ...own]).text.values ? MEASURE_LOOK : GUIDE_STYLE; // labels are never guides
+  const role = el.measure ? MEASURE_LOOK : el.guide ? GUIDE_STYLE : null; // labels are never guides
   return layered([...under, role, ...own]);
 }
 // its fill and stroke
 export const styleOf = (doc, el) => { const l = lookOf(doc, el); return { fill: l.fill, stroke: l.stroke }; };
 // a measurement: a guide showing its values (what Measure makes)
-export const isMeasurement = (doc, el) => !!el.guide && lookOf(doc, el).text.values;
+export const isMeasurement = (doc, el) => !!el.measure;
 // how far a line is drawn from where it is (Offset: px, positive to the right of its direction, 0: on it)
 export const offsetOf = (doc, el) => lookOf(doc, el).offset;
 // A shape's drawing scale (Look's Scale: a circle's or a closed line's a point holds; any other 1)
@@ -248,37 +248,68 @@ export function addLine(doc, positions, opts = {}) {
   return s;
 }
 export const fewestPlaces = (line) => (line.closed ? 3 : 2); // what a line keeps
-// A point moved to position and turned to bearing, its shapes with it as one piece: each of their
-// places (a circle's centre) keeps its geodesic distance from the point and its bearing from it,
-// turned by as much as the point is, and a circle's own bearing turns as much
-export function carry(doc, p, position, bearing = p.bearing) {
-  const d = bearing - p.bearing, from = p.position;
-  if (!d && from[0] === position[0] && from[1] === position[1]) return;
-  const to = moveAbout(from, position, d);
-  for (const { kind, el } of membersOf(doc, p.id)) {
-    for (const [o, k] of positionsIn(kind, el)) o[k] = to(o[k]);
-    if (kind === 'circle') el.bearing = +norm360(el.bearing + d).toFixed(4);
+// ---- a point's shapes, in its frame --------------------------------------------------------------
+// A shape a point holds is kept in the point's frame (docs/drawing-format.md, The model, rule 3):
+// frame { places: [[a, d]], turn }, each of its places (a circle's centre) d metres from the point at a
+// degrees from the point's bearing, and a circle's bearing turn degrees from it. Its positions are
+// worked out from it whenever the point moves or turns (follow), so the shape stays exactly as it
+// was about its point: as a block in CAD.
+// its frame, from where it is now about point p (made once it is held; again when it is reshaped)
+export function adopt(p, kind, el) {
+  const at = (q) => { const g = inverse(p.position, q); return g.s ? [norm180(g.azi - p.bearing), g.s] : [0, 0]; };
+  el.frame = { places: positionsIn(kind, el).map(([o, k]) => at(o[k])), ...(kind === 'circle' ? { turn: norm360(el.bearing - p.bearing) } : {}) };
+}
+// a place in point p's frame ([a, d]) as a position; k: the distance drawn this many times (Scale)
+export const fromFrame = (p, [a, d], k = 1) => (d ? destination(p.position, p.bearing + a, d * k) : [...p.position]);
+// shape el's positions and bearing as its frame about p says: { places, bearing }
+export const framed = (p, el) => ({ places: el.frame.places.map((q) => fromFrame(p, q)), bearing: el.frame.turn == null ? null : +norm360(p.bearing + el.frame.turn).toFixed(4) });
+// p's shapes, each with a frame that fits it (one made where it is, about p as it is now, if not)
+function framesOf(doc, p) {
+  const ms = membersOf(doc, p.id);
+  for (const { kind, el } of ms) if (el.frame?.places.length !== positionsIn(kind, el).length) adopt(p, kind, el);
+  return ms;
+}
+// p's shapes where their frames say
+export function follow(doc, p) {
+  for (const { kind, el } of framesOf(doc, p)) {
+    const f = framed(p, el);
+    positionsIn(kind, el).forEach(([o, k], i) => { o[k] = f.places[i]; });
+    if (f.bearing != null) el.bearing = f.bearing;
   }
+}
+// A point moved to position and turned to bearing, its shapes with it as one piece (their frames)
+export function carry(doc, p, position, bearing = p.bearing) {
+  if (bearing === p.bearing && p.position[0] === position[0] && p.position[1] === position[1]) return;
+  framesOf(doc, p); // about where it was
   p.position = [...position];
   p.bearing = bearing;
+  follow(doc, p);
+}
+// After a shape's own form changed (its bearing, its places): its frame made again from where it is
+export function refit(doc, kind, el) { const p = holderOf(doc, el); if (p) adopt(p, kind, el); }
+// After any change: every shape a point holds has a frame, a free one none
+export function frames(doc) {
+  const pts = new Map(doc.points.map((p) => [p.id, p]));
+  for (const kind of ['circle', 'line']) {
+    for (const el of doc[KIND[kind].list]) {
+      const p = el.groupId && pts.get(el.groupId);
+      if (!p) delete el.frame;
+      else if (el.frame?.places.length !== positionsIn(kind, el).length) adopt(p, kind, el);
+    }
+  }
 }
 // The elements ids moved as one piece from position `from` to `to`, along the ellipsoid (moveAbout:
 // each position keeps its distance and bearing from `from`), a group everything in it, each position
-// once: a point carries its shapes; a line's place linked to a point moves that point (once, however
-// many places are on it), but for a line held by a point among them (it goes with its point, pulling no
-// other); any other linked place follows what it is on (a label on an element too).
+// once: a point carries its shapes; a line's place tied to a point moves that point (once, however
+// many places are on it); one on a point's shape, and a label on an element, follow what they are on.
 export function moveElements(doc, ids, from, to) {
   // a point's shape moves only with its point (Detach it to move it apart): the point moved instead
   const leaves = leavesOf(doc, [...new Set([...ids].map((id) => holderOf(doc, find(doc, id)?.el)?.id ?? id))]), mv = moveAbout(from, to);
-  const tiedOf = (el) => new Map(doc.links.filter((l) => l.from[0] === el.id).map((l) => [l.from[1], l.to.element]));
-  // the points moved, found first so that a point's shapes go with it only (one also among ids is not
-  // moved a second time): those among ids, then what the linked places of free lines are on, then
-  // what those of lines held by a point not moving are on (a point's lines carried with it pull nothing)
+  const tiedOf = (el) => new Map(doc.links.filter((l) => l.from[0] === el.id).map((l) => [l.from[1], l.to]));
+  // the points moved, found first so that each moves once: those among ids, then those the lines'
+  // places are tied to (one on a point's shape stays on it: the shape moves with its point only)
   const points = new Set(leaves.filter((x) => x.kind === 'point').map((x) => x.el.id));
-  const pull = (held) => leaves.filter(({ kind, el }) => kind === 'line' && !!holderOf(doc, el) === held && !points.has(el.groupId))
-    .flatMap(({ el }) => [...tiedOf(el).values()]).forEach((id) => points.add(id));
-  pull(false);
-  pull(true);
+  for (const { kind, el } of leaves) if (kind === 'line') for (const to of tiedOf(el).values()) if (to.vertex == null && to.edge == null) points.add(to.element);
   for (const { kind, el } of leaves) {
     if (kind === 'point' || points.has(el.groupId)) continue; // a point's shapes: carried with it
     const tied = tiedOf(el);
@@ -415,7 +446,10 @@ export const LOOK_FIELDS = {
 // only its membership changes, never its look; never into itself or a group inside it.
 export function setGroup(doc, id, gid) {
   const x = find(doc, id);
-  if (x && canHold(doc, gid, id)) x.el.groupId = gid;
+  if (!x || !canHold(doc, gid, id)) return;
+  x.el.groupId = gid;
+  const p = holderOf(doc, x.el);
+  if (p) adopt(p, x.kind, x.el); else delete x.el.frame; // held: in its point's frame from now on
 }
 
 // ---- the user's properties as columns -----------------------------------------------------------------

@@ -54,19 +54,21 @@ across the view.
 
 **The drawing is a document.** `site/draw/document.js` holds points,
 circles (a sector is a circle with an aperture), lines (an area is a closed
-line), labels and groups as plain data. Elements hold only positions; what
-ties a place of one to another is one table, `doc.links` (a line's place, a
-label's anchor), applied after every change (`attach.js`). A point holds its
-shapes as a group holds members, and carries them when it moves or turns,
-each keeping its distance and bearing from it. A look is the element's own,
+line), labels and groups as plain data, under five rules (The model, in
+[drawing-format.md](drawing-format.md)). Elements hold only positions; what
+attaches a place of one to another is one table, `doc.links`, applied in one
+pass after every change (`attach.js`): a line's place to a point or to a
+point's shape, a label's to anything; lines meet at a shared point. A point
+holds its shapes as a group holds members, and carries them when it moves or
+turns, each keeping its distance and bearing from it. A look is the element's own,
 else its role's (a guide's, a measurement's), else the drawing's, else the
 defaults: groups have none. Operations on the document are pure functions;
 the map, the panel and the file are views of it. The file is GeoJSON that any
 GIS opens, with the app's own structure under one member (`site/draw/file.js`;
 the format in [drawing-format.md](drawing-format.md)). Rules (`generator.js`)
-keep copies along a line and connections to roots linked to what they were
-made from; they live in the document as `doc.rules`, the state the generator
-needs to redo them. Moving, pasting and dragging are one rigid move on the
+make copies along a line and connections to roots as plain elements and keep
+their settings in `doc.rules`, to be edited or brought up to date (Update):
+they follow nothing by themselves, so every change settles in one pass. Moving, pasting and dragging are one rigid move on the
 ellipsoid, so a shape keeps its size wherever it goes. Undo and
 the selection are the store's (`store.js`). Drawings are saved in the
 browser as they change (`saving.js`) and never sent.

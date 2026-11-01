@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { near, lineFrom, placeIn } from './helpers.mjs';
 
-const { distribute, alongTrace, hubFor, plan, lines, planConnection, makeDistribution, editDistribution, connect, unconnect, reconnect, refreshGenerated, DISTRIBUTE_D,
+const { distribute, alongTrace, hubFor, plan, lines, planConnection, makeDistribution, editDistribution, connect, unconnect, reconnect, pruneRules, updateRule, DISTRIBUTE_D,
   distributions, connections, ruleOf, MAX_COPIES, MAX_TREE } = await import('../../site/draw/generator.js');
 const { emptyDoc, addPoint, addLine, addCircle, find, remove, carry } = await import('../../site/draw/document.js');
 const { presetOf } = await import('../../site/draw/presets.js');
@@ -19,8 +19,8 @@ const part = (doc, s) => { const p = madeLines(doc).get(s.id)?.part; return p ==
 // how far a position is from a line (metres, to the place along it nearest)
 // (measured as on screen: a few metres' tolerance over tens of km)
 const offLine = (doc, line, p) => { const c = lineTrace(doc, line).coords; return inverse(pointsAlong(c, [nearestAlong(c, p)])[0].position, p).s; };
-// how far an array's point (its record x) is from its place along the line (no offset)
-const fromPlace = (doc, line, x) => { const tr = lineTrace(doc, line); return inverse(pointsAlong(tr.coords, [x.t * tr.length])[0].position, find(doc, x.pointId).el.position).s; };
+// how far each of a distribution's copies is from where its settings place it along what it follows now
+const fromPlaces = (doc, line, a) => { const at = distribute(doc, line, a).points; return pointsOf(doc, a).map((n, k) => inverse(at[k].position, n.position).s); };
 
 test('distribute: every spacing along the line between the margins, offset square to it, sides alternating', () => {
   const doc = emptyDoc(0);
@@ -166,7 +166,7 @@ const scene = () => {
   return { doc, a, b, o1, o2, guide };
 };
 const ARRAY = { spacing: 3000, startMargin: 1000, endMargin: 1000, offset: 500, side: 'alternate', aperture: 180, groupId: null };
-const pointsOf = (doc, a) => a.points.map((x) => doc.points.find((n) => n.id === x.pointId));
+const pointsOf = (doc, a) => a.pointIds.map((id) => doc.points.find((n) => n.id === id));
 // the shapes a point holds
 const shapesOf = (doc, n) => [...doc.circles, ...doc.lines].filter((x) => x.groupId === n.id);
 // what a line's start (0) or end (-1) is linked to (its ID), or undefined
@@ -194,17 +194,12 @@ test('distribution: points along the line in a group of its own, its Copies, eac
   assert.ok(!('radii' in group) && !('aperture' in group), 'a new group: only who is in it');
   near(Math.abs(((ns[0].bearing + 180) % 360) - 180), 0, 1, 'the first faces north, away from the line (left of east)');
   near(ns[1].bearing, 180, 1, 'the second south');
-  // the rule: each point, its place along the line, its side, where it was put
+  // the rule: its settings and its copies, in their order along the line
   assert.deepEqual(doc.rules, [array]);
-  assert.deepEqual(Object.keys(array).sort(), ['along', 'aperture', 'copiesId', 'count', 'endMargin', 'groupId', 'id', 'kind', 'offset', 'points', 'preset', 'radius', 'side', 'spacing', 'startMargin'].sort());
+  assert.deepEqual(Object.keys(array).sort(), ['along', 'aperture', 'copiesId', 'count', 'endMargin', 'groupId', 'id', 'kind', 'offset', 'pointIds', 'preset', 'radius', 'side', 'spacing', 'startMargin'].sort());
   assert.deepEqual([array.kind, array.along, array.spacing, array.count, array.side, array.radius, array.preset],
     ['distribute', { element: guide.id }, 3000, null, 'alternate', DISTRIBUTE_D.radius, null]);
-  array.points.forEach((x, k) => {
-    assert.deepEqual(Object.keys(x).sort(), ['left', 'pointId', 'pos', 't']);
-    near(x.t, places[k].t, 1e-12, `t ${k}`);
-    assert.equal(x.left, k % 2 === 0);
-    assert.deepEqual(x.pos, ns[k].position);
-  });
+  ns.forEach((n, k) => near(inverse(n.position, places[k].position).s, 0, 1e-6, `copy ${k} at its place`));
   assert.equal(doc.lines.length, 1, 'a distribution makes no line');
   // into a group given: its own group made inside it; a radius given, apart from the spacing
   const again = makeDistribution(doc, { ...ARRAY, along: { element: guide.id }, groupId: group.id, radius: 800 });
@@ -224,7 +219,7 @@ test('distribution: points along the line in a group of its own, its Copies, eac
 test('tree: straight lines root → hub → points, attached at both ends, each saying its part, in a Connection group beside the copies\' Copies', () => {
   const { doc, guide, o1 } = scene();
   const { distribution: array, group } = makeDistribution(doc, { ...ARRAY, along: { element: guide.id } });
-  const ids = array.points.map((x) => x.pointId);
+  const ids = array.pointIds;
   const r = connect(doc, { pointIds: ids, roots: roots(o1.id), pattern: 'tree', groupSize: 3 });
   const made = doc.lines.filter((s) => s !== guide);
   const hubs = doc.points.filter((n) => r.connection.created.includes(n.id));
@@ -232,12 +227,7 @@ test('tree: straight lines root → hub → points, attached at both ends, each 
   assert.deepEqual([r.groupSize, r.unused], [3, []]);
   assert.ok(r.total > 0);
   assert.ok(hubs.every((n) => n.symbol === 'dot' && !shapesOf(doc, n).length), 'a hub is a dot');
-  assert.deepEqual(r.connection.hubs.map((h) => h.pointId).sort(), hubs.map((n) => n.id).sort());
-  for (const h of r.connection.hubs) {
-    assert.equal(h.rootId, o1.id);
-    assert.ok(h.pointIds.length >= 1 && h.pointIds.every((id) => ids.includes(id)));
-    assert.deepEqual(h.pos, find(doc, h.pointId).el.position);
-  }
+  assert.ok(!('hubs' in r.connection), 'the rule keeps its settings and what it made, nothing that follows');
   assert.ok(made.every((s) => s.points.length === 2 && !s.smooth), 'straight lines');
   assert.ok(made.filter((s) => part(doc, s) === 'trunk').every((s) => lineTrace(doc, s).length > 1), 'no trunk of length zero');
   // attached at both ends, where their points are
@@ -267,7 +257,7 @@ test('tree: straight lines root → hub → points, attached at both ends, each 
   assert.equal(unconnect(doc, r.connection.id), null);
 });
 
-test('tree: a hub on a point gives a branch of 0 m; the shortest branch set keeps the hub that far from its points and its root, and it keeps it as it follows', () => {
+test('tree: a hub on a point gives a branch of 0 m; the shortest branch set keeps the hub that far from its points and its root, and Update keeps it', () => {
   const pts = [[12, 40], [12.01, 40], [12.02, 40]], root = [12.01, 39.9]; // the median: on the middle point
   const at = plan(pts, [R(root)], 3, 'tree');
   assert.ok(inverse(pts[1], at.groups[0].hub).s < 1, 'the hub on the middle point');
@@ -286,9 +276,10 @@ test('tree: a hub on a point gives a branch of 0 m; the shortest branch set keep
   const again = reconnect(doc, r.connection.id, { minBranch: 200 });
   assert.equal(again.connection.minBranch, 200);
   assert.ok(branches().every((l) => l >= 200 - 1e-3));
-  // a point moved: the hub follows, its branches still at least 200 m
+  // a point moved, then Update: planned again, its branches still at least 200 m
   find(doc, ns[0].id).el.position = [11.995, 40];
   settleGeometry(doc);
+  updateRule(doc, r.connection.id);
   assert.ok(branches().every((l) => l >= 200 - 1e-3));
   // a chain keeps none
   assert.equal(reconnect(doc, r.connection.id, { pattern: 'chain' }).connection.minBranch, 0);
@@ -298,10 +289,10 @@ test('chain: each root starts its own chain, from its end, point to point', () =
   const { doc, guide } = scene();
   const { distribution: array } = makeDistribution(doc, { ...ARRAY, along: { element: guide.id }, offset: 0 });
   const ps = pointsOf(doc, array), o1 = addPoint(doc, [ps[0].position[0], 39.98]), o2 = addPoint(doc, [ps.at(-1).position[0], 39.98]); // under the end copies: a chain each is cheapest
-  const r = connect(doc, { pointIds: array.points.map((x) => x.pointId), roots: roots(o1.id, o2.id), pattern: 'chain', groupSize: 'auto' });
+  const r = connect(doc, { pointIds: array.pointIds, roots: roots(o1.id, o2.id), pattern: 'chain', groupSize: 'auto' });
   assert.equal(r.groups, 2); // one chain per root: the cheapest
   assert.ok(doc.lines.filter((s) => s !== guide).every((s) => part(doc, s) === 'chain' && tie(doc, s, 0) && tie(doc, s, -1)));
-  assert.deepEqual(r.connection.hubs, []);
+  assert.ok(doc.points.every((n) => !r.connection.created.includes(n.id)), 'a chain makes no hub');
   const ns = pointsOf(doc, array), west = chainFrom(doc, o1.id), east = chainFrom(doc, o2.id);
   assert.equal(west[0], ns[0].id, 'the western chain reaches the western end first');
   assert.equal(east[0], ns.at(-1).id, 'the eastern the eastern end');
@@ -313,7 +304,7 @@ test('connect: new roots made as squares in its Connection group, weight 1; a fa
   const { doc, guide, o1 } = scene();
   const { distribution: array } = makeDistribution(doc, { ...ARRAY, along: { element: guide.id } });
   const far = addPoint(doc, [20, 50]);
-  const r = connect(doc, { pointIds: array.points.map((x) => x.pointId), roots: roots(far.id), newRoots: [[12.2, 39.9]], pattern: 'tree', groupSize: 'auto' });
+  const r = connect(doc, { pointIds: array.pointIds, roots: roots(far.id), newRoots: [[12.2, 39.9]], pattern: 'tree', groupSize: 'auto' });
   const made = doc.points.find((n) => n.position[0] === 12.2 && n.position[1] === 39.9);
   assert.ok(made);
   assert.deepEqual([made.symbol, shapesOf(doc, made), made.groupId], ['square', [], r.connection.groupId]);
@@ -325,14 +316,14 @@ test('connect: new roots made as squares in its Connection group, weight 1; a fa
   assert.ok(find(doc, made.id));
   assert.ok(doc.groups.some((g) => g.id === r.connection.groupId), 'its group kept: the new root still in it');
   assert.equal(connect(doc, { pointIds: ['nothing'], roots: roots(o1.id) }), null);
-  assert.equal(connect(doc, { pointIds: array.points.map((x) => x.pointId), roots: roots() }), null);
+  assert.equal(connect(doc, { pointIds: array.pointIds, roots: roots() }), null);
   assert.equal(connections(doc).length, 0);
 });
 
 test('planConnection: points in a distribution taken in its order, others as given; the roots, given then new', () => {
   const { doc, guide, o1 } = scene();
   const { distribution: array } = makeDistribution(doc, { ...ARRAY, along: { element: guide.id } });
-  const ids = array.points.map((x) => x.pointId);
+  const ids = array.pointIds;
   const pc = planConnection(doc, { pointIds: ids.slice().reverse(), roots: roots(o1.id), newRoots: [[12.3, 39.9]], groupSize: 3 });
   assert.deepEqual(pc.nodes.map((n) => n.id), ids);
   assert.deepEqual(pc.roots, [R(o1.position), R([12.3, 39.9])]);
@@ -344,38 +335,33 @@ test('planConnection: points in a distribution taken in its order, others as giv
   assert.equal(names, 'n3,n0,n2,n1');
 });
 
-test('a distribution follows its line; one moved by hand stops; Edit moves them, or makes them anew and connects again', () => {
+test('a distribution follows nothing until Update, which places its copies along its line as it is now (one moved by hand too); Edit moves them, or makes them anew and connects again', () => {
   const { doc, guide, b, o1 } = scene();
   const { distribution: array } = makeDistribution(doc, { ...ARRAY, along: { element: guide.id }, offset: 0 });
   const before = pointsOf(doc, array).map((n) => [...n.position]);
-  // the line's end point moved north: the points move with it, each at the same place along it
-  b.position = [12.4, 40.1];
+  // the line's end point moved north (as many copies fit): the copies stay where they are
+  b.position = [12.4, 40.03];
   settleGeometry(doc);
-  const after = pointsOf(doc, array).map((n) => n.position);
-  assert.ok(after.at(-1)[1] > before.at(-1)[1] + 0.05, 'the far points moved north');
-  near(after[0][1], before[0][1], 0.02, 'the near ones barely');
-  array.points.forEach((x, k) => near(fromPlace(doc, guide, x), 0, 0.01, `${k} at its place along the line`));
-  assert.deepEqual(array.points.map((x) => x.pos), after, 'where each was put, kept');
-  // the bearing follows too: square to the line, now heading a little north of east
-  const ns = pointsOf(doc, array);
-  assert.ok(ns[0].bearing > 270 && ns[0].bearing < 359, `turned: ${ns[0].bearing}`);
-  // one dragged by hand stays where it was put, the others still follow
-  const hand = ns[2];
+  assert.deepEqual(pointsOf(doc, array).map((n) => n.position), before, 'nothing follows by itself');
+  // one dragged by hand; Update: every copy at its place along the line as it is now, that one too
+  const ns = pointsOf(doc, array), hand = ns[2];
   hand.position = [12.2, 39.9];
+  assert.deepEqual(updateRule(doc, array.id), { distribution: array, remade: false });
+  fromPlaces(doc, guide, array).forEach((d, k) => near(d, 0, 0.01, `${k} at its place along the line`));
+  assert.ok(pointsOf(doc, array).at(-1).position[1] > before.at(-1)[1] + 0.02, 'the far copies moved north');
+  // the bearing too: square to the line, now heading a little north of east; each copy's sector with it
+  assert.ok(ns[0].bearing > 270 && ns[0].bearing < 359.9, `turned: ${ns[0].bearing}`);
+  assert.ok(ns.every((n) => Math.abs(shapesOf(doc, n)[0].bearing - n.bearing) < 1e-3 && inverse(n.position, shapesOf(doc, n)[0].position).s < 1e-6));
   b.position = [12.4, 40];
   settleGeometry(doc);
-  assert.deepEqual(hand.position, [12.2, 39.9]);
-  array.points.forEach((x, k) => k === 2 || near(fromPlace(doc, guide, x), 0, 0.01, `${k} still follows`));
-  // each copy's sector turned with it, facing away from the line
-  assert.ok(ns.filter((n) => n !== hand).every((n) => Math.abs(shapesOf(doc, n)[0].bearing - n.bearing) < 1e-3 && inverse(n.position, shapesOf(doc, n)[0].position).s < 1e-6)); // the one moved by hand here: set, not carried
   // Edit with the same number and the same copy: every point placed again, the one moved by hand too,
   // each as it is (one changed by hand keeps its own)
-  const n0 = array.points.length;
+  const n0 = array.pointIds.length;
   shapesOf(doc, ns[1])[0].radius = 2000;
   assert.deepEqual(editDistribution(doc, array.id, { offset: 200 }), { distribution: array, remade: false });
-  assert.equal(array.points.length, n0);
+  assert.equal(array.pointIds.length, n0);
   near(inverse(hand.position, distribute(doc, guide, array).points[2].position).s, 0, 0.01, 'back on its place');
-  array.points.forEach((x, k) => near(inverse(ns[k].position, distribute(doc, guide, array).points[k].position).s, 0, 0.01, `${k} moved`));
+  fromPlaces(doc, guide, array).forEach((d, k) => near(d, 0, 0.01, `${k} moved`));
   assert.deepEqual([shapesOf(doc, ns[1])[0].radius, shapesOf(doc, ns[0])[0].radius], [2000, DISTRIBUTE_D.radius], 'changed by hand: its own');
   assert.ok(ns.filter((n) => n !== hand).every((n) => inverse(n.position, shapesOf(doc, n)[0].position).s < 1e-6), 'its shapes carried with it');
   // another copy (a sector of 90°, 750 m): the copies made anew
@@ -383,21 +369,21 @@ test('a distribution follows its line; one moved by hand stops; Edit moves them,
   assert.equal(array.radius, 750);
   for (const n of pointsOf(doc, array)) assert.deepEqual(shapesOf(doc, n).map((c) => [c.radius, c.aperture]), [[750, 90]], 'the new sector, the new radius');
   // a connection on them, then another count: the points made anew, the connection made again on them
-  const r = connect(doc, { pointIds: array.points.map((x) => x.pointId), roots: roots(o1.id), pattern: 'chain', groupSize: 'auto' });
-  const old = new Set(array.points.map((x) => x.pointId));
+  const r = connect(doc, { pointIds: array.pointIds, roots: roots(o1.id), pattern: 'chain', groupSize: 'auto' });
+  const old = new Set(array.pointIds);
   assert.equal(editDistribution(doc, array.id, { count: 4, spacing: null }).remade, true);
   assert.deepEqual([array.count, array.spacing, array.offset], [4, null, 200], 'the settings kept, but those changed');
-  assert.equal(array.points.length, 4);
-  assert.ok(array.points.every((x) => !old.has(x.pointId)));
+  assert.equal(array.pointIds.length, 4);
+  assert.ok(array.pointIds.every((id) => !old.has(id)));
   assert.ok(![...old].some((id) => find(doc, id)), 'the old points gone');
   const c = connections(doc)[0];
   assert.deepEqual([connections(doc).length, c.id, c.pointIds.length], [1, r.connection.id, 4]);
   assert.equal(c.groupId, r.connection.groupId, 'in its group, kept');
   assert.ok(doc.groups.some((g) => g.id === c.groupId));
   assert.ok(c.created.every((id) => find(doc, id).el.groupId === c.groupId));
-  assert.ok(array.points.every((x) => find(doc, x.pointId).el.groupId === array.copiesId), 'the new points in Copies');
+  assert.ok(array.pointIds.every((id) => find(doc, id).el.groupId === array.copiesId), 'the new points in Copies');
   assert.ok(pointsOf(doc, array).every((n) => shapesOf(doc, n).map((c) => `${c.radius} ${c.aperture}`).join() === '750 90'), 'each a copy of the first');
-  assert.deepEqual(c.pointIds, array.points.map((x) => x.pointId));
+  assert.deepEqual(c.pointIds, array.pointIds);
   assert.deepEqual(chainFrom(doc, o1.id), c.pointIds);
   assert.equal(doc.lines.length, 5, 'the guide and the chain\'s four lines');
   assert.equal(editDistribution(doc, 'nothing', {}), null);
@@ -420,18 +406,23 @@ test('a rule\'s group deleted, its members kept: the rule no longer points at it
   assert.ok(!serialise(doc).includes(copies) && !serialise(doc).includes(group.id), 'no reference to a deleted group in the file');
 });
 
-test('settled: the lines attached to a distribution\'s points follow them when the line moves', () => {
+test('Update: a distribution\'s copies along its line moved, the lines attached to them with them; the connection\'s hubs where Update plans them', () => {
   const { doc, guide, b, o1 } = scene();
   const { distribution: array } = makeDistribution(doc, { ...ARRAY, along: { element: guide.id } });
-  connect(doc, { pointIds: array.points.map((x) => x.pointId), roots: roots(o1.id), pattern: 'tree', groupSize: 3 });
-  b.position = [12.4, 40.1];
+  const c = connect(doc, { pointIds: array.pointIds, roots: roots(o1.id), pattern: 'tree', groupSize: 3 }).connection;
+  const hubsOf = () => doc.points.filter((n) => connections(doc)[0].created.includes(n.id)).map((n) => [...n.position]);
+  const hubs = hubsOf();
+  b.position = [12.4, 40.03]; // as many copies fit
+  settleGeometry(doc);
+  updateRule(doc, array.id); // the copies moved: the same count, the connection kept
   settleGeometry(doc);
   for (const s of doc.lines) for (const e of [placeIn(doc, s, 0), placeIn(doc, s, -1)]) if (e.to) assert.deepEqual(e.position, find(doc, e.to.element).el.position);
-  const hub = connections(doc)[0].hubs[0];
-  assert.deepEqual(hub.pos, find(doc, hub.pointId).el.position, 'a hub at its median again');
+  assert.deepEqual(hubsOf(), hubs, 'the hubs where they were');
+  updateRule(doc, c.id);
+  assert.notDeepEqual(hubsOf(), hubs, 'planned again');
 });
 
-test('connect: points in no distribution taken as given; hubs follow their points; Connect again with other settings', () => {
+test('connect: points in no distribution taken as given; Connect again with other settings; a hub stays until Update', () => {
   // points running north, given in no order; the root to the west
   const doc = emptyDoc(0);
   const byName = {};
@@ -443,84 +434,75 @@ test('connect: points in no distribution taken as given; hubs follow their point
   const cg = doc.groups.find((g) => g.id === r.connection.groupId);
   assert.deepEqual([cg.name, cg.groupId], ['Connection', null], 'points in no group: its group at the top');
   assert.ok(doc.lines.every((x) => x.groupId === cg.id));
-  // a tree with a hub; a point moved: the hub moves to the median again, the lines attached to it with it
+  // a tree with a hub; a point moved: the hub stays, its branch to the point follows the point; Update: the hub at the median again
   const s = reconnect(doc, r.connection.id, { pattern: 'tree', groupSize: 4 });
   assert.equal(s.connection.id, r.connection.id);
   assert.equal(s.connection.groupId, cg.id, 'in its group again');
   assert.deepEqual(doc.groups, [cg]);
   assert.equal(connections(doc).length, 1);
   assert.ok(doc.lines.every((x) => part(doc, x) !== 'chain'), 'the chain\'s lines gone');
-  const hub = find(doc, s.connection.hubs[0]?.pointId)?.el;
-  assert.ok(hub, 'a hub off the points');
-  const was = [...hub.position];
+  const hubOf = () => doc.points.find((n) => connections(doc)[0].created.includes(n.id));
+  assert.ok(hubOf(), 'a hub off the points');
+  const was = [...hubOf().position];
   byName.n3.position = [12.1, 40.06];
   settleGeometry(doc);
-  assert.ok(hub.position[0] > was[0], 'the hub followed east');
-  assert.ok(doc.lines.filter((x) => tie(doc, x, 0) === hub.id).every((x) => x.points[0][0] === hub.position[0]), 'its branches with it');
-  // the hub moved by hand: it stays, and no longer follows
-  hub.position = [11.95, 40];
-  settleGeometry(doc);
-  assert.deepEqual(hub.position, [11.95, 40]);
-  assert.equal(connections(doc)[0].hubs.length, 0);
+  assert.deepEqual(hubOf().position, was, 'the hub stays');
+  assert.ok(doc.lines.some((x) => tie(doc, x, -1) === byName.n3.id && x.points[1].join() === byName.n3.position.join()), 'the branch to the point moved with it');
+  updateRule(doc, s.connection.id);
+  assert.ok(hubOf().position[0] > was[0], 'Update: the hub east, at the median again');
   assert.equal(reconnect(doc, 'nothing'), null);
+  assert.equal(updateRule(doc, 'nothing'), null);
 });
 
-test('a root deleted: the connection made again with the roots left (one undo step); the last deleted, its lines and hubs go', () => {
+test('a root deleted: the lines to it left with a free end, the connection keeping the roots left; Update plans it with them; the last deleted, the rule goes, what it made stays', () => {
   const s = new DrawStore();
-  let ids, o1, o2, circles;
+  let ids, o1, o2;
   s.change((doc) => {
     const sc = scene();
     Object.assign(doc, sc.doc);
     ({ o1, o2 } = sc);
-    const made = makeDistribution(doc, { ...ARRAY, along: { element: sc.guide.id } });
-    circles = made.distribution.copiesId;
-    ids = made.distribution.points.map((x) => x.pointId);
+    ids = makeDistribution(doc, { ...ARRAY, along: { element: sc.guide.id } }).distribution.pointIds;
     connect(doc, { pointIds: ids, roots: roots(o1.id, o2.id), pattern: 'tree', groupSize: 3 });
   });
   const { id, groupId } = connections(s.doc)[0];
-  const steps = s.undos.length;
+  const lines = s.doc.lines.length, steps = s.undos.length;
   s.remove([o1.id]);
   assert.equal(s.undos.length, steps + 1, 'one undo step');
   let c = connections(s.doc)[0];
-  assert.deepEqual([connections(s.doc).length, c.id, c.roots, c.pointIds, c.groupId], [1, id, roots(o2.id), ids, groupId]);
+  assert.deepEqual([connections(s.doc).length, c.id, c.roots, c.pointIds, c.groupId, s.doc.lines.length], [1, id, roots(o2.id), ids, groupId, lines], 'nothing made again');
+  assert.ok(s.doc.lines.some((x) => c.created.includes(x.id) && !tie(s.doc, x, 0)), 'a trunk from the root gone: its start free');
+  s.change((doc) => { updateRule(doc, id); });
   const made = s.doc.lines.filter((x) => part(s.doc, x));
-  assert.ok(made.length && made.every((x) => tie(s.doc, x, 0) !== o1.id && tie(s.doc, x, -1) !== o1.id), 'nothing attached to the root gone');
+  assert.ok(made.length && made.every((x) => tie(s.doc, x, 0) && tie(s.doc, x, -1)), 'Update: every line attached at both ends');
   assert.ok(made.filter((x) => part(s.doc, x) === 'trunk').every((x) => tie(s.doc, x, 0) === o2.id), 'every trunk from the root left');
-  assert.ok(c.hubs.every((h) => h.rootId === o2.id));
-  assert.ok(!s.doc.lines.some((x) => !x.guide && !part(s.doc, x)), 'no line of before left behind');
-  // the last root deleted: the connection, its lines and hubs go; the copies stay
-  const hubs = c.hubs.map((h) => h.pointId);
+  // the last root deleted: the rule goes; its lines and hubs stay, plain
+  c = connections(s.doc)[0];
+  const kept = c.created.length;
   s.remove([o2.id]);
   assert.deepEqual(connections(s.doc), []);
-  assert.deepEqual(s.doc.lines.map((x) => x.guide), [true], 'only the guide left');
-  assert.ok(hubs.every((h) => !find(s.doc, h)), 'the hubs gone');
-  assert.ok(ids.every((x) => find(s.doc, x)?.el.groupId === circles), 'the copies stay');
-  assert.ok(!s.doc.groups.some((g) => g.id === groupId), 'its group gone, empty');
-  // undone: the connection with its one root again
+  assert.equal(c.created.filter((x) => find(s.doc, x)).length, kept, 'what it made stays');
   s.undo();
-  c = connections(s.doc)[0];
-  assert.deepEqual(c.roots, roots(o2.id));
-  assert.ok(s.doc.groups.some((g) => g.id === groupId), 'its group back');
+  assert.deepEqual(connections(s.doc)[0].roots, roots(o2.id));
 });
 
-test('refreshGenerated: a distribution whose line or points are gone is dropped, a connection whose points are gone too', () => {
+test('pruneRules: a distribution whose line or points are gone is dropped, a connection whose points or roots are gone too', () => {
   const { doc, guide, o1 } = scene();
   const { distribution: array } = makeDistribution(doc, { ...ARRAY, along: { element: guide.id } });
-  const ids = array.points.map((x) => x.pointId);
+  const ids = array.pointIds;
   connect(doc, { pointIds: ids.slice(0, 3), roots: roots(o1.id), pattern: 'chain', groupSize: 'auto' });
   remove(doc, [ids[0]]);
-  refreshGenerated(doc);
-  assert.equal(array.points.length, ids.length - 1, 'a point deleted: out of its array');
+  pruneRules(doc);
+  assert.equal(array.pointIds.length, ids.length - 1, 'a point deleted: out of its array');
   assert.equal(connections(doc).length, 1, 'a connection with points left stays');
   remove(doc, ids.slice(1, 3));
-  refreshGenerated(doc);
+  pruneRules(doc);
   assert.equal(connections(doc).length, 0);
   remove(doc, [guide.id]);
-  refreshGenerated(doc);
+  pruneRules(doc);
   assert.equal(distributions(doc).length, 0);
 });
 
-test('a distribution along a smooth line is back on it after a single change', () => {
+test('a distribution along a smooth line is back on it after one Update', () => {
   const doc = emptyDoc(0);
   const a = addPoint(doc, [12, 40]), b = addPoint(doc, [12.4, 40]);
   const line = lineFrom(doc, a.id, [[12.2, 40.05]], b.id, { smooth: true });
@@ -529,6 +511,7 @@ test('a distribution along a smooth line is back on it after a single change', (
   settleGeometry(doc);
   b.position = [12.4, 40.2];
   settleGeometry(doc);
+  updateRule(doc, array.id);
   for (const n of pointsOf(doc, array)) assert.ok(offLine(doc, line, n.position) < 5, `${offLine(doc, line, n.position)} m off the line`);
 });
 
@@ -551,7 +534,7 @@ test('points along a circle: a sector\'s arc from one end to the other clockwise
   assert.equal(distribute(doc, ring, { spacing: 2000 * Math.PI / 2 + 1 }).points.length, 4, 'every spacing, no point twice');
 });
 
-test('points round a point\'s closed line: its ring, from its first place clockwise; they follow it as the point turns', () => {
+test('points round a point\'s closed line: its ring, from its first place clockwise; Update places them round it as the point turned it', () => {
   const doc = emptyDoc(0);
   const c = [12, 40];
   const p = addPoint(doc, c), r = addLine(doc, outlinePoints(c, 0, 4000, 2000), { groupId: p.id, closed: true });
@@ -563,14 +546,15 @@ test('points round a point\'s closed line: its ring, from its first place clockw
   for (const [k, v] of [[0, 0], [2, 1], [3, 2], [5, 3]]) near(inverse(six[k].position, r.points[v]).s, 0, 1, `point ${k} on corner ${v}`);
   near(inverse(c, six[1].position).azi, 90, 0.01, 'east');
   const { distribution: array } = makeDistribution(doc, { along: { element: r.id }, count: 6 });
-  carry(doc, p, c, 90); // the point turned: its ring with it, the copies round it
+  carry(doc, p, c, 90); // the point turned: its ring with it; Update: the copies round it
   settleGeometry(doc);
+  updateRule(doc, array.id);
   const ns = pointsOf(doc, array);
   near(inverse(ns[0].position, r.points[0]).s, 0, 1, 'the turned ring\'s first place');
   near(inverse(c, ns[1].position).azi, 180, 0.01, 'its right side now south');
 });
 
-test('a distribution along a circle follows it: moved, turned, its radius changed (as its point is carried); gone, the rule goes', () => {
+test('a distribution along a circle, updated: moved, turned, its radius changed (as its point is carried); gone, the rule goes', () => {
   const doc = emptyDoc(0);
   const p = addPoint(doc, [12, 40]), sec = addCircle(doc, [12, 40], { groupId: p.id, aperture: 180 });
   const { distribution: array } = makeDistribution(doc, { along: { element: sec.id }, count: 3 });
@@ -578,6 +562,7 @@ test('a distribution along a circle follows it: moved, turned, its radius change
   carry(doc, p, [12.1, 40.1], 90);
   sec.radius = 1500;
   settleGeometry(doc);
+  updateRule(doc, array.id);
   const azis = pointsOf(doc, array).map((n) => inverse(sec.position, n.position));
   assert.deepEqual(azis.map((d) => Math.round(d.s)), [1500, 1500, 1500]);
   assert.deepEqual(azis.map((d) => Math.round(d.azi + 360) % 360), [0, 90, 180]);
@@ -616,7 +601,7 @@ test('copies: a built-in kind at the radius (its largest shape), a preset of the
 test('rule groups: Connection in the points\' group (a distribution\'s copies: beside Copies) or one given; gone with unconnect when empty', () => {
   const { doc, guide, o1, o2 } = scene();
   const { distribution: array, group } = makeDistribution(doc, { ...ARRAY, along: { element: guide.id } });
-  const ids = array.points.map((x) => x.pointId);
+  const ids = array.pointIds;
   const groupOf = (r) => doc.groups.find((g) => g.id === r.connection.groupId);
   const inRule = (r) => r.connection.created.every((id) => find(doc, id).el.groupId === r.connection.groupId);
   const own = connect(doc, { pointIds: ids, roots: roots(o1.id), pattern: 'chain', groupSize: 'auto' });
@@ -642,10 +627,10 @@ test('rule groups: Connection in the points\' group (a distribution\'s copies: b
 test('ruleOf: the rule an element belongs to', () => {
   const { doc, guide, o1 } = scene();
   const { distribution: array, group } = makeDistribution(doc, { ...ARRAY, along: { element: guide.id } });
-  const ids = array.points.map((x) => x.pointId);
+  const ids = array.pointIds;
   const c = connect(doc, { pointIds: ids, roots: roots(o1.id), pattern: 'tree', groupSize: 3 }).connection;
   for (const id of [group.id, array.copiesId, ...ids]) assert.equal(ruleOf(doc, id), array, id);
-  const hubs = c.hubs.map((h) => h.pointId), made = doc.lines.filter((s) => s !== guide).map((s) => s.id);
+  const hubs = doc.points.filter((n) => c.created.includes(n.id)).map((n) => n.id), made = doc.lines.filter((s) => s !== guide).map((s) => s.id);
   for (const id of [c.groupId, ...hubs, ...made]) assert.equal(ruleOf(doc, id), c, id);
   for (const id of [o1.id, guide.id, 'nothing']) assert.equal(ruleOf(doc, id), null, id);
 });
@@ -675,7 +660,7 @@ test('rules read back from the file: a distribution round a circle, a connection
   const c = addCircle(doc, [12, 40], { radius: 8000, aperture: 120 });
   const { distribution: array } = makeDistribution(doc, { along: { element: c.id }, count: 4, preset: 'rings', radius: 900 });
   const o = addPoint(doc, [12, 39.8]);
-  connect(doc, { pointIds: array.points.map((x) => x.pointId), roots: roots(o.id), pattern: 'tree', groupSize: 2 });
+  connect(doc, { pointIds: array.pointIds, roots: roots(o.id), pattern: 'tree', groupSize: 2 });
   const back = parse(serialise(doc), null, 0).doc;
   const plain = (rules) => JSON.parse(JSON.stringify(rules, (k, v) => (typeof v === 'number' ? +v.toFixed(5) : v))); // positions written to 7 decimals
   assert.deepEqual(plain(back.rules), plain(doc.rules));
@@ -712,7 +697,7 @@ test('a distribution deleted with its line and its copies takes the empty groups
   const g = lineFrom(doc, [12, 40], [], [12.2, 40]);
   const { distribution: a } = makeDistribution(doc, { ...ARRAY, along: { element: g.id } });
   assert.equal(doc.groups.length, 2);
-  const copies = a.points.map((x) => x.pointId);
+  const copies = a.pointIds;
   remove(doc, [g.id, ...copies]);
   settleGeometry(doc);
   assert.deepEqual([doc.rules.length, doc.groups.length, doc.points.length], [0, 0, 0]);

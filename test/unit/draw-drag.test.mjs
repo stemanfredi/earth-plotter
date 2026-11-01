@@ -46,24 +46,6 @@ test('a selection moved: a point moved through a selected line\'s linked place c
   near(inverse(p.position, c.position).s, 0, 1e-6, 'its circle carried once: still on it');
 });
 
-test('a point moved: the points its own lines are linked to stay where they are', () => {
-  const doc = emptyDoc(0), p = addPoint(doc, [12, 40]), q = addPoint(doc, [12.2, 40]);
-  const l = lineFrom(doc, [12, 40.01], [], q.id, { groupId: p.id }); // a shape of p, its end on q
-  moveElements(doc, [p.id], [12, 40], [12.1, 40.05]);
-  assert.deepEqual(q.position, [12.2, 40], 'q not dragged along');
-  near(inverse(p.position, [12.1, 40.05]).s, 0, 1e-6, 'the point moved');
-  near(inverse(p.position, l.points[0]).s, inverse([12, 40], [12, 40.01]).s, 1e-6, 'its line carried');
-});
-
-test('a point moved only through a selected line\'s place: its own lines, selected too, pull nothing', () => {
-  const doc = emptyDoc(0), p = addPoint(doc, [12, 40]), q = addPoint(doc, [12.2, 40]);
-  const ring = lineFrom(doc, [12, 40.01], [[12.01, 40]], q.id, { groupId: p.id, closed: true }); // a shape of p, a corner on q
-  const l = lineFrom(doc, [11.9, 40], [], p.id); // a free line, its end on p
-  moveElements(doc, [ring.id, l.id], [12, 40], [12.1, 40.05]); // the ring before the line: met before p is known to move
-  near(inverse(p.position, [12.1, 40.05]).s, 0, 1e-6, 'p moved with the line\'s place on it');
-  assert.deepEqual(q.position, [12.2, 40], 'q not dragged along by p\'s ring');
-});
-
 test('a held shape\'s place dragged resizes it, the farthest place kept, the centre moving; Shift the proportions too; never past the kept place', () => {
   const { scaledPlaces } = drag;
   // a 100 × 50 rectangle facing 30°: corners 50 along, 25 across; the back left corner (−50, −25) is the farthest from the front right (50, 25)

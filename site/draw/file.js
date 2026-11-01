@@ -8,11 +8,11 @@
 // longitude and latitude: the geometry holds the places, "smooth" is the app's). Drawings of another format version are not read. Pure: no map, no DOM.
 
 import { FORMAT, VERSION, KINDS, KIND, SYMBOLS, LEADERS, LABEL_OFFSET, META_D, MAX_RADIUS, MAX_LABEL_OFFSET,
-  emptyDoc, newId, columnsOf, find, linkFrom, targetOf, elements, canHold } from './document.js';
+  emptyDoc, newId, columnsOf, find, linkFrom, targetOf, elements, canHold, holderOf, positionsIn, adopt, framed } from './document.js';
 import { ID, isObj, fin, Skip, time, text, properties, flag, position, angle, look, aperture, readView, VIEW_D, VIEW_DATA_D } from './check.js';
-import { targetPosition, refreshAttached, placeAt } from './attach.js';
+import { targetPosition, refreshAttached, placeAt, lineTarget } from './attach.js';
 import { settings, connectSettings, DISTRIBUTE_D, CONNECT_D } from './generator.js';
-import { norm180, samePosition, signedArea2 } from '../geo.js';
+import { norm180, norm360, samePosition, signedArea2 } from '../geo.js';
 
 const MAX_POSITIONS = 100000; // positions in one line: more would stall the page at every change
 const MAX_FEATURES = 20000; // elements in one file: the rest are skipped (as many points stall the list)
@@ -105,6 +105,7 @@ function read(raw, app, known, now, report) {
   const features = raw.type === 'FeatureCollection' ? (Array.isArray(raw.features) ? raw.features : (report.warnings.push('features: not a list, ignored'), []))
     : raw.type === 'Feature' ? [raw] : [{ type: 'Feature', properties: {}, geometry: raw }];
   let over = 0, positions = 0;
+  const rawFrames = new Map(); // a shape's frame as the file has it, checked once its point is known
   try { features.forEach((f, i) => {
     const fid = isObj(f) && (typeof f.id === 'string' || typeof f.id === 'number') ? String(f.id) : null;
     const skip = (reason) => report.skipped.push({ kind: 'feature', id: fid ?? String(i + 1), reason }); // a feature without an ID: its place in the list
@@ -128,8 +129,10 @@ function read(raw, app, known, now, report) {
         const x = { ...commonOf({ ...propertiesFrom(props, mine, c), visible: mine?.visible }, c), id, groupId: typeof mine?.group === 'string' ? mine.group : null }; // checked once all are read
         x.look = look(mine?.look, c, kind, kind === 'label' ? null : styleFrom(props)); // its colours, opacities and width: the common style names, checked and filtered with its look
         if (kind !== 'label') x.guide = flag(mine?.guide, c, 'guide');
+        if (kind !== 'label' && flag(mine?.measure, c, 'measure')) Object.assign(x, { guide: true, measure: true }); // a measurement: a guide of its own
         return READ[kind](part.coordinates, mine || {}, x, c, { foreign: !mine, closed: part.type === 'Polygon' });
       });
+      if (el && mine?.frame !== undefined) rawFrames.set(el.id, unpack(mine.frame));
       positions += el?.points?.length ?? 0; // a line's
       if (positions > MAX_TOTAL_POSITIONS) throw new Refused(`This file holds more than ${MAX_TOTAL_POSITIONS.toLocaleString('en')} positions in its lines: it would stall the page at every change.`);
       if (el) doc[KIND[kind].list].push(el);
@@ -143,17 +146,38 @@ function read(raw, app, known, now, report) {
     report.warnings.push(`${kind} ${el.id}: group ${el.groupId.slice(0, 64)} not found; now standalone`);
     el.groupId = null;
   }
-  // links, once every element is in: the link wins, its place goes where its target is (a line's
-  // place on another line's place where that one goes, in any order). One from a place that is not
-  // here, or to what is not (or to its own element), is dropped: the place stays free where the
-  // geometry says
+  // a point's shapes: where their frames about it say (a frame wins, as a link does: a place more than
+  // 10⁻⁶° from it goes there, counted); one without a valid frame gets one from where it is
+  let reframed = 0;
+  for (const kind of ['circle', 'line']) {
+    for (const el of doc[KIND[kind].list]) {
+      const p = holderOf(doc, el), raw = rawFrames.get(el.id), n = positionsIn(kind, el).length;
+      if (!p) { if (raw !== undefined) report.warnings.push(`${kind} ${el.id}: a frame, but no point holds it; ignored`); continue; }
+      const ok = isObj(raw) && Array.isArray(raw.places) && raw.places.length === n && raw.places.every((q) => Array.isArray(q) && fin(q[0]) && fin(q[1]) && q[1] >= 0)
+        && (kind === 'line' || fin(raw.turn));
+      if (!ok) { if (raw !== undefined) report.warnings.push(`${kind} ${el.id}: frame not read; made from where it is`); adopt(p, kind, el); continue; }
+      const in180 = (a) => (a >= -180 && a < 180 ? a : norm180(a)), in360 = (a) => (a >= 0 && a < 360 ? a : norm360(a)); // as written, unless out of range
+      el.frame = { places: raw.places.map((q) => [in180(q[0]), q[1]]), ...(kind === 'circle' ? { turn: in360(raw.turn) } : {}) };
+      const f = framed(p, el);
+      positionsIn(kind, el).forEach(([o, k], i) => { if (!samePosition(o[k], f.places[i])) { o[k] = f.places[i]; reframed++; } });
+      if (kind === 'circle' && Math.abs(norm180(el.bearing - f.bearing)) > 1e-3) { el.bearing = f.bearing; reframed++; }
+    }
+  }
+  if (reframed) report.warnings.push(`${reframed} place${reframed > 1 ? 's' : ''} of shapes moved to where ${reframed > 1 ? 'their points hold them' : 'its point holds it'} (the file was edited elsewhere)`);
+
+  // links, once every element is in: the link wins, its place goes where its target is. One from a
+  // place that is not here, or to what is not (or to its own element), or a line's place to what is
+  // neither a point nor a point's shape, or a place of a point's shape, is dropped: the place stays
+  // free where the geometry says
   const was = [];
   for (const v of Array.isArray(app?.links) ? app.links : []) {
     const f = isObj(v) && Array.isArray(v.from) ? v.from : [], to = refIn(unpack(v?.to)), x = typeof f[0] === 'string' && find(doc, f[0]);
-    const place = x && (x.kind === 'line' || x.kind === 'label') && Number.isInteger(f[1]) && placeAt(doc, f);
+    const place = x && ((x.kind === 'line' && !holderOf(doc, x.el)) || x.kind === 'label') && Number.isInteger(f[1]) && placeAt(doc, f);
+
     const what = !place ? `from ${String(f[0]).slice(0, 64)} ${String(f[1]).slice(0, 8)}, which is not a line's or a label's place here`
       : !to ? 'to nothing it can point at' : to.element === f[0] ? 'to its own element' : linkFrom(doc, f[0], f[1]) ? 'from a place already linked'
-        : !targetPosition(doc, to) && `to ${String(to.element).slice(0, 64)}, which is not here (or has no such vertex or edge)`;
+        : !targetPosition(doc, to) ? `to ${String(to.element).slice(0, 64)}, which is not here (or has no such vertex or edge)`
+          : x.kind === 'line' && !lineTarget(doc, to) && `from a line's place to ${String(to.element).slice(0, 64)}, which is neither a point nor a point's shape`;
     if (what) { report.warnings.push(`link ${what}: dropped`); continue; }
     doc.links.push({ from: [f[0], f[1]], to });
     was.push([f, [...place]]);
@@ -165,7 +189,6 @@ function read(raw, app, known, now, report) {
   // rules: what Distribute along and Connect keep linked, checked loosely (a reference gone is dropped at
   // the next change)
   const idList = (v) => (Array.isArray(v) ? v.filter((y) => typeof y === 'string' && ID.test(y)) : []);
-  const pair = (p) => Array.isArray(p) && fin(p[0]) && fin(p[1]);
   const ref = (v) => (typeof v === 'string' && ID.test(v) ? v : null);
   for (const x of Array.isArray(app?.rules) ? app.rules : []) {
     const r = attempt('rule', x?.id, (c) => {
@@ -175,13 +198,10 @@ function read(raw, app, known, now, report) {
         const along = isObj(x.along) ? ref(x.along.element) : null;
         if (!along) c.skip('nothing it is along');
         taken.add(x.id);
-        return { id: x.id, kind: 'distribute', groupId: ref(x.groupId), copiesId: ref(x.copiesId), along: { element: along }, ...settings(x),
-          points: Array.isArray(x.points) ? x.points.filter((f) => isObj(f) && ref(f.pointId) && fin(f.t) && pair(f.pos)).map((f) => ({ pointId: f.pointId, t: f.t, left: f.left === true, pos: [f.pos[0], f.pos[1]] })) : [] };
+        return { id: x.id, kind: 'distribute', groupId: ref(x.groupId), copiesId: ref(x.copiesId), along: { element: along }, ...settings(x), pointIds: idList(x.pointIds) };
       }
       taken.add(x.id);
       return { id: x.id, kind: 'connect', groupId: ref(x.groupId), ...connectSettings({ ...x, roots: Array.isArray(x.roots) ? x.roots.filter((r) => isObj(r) && ref(r.id)) : [] }), pointIds: idList(x.pointIds),
-        hubs: Array.isArray(x.hubs) ? x.hubs.filter((b) => isObj(b) && ref(b.pointId) && ref(b.rootId) && Array.isArray(b.pointIds) && pair(b.pos))
-          .map((b) => ({ pointId: b.pointId, pointIds: idList(b.pointIds), rootId: b.rootId, pos: [b.pos[0], b.pos[1]] })) : [],
         created: idList(x.created) };
     });
     if (r) doc.rules.push(r);
@@ -310,13 +330,22 @@ function styleNames(st) {
   return o;
 }
 
+// A point's shape's frame as the file has it: about its point as the file writes the point (its
+// position to 7 decimals, its bearing to 4), so that the file read gives the shape where it is
+// written, however far from its point; degrees to 7 decimals, metres to 4
+function frameOut(kind, el, p) {
+  const x = { ...el };
+  adopt({ position: pos(p.position), bearing: r4(p.bearing) }, kind, x);
+  return { places: x.frame.places.map(([a, d]) => [r7(a), r4(d)]), ...(x.frame.turn != null ? { turn: r4(x.frame.turn) } : {}) };
+}
 // one element as a Feature
-function feature(kind, el) {
+function feature(kind, el, doc) {
   const { out: cols, changed } = columns(el.properties);
   const props = Object.assign(Object.create(null), kind === 'label' ? {} : lean({ name: el.name }, { name: '' })); // no prototype: a column named __proto__ is set, not the prototype; a label has no name
   Object.assign(props, cols, kind === 'label' ? {} : styleNames(el.look));
   const mine = { kind, ...(changed ? { properties: el.properties.map((p) => ({ ...p })) } : {}),
-    ...lean({ group: el.groupId, visible: el.visible, guide: el.guide ?? false, look: lookOut(el.look, kind !== 'label') }, { group: null, visible: true, guide: false, look: {} }) };
+    ...lean({ group: el.groupId, visible: el.visible, guide: el.guide ?? false, measure: !!el.measure, look: lookOut(el.look, kind !== 'label') }, { group: null, visible: true, guide: false, measure: false, look: {} }) };
+  if (el.frame) mine.frame = frameOut(kind, el, holderOf(doc, el)); // a point's shape: in its frame (§7.2)
   let geometry;
   if (kind === 'point') {
     geometry = { type: 'Point', coordinates: pos(el.position) };
@@ -353,12 +382,11 @@ export function toFile(doc, v = null) {
       { groupId: null, name: '', properties: [], visible: true })),
     rules: doc.rules.map((a) => (a.kind === 'distribute'
       ? lean({ ...a, along: { element: a.along.element }, spacing: a.spacing == null ? null : r3(a.spacing), radius: a.radius == null ? null : r3(a.radius),
-        aperture: a.aperture == null ? null : r4(a.aperture), startMargin: r3(a.startMargin), endMargin: r3(a.endMargin), offset: r3(a.offset),
-        points: a.points.map((f) => ({ pointId: f.pointId, t: +f.t.toFixed(9), ...(f.left ? { left: true } : {}), pos: pos(f.pos) })) }, DISTRIBUTE_D)
-      : lean({ ...a, roots: a.roots.map((r) => (r.weight === 1 ? { id: r.id } : { id: r.id, weight: +r.weight.toPrecision(6) })), pointIds: [...a.pointIds], hubs: a.hubs.map((b) => ({ ...b, pointIds: [...b.pointIds], pos: pos(b.pos) })), created: [...a.created] }, CONNECT_D))),
+        aperture: a.aperture == null ? null : r4(a.aperture), startMargin: r3(a.startMargin), endMargin: r3(a.endMargin), offset: r3(a.offset), pointIds: [...a.pointIds] }, DISTRIBUTE_D)
+      : lean({ ...a, roots: a.roots.map((r) => (r.weight === 1 ? { id: r.id } : { id: r.id, weight: +r.weight.toPrecision(6) })), pointIds: [...a.pointIds], created: [...a.created] }, CONNECT_D))),
     links: doc.links.map((l) => ({ from: [...l.from], to: refOut(l.to) })),
   }, { meta: {}, view: null, look: {}, groups: [], rules: [], links: [] });
-  return { type: 'FeatureCollection', charts: app, features: KINDS.filter((k) => k !== 'group').flatMap((k) => doc[KIND[k].list].map((el) => feature(k, el))) };
+  return { type: 'FeatureCollection', charts: app, features: KINDS.filter((k) => k !== 'group').flatMap((k) => doc[KIND[k].list].map((el) => feature(k, el, doc))) };
 }
 // The file's text: indented JSON, with each pair of numbers (a position) on one line. Only
 // the indentation's line breaks are matched: a string never holds one (JSON writes it \n).

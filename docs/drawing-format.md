@@ -7,12 +7,34 @@ This is the contract between the app and anything that reads or writes its drawi
 Download, the copy kept in the browser, a GIS, and a file prepared by hand or by a script. §15 is a
 short example; §16 lists every default.
 
+## The model
+
+Five rules every part of the drawing keeps; a change that breaks one changes the model, not a detail.
+
+1. **What is stored is real geography.** Positions on WGS 84; lengths, bearings and areas on the
+   ellipsoid; the file plain GeoJSON. How an element is drawn (its look: colours, Offset, Scale)
+   never changes where it is, what it measures or what is exported.
+2. **Lines meet at points.** Where lines join, a point is shared: a place of each is attached to
+   it, as ways share nodes in OpenStreetMap. Any number of lines meet at one point.
+3. **A point can hold rigid shapes.** Circles, sectors and outlines placed as one piece with their
+   point, moved and turned with it, as a block in CAD. They follow their point and nothing else.
+4. **A line attaches only to what moves by itself:** a point, or a corner or an edge of a point's
+   shape. A label may point at anything. Nothing attaches through a line to a line, so every
+   attached place is settled in one pass.
+5. **Rules make plain elements.** Distribute along and Connect make ordinary points and lines and
+   keep their settings, to be edited again.
+
+**Words.** An **element** is a point, circle, line, label or group. A **shape** is a circle or a
+closed line a point holds; an **area** is a closed line drawn on its own. A line's corners are its
+**places**; a **leg** joins two. A place is **attached** to what it follows; the file keeps each
+attachment as a **link** (§7.4).
+
 ## 1. The file
 
 - A **GeoJSON FeatureCollection** (RFC 7946), UTF-8, extension **`.geojson`** (Import also takes
   `.json`). There is no other format of the app's own: any GIS reads the file as it is, and the app
   reads any GeoJSON (§11).
-- One drawing per file: its elements (measurements included: they are guides showing their values),
+- One drawing per file: its elements (measurements included: guides of their own, §5),
   its groups, its rules (what Distribute along and Connect keep linked), its links (what ties a place
   of one element to another, §7.4), and the view it was made in.
 - Each element is a Feature with its real geometry. Its name and its properties (a description, a
@@ -138,8 +160,10 @@ Only the element's **own** values are written here: a value it takes from the dr
 |---|---|
 | `kind` | `"point"`, `"circle"`, `"line"` or `"label"`. Always written. On reading only `"circle"` and `"label"` matter (a `Point` geometry is then a circle, a label); otherwise the geometry decides (a `Polygon` is a closed line). |
 | `group` | the ID of what holds it, at most one: its group; a shape's (a circle's, a line's), its group or the point that holds it (§7.2) |
+| `frame` | a point's shape's: where it is about its point (§7.2) |
 | `visible` | `false`: hidden. Hidden elements are not drawn and not exported to GIS data, but they are in the file. A hidden group hides its members, a hidden point its shapes. |
-| `guide` | supporting geometry: drawn faint and dashed in one colour, left out of totals (not on labels). A guide showing its values is a **measurement**. |
+| `guide` | supporting geometry: drawn faint and dashed in one colour, left out of totals (not on labels) |
+| `measure` | `true`: a **measurement**, what Measure made: a guide (so `guide` is read as `true` too) drawn in its own colour, its name not drawn, its values shown when made |
 | `look` | the rest of its own look (§6), what no common style name holds: the stroke's `dash`, `text`, `offset`, `scale` |
 | `properties` | the user's properties as `[{ "key", "value" }]`. Written only when a key had to be renamed as a column; the reader then takes this list rather than the columns. |
 
@@ -222,17 +246,33 @@ A `Point` geometry. One position, its symbol and its bearing:
 
 **Its shapes.** A circle or a line whose `group` is a point's ID is **held** by that point, as an
 element is by its group: it is the point's shape. It is listed under the point, hidden, deleted and
-copied with it, and selected with it first (drawing-ui.md §7). When the point moves or turns, its
-shapes go with it as one piece: each of their places (a circle's centre) keeps its geodesic distance
-from the point and its bearing from it, turned by as much as the point is; a circle's own bearing
-turns as much. The file holds the shapes' positions as they are: no link says this, the `group`
-does. A point holds no point, label or group (a file saying so: warning, the element standalone).
-Its shapes are in the point's group through it, not by a `group` of their own.
+copied with it, and selected with it first (drawing-ui.md §7). A point holds no point, label or group
+(a file saying so: warning, the element standalone). Its shapes are in the point's group through it,
+not by a `group` of their own.
+
+**Its frame.** A shape is kept in its point's frame, as a block in CAD:
+
+```json
+"frame": { "places": [[20.5545352, 213.6011], [159.4443607, 213.5993]], "turn": 0 }
+```
+
+| Field | Notes |
+|---|---|
+| `places` | one `[a, d]` per place, in the shape's own order (a circle: its centre): `d` metres from the point, `a` degrees from its bearing (clockwise; −180 to 180) |
+| `turn` | a circle's: its bearing, this many degrees from the point's |
+
+Its positions are worked out from its frame about the point, so the shape goes with the point as one
+piece, exactly, when it moves or turns. The file writes both: the geometry, for other tools, and the
+frame, about the point as the file has it (its position to 7 decimals, its bearing to 4); degrees to
+7 decimals, metres to 4. On reading, **the frame wins**, as a link does: a place more than 10⁻⁶° from
+where the frame puts it goes there, and the report counts it ("the file was edited elsewhere"). A
+shape without a valid frame (a file written by hand) gets one from where it is.
 
 Circles, rings, sectors and the Shape tool's outlines are a point and its shapes: Circle, a point
 holding a circle; Rings, several; Sector, a sector; an outline, a closed line whose places the tool
-generates from the outline's kind, length, width and bearing (`site/draw/outlines.js`): after that it
-is a closed line like any other.
+generates from the outline's kind, length, width and bearing (`site/draw/outlines.js`). Its form
+changes only by its own handles and fields (a radius, an aperture, a size): its places are not
+edited one by one.
 
 ### 7.3 Line
 
@@ -268,19 +308,29 @@ and its legs straight in longitude and latitude (§13).
 
 ### 7.4 Links
 
-A **link** ties a place of an element to a place on another, which it then follows. The drawing's
-links are one list, `charts.links` of the collection:
+A **link** ties a place of an element to something, which it then follows. The drawing's links are
+one list, `charts.links` of the collection:
 
 ```json
 "links": [
   { "from": ["l1", 0], "to": { "element": "a" } },
-  { "from": ["l1", 1], "to": { "element": "g1", "edge": 2, "at": 0.5 } },
+  { "from": ["l1", 1], "to": { "element": "j" } },
   { "from": ["t1", 0], "to": { "element": "l1", "edge": 0, "at": 0.5 } }
 ]
 ```
 
 `from` is `[ID, index]`: a line's place (0 its start, the last its end; any place can be linked), or
-a label's `0` (where it points). A place has one link at most. `to` is the target:
+a label's `0` (where it points). A place has one link at most.
+
+**A line's place is tied to a point, or to a point's shape**: `to` is `{ "element": <a point's ID>
+}`, the point's position; or a corner or a place along an edge of a shape a point holds (§7.2), `{
+"element", "vertex" }` or `{ "element", "edge", "at" }` as a label's below, which then follows the
+shape as its point moves and turns (at its real places, whatever its Scale). Where lines meet, they
+meet at a point: a place of each is tied to it (the app makes a small dot there, and puts a place in
+a line met along a leg: drawing-ui.md §2.2). A place of a point's shape is never linked, nor is a
+link ever what ties a shape to its point: its `group` is.
+
+**A label points at any target:**
 
 | `to` | Points at |
 |---|---|
@@ -291,21 +341,22 @@ a label's `0` (where it points). A place has one link at most. `to` is the targe
 A bare ID (`"a"`) is read as `{ "element": "a" }`. Indices count from 0. A closed line's places are
 counted in its own order (§7.6: the geometry's ring reversed when `reversed` is set); the Shape
 tool's rectangle's are its front right, back right, back left, front left; a triangle's its apex,
-back right, back left. A group or a label is never a target. A link is never what ties a shape to
-its point: its `group` is (§7.2).
+back right, back left. A group or a label is never a target.
 
 Every place keeps its position in the geometry, linked or not, so other tools see the line or the
-label where it is. On reading, **the link wins**: the place goes where its target is (a line's place
-on another line's place where that one goes, in any order in the file), and the report counts the
-places moved more than 10⁻⁶° ("the file was edited elsewhere"). A link from a place that is not
-there, to what is not in the file (or to a vertex or edge it does not have), to its own element, or
-from a place already linked is dropped, its place free where the geometry says (warning). When
-vertices are added to or taken from a target, a link to it stays where it was: on the nearest
-vertex, or the nearest place on an edge. When places are added to or taken from a line, its links
-are numbered again (one from a place taken away goes); a line split at a place carries the links of
-its second half to the new line, and both are linked to the point made there. A closed line split at
-a place is opened there instead: one open line from that place round to it again (its start and its
-end there, nothing made), its links numbered from its new start.
+label where it is. On reading, **the link wins**: the place goes where its target is (the lines'
+places first, then the labels, whatever the order in the file), and the report counts the places
+moved more than 10⁻⁶° ("the file was edited elsewhere"). A link from a place that is not there (a
+shape's included), to what is not in the file (or to a vertex or edge it does not have), to its own
+element, from a place already linked, or from a line's place to what is neither a point nor a point's
+shape is dropped, its place free where the geometry says (warning). When vertices are added to or
+taken from a line, a link to it (a label's, or a line's on a shape) stays where it was: on the
+nearest vertex, or the nearest place on an edge. When places
+are added to or taken from a line, its links are numbered again (one from a place taken away goes);
+a line split at a place carries the links of its second half to the new line, and both are linked to
+the point made there. A closed line split at a place is opened there instead: one open line from
+that place round to it again (its start and its end there, nothing made), its links numbered from
+its new start.
 
 ### 7.5 Circle
 
@@ -367,9 +418,10 @@ A label has no `name` (its text names it), no stroke or fill names in its proper
 ## 8. Rules
 
 What the panel's **Distribute along** and **Connect** make are ordinary points, lines and groups. Their
-rules, in the collection's `charts.rules`, keep the link to them so that they can follow and be made
-again; each has a `kind`, `"distribute"` or `"connect"` (another: skipped, warning). Their IDs may name
-elements deleted since: that is not an error, and such a reference is dropped at the next change.
+rules, in the collection's `charts.rules`, keep their settings and what they made, so that they can be
+edited and brought up to date (Update); they follow nothing by themselves. Each has a `kind`,
+`"distribute"` or `"connect"` (another: skipped, warning). Their IDs may name elements deleted since:
+that is not an error, and such a reference is dropped at the next change.
 They are checked loosely: one without a valid, unused `id` is skipped.
 
 ### 8.1 Distribute along
@@ -378,7 +430,7 @@ They are checked loosely: one without a valid, unused `id` is skipped.
 {
   "id": "ar1", "kind": "distribute", "groupId": "g5", "copiesId": "g6", "along": { "element": "l9" },
   "count": 3, "startMargin": 500, "endMargin": 500, "offset": 200, "side": "alternate", "radius": 300, "aperture": 120,
-  "points": [ { "pointId": "p20", "t": 0.060255231, "left": true, "pos": [12.4060243, 41.9018031] } ]
+  "pointIds": ["p20", "p21", "p22"]
 }
 ```
 
@@ -393,7 +445,7 @@ They are checked loosely: one without a valid, unused `id` is skipped.
 | `preset` | what each copy was made as: missing or `"circle"`, a point holding a circle of `radius` (a sector of `aperture`); another built-in kind (`"rings"`, `"rectangle"`…), its shapes scaled so that the largest reaches `radius`; `"preset:<name>"`, one of the user's, at its own size |
 | `radius` | metres: the copies' reach, apart from the spacing; missing: 500 |
 | `aperture` | the circle's sector, this wide, facing away from what it follows; missing: circles |
-| `points` | each copy made: `t` its place along (0–1), `left` its side, `pos` where it was last put |
+| `pointIds` | its copies, in their order along what it follows |
 
 Each copy is an ordinary point holding its own shapes (§7.2), turned to face away from what it
 follows, its properties as one placed by hand (a preset of the user's names itself in `preset`, a
@@ -402,9 +454,9 @@ with the same `preset`, `radius` and `aperture` and as many copies moves them, a
 another number it makes them anew as the first copy left is; with another copy it makes them anew
 of it.
 
-After every change, each copy still at `pos` is placed again along what it follows as it is now (the
-same `t`, offset and side, facing away from it; its shapes carried with it). One moved by hand
-stops following. A rule whose line or circle is gone, or all of whose copies are, is dropped.
+Its copies stay where they are when what they follow changes. **Update** places them again along it
+as it is now, with the same settings (as Edit with nothing changed: one moved by hand too). A rule
+whose line or circle is gone, or all of whose copies are, is dropped; its copies stay.
 
 ### 8.2 Connect
 
@@ -412,7 +464,6 @@ stops following. A rule whose line or circle is gone, or all of whose copies are
 {
   "id": "c1", "kind": "connect", "groupId": "g7", "pattern": "tree", "groupSize": "auto", "minBranch": 200,
   "roots": [ { "id": "o1", "weight": 2 } ], "pointIds": ["p20", "p21", "p22"],
-  "hubs": [ { "pointId": "h1", "pointIds": ["p20", "p21", "p22"], "rootId": "o1", "pos": [12.45, 41.85] } ],
   "created": ["h1", "l40", "l41", "l42", "l43"]
 }
 ```
@@ -425,7 +476,6 @@ stops following. A rule whose line or circle is gone, or all of whose copies are
 | `minBranch` | a tree's shortest branch, metres (0 when absent): every hub at least this far from its points and from its root |
 | `roots` | the points the lines start from, each `{ "id", "weight" }`; `weight` above 0 (missing: 1, which is not written) |
 | `pointIds` | the points connected, in the order they are cut into groups |
-| `hubs` | each hub made: its point, its tree's points and root, where it was last put |
 | `created` | what it made: hubs and lines (not its points or roots). Connect again removes these and makes them anew. |
 
 Each line it makes is a plain line, its ends linked to the points it joins (§7.4); what it is follows
@@ -434,12 +484,12 @@ in a tree, a trunk (root to hub) or a branch (hub to point); in a chain, a root 
 a link (point to point). The plan: the points, in order, are
 cut into groups of consecutive points, each joined to one root, the cut and the roots chosen together
 as the cheapest, the sum of the groups' lengths each divided by its root's weight (a tie: the most
-even cut). Every tree has a hub of its own, never one of its points: where the median falls on a
-point, its branch is 0 m long. After every change, each hub still at `pos` moves to the geometric
-median of its points and its root (kept at least `minBranch` from each of them); one moved by hand
-stops following. Deleting one of its roots makes it again with the roots left (one undo step);
-deleting the last removes its lines and hubs (its points stay), and its group when nothing is left in
-it.
+even cut). Every tree has a hub of its own (a dot), never one of its points, at the geometric
+median of its points and its root, kept at least `minBranch` from each of them: where the median
+falls on a point, its branch is 0 m long. Its lines follow the points they are attached to; a hub
+stays where it was made. **Update** plans it again with its settings, from its points and roots as
+they are now. A root deleted leaves the lines to it with a free end, the rule keeping the roots left;
+the last deleted, or every point, drops the rule, what it made staying.
 
 ## 9. Writing: only what differs
 
@@ -552,8 +602,8 @@ beside it `vector/drawings.geojson`: the drawing **as drawn**, for tools that kn
 ## 15. Example
 
 A point holding a 5 km sector, a point holding a rectangle (a closed line the Shape tool made), a
-line from the first's centre to a corner of the rectangle, a closed line, and a label along the line,
-tied by three links. Written by the app (`serialise`), then shortened only in layout.
+line from the first point to the second through a dot it shares with a closed line, and a label along
+the line, tied by five links. Written by the app (`serialise`), then shortened only in layout.
 
 ```json
 {
@@ -567,7 +617,9 @@ tied by three links. Written by the app (`serialise`), then shortened only in la
     "view": { "center": [12.5, 41.9], "zoom": 9, "data": {} },
     "links": [
       { "from": ["l1", 0], "to": { "element": "a" } },
-      { "from": ["l1", 2], "to": { "element": "r", "vertex": 2 } },
+      { "from": ["l1", 1], "to": { "element": "j" } },
+      { "from": ["l1", 2], "to": { "element": "s" } },
+      { "from": ["g1", 1], "to": { "element": "j" } },
       { "from": ["t1", 0], "to": { "element": "l1", "edge": 0, "at": 0.5 } }
     ]
   },
@@ -580,33 +632,40 @@ tied by three links. Written by the app (`serialise`), then shortened only in la
       "geometry": { "type": "Point", "coordinates": [12.6, 41.95] },
       "properties": { "name": "Rectangle 1",
         "charts": { "kind": "point", "bearing": 30 } } },
+    { "type": "Feature", "id": "j",
+      "geometry": { "type": "Point", "coordinates": [12.5, 41.8] },
+      "properties": { "name": "Point 1",
+        "charts": { "kind": "point", "symbol": "dot" } } },
     { "type": "Feature", "id": "c",
       "geometry": { "type": "Point", "coordinates": [12.4, 41.9] },
-      "properties": { "charts": { "kind": "circle", "group": "a", "radius": 5000, "aperture": 90, "bearing": 45 } } },
+      "properties": { "charts": { "kind": "circle", "group": "a", "frame": { "places": [[0, 0]], "turn": 0 }, "radius": 5000, "aperture": 90, "bearing": 45 } } },
     { "type": "Feature", "id": "r",
       "geometry": { "type": "Polygon", "coordinates": [[[12.6004227, 41.951897], [12.5980106, 41.9487782], [12.5995773, 41.948103], [12.6019894, 41.9512218], [12.6004227, 41.951897]]] },
-      "properties": { "charts": { "kind": "line", "group": "s", "reversed": true } } },
+      "properties": { "charts": { "kind": "line", "group": "s",
+        "frame": { "places": [[20.5545352, 213.6011], [159.4443607, 213.5993], [-159.4435921, 213.6035], [-20.5561999, 213.5992]] }, "reversed": true } } },
     { "type": "Feature", "id": "l1",
-      "geometry": { "type": "LineString", "coordinates": [[12.4, 41.9], [12.5, 41.88], [12.5980106, 41.9487782]] },
+      "geometry": { "type": "LineString", "coordinates": [[12.4, 41.9], [12.5, 41.8], [12.6, 41.95]] },
       "properties": { "name": "Line 1", "ref": "7",
         "charts": { "kind": "line" } } },
     { "type": "Feature", "id": "g1",
-      "geometry": { "type": "Polygon", "coordinates": [[[12.5, 41.75], [12.55, 41.8], [12.45, 41.8], [12.5, 41.75]]] },
+      "geometry": { "type": "Polygon", "coordinates": [[[12.5, 41.75], [12.55, 41.8], [12.5, 41.8], [12.45, 41.8], [12.5, 41.75]]] },
       "properties": { "name": "Area 1", "fill-opacity": 0.3,
         "charts": { "kind": "line", "reversed": true } } },
     { "type": "Feature", "id": "t1",
-      "geometry": { "type": "Point", "coordinates": [12.4500078, 41.8900109] },
+      "geometry": { "type": "Point", "coordinates": [12.4500389, 41.8500111] },
       "properties": { "charts": { "kind": "label", "text": "{name}" } } }
   ]
 }
 ```
 
 The point `a` says its symbol, a diamond; `s` says none, so it has none (the default). The sector
-`c` and the rectangle `r` name their points as their `group`: each is held by its point, and moves
-and turns with it. The rectangle's places are the clockwise corners the Shape tool made (front
+`c` and the rectangle `r` name their points as their `group`: each is held by its point, and its
+`frame` says where it is about it (the sector on it, turned as it is; the rectangle's corners about
+214 m away, at ±20.6° and ±159.4° from its bearing), so it moves and turns with it. The rectangle's places are the clockwise corners the Shape tool made (front
 right, back right, back left, front left), written counter-clockwise and saying so. The line's start
-is linked to `a`'s centre, its end (place 2) to vertex 2 (the back left corner) of the rectangle; its
-coordinates are where those are. The closed line `g1` was drawn clockwise too. The label's geometry
+is tied to `a`, its end (place 2) to `s`, its middle place to the dot `j`; place 1 of the closed line
+`g1` is tied to `j` too, so the two meet there and move together. Their coordinates are where those
+points are. `g1` was drawn clockwise too: its place 1 counts in its own order. The label's geometry
 is half way along the line's first leg, where its link says.
 
 ## 16. Every default
@@ -633,7 +692,7 @@ What a value is when the file leaves it out. Writing it with this value means th
 | feature | `charts.kind` | from the geometry |
 | feature | `charts.group` | none |
 | feature | `charts.visible` | `true` |
-| feature | `charts.guide` | `false` |
+| feature | `charts.guide`, `charts.measure` | `false` |
 | default look | fill | `#e8590c`, opacity 0.15 |
 | default look | stroke | `#e8590c`, opacity 1, width 1.5, `"solid"` |
 | default look | text | `name` `false`, `values` `false`, `size` `13`, `color` `"#1f2c36"` (a label's only), `background` `"halo"` |
@@ -655,8 +714,7 @@ What a value is when the file leaves it out. Writing it with this value means th
 | label | `look` | `{}`: as any element's |
 | distribute | `groupId`, `copiesId` | `null` |
 | distribute | `spacing`, `count` | `null` |
-| distribute | `startMargin`, `endMargin`, `offset`; `side`; `radius`; `aperture`; `preset`; `points` | `0`; `"left"`; `500`; `null`; `null` (a circle); `[]` |
-| distribute point | `left` | `false` |
+| distribute | `startMargin`, `endMargin`, `offset`; `side`; `radius`; `aperture`; `preset`; `pointIds` | `0`; `"left"`; `500`; `null`; `null` (a circle); `[]` |
 | connect | `groupId`; `pattern`; `groupSize`; `minBranch` | `null`; `"tree"`; `"auto"`; `0` |
-| connect | `roots`, `pointIds`, `hubs`, `created` | `[]` |
+| connect | `roots`, `pointIds`, `created` | `[]` |
 | connect root | `weight` | `1` |

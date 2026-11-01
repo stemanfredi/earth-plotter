@@ -43,7 +43,7 @@ test('a closed line: a 1° × 1° cell at the equator is about 12 308.8 km², it
 test('a measurement: a guide showing its values, out of the totals; its values each leg, the total, a circle\'s radius', () => {
   const doc = emptyDoc(0);
   const pts = [[9.5, 43.6], [9.8, 43.4], [10.1, 43.2]];
-  const m = () => ({ guide: true, look: { text: { values: true } } });
+  const m = () => ({ guide: true, measure: true, look: { text: { values: true } } });
   const r = addLine(doc, pts, m()), a = addRing(doc, [[1, 1], [2, 1], [2, 2]], { ...m(), visible: false }), c = addCircle(doc, [10, 43.5], { ...m(), radius: 15000 });
   assert.ok([r, a, c].every((x) => isMeasurement(doc, x)));
   assert.deepEqual([totals(doc).all.lines, totals(doc).all.points, totals(doc).all.areas], [0, 0, 0]);

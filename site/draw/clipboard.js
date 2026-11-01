@@ -5,7 +5,7 @@
 // elements as the document does, in this page, so they paste into another drawing opened in it too.
 // Pure.
 
-import { find, leavesOf, positionsIn, newId, idsOf, KIND, nextName, emptyDoc } from './document.js';
+import { find, leavesOf, positionsIn, newId, idsOf, KIND, nextName, emptyDoc, follow } from './document.js';
 import { extentOf } from './features.js';
 
 const clone = (x) => structuredClone(x);
@@ -36,11 +36,13 @@ export function paste(doc, clip, mv) {
     const el = clone(src);
     el.id = ids.get(src.id);
     el.name = nameOn(doc, kind, baseOf(src.name));
+    if (!ids.has(el.groupId)) delete el.frame; // a shape copied without its point: free
     el.groupId = ids.get(el.groupId) ?? (groups.has(el.groupId) ? el.groupId : null); // a shape in the copy of its point
     for (const [o, k] of positionsIn(kind, el)) o[k] = mv(o[k]);
     doc[KIND[kind].list].push(el);
     made.push({ kind, el });
   }
+  for (const { kind, el } of made) if (kind === 'point') follow(doc, el); // its shapes as its frame holds them: exactly as they were about it
   for (const { from, to } of clip.links) {
     const keep = ids.has(to.element) || (doc.labels.some((a) => a.id === ids.get(from[0])) && find(doc, to.element));
     if (keep) doc.links.push({ from: [ids.get(from[0]), from[1]], to: { ...to, element: ids.get(to.element) ?? to.element } });

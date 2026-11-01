@@ -320,7 +320,7 @@ test('values shown: each leg\'s length and bearing, the total; a closed line\'s 
   const doc = emptyDoc(0);
   const B = destination([12, 40], 90, 10000), E = destination(B, 90, 10000);
   // what Measure keeps: guides showing their values
-  const m = () => ({ guide: true, look: { text: { values: true } } });
+  const m = () => ({ guide: true, measure: true, look: { text: { values: true } } });
   const ruler = lineFrom(doc, [12, 40], [B], E, m());
   const area = addRing(doc, [[12, 41], [12.1, 41], [12.1, 41.1]], m());
   const ring = addCircle(doc, [13, 40], { ...m(), radius: 2000 });
@@ -352,8 +352,8 @@ test('values shown: each leg\'s length and bearing, the total; a closed line\'s 
 
 test('measured elements are drawn as guides, in the style they are measured with; their values are not drawn with the drawing', () => {
   const doc = emptyDoc(0);
-  lineFrom(doc, [12, 40], [], [12.1, 40], { guide: true, look: { text: { values: true } } });
-  addRing(doc, [[12, 41], [12.1, 41], [12.1, 41.1]], { guide: true, look: { text: { values: true } } });
+  lineFrom(doc, [12, 40], [], [12.1, 40], { guide: true, measure: true, look: { text: { values: true } } });
+  addRing(doc, [[12, 41], [12.1, 41], [12.1, 41.1]], { guide: true, measure: true, look: { text: { values: true } } });
   const f = drawFeatures(doc).features;
   assert.deepEqual(f.map((x) => x.properties.kind).sort(), ['guide', 'guide', 'linehit', 'linehit', 'polygon']);
   const area = f.find((x) => x.properties.kind === 'polygon').properties, line = f.find((x) => x.properties.kind === 'guide' && x.properties.id === area.id).properties;

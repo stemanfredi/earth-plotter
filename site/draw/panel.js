@@ -6,13 +6,13 @@
 import { h, svg, typing, morph, animate, NARROW } from '../dom.js';
 import { ask, askText, note } from '../menu.js';
 import { FINGER } from './layers.js';
-import { find, elements, groupsOf, membersOf, leavesOf, canHold, label, KIND, lookOf, lookField, setLook, LOOK_FIELDS, SYMBOLS, LABEL_OFFSET, makeGroup, setGroup, moveStep, MAX_RADIUS, MAX_OFFSET, STROKE_WIDTH, TEXT_SIZE, SCALE, linkFrom, setLink, fewestPlaces, carry, holderOf, ringOf } from './document.js';
+import { find, elements, groupsOf, membersOf, leavesOf, canHold, label, KIND, lookOf, lookField, setLook, LOOK_FIELDS, SYMBOLS, LABEL_OFFSET, makeGroup, setGroup, moveStep, MAX_RADIUS, MAX_OFFSET, STROKE_WIDTH, TEXT_SIZE, SCALE, linkFrom, setLink, fewestPlaces, carry, holderOf, ringOf, refit, nextName } from './document.js';
 import { insertPlace, deletePlace, reattach, partName, splitLine, lineRef, resolve, along } from './attach.js';
 import { labelValues, labelText, TOKENS } from './labels.js';
 import { lineTrace, totals, breakdown, nearestAlong } from './lines.js';
 import { profileCsv } from './profile.js';
 import { DISTRIBUTE_D, distribute, lines, planConnection, makeDistribution, editDistribution, connect, reconnect, alongTrace, alongOf,
-  distributions, connections, ruleOf, MAX_COPIES, MAX_TREE } from './generator.js';
+  distributions, connections, ruleOf, updateRule, MAX_COPIES, MAX_TREE } from './generator.js';
 import { BUILT_IN, builtInName } from './place.js';
 import { boundsOf, drawable, reachOf } from './features.js';
 import { inverse, destination, areaOf, moveAbout } from '../geodesy.js';
@@ -215,7 +215,7 @@ export function drawView(root, ctx) {
     const el = now(id);
     // Guide (supporting geometry: faint, out of the totals): a measurement is a guide showing its
     // values; unticking Guide makes it part of the drawing
-    const guide = kind !== 'label' && kind !== 'group' ? row('Guide', check(el.guide, (v) => set(id, (x) => { x.guide = v; }), { 'aria-label': 'Guide', title: 'Faint and dashed, out of the totals' })) : null;
+    const guide = kind !== 'label' && kind !== 'group' ? row('Guide', check(el.guide, (v) => set(id, (x) => { x.guide = v; if (!v) delete x.measure; }), { 'aria-label': 'Guide', title: 'Faint and dashed, out of the totals' })) : null; // unticked: part of the drawing (a measurement too)
     return [kind === 'circle' || kind === 'line' ? pointRow(id) : null, holderOf(drawing.doc, el) ? null : groupRow([id]), guide, dataBlock(id)];
   };
   // A shape's point: the one holding it (it moves and turns with it), and Detach (free, in the
@@ -226,7 +226,7 @@ export function drawView(root, ctx) {
       onclick: () => { if (waits) drawing.cancelRepoint(); else drawing.startRepoint(id, null); renderInspector(); } }, 'Attach to…');
     if (!p) return row('Point', fvalue('none'), attach);
     return row('Point', link(p.id), h('button', { type: 'button', class: 'x', title: 'Free, where it is', 'aria-label': 'Detach from its point',
-      onclick: () => set(id, (x) => { x.groupId = p.groupId; }) }, icon(...UI_ICON.detach)));
+      onclick: () => set(id, (x, d) => { x.groupId = p.groupId; if (!x.name) x.name = nextName(d, x.radius ? 'circle' : 'line', x.radius ? (x.aperture ? 'Sector' : 'Circle') : x.closed ? 'Area' : 'Line'); }) }, icon(...UI_ICON.detach))); // free: an element of its own, named
   }
   // a point at position, turned to bearing, its shapes with it (each of xs: one of a field)
   const carryAll = (xs, fn) => drawing.change((d) => { for (const x of xs) { const p = find(d, x).el; carry(d, p, ...fn(p)); } });
@@ -462,7 +462,7 @@ export function drawView(root, ctx) {
   // a line: its length (closed: its area and perimeter), its path, its places, its profile
   function lineInspector(id) {
     const doc = drawing.doc, el = now(id), closed = !!el.closed, u = drawing.units();
-    const line = lineTrace(doc, el);
+    const line = lineTrace(doc, el), held = !!holderOf(doc, el); // a point's shape: rigid, its places tied to nothing
     const at = line.at;
     const splitAt = (k) => drawing.change((d) => splitLine(d, id, k));
     // Its places as rows, numbered 1 (its start) to N (its end): a page of them shown. Lat, Lon (one
@@ -473,13 +473,13 @@ export function drawView(root, ctx) {
     const coord = (k, axis) => F.coord(axis, () => now(id).points[k][axis === 'lat' ? 1 : 0],
       (v) => set(id, (x) => { const p = x.points[k]; x.points[k] = axis === 'lat' ? [p[0], v] : [v, p[1]]; }), `Point ${k + 1} ${axis === 'lat' ? 'latitude' : 'longitude'}`, 6);
     const lu = unitOf(ps.map((_, k) => (legged(k) ? legOf(ps, k).s : 0)));
-    const legCells = (k) => (tied(k) ? [fvalue(inUnit(legOf(ps, k).s, lu)), fvalue(legOf(ps, k).azi.toFixed(1))] : legFields(id, k, 'Point', lu));
+    const legCells = (k) => (tied(k) || held ? [fvalue(inUnit(legOf(ps, k).s, lu)), fvalue(legOf(ps, k).azi.toFixed(1))] : legFields(id, k, 'Point', lu)); // a point's shape: rigid, read only
     const name = (k) => field(() => now(id).names[k], (t) => t, (nv) => set(id, (x) => { x.names[k] = nv; }), { 'aria-label': `Point ${k + 1} name`, placeholder: 'name' });
     // the grid fits the panel's 320 px: #, Lat, Lon, the leg and its bearing; the row current says
     // how far along the line its point is, and holds its name, in the bar over the grid
     const alongText = (k) => funit(`${distText(at[k] || 0, drawing.units()).text} along`);
     const rowAt = (k) => ({ cells: [end(k) ? h('span', { title: k ? 'Its end' : 'Its start' }, `${k + 1}`) : `${k + 1}`,
-        ...(tied(k) ? [link(tied(k).element), null] : [coord(k, 'lat'), coord(k, 'lon')]),
+        ...(tied(k) ? [link(tied(k).element), null] : held ? [fvalue(ps[k][1].toFixed(6)), fvalue(ps[k][0].toFixed(6))] : [coord(k, 'lat'), coord(k, 'lon')]),
         ...(legged(k) ? legCells(k) : [null, null])] });
     const pointRows = () => { const x = now(id), qs = x.points, t = lineTrace(drawing.doc, x).at;
       return [['#', 'Lat', 'Lon', 'Leg m', 'Brg °', 'Along m', 'Name'], qs.map((q, k) => { const g = legged(k) ? legOf(qs, k) : null; return [k + 1, q[1], q[0], g ? +g.s.toFixed(3) : '', g ? +g.azi.toFixed(1) : '', +(t[k] || 0).toFixed(3), x.names[k]]; })]; };
@@ -487,14 +487,15 @@ export function drawView(root, ctx) {
       ...(closed ? [row('Area', valued(fmtArea(line.area, u))), row('Perimeter', distValue(line.length))] : [row('Length', distValue(line.length))]),
       row('Path', choice('Path', [[false, 'Straight', 'Geodesics'], [true, 'Smooth', 'A curve through its bends']], !!el.smooth, (v) => set(id, (x) => { x.smooth = v; }))),
       // closed (three points or more) and opened again; what is linked to its legs stays where it is
-      row('Closed', check(closed, (v) => set(id, (x, d) => { x.closed = v; reattach(d, id); }), { 'aria-label': 'Closed', title: 'Its last point joined to its first: an area', disabled: !closed && N < 3 })),
+      held ? null : row('Closed', check(closed, (v) => set(id, (x, d) => { x.closed = v; reattach(d, id); }), { 'aria-label': 'Closed', title: 'Its last point joined to its first: an area', disabled: !closed && N < 3 })),
       placesTable(id, N, { unit: lu, copy: pointRows, rowAt,
         actions: (k) => ({ label: end(k) ? (k ? `Point ${N}, its end` : 'Point 1, its start') : `Point ${k + 1}`,
-          buttons: [k ? alongText(k) : null, name(k), k < N - 1 || closed ? act('Insert after', 'Insert', () => insertAfter(id, k)) : null,
-            act('Delete', `${MOD} Delete; ${closed ? 'three' : 'two'} are kept`, () => removeAt(id, k), N <= fewestPlaces(el)),
-            end(k) ? null : act('Split', closed ? 'Opened here: its start and its end' : 'Two lines, attached here', () => splitAt(k)),
-            attachBtn(id, k, { class: 'small', 'aria-label': `Attach point ${k + 1} to…` }, 'Attach to…'), tied(k) ? act('Detach', 'Free, where it is', () => detach(id, k)) : null].filter(Boolean) }),
-        insert: (k) => { if (k < N - 1 || closed) insertAfter(id, k); }, remove: (k) => removeAt(id, k) }),
+          buttons: held ? [k ? alongText(k) : null, name(k)].filter(Boolean) // a point's shape: rigid, its form by its handles
+            : [k ? alongText(k) : null, name(k), k < N - 1 || closed ? act('Insert after', 'Insert', () => insertAfter(id, k)) : null,
+              act('Delete', `${MOD} Delete; ${closed ? 'three' : 'two'} are kept`, () => removeAt(id, k), N <= fewestPlaces(el)),
+              end(k) ? null : act('Split', closed ? 'Opened here: its start and its end' : 'Two lines, attached here', () => splitAt(k)),
+              attachBtn(id, k, { class: 'small', 'aria-label': `Attach point ${k + 1} to…` }, 'Attach to…'), tied(k) ? act('Detach', 'Free, where it is', () => detach(id, k)) : null].filter(Boolean) }),
+        insert: (k) => { if (!held && (k < N - 1 || closed)) insertAfter(id, k); }, remove: (k) => { if (!held) removeAt(id, k); } }),
       profileBlock(id),
       actionsRow(ruleActs(id), h('button', { type: 'button', class: 'small', title: 'Copies along this line', onclick: () => openDistribution({ element: id }) }, 'Distribute along…')),
       lookBlock([item(id)]), ...commonBottom('line', id)];
@@ -510,7 +511,7 @@ export function drawView(root, ctx) {
     return [...commonTop('circle', id), coordFields(id, 'position'),
       row('Radius', withUnit(F.dist(() => now(id).radius, (m) => at((x) => { x.radius = m; }), 'Radius', { check: radiusCheck }))),
       row('Aperture', F.angle(() => now(id).aperture, (v) => at((x) => { x.aperture = v || null; }), 'Aperture (degrees): a sector centred on its bearing; empty or 360: a whole circle', { wrap: false, none: true }), funit('°')),
-      row('Bearing', F.angle(() => now(id).bearing, (v) => at((x) => { x.bearing = v; }), 'Bearing (degrees true): a sector\'s middle, a circle\'s start'), funit('°T')),
+      row('Bearing', F.angle(() => now(id).bearing, (v) => at((x, d) => { x.bearing = v; refit(d, 'circle', x); }), 'Bearing (degrees true): a sector\'s middle, a circle\'s start'), funit('°T')), // a point's: its frame too
       drawable(el) ? row('Area', valued(fmtArea(areaOf(ringOf(el)), u))) : h('p', { class: 'note warn' }, `Not drawn: a circle of ${fmtDist(el.radius, u)} there reaches a pole.`),
       actionsRow(ruleActs(id), h('button', { type: 'button', class: 'small', title: 'Copies round it', onclick: () => openDistribution({ element: id }) }, 'Distribute along…')),
       lookBlock([item(id)]), ...commonBottom('circle', id)];
@@ -560,7 +561,7 @@ export function drawView(root, ctx) {
       out.push(row('Radius', withUnit(F.dist(() => same(nowCs(), (c) => c.radius), (m) => each(circles, (c) => { c.radius = m; }), 'Radius of each circle', { check: radiusCheck }))));
     }
     if (lines.length > 1) out.push(row('Path', choice('Path of each line', [[false, 'Straight', 'Geodesics'], [true, 'Smooth', 'A curve through its bends']], same(lines, (x) => !!x.el.smooth), (v) => each(lines, (l) => { l.smooth = v; }))));
-    if (geo.length > 1) out.push(row('Guide', check(same(geo, (x) => x.el.guide), (v) => each(geo, (g) => { g.guide = v; }), { 'aria-label': 'Guide', title: 'Faint and dashed, out of the totals' })));
+    if (geo.length > 1) out.push(row('Guide', check(same(geo, (x) => x.el.guide), (v) => each(geo, (g) => { g.guide = v; if (!v) delete g.measure; }), { 'aria-label': 'Guide', title: 'Faint and dashed, out of the totals' })));
     return out;
   }
 
@@ -595,11 +596,14 @@ export function drawView(root, ctx) {
     if (!r) return null;
     const live = (ids) => ids.filter((x) => doc.points.some((n) => n.id === x)).length;
     const along = r.kind === 'distribute' && find(doc, r.along.element);
-    const text = r.kind === 'distribute' ? `Distribute along ${along ? label(along.kind, along.el) : 'what is gone'} · ${copies(r.points.length)}`
+    const text = r.kind === 'distribute' ? `Distribute along ${along ? label(along.kind, along.el) : 'what is gone'} · ${copies(r.pointIds.length)}`
       : `Connection · ${r.pattern === 'chain' ? 'chains' : 'trees'}, ${plural(live(r.pointIds), 'point')} to ${plural(live(r.roots.map((o) => o.id)), 'root')}`;
     const all = () => drawing.select(tops(leavesOf(drawing.doc, [r.groupId])));
     return { row: row('Made by', fvalue(text, { title: text })),
       acts: [h('button', { type: 'button', class: 'small', title: 'Its settings', disabled: r.kind === 'distribute' && !along, onclick: () => (r.kind === 'distribute' ? openDistribution(r.along, r) : openConnect(r.pointIds, r)) }, 'Edit…'),
+        // made again with its settings, from what it was made from as it is now (a rule follows nothing by itself)
+        h('button', { type: 'button', class: 'small', title: r.kind === 'distribute' ? 'Its copies placed again along it as it is now' : 'Planned again from its points and roots as they are now',
+          disabled: r.kind === 'distribute' && !along, onclick: () => drawing.change((d) => { updateRule(d, r.id); }) }, 'Update'),
         h('button', { type: 'button', class: 'small', title: 'Everything it made', onclick: all }, 'Select all')] };
   }
 
@@ -625,7 +629,7 @@ export function drawView(root, ctx) {
   }
   function openDistribution(along, a = null) {
     Object.assign(dform, DFORM); // a new one: the defaults
-    if (a) Object.assign(dform, { by: a.count ? 'count' : 'spacing', spacing: a.spacing || dform.spacing, count: a.count || a.points.length, startMargin: a.startMargin, endMargin: a.endMargin,
+    if (a) Object.assign(dform, { by: a.count ? 'count' : 'spacing', spacing: a.spacing || dform.spacing, count: a.count || a.pointIds.length, startMargin: a.startMargin, endMargin: a.endMargin,
       offset: a.offset, side: a.side, radius: a.radius, aperture: a.aperture, preset: a.preset ?? 'circle' });
     openForm({ kind: 'distribute', along: { element: along.element }, distributionId: a?.id ?? null });
   }
@@ -699,8 +703,8 @@ export function drawView(root, ctx) {
     const run = distributionRun(), points = run.points, redo = formChanged;
     // a distance that may be 0 (margins, the offset), or must be above 0 (spacing)
     const dist = (key, aria, zero) => withUnit(F.dist(() => dform[key], (m) => { dform[key] = m; redo(); }, aria, { zero }));
-    const differs = editing && points.length !== editing.points.length;
-    const connected = differs && connections(doc).some((c) => c.pointIds.some((n) => editing.points.some((x) => x.pointId === n)));
+    const differs = editing && points.length !== editing.pointIds.length;
+    const connected = differs && connections(doc).some((c) => c.pointIds.some((n) => editing.pointIds.includes(n)));
     // what is repeated: a built-in kind (the circle to start with), or a preset of the user's (its size its own)
     const mine = drawing.presets.filter((x) => presetTool(x) === 'shape');
     const choose = (v) => {
@@ -724,7 +728,7 @@ export function drawView(root, ctx) {
       dform.preset === 'circle' ? row('Aperture', F.angle(() => dform.aperture, (v) => { dform.aperture = v; redo(); }, `Aperture (degrees): a sector ${arc ? 'facing outwards' : 'facing away from the line'}; empty or 360: a circle`, { wrap: false, none: true }), funit('°')) : null,
       editing ? null : row('In group', select('Group', [['', 'none (at the top)'], ...doc.groups.map((g) => [g.id, groupPath(drawing.doc, g)])], dform.groupId ?? '', (v) => { dform.groupId = v || null; }, { title: 'Where its group goes' })),
       h('p', { class: 'note fsummary' }, points.length ? `${copies(points.length)}.` : `No copy fits: ${arc ? 'the circle' : 'the line'} is shorter than the margins, or the spacing too long.`),
-      differs ? h('p', { class: 'note warn' }, `Another number of points (${editing.points.length} now): they are made anew${connected ? ', and connected again' : ''}. Changes made to those by hand are lost; Undo brings them back.`) : null,
+      differs ? h('p', { class: 'note warn' }, `Another number of points (${editing.pointIds.length} now): they are made anew${connected ? ', and connected again' : ''}. Changes made to those by hand are lost; Undo brings them back.`) : null,
       formButtons(editing ? 'Apply' : 'Create', points.length, () => {
         let r;
         drawing.change((d) => { r = editing ? editDistribution(d, editing.id, dformParams()) : makeDistribution(d, dformParams()); });

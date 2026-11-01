@@ -3,18 +3,18 @@
 // DOM (the tests run it in Node). The map's side (drawing.js) extends it and is told of each change:
 // changed() (the document), selectionChanged(), hoverChanged().
 
-import { emptyDoc, touch, find, elements, remove } from './document.js';
+import { emptyDoc, touch, find, elements, remove, frames } from './document.js';
 import { refreshAttached } from './attach.js';
-import { refreshGenerated, reconnectWithout } from './generator.js';
+import { pruneRules } from './generator.js';
 
 const UNDO_STEPS = 100, UNDO_BYTES = 20e6;
 
-// after any change: linked places follow their targets, a distribution's copies follow their line and
-// a hub its points; then the places linked to those follow again
+// after any change, in one pass: every shape a point holds in its frame; the attached places where
+// what they are on is; the rules' lists what is still there (a rule follows nothing: Update)
 export function settleGeometry(doc) {
+  frames(doc);
   refreshAttached(doc);
-  refreshGenerated(doc);
-  refreshAttached(doc);
+  pruneRules(doc);
 }
 
 export class DrawStore {
@@ -87,8 +87,8 @@ export class DrawStore {
     if (this.hover && !ids.has(this.hover)) this.hover = null;
     this.changed();
   }
-  // a delete: one undo step; a connection that lost a root made again with those left
-  remove(ids, withMembers = false) { this.change((doc) => reconnectWithout(doc, remove(doc, ids, withMembers))); }
+  // a delete: one undo step (a connection that lost a root keeps the rest: Update plans it again)
+  remove(ids, withMembers = false) { this.change((doc) => { remove(doc, ids, withMembers); }); }
   // A whole other document (read back, opened, New): nothing selected,
   // undo starting again.
   adopt(doc) {

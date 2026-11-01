@@ -8,7 +8,7 @@
 import { inverse, destination } from '../geodesy.js';
 import { nearestOnSegment } from '../geo.js';
 import { lineTrace, steps } from './lines.js';
-import { isShown, KIND } from './document.js';
+import { isShown, KIND, drawnOf } from './document.js';
 
 export const RADIUS = 6; // px
 const STEP = 15; // degrees: Shift's steps
@@ -22,10 +22,11 @@ function crossing(a, b, c, d) {
 }
 
 // What snapping at the screen point p ([x, y]) finds: { position, kind ('vertex' | 'crossing' |
-// 'edge'), to (what a place would be linked to, or null: a crossing) } or null. to: a target
-// (attach.js: { element } a point's or a circle's centre, { element, vertex }, { element, edge, at }:
-// a line's, its legs as drawn), or { end: [lineId, index] } (an open line's free end: a
-// point is made there to join them). ids: the elements whose edges to
+// 'edge'), to (what is there, or null: a crossing) } or null. to: a target (attach.js: { element } a
+// point's or a circle's centre, { element, vertex }, { element, edge, at }: a line's, its legs as
+// drawn), or { end: [lineId, index] } (an open line's free end). A label points at it; a line's place
+// is tied to a point there (attach.js tieTo). What is snapped to is where it is drawn (a point's shape
+// at its Scale). ids: the elements whose edges to
 // look at (the map's hits near p, which may lag a change by a frame; null: all; vertices are looked at
 // in every element); exclude: elements never snapped to (the one drawn or dragged).
 export function snapAt(doc, p, view, { ids = null, exclude = new Set(), radius = RADIUS } = {}) {
@@ -43,15 +44,16 @@ export function snapAt(doc, p, view, { ids = null, exclude = new Set(), radius =
   for (const kind of ['point', 'circle', 'line']) { // what has positions to snap to (a point first: on its circle's centre, the point)
     for (const el of doc[KIND[kind].list]) {
       if (!want(el)) continue;
-      if (kind !== 'line') { vertex(el.position, { element: el.id }); continue; }
+      const f = drawnOf(doc, el).f; // where it is drawn: a point's shape as its Scale draws it
+      if (kind !== 'line') { vertex(f(el.position), { element: el.id }); continue; }
       // its places not linked (one linked is on what it is linked to); a free end, to be joined at a point
       const last = el.points.length - 1, linked = new Set(doc.links.filter((l) => l.from[0] === el.id).map((l) => l.from[1]));
-      el.points.forEach((q, i) => { if (!linked.has(i)) vertex(q, !el.closed && (i === 0 || i === last) ? { end: [el.id, i] } : { element: el.id, vertex: i }); });
+      el.points.forEach((q, i) => { if (!linked.has(i)) vertex(f(q), !el.closed && (i === 0 || i === last) ? { end: [el.id, i] } : { element: el.id, vertex: i }); });
       // its legs, as drawn (a curve's samples), each sample segment knowing its leg and how far along it
       if (!edgesOf(el)) continue;
       const tr = lineTrace(doc, el), { from } = steps(tr.coords);
       for (let i = 1; i < tr.coords.length; i++) {
-        const a = tr.coords[i - 1], b = tr.coords[i], start = from[i - 1], s = from[i] - start;
+        const a = f(tr.coords[i - 1]), b = f(tr.coords[i]), start = from[i - 1], s = from[i] - start;
         edge(a, b, (t) => {
           const d = start + t * s;
           let k = tr.legs.length - 1;

@@ -34,3 +34,7 @@ export function placeIn(doc, el, i = 0) {
   const ps = el.points ?? [el.position], k = i < 0 ? ps.length + i : i;
   return { position: ps[k], to: linkFrom(doc, el.id, k)?.to ?? null };
 }
+const { addLabel } = await import('../../site/draw/document.js');
+const { targetPosition } = await import('../../site/draw/attach.js');
+// a label pointing at a target ({ element, vertex | edge and at }), where that is
+export const labelOn = (doc, to) => addLabel(doc, targetPosition(doc, to) ?? [0, 0], to);

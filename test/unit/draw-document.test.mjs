@@ -4,7 +4,7 @@ import { addShape, lineFrom, placeIn, addRing } from './helpers.mjs';
 
 const d = await import('../../site/draw/document.js');
 const { parse, serialise, toFile } = await import('../../site/draw/file.js');
-const { refreshAttached, lineRef, resolve, splitLine, insertPlace, deletePlace } = await import('../../site/draw/attach.js');
+const { refreshAttached, lineRef, resolve, splitLine, insertVertex, deleteVertex } = await import('../../site/draw/attach.js');
 const { distributions, connections } = await import('../../site/draw/generator.js');
 const { outlinePoints } = await import('../../site/draw/outlines.js');
 const { drawParts } = await import('../../site/draw/features.js');
@@ -586,7 +586,7 @@ test('a point holds shapes: its circles and lines, nothing else; they are shown 
   assert.deepEqual(again(doc).doc, doc);
 });
 
-test('lines: positions and names only, ties in the links; places inserted and deleted, the links from them numbered again', () => {
+test('lines: positions and names only, attachments in the links; places inserted and deleted, the links from them numbered again', () => {
   const doc = emptyDoc(NOW);
   const a = addPoint(doc, [12, 41]), b = addPoint(doc, [12.3, 41.2]);
   const s = d.addLine(doc, [[12, 41], [12.1, 41.1], [12.2, 41]]);
@@ -596,12 +596,12 @@ test('lines: positions and names only, ties in the links; places inserted and de
   d.setLink(doc, s.id, 2, { element: b.id });
   assert.deepEqual(doc.links, [{ from: [s.id, 0], to: { element: a.id } }, { from: [s.id, 2], to: { element: b.id } }]);
   s.names[1] = 'bend';
-  insertPlace(doc, s.id, 1, [12.05, 41.05]);
+  insertVertex(doc, s.id, 1, [12.05, 41.05]);
   assert.deepEqual([s.points.length, s.names, doc.links.map((l) => l.from[1])], [4, ['', '', 'bend', ''], [0, 3]]);
-  deletePlace(doc, s.id, 0); // the start: the link from it goes, the others move down
+  deleteVertex(doc, s.id, 0); // the start: the link from it goes, the others move down
   assert.deepEqual([s.points[0], s.names, doc.links], [[12.05, 41.05], ['', 'bend', ''], [{ from: [s.id, 2], to: { element: b.id } }]]);
-  deletePlace(doc, s.id, 1);
-  deletePlace(doc, s.id, 0); // two are kept
+  deleteVertex(doc, s.id, 1);
+  deleteVertex(doc, s.id, 0); // two are kept
   assert.deepEqual([s.points.length, doc.links.map((l) => l.from[1])], [2, [1]]);
   d.setLink(doc, s.id, 1, null); // free where it is
   assert.deepEqual([doc.links, s.points[1]], [[], [12.2, 41]]);
@@ -662,9 +662,9 @@ test('measurements: guides showing their values (a line, an area, a circle with 
   const r1 = lineFrom(doc, [12, 44], [[12.5, 44.2]], [13, 44], { ...m(), name: 'Distance 1' });
   const c = addCircle(doc, [14, 40], { ...m(), radius: 5000 });
   const a = addRing(doc, [[12, 44], [13, 44], [12.5, 45]], m());
-  assert.ok([r1, c, a].every((x) => isMeasurement(doc, x)));
+  assert.ok([r1, c, a].every((x) => isMeasurement(x)));
   const shows = addCircle(doc, [0, 0], { guide: true, look: { text: { values: true } } }); // a guide showing its values: a guide still
-  assert.ok(!isMeasurement(doc, addCircle(doc, [0, 0], { look: { text: { values: true } } })) && !isMeasurement(doc, addCircle(doc, [0, 0], { guide: true })) && !isMeasurement(doc, shows));
+  assert.ok(!isMeasurement(addCircle(doc, [0, 0], { look: { text: { values: true } } })) && !isMeasurement(addCircle(doc, [0, 0], { guide: true })) && !isMeasurement(shows));
   assert.deepEqual(styleOf(doc, shows), GUIDE_STYLE, 'its values on: its colour unchanged');
   assert.deepEqual(styleOf(doc, r1), d.MEASURE_STYLE); // drawn as while it was measured
   r1.look.stroke = { color: '#000000' };
@@ -922,9 +922,9 @@ test('order: moved before one of its kind (into its group), or a step among its 
   assert.deepEqual(again(doc).doc.lines.map((x) => x.id), [a.id, c.id, b.id]); // the order kept in the file
 });
 
-test('the example in drawing-format.md §15 reads with no word to say, and writes back as it is', async () => {
+test('the example in drawing-format.md §12 reads with no word to say, and writes back as it is', async () => {
   const md = readFileSync(new URL('../../docs/drawing-format.md', import.meta.url), 'utf8');
-  const text = /\n## 15\.[\s\S]*?```json\n([\s\S]*?)```/.exec(md)[1];
+  const text = /\n## 12\.[\s\S]*?```json\n([\s\S]*?)```/.exec(md)[1];
   const r = read(text);
   assert.deepEqual([r.report.skipped, r.report.warnings], [[], []]);
   assert.deepEqual(toFile(r.doc, r.view), JSON.parse(text));
@@ -1020,4 +1020,16 @@ test('read: a point\'s shape where its frame says; moved in another tool, it goe
   assert.equal(plain.doc.lines[0].frame.places.length, 4);
   f.properties.charts.frame = { places: [[0, 1]] }; // too few places
   warned(read(raw).report, /frame not read; made from where it is/);
+});
+
+test('across 180°: a point\'s shape reads back with no word of moving; an area\'s centre (and a label on it) on it, not at longitude 0', () => {
+  const doc = emptyDoc(NOW);
+  const { point: p } = addShape(doc, [179.999, 10], 'rectangle', 5000); // its corners either side of 180°
+  d.carry(doc, p, p.position, 20);
+  const back = again(doc);
+  assert.deepEqual(back.report.warnings, []);
+  const again2 = parse(serialise(back.doc, VIEW), null, NOW);
+  assert.deepEqual(again2.report.warnings, [], 'and again: never "edited elsewhere"');
+  const c = d.centroid([[179, 0], [-179, 0], [-179, 1], [179, 1]]);
+  assert.ok(Math.abs(Math.abs(c[0]) - 180) < 1e-9 && Math.abs(c[1] - 0.5) < 1e-9, `${c}`);
 });

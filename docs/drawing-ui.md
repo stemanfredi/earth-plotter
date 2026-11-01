@@ -23,7 +23,7 @@ How the interface decides, when this file does not say. The model it shows is in
 - **One grammar.** Every inspector runs in the same order; one kind of table, one unit rule, one
   number style; one word for one thing (the model's words).
 - **What behaves differently looks different.** A shape (it moves with its point, rigid) and an
-  area (edited place by place) differ in name and icon; a snap mark says what a click would attach
+  area (edited vertex by vertex) differ in name and icon; a snap mark says what a click would attach
   to.
 - **The real object first.** Marks never hide an element's own stroke; what is drawn larger or
   beside (Scale, Offset) is said in its look, and values are always the real ones.
@@ -115,8 +115,8 @@ presets) opens its kinds.
 | Tool | Kinds | Makes |
 |---|---|---|
 | Point | symbol, the user's presets without shapes | a point: a marker, the same size at every zoom |
-| Line | none | a line; closed on its first point, a closed line (an area) |
-| Shape | circle, rings, sector, rectangle, ellipse, triangle, three vehicles, the user's presets with shapes | a point with no symbol holding its shapes (circles, a sector, or a closed line: the outline's places), the point named after its kind, its shapes nameless (the tree shows them by kind and size); a preset of the user's keeps its properties and names itself in the property `preset` |
+| Line | none | a line; closed on its first vertex, a closed line (an area) |
+| Shape | circle, rings, sector, rectangle, ellipse, triangle, three vehicles, the user's presets with shapes | a point with no symbol holding its shapes (circles, a sector, or a closed line: the outline's vertices), the point named after its kind, its shapes nameless (the tree shows them by kind and size); a preset of the user's keeps its properties and names itself in the property `preset` |
 | Label | none | a label |
 | Measure | none | nothing, unless kept (§3) |
 
@@ -124,18 +124,19 @@ presets) opens its kinds.
 
 - **Shape**: the centre, then the size as the pointer moves (a circle's radius, rings' outermost, an
   outline's front: 100 × 50, a triangle equilateral). It makes a point and the shapes it holds: a
-  circle each (rings: three, the first filled), a sector, or an outline's places as a closed line,
+  circle each (rings: three, the first filled), a sector, or an outline's vertices as a closed line,
   each a shape like any other once made. It faces north; its bearing is a second step (the point's
   stalk, or Bearing). A **rectangle** or **ellipse** goes corner to corner instead (**Shift**: a
   square, a circle). The second click on the first: the default size. A preset of the user's keeps
   its size: one click.
 - **Line**: as Measure, a click per point, snapped to what is drawn; Enter, a double-click, a
-  right-click or Done ends it at its last point, its first and last points tied where they snapped to a
-  point or another line (§2.2); a click on its first point (three or more) closes it: a closed line, "Area 1", filled,
-  its last leg back to its first point. Backspace or Undo takes back a point.
+  right-click or Done ends it at its last vertex, each vertex attached where it snapped to a point, a
+  shape or another line (§2.2: as its mark said); a click on its first vertex (three or more)
+  closes it: a closed line, "Area 1", filled, its last leg back to its first vertex. Backspace or
+  Undo takes back a vertex.
 - **Sector**: the centre; the radius and one edge; the other edge, clockwise (back on the first: a
   circle): a point holding the sector. Esc goes one click back.
-- **Label**: points at what snapping finds (else a closed line's centre, a place on an open line), or is free
+- **Label**: points at what snapping finds (else a closed line's centre, a spot on an open line), or is free
   text where clicked; its text selected, ready to type. It has no name of its own: the tree shows
   it by its text as it reads, and renames it by its text.
 - What is drawn or dragged shows its values on the map (legs, total, area, radius). Exact lengths and
@@ -149,30 +150,31 @@ presets) opens its kinds.
 ### 2.2 Snapping and attaching
 
 Clicks and drags snap within **6 px**. The nearest target of the first kind found wins: a **vertex**
-(a point's centre, a circle's, a line's place or an open line's free end), then a **crossing**
+(a point's centre, a circle's, a line's vertex or an open line's free end), then a **crossing**
 of two edges or legs, then an **edge**. Hidden elements are not snapped to. The target is marked: a
 ring on a vertex, a cross on a crossing, a dot on an edge; in yellow where a click there attaches (a
-line's place, below), in grey where it only puts its place there.
+line's vertex, below), in grey where it only puts the vertex there.
 
-**Lines meet at points.** Any place of a line (its ends, and every place between: dragged or by
-**Attach to…**) is tied to what it snaps to and follows it. On a point, to that point; on a **point's
-shape** (a rectangle, an outline), to its corner or to a place along its edge, following it as its
-point moves and turns (its real corner, whatever its Scale); on another line's place or free end, a
-dot is made there and both are tied to it; on another line's **leg**, a place is put in that line
-there too, and a dot ties both (that line stays one line, a closed one closed). A guide, a circle's
-centre and a crossing give a position only. A point's shape itself is tied to nothing: it goes with
-its point. **Detach** frees a tied place where it is.
+**Lines meet at points.** Any vertex of a line (its ends, and every vertex between: dragged or by
+**Attach to…**) is attached to what it snaps to and follows it. On a point, to that point; on a
+**point's shape** (a rectangle, an outline), to its corner or to a spot along its edge, following it
+as its point moves and turns (its real corner, whatever its Scale); on another line's vertex or free
+end, a dot is made there and both are attached to it; on another line's **leg**, a vertex is put in
+that line there too, and a dot joins both (that line stays one line, a closed one closed). A guide,
+a circle's centre and a crossing give a position only. A point's shape itself is attached to
+nothing: it goes with its point (a line given to a point, or a shape detached, loses the attachments
+it may no longer have). **Detach** frees an attached vertex where it is.
 
 **A label** points at what it snaps to and follows it: a point's or a circle's **centre**, a line's
-**vertex**, or a place along a **leg** (turning and stretching with it).
+**vertex**, or a spot along a **leg** (turning and stretching with it).
 
-A place whose point or target goes is free where it was; an edit of the line a label is on keeps it
+A vertex whose point or target goes is free where it was; an edit of the line a label is on keeps it
 on the nearest vertex or edge.
 
 ## 3. Measure
 
 Measure: a click per point, snapped; each leg and the total shown. Enter or a double-click ends it; a
-click on its first point closes it (area and perimeter). What it measured goes in the drawing,
+click on its first vertex closes it (area and perimeter). What it measured goes in the drawing,
 selected, as a line "Distance 1" or a closed line "Area 1": a **measurement**, a guide of its own,
 magenta and dashed, its values shown. It stays one whatever its values: Show values off, it is still
 magenta (and a guide showing its values is still a grey guide). Saved, printed and exported with the
@@ -203,15 +205,20 @@ drawing; Delete (or Undo) removes it; unticking Guide makes it part of the drawi
 It shows one element, several (its head counts them by kind; what they share, set on all at once;
 one Look for all; how far apart two points are, and the bearing from the first to the second;
 **Connect…**), a group (**Connect…** on the points in it), or the drawing (title, description, author, when it was created;
-**Display**, the drawing's look, the distance units and the leg bearings; **Totals** by group or by a property, Copy: the open lines' length, by group and by what a connection made; the areas drawn; the points and shapes by kind, a point and its shapes one, named by what was placed ("Aerial vehicle 2 · Sector 3"), its outline not an area). A field applies on Enter
+**Display**, the drawing's look, the distance units and the leg bearings; **Totals**). A field applies on Enter
 or when left, one undo step; a value that does not read stays marked and is not applied; Esc puts it
-back. ↑ ↓ nudge a number by its last digit (Shift: ten). Distances show to the decimetre (m), the
-metre (km) or about 2 m (NM); what is typed is kept as typed. Properties is updated in place as the
+back. ↑ ↓ nudge a number by its last digit (Shift: ten). Distances show by the one rule below (to
+the metre); what is typed is kept as typed. Properties is updated in place as the
 drawing changes (a field being typed in keeps its text and the focus; Tab and a click go where they
 go), and follows a drag on the map as it moves.
 
+**Totals** (the drawing's, a group's), by group or by a property, with Copy: the open lines' length,
+by group and by what a connection made; the areas drawn; and what was **placed**, by kind: a point
+alone, or a point with its shapes counted once, named by what was placed ("Aerial vehicle 2 ·
+Sector 3"; its outline not an area, its circles not circles).
+
 One grammar, top to bottom: what it is (the rule that made it, its name), its geometry, its lists,
-its **actions** (one row of buttons: Edit… and Select all for what a rule made, Distribute along…,
+its **actions** (one row of buttons: Edit…, Update and Select all for what a rule made, Distribute along…,
 Save as preset…, Select members, Connect…), its **Look**, then its foot (a shape's **Point**, **In
 group**, **Guide**, **Data**). Every number is 12 px, of one width; a unit stands beside its value in grey (a distance
 field shows its number, its unit next to it or in the column's head: typed with another unit, it is
@@ -221,7 +228,7 @@ takes one unit by its largest value.
 
 - **Rows**: a label, one value or a pair (latitude · longitude, colour · opacity), and a last column
   for an action (detach, attach, ↺). A box ticked is a row like any other.
-- **Lists** (a line's points, data, the totals, a connection's roots): one
+- **Lists** (a line's vertices, data, the totals, a connection's roots): one
   kind of table, none wider than the panel's 320 px. A long one scrolls in its own box, its head
   kept. The row clicked is current, its
   actions (and what did not fit the columns) in a bar over the list, shown only then, and on keys
@@ -232,17 +239,17 @@ takes one unit by its largest value.
 - **Sections** have the heads of Layers' groups, the arrow at the right where one folds: **Data**, open while it has properties of the user's;
   **Elevation profile**, read when opened; **Totals**, open to start with.
 - **A line**: its **Length**; closed, its **Area** and **Perimeter** instead. **Closed** (three
-  points or more) joins its last point to its first, unticked opens it again.
-- **A line's points**, 1 (its start) to N (its end): Lat, Lon; the **leg** from the point before (a
-  closed line's point 1: from its last), its length and bearing (typed: that point alone moves, the
-  legs either side of it change). The row current says how far **along** the line its point is and
-  holds its name. A point attached shows what to, its leg as it is. Every row's bar has **Attach
+  vertices or more) joins its last vertex to its first, unticked opens it again.
+- **A line's vertices**, 1 (its start) to N (its end): Lat, Lon; the **leg** from the vertex before
+  (a closed line's vertex 1: from its last), its length and bearing (typed: that vertex alone moves,
+  the legs either side of it change). The row current says how far **along** the line its vertex is
+  and holds its name. A vertex attached shows what to, its leg as it is. Every row's bar has **Attach
   to…** (pressed while the next click chooses) and, attached, **Detach** (it stays where it is);
   **Insert after** (not an open line's last), **Delete** (two are kept; closed, three) and **Split**
   (not an end: two lines, attached to a point made there; on a closed line, any point: it opens
   there, its start and its end at that point). The row current is ringed on the map; a point pressed
   on the map makes its row current, on its page. A point's shape is rigid: its rows only show its
-  places (and their names), its form changes by its handles.
+  vertices (and their names), its form changes by its handles.
 - **What several share** (two or more selected, or a group's members under **Each member**): every
   row two or more of them have, "mixed" where they differ; a value set there goes to each that has
   it. Points: Position each axis alone (a latitude typed puts them all on that parallel, their
@@ -260,17 +267,19 @@ takes one unit by its largest value.
   CSV. When none could be read it says so, and reads again when next shown.
 - **A point**: its Position and, while it holds shapes, its **Bearing** (typed, or its stalk: its shapes move and turn with it,
   each keeping its distance and bearing from it; a symbol is never turned), its Symbol, its **Shapes** (each a link to it).
-  **Save as preset…**. Its look is its symbol's colour. **Data**: its properties as keys and values.
+  **Save as preset…**. Its **Look** sets its symbol's colour and its shapes' look (each field on
+  those that have it). **Data**: its properties as keys and values.
 - **A circle**: its centre, **Radius**, **Aperture** (a sector that wide, centred on its **Bearing**;
   empty or 360: the whole circle, as the file reads it), its **Area**; **Distribute along…**. Its look is its own, as any
   element's: Fill (an opacity of 0: not filled), Stroke, Width, Dash, Show values (its radius).
 - **A shape's Point** (a circle or a line): the point holding it, and **Detach** (free where it
-  is, in the point's group: an element of its own, named, a closed one an Area); free, **Attach to…** (the next click on a point makes that point hold
+  is, in the point's group: an element of its own, named, a closed one an Area, never scaled); a point
+  holds circles and closed lines only; free, **Attach to…** (the next click on a point makes that point hold
   it). A shape held by a point has no In group: it is in its point's. It moves only with its point:
   dragged or its Position typed, its point moves and carries every shape (Detach it to move it
   apart); alone, its own handles still size it.
 - A **label**: its text, with value codes ({name}, {along}…: **+ name** and the like insert them) and,
-  while it has any, what it **reads** under it; **Attached to** what and where (a line's point or leg,
+  while it has any, what it **reads** under it; **Attached to** what and where (a line's vertex or leg,
   as its table numbers them), or its **Position**; **Along**, on
   a line; **Text offset**, where its text was dragged to (↺: back); **Leader**. Look:
   text size (px), colour, background (halo or box).
@@ -288,7 +297,7 @@ was made from. What a rule makes is in a group of its own; anything it made show
 ("Distribute along Line 2 · 12 copies", "Connection · trees, 12 points to 1 root") with **Edit…**
 (its form again), **Update** and **Select all**.
 
-**Distribute along…** (a line, a closed one round its ring from its first point, or a circle,
+**Distribute along…** (a line, a closed one round its ring from its first vertex, or a circle,
 clockwise: its whole round from its bearing, a sector's arc) opens a form in Properties (any tool
 goes off):
 
@@ -300,7 +309,7 @@ goes off):
   its copies are connected).
 - A faint preview follows the settings; **Create** makes it in one undo step. Copies stay where
   they are made; **Update** places them again along what they lie along as it is now (one moved by
-  hand too).
+  hand too); when another number of them fits now, it asks first, as Edit… warns.
 - **Edit…**: the same count and copy moves the copies, as they are (one changed by hand keeps its
   own); another copy makes them anew of it, another count anew as the first copy left is (warned
   first), and their connection with them.
@@ -335,15 +344,15 @@ Copies) opens its form (a click on the map picks a root):
   point holds: a click selects its point (with its shapes, marked with it); the same place again,
   the shape alone.
 - **Dragging** a selected element moves it (several together) as one piece along the ellipsoid: each
-  place keeps its distance and bearing from where it was grabbed, which stays under the pointer, so
+  position keeps its distance and bearing from where it was grabbed, which stays under the pointer, so
   it keeps its size at any latitude. One undo step; Esc puts it back; positions snap (Alt: free;
   Shift: 15° steps). A point moved or turned carries its shapes; a shape it holds, dragged, moves it.
   **Handles**: a circle's radius; a sector's two ends and its stalk (its bearing); a point's stalk,
-  just beyond its shapes' front (it turns them with it); a line's points (one tied to a point moves
-  the point; another, dropped on a point, a point's shape or another line, is tied there) and a **+** halfway along a leg (a closed
+  just beyond its shapes' front (it turns them with it); a line's vertices (one attached to a point moves
+  the point; another, dropped on a point, a point's shape or another line, is attached there) and a **+** halfway along a leg (a closed
   line's last leg too); a label's text and, free or on a line, its point. A point selected shows its
-  shapes' handles with its own. A shape a point holds is rigid: a place dragged resizes it, its form
-  kept and the place farthest from it staying put (a rectangle's opposite corner; Shift: its
+  shapes' handles with its own. A shape a point holds is rigid: a vertex dragged resizes it, its form
+  kept and the vertex farthest from it staying put (a rectangle's opposite corner; Shift: its
   proportions too), the point moving to stay its centre; no **+**. The point itself shows no dot
   while it holds shapes.
 - **Display only** (never in lengths or exports): **Offset**, a line drawn beside itself (−50 to 50
@@ -368,7 +377,7 @@ Copies) opens its form (a click on the map picks a root):
 | Backspace | takes back a point |
 | Esc, right-click | steps back one level |
 | ↑ ↓ | previous, next element in the tree |
-| Delete (Mac: also ⌘ Backspace) | deletes the place current (a line's point: pressed on the map or its row), else the selection |
+| Delete (Mac: also ⌘ Backspace) | deletes the vertex current (pressed on the map or its row), else the selection |
 | F2 | rename |
 | Ctrl/⌘ Z, Ctrl/⌘ Shift Z | undo, redo |
 | Ctrl/⌘ C, V, D | copy, paste, duplicate |
@@ -377,7 +386,7 @@ Copies) opens its form (a click on the map picks a root):
 None act while typing in a field, except Esc and Enter. About lists them from `site/keys.js`.
 
 **Copy, paste, duplicate:** a copy keeps its group, look and properties, gets new numbered names and
-keeps the attachments between the elements copied together (a line's point on one left behind is
+keeps the attachments between the elements copied together (a line's vertex on one left behind is
 free); a point is copied with its shapes, a shape copied alone is free. Paste
 puts its middle at the pointer, moved there as a drag moves (its size kept at any latitude);
 Duplicate 20 px beside. One undo step; the copy selected. The clipboard

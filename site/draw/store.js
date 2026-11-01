@@ -9,7 +9,7 @@ import { pruneRules } from './generator.js';
 
 const UNDO_STEPS = 100, UNDO_BYTES = 20e6;
 
-// after any change, in one pass: every shape a point holds in its frame; the attached places where
+// after any change, in one pass: every shape a point holds in its frame; the attached vertices and anchors where
 // what they are on is; the rules' lists what is still there (a rule follows nothing: Update)
 export function settleGeometry(doc) {
   frames(doc);

@@ -45,7 +45,7 @@ test('a measurement: a guide showing its values, out of the totals; its values e
   const pts = [[9.5, 43.6], [9.8, 43.4], [10.1, 43.2]];
   const m = () => ({ guide: true, measure: true, look: { text: { values: true } } });
   const r = addLine(doc, pts, m()), a = addRing(doc, [[1, 1], [2, 1], [2, 2]], { ...m(), visible: false }), c = addCircle(doc, [10, 43.5], { ...m(), radius: 15000 });
-  assert.ok([r, a, c].every((x) => isMeasurement(doc, x)));
+  assert.ok([r, a, c].every((x) => isMeasurement(x)));
   assert.deepEqual([totals(doc).all.lines, totals(doc).all.points, totals(doc).all.areas], [0, 0, 0]);
   const legs = [inverse(pts[0], pts[1]).s, inverse(pts[1], pts[2]).s];
   assert.deepEqual(labels(doc), [...legs.map((s) => fmtDist(s, 'km')), `Σ ${fmtDist(legs[0] + legs[1], 'km')}`, 'r 15.000 km']); // the hidden area: none

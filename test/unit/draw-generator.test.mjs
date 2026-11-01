@@ -247,7 +247,7 @@ test('tree: straight lines root → hub → points, attached at both ends, each 
   assert.deepEqual(doc.rules, [array, r.connection]);
   assert.deepEqual([r.connection.kind, r.connection.pattern, r.connection.groupSize, r.connection.roots, r.connection.pointIds], ['connect', 'tree', 3, roots(o1.id), ids]);
   const gt = totals(doc).groups.get(group.id); // the distribution's group (what is in its subgroups too): its copies (shapes, their circles with them), its hubs
-  assert.deepEqual([gt.points, gt.shapes, gt.circles, gt.lines], [hubs.length, ids.length, 0, made.length]);
+  assert.deepEqual([gt.points, gt.placed, gt.circles, gt.lines], [hubs.length, ids.length, 0, made.length]);
   // undone: what it made goes, its points and root stay
   assert.equal(unconnect(doc, r.connection.id), r.connection);
   assert.deepEqual([doc.lines.length, connections(doc).length], [1, 0]);
@@ -722,4 +722,15 @@ test('a copy changed by hand keeps its change when the rule is edited with the s
   assert.ok(inverse(before, now.position).s > 1000, 'moved to its new place');
   assert.deepEqual([now.symbol, shapesOf(doc, now).find((c) => c.name === 'mine')?.radius], ['square', 321], 'its own changes kept');
   near(inverse(now.position, shapesOf(doc, now).find((c) => c.name === 'mine').position).s, 0, 1e-6, 'its circle carried with it');
+});
+
+test('pruneRules: a line a connection made, deleted, leaves its list (not saved with it)', () => {
+  const { doc, guide, o1 } = scene();
+  const ids = makeDistribution(doc, { ...ARRAY, along: { element: guide.id } }).distribution.pointIds;
+  const c = connect(doc, { pointIds: ids, roots: roots(o1.id), pattern: 'chain', groupSize: 'auto' }).connection;
+  const gone = doc.lines.find((s) => c.created.includes(s.id)).id;
+  remove(doc, [gone]);
+  settleGeometry(doc); // after the change: its links gone, the rule's lists pruned
+  assert.ok(!c.created.includes(gone) && c.created.length > 0);
+  assert.ok(!serialise(doc).includes(gone));
 });

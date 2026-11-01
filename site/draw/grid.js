@@ -1,4 +1,4 @@
-// List grids (docs/drawing-ui.md §5): a small spreadsheet of like things (a line's points, an
+// List grids (docs/drawing-ui.md §5): a small spreadsheet of like things (a line's vertices, an
 // element's properties, a connection's roots, the totals). Its columns of fixed widths, its head kept while
 // it scrolls down (a long one scrolls in its own box); a current row, marked, whose actions are a
 // bar over the grid (only while a row is current) and keys

@@ -22,10 +22,10 @@ export function sectorEdgeTo(centre, bearing, aperture, edge, p, snap = 0) {
   const ap = Math.round(Math.min(359, Math.max(1, norm360(end - start))) * 10) / 10;
   return { bearing: +norm360((edge < 0 ? end - ap : start) + ap / 2).toFixed(4), aperture: ap };
 }
-// A shape held by a point is rigid: a place dragged resizes it, its form kept, the place farthest from
+// A shape held by a point is rigid: a vertex dragged resizes it, its form kept, the vertex farthest from
 // it staying put (a rectangle's opposite corner). Place i of points dragged to p, about centre (the
-// point) facing bearing: every place's offsets from the kept one, along and across the bearing, by
-// the factors that take the dragged place's to the pointer's (an offset under a metre keeps its axis'
+// point) facing bearing: every vertex's offsets from the kept one, along and across the bearing, by
+// the factors that take the dragged vertex's to the pointer's (an offset under a metre keeps its axis'
 // factor 1; 0.05 at least, so that a shape never flips); even (Shift): one factor, the distances'
 // ratio. Returns { points, centre }: the centre moved with them, so that the point stays the shape's.
 export function scaledPlaces(centre, bearing, points, i, p, even = false) {

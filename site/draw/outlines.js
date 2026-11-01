@@ -1,5 +1,5 @@
 // The Shape tool's outlines (docs/drawing-ui.md §2): each a fixed silhouette in a unit frame,
-// stretched to a length (along a bearing) and a width (across it): the places of a closed line. Pure:
+// stretched to a length (along a bearing) and a width (across it): the vertices of a closed line. Pure:
 // no map, no DOM.
 
 import { destination } from '../geodesy.js';
@@ -33,7 +33,7 @@ export function unitOutline(outline) {
   return [...right, ...right.slice(1, -1).reverse().map(([u, v]) => [-u, v])];
 }
 
-// An outline's places on the ellipsoid, clockwise, not closed: its silhouette stretched to length
+// An outline's vertices on the ellipsoid, clockwise, not closed: its silhouette stretched to length
 // (along bearing) and width (across it) about center, each a geodesic destination from it (the Shape
 // tool's closed line)
 export function outlinePoints(center, bearing, length, width, outline = 'rectangle') {

@@ -13,10 +13,11 @@ import { icon, KIND_ICON, UI_ICON, POINT_ICON } from '../icons.js';
 
 const FILTER_FROM = 30; // the filter field appears past this many elements
 // what a total counts: "15 points · 10 circles · 4 shapes · 3 lines, 12.4 km · 2 areas" (closed lines;
-// a shape: a point with what it holds, counted once)
+// placed: a point with what it holds (the Shape tool's, a preset's), counted once)
 const countOf = (b, u) => [b.points ? plural(b.points, 'point') : '', b.circles ? plural(b.circles, 'circle') : '',
-  b.shapes ? plural(b.shapes, 'shape') : '', b.lines ? `${plural(b.lines, 'line')}, ${fmtDist(b.length, u)}` : '', b.areas ? plural(b.areas, 'area') : '', b.hidden ? 'incl. hidden' : ''].filter(Boolean).join(' · ');
-// an element's icon and what the panel calls its kind: a circle or a sector; a closed line a polygon
+  b.placed ? `${b.placed} placed` : '', b.lines ? `${plural(b.lines, 'line')}, ${fmtDist(b.length, u)}` : '', b.areas ? plural(b.areas, 'area') : '', b.hidden ? 'incl. hidden' : ''].filter(Boolean).join(' · ');
+// an element's icon and what the panel calls its kind: a circle or a sector; a closed line a point's
+// outline or an area
 // a closed line: a point's (in its frame) an outline, the Shape tool's icon; drawn on its own, an area
 const iconOf = (kind, el) => (kind === 'circle' ? POINT_ICON[el.aperture ? 'sector' : 'circle'] : KIND_ICON[el.closed ? (el.frame ? 'shape' : 'polygon') : kind]);
 export const kindTitle = (kind, el) => (kind === 'circle' && el.aperture ? 'Sector' : kind === 'line' && el.closed ? (el.frame ? 'Outline' : 'Area') : KIND[kind].name);
@@ -199,8 +200,12 @@ export function createTree(drawing, { facts, drawingPicked = () => {} }) {
 
   // a row selected: its element, or a shape with its point
   const chosen = (el) => isChosen(drawing.doc, drawing.sel, el);
+  let unfolded = ''; // the selection a rebuild was last made for, to show a row it lacked
   function mark() {
-    if ([...drawing.sel].some((id) => find(drawing.doc, id) && !list.querySelector(`[data-id="${CSS.escape(id)}"]`))) render(); // a shape selected under its point's fold: its row shown
+    // a shape selected under its point's fold: built again once, its row shown (one with no row even then,
+    // filtered out, is not built again at every change of the selection)
+    const missing = [...drawing.sel].filter((id) => find(drawing.doc, id) && !list.querySelector(`[data-id="${CSS.escape(id)}"]`)).join(' ');
+    if (missing && missing !== unfolded) { unfolded = missing; render(); }
     for (const row of list.querySelectorAll('.drow[data-id]')) row.classList.toggle('sel', chosen(find(drawing.doc, row.dataset.id)?.el ?? {}));
     if (drawing.sel.size) list.querySelector(`[data-id="${CSS.escape([...drawing.sel].at(-1))}"]`)?.scrollIntoView({ block: 'nearest' });
   }

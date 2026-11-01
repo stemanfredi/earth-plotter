@@ -1,4 +1,4 @@
-// The lines of a drawing (docs/drawing-format.md §7): a line runs through its places, one leg
+// The lines of a drawing (docs/drawing-format.md §7): a line runs through its vertices, one leg
 // between each two of these anchors (a closed one's last back to its first). A straight line's legs are
 // geodesics (as the ruler draws them); a smooth one's are cubic Béziers in the map's projection (Web
 // Mercator) through its anchors, their handles computed from the anchors (Catmull-Rom), ground metres
@@ -15,15 +15,15 @@ const MAX_SAMPLES = 4096;
 // the projection's scale (Mercator metres per ground metre) at a latitude
 const scale = (lat) => 1 / Math.cos(lat * D2R);
 
-// The anchors of a line: [{ position, hIn, hOut }], one a place, from its start to its end (a closed
-// one's first again at its end); handles only on a smooth line of three places or more (with two it
+// The anchors of a line: [{ position, hIn, hOut }], one a vertex, from its start to its end (a closed
+// one's first again at its end); handles only on a smooth line of three vertices or more (with two it
 // stays straight, a geodesic).
 export function anchorsOf(line) {
   const ps = line.points, hs = line.smooth && ps.length > 2 ? smoothHandles(ps, line.closed) : null;
   const an = ps.map((position, i) => ({ position, hIn: hs?.[i].hIn ?? null, hOut: hs?.[i].hOut ?? null }));
   return line.closed ? [...an, an[0]] : an;
 }
-// Catmull-Rom tangents in the projection: at a vertex (every place of a closed line), parallel to
+// Catmull-Rom tangents in the projection: at a vertex (every vertex of a closed line), parallel to
 // the line from the anchor before to the anchor after, each handle a third of its own leg; at an open
 // line's ends, towards the neighbouring handle's end, a third of the leg. In ground metres, [{ hIn,
 // hOut }] per anchor.
@@ -143,18 +143,18 @@ export function nearestAlong(coords, p) {
 // A point holding shapes is one thing placed (a vehicle, a sector, a preset of the user's): what
 // it is, its preset's name, else its own less its number ("Aerial vehicle 3": "Aerial vehicle")
 const holders = (doc) => { const pts = new Set(doc.points.map((p) => p.id)); return new Set([...doc.circles, ...doc.lines].map((x) => x.groupId).filter((id) => pts.has(id))); };
-export const shapeKind = (p) => p.properties.find((x) => x.key === 'preset')?.value || p.name.replace(/\s+\d+$/, '').trim() || 'Shape';
+const shapeKind = (p) => p.properties.find((x) => x.key === 'preset')?.value || p.name.replace(/\s+\d+$/, '').trim() || 'Shape';
 // held: a circle or a closed line a point holds (holding: holders'), counted with its point, not on its own
 const held = (holding, el) => (el.radius != null || el.closed) && holding.has(el.groupId);
 
 // Totals: the open lines' count and length (guides left out: they are supporting geometry), the
-// points' count, the shapes' (a point holding shapes, counted once with them), the free circles'
+// points' count, what was placed (a point holding shapes, counted once with them), the free circles'
 // (sectors too) and the free closed lines' (areas), per group (everything in it, its subgroups'
 // too) and for the whole drawing. Hidden elements count, and each total says whether it includes any
 // (hidden: true). Groups by ID ('' for not grouped).
 export const totals = (doc, ...rest) => reading(doc, () => totalsIn(doc, ...rest)); // indexed while it reads
 function totalsIn(doc) {
-  const bucket = () => ({ length: 0, lines: 0, points: 0, shapes: 0, circles: 0, areas: 0, hidden: false });
+  const bucket = () => ({ length: 0, lines: 0, points: 0, placed: 0, circles: 0, areas: 0, hidden: false });
   const groups = new Map(), all = bucket(), holding = holders(doc);
   const into = (key) => { if (!groups.has(key)) groups.set(key, bucket()); return groups.get(key); };
   const each = (el, fn) => {
@@ -166,7 +166,7 @@ function totalsIn(doc) {
     const len = s.closed ? 0 : lineTrace(doc, s).length;
     each(s, (b) => { if (s.closed) b.areas++; else { b.length += len; b.lines++; } });
   }
-  for (const p of doc.points) if (!p.guide) each(p, (b) => { b[holding.has(p.id) ? 'shapes' : 'points']++; });
+  for (const p of doc.points) if (!p.guide) each(p, (b) => { b[holding.has(p.id) ? 'placed' : 'points']++; });
   for (const c of doc.circles) if (!c.guide && !held(holding, c)) each(c, (b) => { b.circles++; });
   return { groups, all };
 }

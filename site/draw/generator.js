@@ -33,7 +33,7 @@ export const connections = (doc) => doc.rules.filter((r) => r.kind === 'connect'
 
 // ---- placing points along a line ---------------------------------------------------------------------
 
-// What points go along: a line as drawn (a closed one round its ring, from its first place); a
+// What points go along: a line as drawn (a closed one round its ring, from its first vertex); a
 // circle, clockwise: its whole round from its bearing, closed, or a sector's arc from one end to the
 // other, sampled every half degree. { coords, length, closed }
 export function alongTrace(doc, el) {
@@ -45,7 +45,7 @@ export function alongTrace(doc, el) {
 // the element points go along (a line or a circle), or null
 export const alongOf = (doc, id) => doc.lines.find((s) => s.id === id) ?? doc.circles.find((c) => c.id === id) ?? null;
 
-// the most copies one distribution makes: more would hang the page (each is a point, drawn and followed)
+// the most copies one distribution makes: more would hang the page (each is a point with its shapes, drawn)
 export const MAX_COPIES = 2000;
 // The points' places along el (a line, or a circle's arc): { points: [{ position, facing, t, left }],
 // length, capped (more than MAX_COPIES asked for: the first of them) }. facing: the azimuth away from
@@ -131,7 +131,7 @@ function route(nodes, root, pattern, minBranch = 0) {
 // size took 11 s). Chains cost nothing to size: any
 export const MAX_TREE = 32;
 // a group size as the planner takes it: a whole number (a tree's at most MAX_TREE), else 'auto'
-export const groupSizeOf = (v, pattern) => (Number.isInteger(v) && v > 0 ? (pattern === 'chain' ? v : Math.min(v, MAX_TREE)) : 'auto');
+const groupSizeOf = (v, pattern) => (Number.isInteger(v) && v > 0 ? (pattern === 'chain' ? v : Math.min(v, MAX_TREE)) : 'auto');
 let lastPlan = null; // the last plan, by its inputs: the form previews it, then Connect makes it
 
 // The plan: the points (positions, in order) cut into groups of consecutive points, each joined to one
@@ -239,7 +239,7 @@ export function planConnection(doc, { pointIds, roots = [], newRoots = [], patte
 // the rules' fields when nothing says otherwise (the file leaves these out: file.js); radius in m
 export const DISTRIBUTE_D = { groupId: null, copiesId: null, spacing: null, count: null, startMargin: 0, endMargin: 0, offset: 0, side: 'left', radius: 500, aperture: null, preset: null, pointIds: [] };
 export const CONNECT_D = { groupId: null, pattern: 'tree', groupSize: 'auto', minBranch: 0, roots: [], pointIds: [], created: [] };
-export const patternOf = (v) => (v === 'chain' ? 'chain' : 'tree');
+const patternOf = (v) => (v === 'chain' ? 'chain' : 'tree');
 const DISTRIBUTE_KEYS = Object.keys(DISTRIBUTE_D).filter((k) => !['groupId', 'copiesId', 'pointIds'].includes(k)); // its settings: what the form sets
 const D = DISTRIBUTE_D, SIDES = ['left', 'right', 'alternate'];
 // A distribution's settings as taken, from the form or a file: each value of its kind and range,
@@ -415,13 +415,14 @@ export function updateRule(doc, id) {
 // it makes again goes where its own were. Nothing moves: a rule follows nothing until Update.
 export function pruneRules(doc) {
   if (!doc.rules.length) return;
-  const groups = new Set(doc.groups.map((g) => g.id)), pts = new Set(doc.points.map((n) => n.id));
+  const groups = new Set(doc.groups.map((g) => g.id)), pts = new Set(doc.points.map((n) => n.id)), made = new Set([...pts, ...doc.lines.map((s) => s.id)]);
   for (const r of doc.rules) for (const k of ['groupId', 'copiesId']) if (r[k] && !groups.has(r[k])) r[k] = null;
   const was = doc.rules;
   doc.rules = doc.rules.filter((r) => {
     r.pointIds = r.pointIds.filter((id) => pts.has(id));
     if (r.kind === 'distribute') return !!alongOf(doc, r.along.element) && r.pointIds.length > 0;
     r.roots = r.roots.filter((o) => pts.has(o.id));
+    r.created = r.created.filter((id) => made.has(id)); // what it made and is still there
     return r.roots.length > 0 && r.pointIds.length > 0;
   });
   // a rule gone takes the groups it made, where they are left empty

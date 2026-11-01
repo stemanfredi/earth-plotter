@@ -15,9 +15,9 @@ import { fmtArea, fmtBrg, fmtDist } from '../format.js';
 export const drawable = (c, r = c.radius) => !reachesPole(c.position, r);
 // a circle as drawn: its Scale's (its centre carried about its point, its radius times it); itself at 1
 export const drawnCircle = (doc, c) => { const t = drawnOf(doc, c); return t.k === 1 ? c : { ...c, position: t.f(c.position), radius: c.radius * t.k }; };
-// how far a point's shapes reach from it (m): their farthest place, or circle's rim
+// how far a point's shapes reach from it (m): their farthest vertex, or circle's rim
 // how far they reach along its bearing, as drawn (each its Scale): where its stalk starts
-export const frontOf = (doc, p) => Math.max(0, ...membersOf(doc, p.id).flatMap(({ kind, el }) => { const t = drawnOf(doc, el); return positionsIn(kind, el).map(([o, k]) => { const g = inverse(p.position, t.f(o[k])); return g.s * Math.cos((g.azi - p.bearing) * D2R) + (el.radius ?? 0) * t.k; }); }));
+const frontOf = (doc, p) => Math.max(0, ...membersOf(doc, p.id).flatMap(({ kind, el }) => { const t = drawnOf(doc, el); return positionsIn(kind, el).map(([o, k]) => { const g = inverse(p.position, t.f(o[k])); return g.s * Math.cos((g.azi - p.bearing) * D2R) + (el.radius ?? 0) * t.k; }); }));
 export const reachOf = (doc, p) => Math.max(0, ...membersOf(doc, p.id).flatMap(({ kind, el }) => positionsIn(kind, el).map(([o, k]) => inverse(p.position, o[k]).s + (el.radius ?? 0))));
 
 const HANDLE_GAP = 12; // px
@@ -29,7 +29,7 @@ const lineProps = (s) => ({ sc: s.color, so: s.opacity, sw: s.width, dash: s.das
 // The features drawn, in three parts, each its own map source so that only what changed is drawn
 // again (drawing.js):
 // - base: each shown circle (a polygon, its fill and stroke its own), each closed line's fill, each
-//   point's symbol, the names of points, circles and of lines' places;
+//   point's symbol, the names of points, circles and of lines' vertices;
 // - zoom: each visible line, and its names;
 // - marks: those of the selected elements (sel: Set of IDs; a point's shapes with it) and of the one
 //   under the pointer (hover).
@@ -47,7 +47,7 @@ function drawPartsIn(doc, sel = new Set(), hover = null, display = {}, want = { 
   // What says "selected": the one element selected shows its handles and its own stroke, untouched
   // (as the drawing tools do: the edge is what one aligns to), a point a small white dot at its
   // centre; among several selected (a point's shapes with it), each shows squares as handles look at
-  // its key points (dots(): a line's places, a circle's handles), inert, thinned as handles are. The
+  // its key points (dots(): a line's vertices, a circle's handles), inert, thinned as handles are. The
   // band along an element is for hovering only.
   const mark = (el, geometry, props = {}, dots = null) => {
     const kind = markOf(el), id = el.id;
@@ -66,7 +66,7 @@ function drawPartsIn(doc, sel = new Set(), hover = null, display = {}, want = { 
   const mpp = display.zoom == null ? 0 : metresPerPixel(display.zoom);
   const midPx = display.midPx ?? 40; // a + halfway only along a leg this long on screen (80 with a finger)
   // Each handle says what dragging it does: role and ref (an index, a sector's end, a point ID).
-  // items: [{ p, role, ref, kind ('handle', 'mid') }]; thin: a line's points thinned.
+  // items: [{ p, role, ref, kind ('handle', 'mid') }]; thin: a line's vertices thinned.
   // positions thinned at the map's zoom: one at least gap px from the last kept, the last always
   const thinned = (ps, gap = HANDLE_GAP) => {
     if (!mpp) return ps;
@@ -135,7 +135,7 @@ function drawPartsIn(doc, sel = new Set(), hover = null, display = {}, want = { 
     const { fill, stroke: st } = styleOf(doc, sg), t = drawnOf(doc, sg); // t: as its Scale draws it (a closed line's)
     const traced = () => { const l = lineTrace(doc, sg); return t.k === 1 ? l : { ...l, coords: l.coords.map(t.f) }; };
     if (want.base && sg.closed) base.push({ type: 'Feature', properties: { id: sg.id, kind: 'polygon', z: Z.get(sg.id), fill: 1, fc: fill.color, fo: fill.opacity }, geometry: { type: 'Polygon', coordinates: [traced().coords] } });
-    // its named places: at their real positions, whatever the zoom
+    // its named vertices: at their real positions, whatever the zoom
     if (want.base && wants(sg)) sg.names.forEach((nm, i) => { if (nm.trim()) baseNames.push({ type: 'Feature', properties: { id: sg.id, kind: 'name', nm, c: st.color, vx: 1 }, geometry: { type: 'Point', coordinates: t.f(sg.points[i]) } }); });
     if (!want.zoom && !markOf(sg)) continue;
     const line = traced(), off = offsetOf(doc, sg);
@@ -147,17 +147,17 @@ function drawPartsIn(doc, sel = new Set(), hover = null, display = {}, want = { 
     }
     if (mark(sg, g, { sw: st.width, off }, () => sg.points.map(t.f)) && own.has(sg.id)) {
       const ps = sg.points.map(t.f); // its handles where it is drawn
-      // held by a point, it is rigid: each place resizes it, the farthest kept (no + either)
+      // held by a point, it is rigid: each vertex resizes it, the farthest kept (no + either)
       if (holderOf(doc, sg)) { handles(sg.id, ps.map((p, i) => ({ p, role: 'scale', ref: i }))); continue; }
-      // its places: one tied to a point moves the point; another (free, or on a point's shape) itself,
-      // tied where it is dropped
+      // its vertices: one attached to a point moves the point; another (free, or on a point's shape) itself,
+      // attached where it is dropped
       handles(sg.id, ps.map((p, i) => { const to = linkFrom(doc, sg.id, i)?.to; return { p, ...(to && to.vertex == null && to.edge == null ? { role: 'point', ref: to.element } : { role: 'vertex', ref: i }) }; }), true);
       // a + halfway along each leg long enough on screen, on the line as drawn (a smooth line's curve):
       // dragging it adds a point there
       if (mpp) {
         const mids = [];
         for (let i = 0; i < line.legs.length; i++) {
-          if (line.legs[i] * t.k / ground(ps[i][1]) > midPx) mids.push({ p: t.f(pointsAlong(lineTrace(doc, sg).coords, [(line.at[i] + line.at[i + 1]) / 2])[0].position), role: 'mid', ref: i, kind: 'mid' });
+          if (line.legs[i] / ground(ps[i][1]) > midPx) mids.push({ p: pointsAlong(lineTrace(doc, sg).coords, [(line.at[i] + line.at[i + 1]) / 2])[0].position, role: 'mid', ref: i, kind: 'mid' }); // a line no point holds: drawn at its size
         }
         handles(sg.id, mids);
       }

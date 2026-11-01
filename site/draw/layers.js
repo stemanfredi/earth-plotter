@@ -8,7 +8,7 @@ import { INK } from './document.js';
 // what a click would hit at full; the handles white, edged in the UI's ink (INK); what is not made yet
 // (being drawn, a form's preview) dashed, in that ink. Measurements keep magenta: content.
 const MARK = '#ffc400', WHITE = '#ffffff', HOVER = 0.7; // HOVER: every hover mark's strength (band, ring, label)
-const FREE = '#5d6d79'; // a snap that attaches nothing: the place only put there (the guides' grey)
+const FREE = '#5d6d79'; // a snap that attaches nothing: the vertex only put there (the guides' grey)
 const SNAPPED = ['case', ['==', ['get', 'free'], 1], FREE, MARK]; // a snap mark: attaches, or not
 const HALO_W = 1.5; // the case of a text or a symbol on the map (names, symbols, labels, values, the + marks)
 
@@ -142,11 +142,11 @@ export const DRAW_LAYERS = [
   // the line being drawn (Line tool)
   draftLayer('draw-draft', 'draft'),
   // where a click or a drag snaps (snap.js): a ring on a vertex, a dot on an edge, a cross at a crossing;
-  // in the marks' colour where a click attaches there, grey where it only puts its place there (free)
+  // in the marks' colour where a click attaches there, grey where it only puts the vertex there (free)
   { id: 'draw-snapto', type: 'circle', source: 'drawover', filter: ['in', ['get', 'kind'], ['literal', ['snapvertex', 'snapedge']]],
     paint: { 'circle-radius': ['match', ['get', 'kind'], 'snapvertex', 8, 4], 'circle-color': SNAPPED, 'circle-opacity': ['match', ['get', 'kind'], 'snapvertex', 0, 1],
       'circle-stroke-color': ['match', ['get', 'kind'], 'snapvertex', SNAPPED, WHITE], 'circle-stroke-width': ['match', ['get', 'kind'], 'snapvertex', 3, 1.5] } },
-  // the place of the row current in Properties' table (a line's point): ringed, as a
+  // the vertex of the row current in Properties' table: ringed, as a
   // mark (not in the exports)
   ringLayer('draw-mark-place', 'place'),
   { id: 'draw-snapcross', type: 'symbol', source: 'drawover', filter: ofKind('snapcrossing'),

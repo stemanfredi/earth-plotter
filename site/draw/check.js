@@ -83,7 +83,7 @@ function clamp(v, lo, hi, dflt, c, what) {
 }
 // An element's own style: the values it sets, each checked; those it does not set come from the
 // drawing, else the defaults (document.js styleOf).
-export function ownStyle(s, c) {
+function ownStyle(s, c) {
   if (s === undefined || s === null) return {};
   if (!isObj(s)) { c.warn('style: not an object, ignored'); return {}; }
   const out = {};

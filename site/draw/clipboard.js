@@ -1,6 +1,6 @@
 // Copy, paste, duplicate (docs/drawing-ui.md §8). A copy keeps its group (when the drawing has
 // it), its look and properties; a point's shapes are copied with it, a shape copied alone is free; it gets new IDs and numbered names, and keeps the links between the
-// elements copied together (a line's place linked to an element left behind is free; a label on one
+// elements copied together (a line's vertex linked to an element left behind is free; a label on one
 // keeps pointing at it, if it is in the drawing, else is free where it pointed). The clipboard holds the
 // elements as the document does, in this page, so they paste into another drawing opened in it too.
 // Pure.
@@ -10,7 +10,7 @@ import { extentOf } from './features.js';
 
 const clone = (x) => structuredClone(x);
 
-// The elements ids as a clipboard: { items: [{ kind, el }], links: the links from their places } (for
+// The elements ids as a clipboard: { items: [{ kind, el }], links: the links from their vertices and anchors } (for
 // a group, everything in it; for a point, its shapes; the groups themselves are not copied).
 export function clipOf(doc, ids) {
   const items = leavesOf(doc, ids).map(({ kind, el }) => ({ kind, el: clone(el) })), mine = new Set(items.map((x) => x.el.id));

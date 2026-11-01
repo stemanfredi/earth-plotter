@@ -148,7 +148,7 @@ export function parseDist(text, bare) {
 // mode metres below 1 km, else km; in the nm mode NM. With its unit, for parseDist's bare number.
 export function distText(m, units) {
   const unit = units === 'nm' ? 'nm' : m < 1000 ? 'm' : 'km';
-  const v = +(m / UNIT_M[unit]).toFixed(unit === 'm' ? 1 : 3); // to the decimetre, the metre (km), 2 m (NM): what is read; a value typed is kept exact
+  const v = +(m / UNIT_M[unit]).toFixed(unit === 'm' ? 0 : 3); // to the metre (m, km), 2 m (NM), as the map and the tables show it; a value typed is kept exact
   return { text: `${v} ${unit === 'nm' ? 'NM' : unit}`, value: v, unit };
 }
 

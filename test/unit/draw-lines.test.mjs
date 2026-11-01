@@ -125,12 +125,12 @@ test('totals: per group and in all; guides left out; hidden elements flagged', (
   const g = makeGroup(doc, [ringedPoint.id, dot.id, c.id, inGroup.id]);
   const t = totals(doc);
   const a = lineTrace(doc, inGroup).length, b = lineTrace(doc, hidden).length;
-  assert.deepEqual({ ...t.all, length: 0 }, { length: 0, lines: 2, points: 2, shapes: 0, circles: 1, areas: 1, hidden: true }, 'guides left out');
+  assert.deepEqual({ ...t.all, length: 0 }, { length: 0, lines: 2, points: 2, placed: 0, circles: 1, areas: 1, hidden: true }, 'guides left out');
   near(t.all.length, a + b, 1e-6, 'all');
   // the group's: its two points and its circle
-  assert.deepEqual({ ...t.groups.get(g.id), length: 0 }, { length: 0, lines: 1, points: 2, shapes: 0, circles: 1, areas: 0, hidden: false });
+  assert.deepEqual({ ...t.groups.get(g.id), length: 0 }, { length: 0, lines: 1, points: 2, placed: 0, circles: 1, areas: 0, hidden: false });
   near(t.groups.get(g.id).length, a, 1e-9, 'the group\'s line');
-  assert.deepEqual({ ...t.groups.get(''), length: 0 }, { length: 0, lines: 1, points: 0, shapes: 0, circles: 0, areas: 1, hidden: true });
+  assert.deepEqual({ ...t.groups.get(''), length: 0 }, { length: 0, lines: 1, points: 0, placed: 0, circles: 0, areas: 1, hidden: true });
   // a hidden group hides its members: its totals say so
   g.visible = false;
   assert.equal(totals(doc).groups.get(g.id).hidden, true);
@@ -181,7 +181,7 @@ test('totals: circles (sectors too) counted apart from points; a point and its s
   addShape(doc, [12, 40]); // a point and its closed line
   addDot(doc, [12, 40]);
   const t = totals(doc).all;
-  assert.deepEqual([t.points, t.shapes, t.circles, t.areas], [2, 2, 1, 0]);
+  assert.deepEqual([t.points, t.placed, t.circles, t.areas], [2, 2, 1, 0]);
 });
 
 test('breakdown: a placed shape counted once, by what was placed; its outline not an area, its circles not circles; lines alone', async () => {

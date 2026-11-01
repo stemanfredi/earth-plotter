@@ -79,7 +79,7 @@ await section('URL state, Link, Measure, a bad link', async () => {
   await p.keyboard.press('Escape');
   await settled(p);
   const kinds = (await p.evaluate(() => drawing.doc.lines.map((l) => l.name.split(' ')[0]))).sort().join(); // the list is built only while seen: the panel is closed
-  const measured = await p.evaluate(async () => { const { elements, isMeasurement } = await import('./draw/document.js'); return [elements(drawing.doc).filter((x) => isMeasurement(drawing.doc, x.el)).length, map.querySourceFeatures('drawvalue').map((f) => f.properties.label)]; });
+  const measured = await p.evaluate(async () => { const { elements, isMeasurement } = await import('./draw/document.js'); return [elements(drawing.doc).filter((x) => isMeasurement(x.el)).length, map.querySourceFeatures('drawvalue').map((f) => f.properties.label)]; });
   check(made.join() === '1,true,measure' && kinds === 'Distance' && measured[0] === 1 && measured[1].some((t) => /NM$/.test(t)) && liveValues > 0,
     `Measure: a distance in the drawing, selected, the tool still on (${made}); a guide showing its values in NM; the leg's length shown while drawing (${kinds}; ${measured[1].join(' | ')}; ${liveValues} live)`);
   await p.evaluate(() => map.jumpTo({ center: [12, 41], zoom: 6 }));

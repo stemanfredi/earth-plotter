@@ -4,8 +4,8 @@
 // properties and the common style names (stroke, fill…) are its properties; what is the app's own is
 // under one key, "charts"; the drawing's view, look, groups, rules and links are a member "charts"
 // of the collection.
-// Legs are geodesics, or a smooth curve through the places (other tools draw them straight in
-// longitude and latitude: the geometry holds the places, "smooth" is the app's). Drawings of another format version are not read. Pure: no map, no DOM.
+// Legs are geodesics, or a smooth curve through the vertices (other tools draw them straight in
+// longitude and latitude: the geometry holds the vertices, "smooth" is the app's). Drawings of another format version are not read. Pure: no map, no DOM.
 
 import { FORMAT, VERSION, KINDS, KIND, SYMBOLS, LEADERS, LABEL_OFFSET, META_D, MAX_RADIUS, MAX_LABEL_OFFSET,
   emptyDoc, newId, columnsOf, find, linkFrom, targetOf, elements, canHold, holderOf, positionsIn, adopt, framed } from './document.js';
@@ -146,7 +146,7 @@ function read(raw, app, known, now, report) {
     report.warnings.push(`${kind} ${el.id}: group ${el.groupId.slice(0, 64)} not found; now standalone`);
     el.groupId = null;
   }
-  // a point's shapes: where their frames about it say (a frame wins, as a link does: a place more than
+  // a point's shapes: where their frames about it say (a frame wins, as a link does: a position more than
   // 10⁻⁶° from it goes there, counted); one without a valid frame gets one from where it is
   let reframed = 0;
   for (const kind of ['circle', 'line']) {
@@ -165,9 +165,9 @@ function read(raw, app, known, now, report) {
   }
   if (reframed) report.warnings.push(`${reframed} place${reframed > 1 ? 's' : ''} of shapes moved to where ${reframed > 1 ? 'their points hold them' : 'its point holds it'} (the file was edited elsewhere)`);
 
-  // links, once every element is in: the link wins, its place goes where its target is. One from a
-  // place that is not here, or to what is not (or to its own element), or a line's place to what is
-  // neither a point nor a point's shape, or a place of a point's shape, is dropped: the place stays
+  // links, once every element is in: the link wins, its vertex goes where its target is. One from a
+  // vertex that is not here, or to what is not (or to its own element), or a line's vertex to what is
+  // neither a point nor a point's shape, or a vertex of a point's shape, is dropped: the vertex stays
   // free where the geometry says
   const was = [];
   for (const v of Array.isArray(app?.links) ? app.links : []) {
@@ -260,7 +260,7 @@ const READ = {
     const a = aperture(mine.aperture, c);
     return { ...x, position: coord(coords, c, 'position'), radius: mine.radius, aperture: a, bearing: angle(mine.bearing, c, 'bearing') };
   },
-  // a LineString, or a Polygon's outer ring (closed): its first place not repeated at its end
+  // a LineString, or a Polygon's outer ring (closed): its first vertex not repeated at its end
   line(coords, mine, x, c, { closed }) {
     if (closed) {
       if (!Array.isArray(coords) || !Array.isArray(coords[0])) c.skip('no ring');

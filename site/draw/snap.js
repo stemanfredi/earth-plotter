@@ -1,7 +1,7 @@
 // Snapping (docs/drawing-ui.md §2.2): where a click or a drag lands when it is near something
 // drawn, on screen. Targets, nearest kind first: a vertex (a point's centre, a circle's, a line's
-// place); the crossing of two edges or legs; an edge or a leg. Each within RADIUS
-// px; the nearest of the first kind found wins. What a target can link a place to (attach.js) comes
+// vertex); the crossing of two edges or legs; an edge or a leg. Each within RADIUS
+// px; the nearest of the first kind found wins. What a target can attach a vertex to (attach.js) comes
 // with it. Shift instead turns the leg being drawn in 15° steps. Pure: the map
 // gives the projection (view.project, view.unproject).
 
@@ -24,8 +24,8 @@ function crossing(a, b, c, d) {
 // What snapping at the screen point p ([x, y]) finds: { position, kind ('vertex' | 'crossing' |
 // 'edge'), to (what is there, or null: a crossing) } or null. to: a target (attach.js: { element } a
 // point's or a circle's centre, { element, vertex }, { element, edge, at }: a line's, its legs as
-// drawn), or { end: [lineId, index] } (an open line's free end). A label points at it; a line's place
-// is tied to a point there (attach.js tieTo). What is snapped to is where it is drawn (a point's shape
+// drawn), or { end: [lineId, index] } (an open line's free end). A label points at it; a line's vertex
+// is attached to a point there (attach.js attachAt). What is snapped to is where it is drawn (a point's shape
 // at its Scale). ids: the elements whose edges to
 // look at (the map's hits near p, which may lag a change by a frame; null: all; vertices are looked at
 // in every element); exclude: elements never snapped to (the one drawn or dragged).
@@ -46,7 +46,7 @@ export function snapAt(doc, p, view, { ids = null, exclude = new Set(), radius =
       if (!want(el)) continue;
       const f = drawnOf(doc, el).f; // where it is drawn: a point's shape as its Scale draws it
       if (kind !== 'line') { vertex(f(el.position), { element: el.id }); continue; }
-      // its places not linked (one linked is on what it is linked to); a free end, to be joined at a point
+      // its vertices not linked (one linked is on what it is linked to); a free end, to be joined at a point
       const last = el.points.length - 1, linked = new Set(doc.links.filter((l) => l.from[0] === el.id).map((l) => l.from[1]));
       el.points.forEach((q, i) => { if (!linked.has(i)) vertex(f(q), !el.closed && (i === 0 || i === last) ? { end: [el.id, i] } : { element: el.id, vertex: i }); });
       // its legs, as drawn (a curve's samples), each sample segment knowing its leg and how far along it
@@ -98,7 +98,7 @@ export function stepped(from, p, prev = null) {
   return destination(from, a, d.s);
 }
 
-// for the place at index k of positions, the one before it and the one before that (for Shift); for
+// for the vertex at index k of positions, the one before it and the one before that (for Shift); for
 // the first, the ones after it
 export function neighbours(positions, k) {
   if (k > 0) return { from: positions[k - 1], prev: positions[k - 2] ?? null };

@@ -1,4 +1,4 @@
-// Labels (docs/drawing-format.md §7.7): where each one points (its position; linked, what it points
+// Labels (docs/drawing-format.md §7.5): where each one points (its position; linked, what it points
 // at), its text with the live values filled in, and what the map draws for it: the text, a leader line
 // from the text to where it points, the leader's end. The text sits at an offset in screen pixels from there, so the map
 // gives the projection (view.project, view.unproject) and the size of a text (view.measure). Pure

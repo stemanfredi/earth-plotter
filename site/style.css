@@ -354,10 +354,8 @@ body.finding .search { display: flex; }
 .credits a { color: var(--ink); text-decoration: none; }
 .credits a:hover { text-decoration: underline; }
 .maplibregl-ctrl-scale { border-color: var(--ink); color: var(--ink); font: 11px var(--font); }
-/* the scale varies across the view: orange, "≈" just before the bar (the bar is as long as its text
-   says, so the mark cannot go in it), on the bar's own backing drawn on to the left: one box */
-#scale.varies { color: var(--warn); border-color: var(--warn); position: relative; margin-left: 13px; box-shadow: -13px 0 0 rgba(255,255,255,.85); }
-#scale.varies::before { content: "≈"; position: absolute; right: calc(100% + 2px); top: 0; }
+#scale.varies { color: var(--warn); border-color: var(--warn); } /* the scale varies across the view: "≈" beside it */
+.scalemark { margin-right: -4px; padding: 0 4px; font-size: 13px; color: var(--warn); cursor: default; }
 
 /* ---- about ---- */
 dialog { border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 8px 30px rgba(20,30,40,.25); max-width: min(460px, calc(100vw - 32px)); padding: 16px 20px; color: var(--ink); }

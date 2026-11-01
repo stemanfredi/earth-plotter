@@ -117,7 +117,7 @@ const KNOWN = {
 };
 for (const e of [...ENTRIES.colour, ...ENTRIES.arrows]) { const { id, variant: v } = entryOf(e.key); if (!(KNOWN.data[id] ||= []).includes(v)) KNOWN.data[id].push(v); }
 
-// The drawing's saved view comes back only when the address has none (docs/drawing-format.md §10):
+// The drawing's saved view comes back only when the address has none (docs/drawing-ui.md §10):
 // written into the address before anything reads it, so the page loads once with it
 if (!new URLSearchParams(location.hash.slice(1)).has('v')) {
   const v = savedView(KNOWN);
@@ -200,6 +200,7 @@ const depthEl = h('select', { class: 'pos depthchip', id: 'depth', 'aria-label':
 const scale = new maplibregl.ScaleControl({ maxWidth: 100, unit: 'metric' });
 const scaleEl = scale.onAdd(map);
 scaleEl.id = 'scale';
+const scaleMark = h('span', { class: 'scalemark', hidden: true }, '≈');
 const creditsText = h('span', { class: 'credits-text' });
 const credits = h('div', { class: 'credits' }, creditsText);
 // the fade at its end only while some of it is out of sight (cut, and not scrolled to its end)
@@ -208,7 +209,7 @@ credits.addEventListener('scroll', fadeCredits, { passive: true });
 new ResizeObserver(fadeCredits).observe(credits);
 // credits on the left; the time shown, cursor position and scale on the right (not for navigation:
 // About and the exports say it)
-statusEl.append(credits, h('div', { class: 'readout' }, shownEl, depthEl, posEl, scaleEl));
+statusEl.append(credits, h('div', { class: 'readout' }, shownEl, depthEl, posEl, scaleMark, scaleEl));
 // the legends sit above the bottom row, whose height follows its credits
 new ResizeObserver(() => { document.documentElement.style.setProperty('--status-h', `${statusEl.offsetHeight}px`); snapLegends(); }).observe(statusEl);
 
@@ -1139,8 +1140,8 @@ function scaleVariation() {
   return mercatorVariation(b.getSouth(), b.getNorth());
 }
 // its length as MapLibre writes it, with NM for its "nm" (the nanometre's symbol), as on charts and in
-// Measure; where the scale varies across the view, "≈" just before the bar (style.css: outside it, as
-// the bar is as long as its text says), by how much in its tooltip
+// Measure; where the scale varies across the view, "≈" beside it (outside the bar: its length stays
+// what it says), by how much in their tooltips
 let scaleSaid = '';
 function scaleText() {
   const v = scaleVariation(), varies = v > NOTE_AT, why = varies ? `The scale varies ${(v * 100).toFixed(0)}% across the view: this length is the centre's. ` : '';
@@ -1150,6 +1151,8 @@ function scaleText() {
   scaleEl.classList.toggle('varies', varies);
   scaleEl.title = `${why}Distance units: a click switches km and NM`;
   scaleEl.setAttribute('aria-label', `Scale ${varies ? 'about ' : ''}${scaleEl.textContent}. ${scaleEl.title}`);
+  scaleMark.hidden = !varies;
+  scaleMark.title = why;
 }
 
 // ---- credits, and the exports (PNG: png.js; GIS: below) ----------------------------------------
@@ -1255,7 +1258,7 @@ function snapshot(src) {
     timeText: !timed ? '' : hr ? new Date(t).toLocaleString([], { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', timeZoneName: 'short' })
       : new Date(t).toLocaleDateString([], { dateStyle: 'medium', timeZone: 'UTC' }),
     depthText: depth == null ? '' : depthWords(depth),
-    drawText: drawing.offset().length ? 'lines drawn offset, not to scale' : '',
+    drawText: [drawing.offset().length ? 'lines drawn offset' : '', drawing.scaled().length ? 'shapes drawn at another size' : ''].filter(Boolean).join(', ').replace(/.+/, '$&, not to scale'), // what the picture shows not where it is
     // for files read elsewhere: in UTC
     dataText: !timed ? '' : `data ${hr ? `at ${new Date(t).toISOString().slice(0, 16).replace('T', ' ')} UTC` : `of ${dayOf(t)} (UTC)`}${depth == null ? '' : `, ${depthWords(depth)}`}`,
   };

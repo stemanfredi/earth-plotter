@@ -1,16 +1,16 @@
-// Links (docs/drawing-ui.md §2.2): a place of an element tied to something, following it. The
-// drawing's links are [{ from: [id, index], to }]. A line's place is tied to a point ({ element }: its
-// position) or to a point's shape (a corner, a place along an edge); where it meets another line, a
-// point is shared: a place of both (tieTo). A label points at any target: to, a target, is { element, vertex? | edge and at? }: element alone, its centre (a
+// Links (docs/drawing-ui.md §2.2): a line's vertex, or a label's anchor, attached to something, following it. The
+// drawing's links are [{ from: [id, index], to }]. A line's vertex is attached to a point ({ element }: its
+// position) or to a point's shape (a corner, a spot along an edge); where it meets another line, a
+// point is shared: a vertex of both (attachAt). A label points at any target: to, a target, is { element, vertex? | edge and at? }: element alone, its centre (a
 // point's position, a circle's centre, a closed line's centroid, an open line's middle); vertex k, a
-// line's place k; edge k and at, its leg k (a closed line's last: back to its first), at (0–1) along
-// it. Every place keeps its position: refreshAttached moves the linked ones where their targets are,
-// after each change; a link whose place or target is gone goes, its place free where it was. Pure:
+// line's vertex k; edge k and at, its leg k (a closed line's last: back to its first), at (0–1) along
+// it. Every vertex and anchor keeps its position: refreshAttached moves the linked ones where their targets are,
+// after each change; a link whose vertex or target is gone goes, the vertex free where it was. Pure:
 // no map, no DOM.
 
 import { inverse, destination } from '../geodesy.js';
 import { mercator, samePosition } from '../geo.js';
-import { find, addPoint, centroid, positionsIn, targetOf, setLink, linkFrom, idsOf, newId, nextName, fewestPlaces, holderOf } from './document.js';
+import { find, addDot, centroid, positionsIn, targetOf, setLink, linkFrom, idsOf, newId, nextName, fewestPlaces, holderOf } from './document.js';
 import { lineTrace, pointsAlong, nearestAlong } from './lines.js';
 
 // the position f (0–1) along the geodesic a → b
@@ -32,18 +32,20 @@ export function resolve(doc, ref) {
   return { ...at(tr.at[ref.edge] + (ref.at ?? 0) * tr.legs[ref.edge]), element: x, edge };
 }
 export const targetPosition = (doc, ref) => resolve(doc, ref)?.position ?? null;
-// the [object, key] of place [id, index] (positionsIn), or null when it is not there
+// the [object, key] of the vertex or anchor [id, index] (positionsIn), or null when it is not there
 const slotOf = (doc, [id, index]) => { const x = find(doc, id); return (x && positionsIn(x.kind, x.el)[index]) ?? null; };
-// where place [id, index] is, or null
+// where the vertex or anchor [id, index] is, or null
 export const placeAt = (doc, from) => { const s = slotOf(doc, from); return s ? s[0][s[1]] : null; };
 
-// Each linked place where its target is now; a link whose place or target is gone goes (the place
-// free where it was). The lines' places first (on points, which follow nothing), then the labels
-// (which may point at those places): one pass.
+// Each linked vertex or anchor where its target is now; a link whose vertex or target is gone, or that the model
+// no longer allows (a line's vertex held by a point now, or on what has become an area, a guide),
+// goes: the vertex free where it was. Whatever made it so (Attach to…, Detach, a paste), this is the
+// one place the rule is kept. The lines' vertices first (on points, which follow nothing), then the labels
+// (which may point at those vertices): one pass.
 export function refreshAttached(doc) {
   const labels = new Set(doc.labels.map((a) => a.id));
   for (const l of [...doc.links].sort((a, b) => labels.has(a.from[0]) - labels.has(b.from[0]))) {
-    const s = slotOf(doc, l.from), p = s && targetPosition(doc, l.to);
+    const s = slotOf(doc, l.from), p = s && allowed(doc, l) && targetPosition(doc, l.to);
     if (!p) { doc.links.splice(doc.links.indexOf(l), 1); continue; }
     const [o, k] = s;
     if (o[k][0] !== p[0] || o[k][1] !== p[1]) o[k] = [...p];
@@ -58,7 +60,7 @@ function nearestVertex(vs, p) {
   return { vertex: k, d: best };
 }
 // A target on element x at p, with its position and its distance d from p: on a line's leg nearest p
-// (along its legs as drawn, curves included), or (vertex) on its place nearest p. null: x is no line.
+// (along its legs as drawn, curves included), or (vertex) on its vertex nearest p. null: x is no line.
 export function refNear(doc, x, p, vertex = false) {
   if (x.kind !== 'line') return null;
   const vs = x.el.points;
@@ -77,7 +79,7 @@ export function lineRef(doc, line, d) {
 
 // The links to the vertices and edges of element id placed again where their places are: after its
 // vertices changed in number (one added or removed, closed or opened), each goes to the nearest vertex,
-// or the nearest place along an edge. One with nothing left to point at goes.
+// or the nearest spot along an edge. One with nothing left to point at goes.
 export function reattach(doc, id) {
   const x = find(doc, id);
   doc.links = doc.links.flatMap((l) => {
@@ -86,16 +88,16 @@ export function reattach(doc, id) {
     return n ? [{ from: l.from, to: targetOf(n) }] : [];
   });
 }
-// A place added to a line at index (before the one there), one taken away (while it keeps its fewest
-// places): the links from its places numbered again (the one from a place taken away goes),
+// A vertex added to a line at index (before the one there), one taken away (while it keeps its fewest
+// vertices): the links from its vertices numbered again (the one from a vertex taken away goes),
 // those to its vertices and edges where they were (reattach).
-export function insertPlace(doc, id, index, position) {
+export function insertVertex(doc, id, index, position) {
   const el = find(doc, id).el;
   el.points.splice(index, 0, [...position]);
   el.names.splice(index, 0, '');
   renumber(doc, id, index, 1);
 }
-export function deletePlace(doc, id, index) {
+export function deleteVertex(doc, id, index) {
   const el = find(doc, id).el;
   if (el.points.length <= fewestPlaces(el)) return;
   el.points.splice(index, 1);
@@ -107,11 +109,11 @@ function renumber(doc, id, index, n) {
   for (const l of doc.links) if (l.from[0] === id && l.from[1] >= index) l.from = [id, l.from[1] + n];
   reattach(doc, id);
 }
-// Split a line at its place index (not an end): a point (a dot, named as the place) made there, the
+// Split a line at its vertex index (not an end): a point (a dot, named as the vertex) made there, the
 // line ending there and a new one carrying on from it with the rest, both linked to it. The links from
-// the rest's places go with it (the one at the split goes: the point is there); those to its
-// vertices and edges, to the point when on that place, else to the half where they now are. Returns
-// the point. A closed line is opened there instead: one line from that place round to it again (its
+// the rest's vertices go with it (the one at the split goes: the point is there); those to its
+// vertices and edges, to the point when on that vertex, else to the half where they now are. Returns
+// the point. A closed line is opened there instead: one line from that vertex round to it again (its
 // start and its end there), nothing made; the links numbered from its new start.
 export function splitLine(doc, lineId, index) {
   const s = find(doc, lineId).el, n = s.points.length;
@@ -123,7 +125,7 @@ export function splitLine(doc, lineId, index) {
     reattach(doc, lineId);
     return null;
   }
-  const taken = idsOf(doc), p = addPoint(doc, s.points[index], { name: s.names[index] || nextName(doc, 'point'), symbol: 'dot' }, taken);
+  const taken = idsOf(doc), p = addDot(doc, s.points[index], s.names[index], taken);
   const rest = { ...structuredClone(s), id: newId(doc, taken), name: nextName(doc, 'line'), points: s.points.slice(index), names: ['', ...s.names.slice(index + 1)] };
   s.points = s.points.slice(0, index + 1);
   s.names = [...s.names.slice(0, index), ''];
@@ -143,37 +145,43 @@ export function splitLine(doc, lineId, index) {
 }
 
 // where on a line it is attached, as its table numbers it: its point or leg
-export const partName = (r) => (r.vertex != null ? `point ${r.vertex + 1}` : r.edge != null ? `leg ${r.edge + 1}` : '');
+export const partName = (r) => (r.vertex != null ? `vertex ${r.vertex + 1}` : r.edge != null ? `leg ${r.edge + 1}` : '');
 
-// Whether a line's place snapped onto `to` (a snap target, snap.js) can be tied there: a point; a
-// corner of a point's shape or a place along its edge (it goes with its point: nothing else moves
-// it); or another line's place or leg (a point is shared there). Not a guide, nor a circle's centre.
-export function tieable(doc, to) {
+// Whether a line's vertex snapped onto `to` (a snap target, snap.js) can be attached there: a point; a
+// corner of a point's shape or a spot along its edge (it goes with its point: nothing else moves
+// it); or another line's vertex or leg (a point is shared there). Not a guide, nor a circle's centre.
+export function attachable(doc, to) {
   const x = to && find(doc, to.end ? to.end[0] : to.element);
-  return !!x && (x.kind === 'point' || (x.kind === 'line' && !x.el.guide && (!holderOf(doc, x.el) || to.vertex != null || to.edge != null)));
+  return !!x && !x.el.guide && (x.kind === 'point' || (x.kind === 'line' && (!holderOf(doc, x.el) || to.vertex != null || to.edge != null)));
 }
-// whether a line's place may be linked to `to` (a target): a point's position, or a corner or an edge
-// of a point's shape
+// whether a line's vertex may be linked to `to` (a target): a point's position, or a corner or an edge
+// of a point's shape; never a guide
 export const lineTarget = (doc, to) => {
   const x = to && find(doc, to.element);
-  return !!x && (to.vertex == null && to.edge == null ? x.kind === 'point' : x.kind === 'line' && !!holderOf(doc, x.el));
+  return !!x && !x.el.guide && (to.vertex == null && to.edge == null ? x.kind === 'point' : x.kind === 'line' && !!holderOf(doc, x.el));
 };
-// What a line's place snapped at r ({ position, to }: snap.js) is tied to: a point ({ element }), a
-// point's shape's corner or a place along its edge (that target, at its real places whatever its
-// Scale), or null (free where it snapped). On another line's place, a dot made there and that place
-// tied to it too (or the point it is tied to already); on its leg, a place put in it there first (the
+// whether the model allows link l: a label's, any; a line's vertex, only of a line no point holds, and
+// only to a point or a point's shape (lineTarget)
+function allowed(doc, l) {
+  const x = find(doc, l.from[0]);
+  return x?.kind !== 'line' || (!holderOf(doc, x.el) && lineTarget(doc, l.to));
+}
+// What a line's vertex snapped at r ({ position, to }: snap.js) is attached to: a point ({ element }), a
+// point's shape's corner or a spot along its edge (that target, at its real vertices whatever its
+// Scale), or null (free where it snapped). On another line's vertex, a dot made there and that vertex
+// attached to it too (or the point it is attached to already); on its leg, a vertex put in it there first (the
 // line through the dot: one line still, an area still closed). doc is changed.
-export function tieTo(doc, r) {
-  if (!tieable(doc, r?.to)) return null;
+export function attachAt(doc, r) {
+  if (!attachable(doc, r?.to)) return null;
   const x = find(doc, r.to.end ? r.to.end[0] : r.to.element);
   if (x.kind === 'point') return { element: x.el.id };
   if (holderOf(doc, x.el)) return targetOf(r.to); // a point's shape: on it, following it
   const line = x.el;
-  let k = line.points.findIndex((q) => samePosition(q, r.position)); // found by position: an earlier tie may have numbered the places again
-  if (k < 0) { k = refNear(doc, x, r.position).edge + 1; insertPlace(doc, line.id, k, r.position); }
+  let k = line.points.findIndex((q) => samePosition(q, r.position)); // found by position: an earlier attachment may have numbered the vertices again
+  if (k < 0) { k = refNear(doc, x, r.position).edge + 1; insertVertex(doc, line.id, k, r.position); }
   const on = linkFrom(doc, line.id, k)?.to;
   if (on) return { element: on.element };
-  const p = addPoint(doc, line.points[k], { symbol: 'dot', name: line.names[k] || nextName(doc, 'point') });
+  const p = addDot(doc, line.points[k], line.names[k]);
   setLink(doc, line.id, k, { element: p.id });
   return { element: p.id };
 }

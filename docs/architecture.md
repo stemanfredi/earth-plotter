@@ -121,7 +121,7 @@ necessarily says, the area looked at, and the place name typed into search.
 | The drawing's model, file and rules | `site/draw/document.js`, `file.js`, `generator.js` |
 | Links, snapping, placing, outlines, a line's trace and totals | `site/draw/attach.js`, `snap.js`, `place.js`, `outlines.js`, `lines.js` |
 | Undo, the selection, saving in the browser | `site/draw/store.js`, `saving.js` |
-| The drawing on the map and in the panel | `site/draw/drawing.js`, `layers.js`, `features.js`, `panel.js`, `tree.js` |
+| The drawing on the map and in the panel | `site/draw/drawing.js` (with `drafting.js`, `dragging.js`, `boxing.js`, `input.js`), `layers.js`, `features.js`, `panel.js` (with `forms.js`, `lineview.js`), `tree.js` |
 | The bar's tools and its file group (Open, Download, Copy link) | `site/draw/tools.js`, `files.js` |
 | A line's elevation profile | `site/draw/profile.js`, `profileFor` in `site/app.js` |
 | Geodesy and map maths | `site/geodesy.js`, `site/geo.js` |

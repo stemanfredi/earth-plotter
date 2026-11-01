@@ -91,8 +91,8 @@ export function fileGroup(drawing, ctx, presetsChanged) {
     const { doc, view, report } = parse(text, drawing.known);
     const list = (items) => h('ul', {}, items.map((t) => h('li', {}, t)));
     const counts = doc ? [['point', doc.points], ['circle', doc.circles], ['line', doc.lines.filter((x) => !x.closed)], ['area', doc.lines.filter((x) => x.closed)], ['label', doc.labels], ['group', doc.groups]]
-      .map(([k, xs]) => [k, xs.filter((x) => !isMeasurement(doc, x)).length]).filter(([, n]) => n).map(([k, n]) => plural(n, k)) : [];
-    const measured = doc ? elements(doc).filter((x) => isMeasurement(doc, x.el)).length : 0;
+      .map(([k, xs]) => [k, xs.filter((x) => !isMeasurement(x)).length]).filter(([, n]) => n).map(([k, n]) => plural(n, k)) : [];
+    const measured = doc ? elements(doc).filter((x) => isMeasurement(x.el)).length : 0;
     if (measured) counts.push(plural(measured, 'measurement'));
     const body = () => h('div', {},
       doc ? h('p', {}, counts.length ? `It holds ${counts.join(', ')}.` : 'It holds no elements.', view ? ' Its view and layers will replace the current ones.' : '') : h('p', {}, report.refused),

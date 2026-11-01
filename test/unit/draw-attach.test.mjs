@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { addShape, lineFrom, placeIn, addRing, labelOn } from './helpers.mjs';
 
 const { emptyDoc, addPoint, addDot, addCircle, centroid, remove, setLink, carry } = await import('../../site/draw/document.js');
-const { targetPosition, resolve, refreshAttached, reattach, insertPlace, deletePlace, splitLine, tieTo, tieable, partName, refNear } = await import('../../site/draw/attach.js');
+const { targetPosition, resolve, refreshAttached, reattach, insertVertex, deleteVertex, splitLine, attachAt, attachable, partName, refNear } = await import('../../site/draw/attach.js');
 const { outlinePoints } = await import('../../site/draw/outlines.js');
 const { snapAt, stepped, neighbours } = await import('../../site/draw/snap.js');
 const { parse, serialise } = await import('../../site/draw/file.js');
@@ -49,7 +49,7 @@ test('where a reference is: a centre, a vertex, a place along an edge or a leg; 
   for (const bad of [{ element: 'x' }, { element: 'a', vertex: 3 }, { element: 'a', edge: 3, at: 0 }, { element: 'l', vertex: 3 }, { element: 'l', edge: 2, at: 0 }, { element: 'p', vertex: 0 }, { element: 'c', edge: 0, at: 0 }]) {
     assert.equal(targetPosition(doc, bad), null, JSON.stringify(bad));
   }
-  assert.deepEqual([partName({ vertex: 0 }), partName({ edge: 0 }), partName({})], ['point 1', 'leg 1', '']); // as the tables number them
+  assert.deepEqual([partName({ vertex: 0 }), partName({ edge: 0 }), partName({})], ['vertex 1', 'leg 1', '']); // as the tables number them
 });
 
 test('labels follow what they point at: a shape turned with its point, an area\'s corner moved, a vertex moved; gone, free where they were', () => {
@@ -83,9 +83,9 @@ test('vertices added, taken away, a line split: labels on its vertices stay on t
   const l = lineFrom(doc, [10, 40], [[10.01, 40], [10.02, 40], [10.03, 40]], [10.04, 40], { id: 'l' });
   const on = (v) => labelOn(doc, { element: 'l', vertex: v }); // places: 0 its start
   const [a, b, c] = [on(1), on(2), on(3)];
-  insertPlace(doc, 'l', 2, [10.015, 40]);
+  insertVertex(doc, 'l', 2, [10.015, 40]);
   assert.deepEqual([ref(doc, a).vertex, ref(doc, b).vertex, ref(doc, c).vertex], [1, 3, 4]);
-  deletePlace(doc, 'l', 3); // b's: to the nearest vertex left (10.015)
+  deleteVertex(doc, 'l', 3); // b's: to the nearest vertex left (10.015)
   assert.deepEqual([ref(doc, a).vertex, ref(doc, b).element, ref(doc, b).vertex, ref(doc, c).vertex], [1, 'l', 2, 3]);
   settleGeometry(doc);
   assert.deepEqual(ref(doc, b).position, [10.015, 40]);
@@ -106,16 +106,16 @@ test('an area\'s corners added and taken away, an outline changed: labels on cor
   const e3 = labelOn(doc, { element: 'a', edge: 3, at: 0.5 });
   refreshAttached(doc);
   const at = [...ref(doc, e3).position];
-  insertPlace(doc, 'a', 1, [10.01, 39.99]);
+  insertVertex(doc, 'a', 1, [10.01, 39.99]);
   assert.equal(ref(doc, c2).vertex, 3);
   assert.equal(ref(doc, e3).edge, 4);
   refreshAttached(doc);
   near(ref(doc, e3).position, at, 1);
-  deletePlace(doc, 'a', 3); // c2's: to the nearest one left
+  deleteVertex(doc, 'a', 3); // c2's: to the nearest one left
   refreshAttached(doc);
   assert.ok(ref(doc, c2).element === 'a' && ref(doc, c2).vertex != null);
-  deletePlace(doc, 'a', 0);
-  deletePlace(doc, 'a', 0); // three left: no more
+  deleteVertex(doc, 'a', 0);
+  deleteVertex(doc, 'a', 0); // three left: no more
   assert.equal(a.points.length, 3);
   const { shapes: [sh] } = addShape(doc, [11, 40]);
   const s = labelOn(doc, { element: sh.id, vertex: 1 });
@@ -154,12 +154,12 @@ test('a closed line: any place attached, following; its closing leg a target; sp
   assert.equal(doc.lines.length, 1);
 });
 
-test('a line\'s place tied where it snapped: a point; a point\'s shape\'s corner or edge; on another line\'s place or leg, a point shared there; never a guide or a circle', () => {
+test('a line\'s place attached where it snapped: a point; a point\'s shape\'s corner or edge; on another line\'s place or leg, a point shared there; never a guide or a circle', () => {
   const { doc, sh, a, l } = drawing();
-  const at = (to, position) => tieTo(doc, { to, position });
+  const at = (to, position) => attachAt(doc, { to, position });
   assert.deepEqual(at({ element: 'p' }, [10, 40]), { element: 'p' });
   assert.equal(at(null, [0, 0]), null);
-  // another line's place: a dot there, that place tied to it too
+  // another line's place: a dot there, that place attached to it too
   const v = at({ element: 'l', vertex: 1 }, [10.06, 40.01]), dot = doc.points.find((x) => x.id === v.element);
   assert.deepEqual([dot.symbol, dot.position, placeIn(doc, l, 1).to], ['dot', [10.06, 40.01], v]);
   assert.deepEqual(at({ element: 'l', vertex: 1 }, [10.06, 40.01]), v, 'the same place again: the same point');
@@ -174,11 +174,11 @@ test('a line\'s place tied where it snapped: a point; a point\'s shape\'s corner
   assert.deepEqual(at({ element: 'sh', vertex: 2 }, sh.points[2]), { element: 'sh', vertex: 2 });
   assert.deepEqual(at({ element: 'sh', edge: 1, at: 0.5, d: 1 }, [0, 0]), { element: 'sh', edge: 1, at: 0.5 });
   assert.equal(sh.points.length, 4);
-  // nothing to tie to: a guide, a circle's centre, a point's shape as a whole
+  // nothing to attach to: a guide, a circle's centre, a point's shape as a whole
   addCircle(doc, [10.1, 40], { id: 'c' });
   doc.lines.find((x) => x.id === 'l').guide = true;
   for (const to of [{ element: 'l', edge: 0, at: 0.5 }, { element: 'c' }, { element: 'sh' }]) {
-    assert.equal(tieable(doc, to), false, JSON.stringify(to));
+    assert.equal(attachable(doc, to), false, JSON.stringify(to));
     assert.equal(at(to, [10, 40]), null);
   }
 });
@@ -187,8 +187,8 @@ test('a leg met twice (a line\'s two ends on one leg): the second found where th
   const doc = emptyDoc(0);
   const h = lineFrom(doc, [10, 40], [], [10.04, 40], { id: 'h' });
   const q1 = targetPosition(doc, { element: 'h', edge: 0, at: 0.25 }), q3 = targetPosition(doc, { element: 'h', edge: 0, at: 0.75 });
-  const a = tieTo(doc, { to: { element: 'h', edge: 0, at: 0.25 }, position: q1 });
-  const b = tieTo(doc, { to: { element: 'h', edge: 0, at: 0.75 }, position: q3 }); // its leg is leg 1 now
+  const a = attachAt(doc, { to: { element: 'h', edge: 0, at: 0.25 }, position: q1 });
+  const b = attachAt(doc, { to: { element: 'h', edge: 0, at: 0.75 }, position: q3 }); // its leg is leg 1 now
   assert.deepEqual(h.points, [[10, 40], q1, q3, [10.04, 40]]);
   assert.deepEqual([placeIn(doc, h, 1).to, placeIn(doc, h, 2).to], [a, b]);
 });
@@ -208,7 +208,7 @@ test('the file keeps the links: a line\'s places on points and on points\' shape
   const raw = JSON.parse(text), linked = (id, i) => raw.charts.links.find((k) => k.from[0] === id && k.from[1] === i)?.to;
   assert.deepEqual([linked('y', 0), linked('y', 1), linked('z', 0), linked('z', 1), linked(t1.id, 0), linked(t2.id, 0), linked(t3.id, 0)],
     [{ element: 'p' }, { element: 'p' }, { element: 'sh', vertex: 3 }, { element: 'sh', edge: 1, at: 0.25 }, { element: 'a', edge: 2, at: 0.3 }, { element: 'l', vertex: 1 }, { element: 'a' }]);
-  assert.ok(raw.features.every((f) => !['start', 'end', 'anchor'].some((k) => k in f.properties.charts)), 'ties only in the table');
+  assert.ok(raw.features.every((f) => !['start', 'end', 'anchor'].some((k) => k in f.properties.charts)), 'links only in the table');
   raw.charts.links.push({ from: ['l', 0], to: { element: 'a', vertex: 1 } }, { from: ['l', 2], to: 'a' }, { from: ['sh', 0], to: 'p' });
   const r = parse(JSON.stringify(raw));
   assert.deepEqual([placeIn(r.doc, l, 0).to, placeIn(r.doc, l, -1).to], [null, null]);
@@ -268,7 +268,7 @@ test('a line on a point\'s shape: on its corner or along its edge, following it 
   sh.id = 'sh';
   const hit = snapAt(doc, px(sh.points[1]), view);
   assert.deepEqual(hit.to, { element: 'sh', vertex: 1 });
-  const corner = lineFrom(doc, [10, 39.9], [], { ...tieTo(doc, hit), position: hit.position });
+  const corner = lineFrom(doc, [10, 39.9], [], { ...attachAt(doc, hit), position: hit.position });
   const side = lineFrom(doc, [10.04, 39.9], [], { element: 'sh', edge: 2, at: 0.5, position: [0, 0] });
   refreshAttached(doc);
   near(ref(doc, corner).position, sh.points[1]);
@@ -310,7 +310,7 @@ test('Shift: 15° steps from north, or from the leg before; the length kept', ()
   assert.deepEqual(neighbours([[0, 0], [1, 1], [2, 2]], 0), { from: [1, 1], prev: [2, 2] });
 });
 
-test('a point moved: places tied to it follow, an end or a middle one; a label on a line\'s place follows that place, in one pass', () => {
+test('a point moved: places attached to it follow, an end or a middle one; a label on a line\'s place follows that place, in one pass', () => {
   const doc = emptyDoc(0);
   const p = addDot(doc, [10, 40]), q = addDot(doc, [10.02, 40.02]);
   const l = lineFrom(doc, p.id, [[10.01, 40.01]], [10.02, 40], { id: 'l' });
@@ -329,7 +329,7 @@ test('an end snapped onto another line\'s leg: a point shared there, a place put
   const h = lineFrom(doc, [10, 40], [[10.02, 40]], [10.04, 40], { id: 'h' });
   const hit = snapAt(doc, px([10.03, 40.0001]), view);
   assert.deepEqual([hit.kind, hit.to.element, hit.to.edge], ['edge', 'h', 1]);
-  const to = tieTo(doc, hit), m = lineFrom(doc, [10.03, 40.02], [], { ...to, position: hit.position });
+  const to = attachAt(doc, hit), m = lineFrom(doc, [10.03, 40.02], [], { ...to, position: hit.position });
   assert.equal(h.points.length, 4, 'a place put in it');
   assert.deepEqual([placeIn(doc, h, 2).to, placeIn(doc, m, -1).to], [to, to]);
   near(h.points[2], [10.03, 40], 1);
@@ -337,4 +337,37 @@ test('an end snapped onto another line\'s leg: a point shared there, a place put
   dot.position = [10.03, 40.01]; // the point moved: both lines with it
   settleGeometry(doc);
   assert.deepEqual([h.points[2], m.points[1]], [[10.03, 40.01], [10.03, 40.01]]);
+});
+
+test('the model kept in one place: a shape given to a point drops its own attachments; a line on a shape detached comes free; a guide is no target', async () => {
+  const { setGroup, canHold } = await import('../../site/draw/document.js');
+  const doc = emptyDoc(0);
+  const a = addPoint(doc, [10, 40], { id: 'A' }), b = addPoint(doc, [10.02, 40.02], { id: 'B' });
+  const poly = addRing(doc, [[10.01, 40], [10.02, 40], [10.02, 40.01]], { id: 'poly' });
+  setLink(doc, 'poly', 1, { element: 'B' }); // an area's corner on B (an attachment its own)
+  settleGeometry(doc);
+  assert.deepEqual(poly.points[1], b.position);
+  setGroup(doc, 'poly', 'A'); // given to A: rigid now, its corner free
+  settleGeometry(doc);
+  assert.equal(placeIn(doc, poly, 1).to, null, 'its own attachment dropped');
+  const frame = structuredClone(poly.frame);
+  carry(doc, a, [10.05, 40.05], 30);
+  settleGeometry(doc);
+  assert.deepEqual(poly.frame, frame, 'moved as one piece, not torn');
+  // a line on its corner; the shape detached: an area now, the line's end free where it was
+  const l = lineFrom(doc, [9.9, 39.9], [], { element: 'poly', vertex: 0, position: [0, 0] });
+  settleGeometry(doc);
+  assert.deepEqual(placeIn(doc, l, -1).to, { element: 'poly', vertex: 0 });
+  setGroup(doc, 'poly', null);
+  settleGeometry(doc);
+  assert.equal(placeIn(doc, l, -1).to, null);
+  // a guide: no target for a line
+  b.guide = true;
+  assert.equal(attachable(doc, { element: 'B' }), false);
+  setLink(doc, l.id, 0, { element: 'B' });
+  settleGeometry(doc);
+  assert.equal(placeIn(doc, l, 0).to, null);
+  // a point holds circles and closed lines only
+  assert.equal(canHold(doc, 'A', l.id), false, 'an open line');
+  assert.equal(canHold(doc, 'A', 'poly'), true);
 });

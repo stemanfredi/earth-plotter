@@ -3,7 +3,7 @@
 // (file.js). Pure: no map, no DOM.
 
 import { MAX_LAT, norm360, norm180 } from '../geo.js';
-import { DEFAULT_STYLE, MAX_OFFSET, STROKE_WIDTH, DASHES, LABEL_SIZES, BACKGROUNDS, LOOK_FIELDS, isoNow } from './document.js';
+import { DEFAULT_STYLE, MAX_OFFSET, STROKE_WIDTH, DASHES, TEXT_SIZE, SCALE, BACKGROUNDS, LOOK_FIELDS, isoNow } from './document.js';
 
 export const ID = /^[A-Za-z0-9_-]{1,64}$/;
 const COLOUR = /^#[0-9a-fA-F]{6}$/;
@@ -117,13 +117,16 @@ export function look(l, c, kind, style = null) {
       else if (t[k] !== undefined) c.warn(`look text ${k}: not true or false, ignored`);
     }
     const one = (k, list) => { if (t[k] === undefined) return; if (list.includes(t[k])) o[k] = t[k]; else c.warn(`look text ${k} "${String(t[k]).slice(0, 20)}" unknown, ignored`); };
-    one('size', LABEL_SIZES);
+    if (fin(t.size)) o.size = Math.max(TEXT_SIZE[0], Math.min(TEXT_SIZE[1], t.size)); // px
+    else if (t.size !== undefined) c.warn(`look text size "${String(t.size).slice(0, 20)}": not a number of pixels, ignored`);
     one('background', BACKGROUNDS);
     if (t.color != null) { const v = colour(t.color, undefined, c, 'look text colour'); if (v !== undefined) o.color = v; }
     if (Object.keys(o).length) out.text = o;
   }
   const a = offset(l.offset, c);
   if (a !== null) out.offset = a;
+  if (fin(l.scale) && l.scale > 0) out.scale = Math.max(SCALE[0], Math.min(SCALE[1], l.scale));
+  else if (l.scale != null) c.warn('Scale: not a number above 0; ignored');
   const other = [];
   for (const [g, v] of Object.entries(out)) {
     if (!isObj(v)) { if (!LOOK_FIELDS[kind].includes(g)) { other.push(g); delete out[g]; } continue; }

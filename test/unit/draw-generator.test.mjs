@@ -256,8 +256,8 @@ test('tree: straight lines root → hub → points, attached at both ends, each 
   for (const id of r.connection.created) assert.equal(find(doc, id).el.groupId, cg.id, id);
   assert.deepEqual(doc.rules, [array, r.connection]);
   assert.deepEqual([r.connection.kind, r.connection.pattern, r.connection.groupSize, r.connection.roots, r.connection.pointIds], ['connect', 'tree', 3, roots(o1.id), ids]);
-  const gt = totals(doc).groups.get(group.id); // the distribution's group (what is in its subgroups too): its copies' circles, its hubs
-  assert.deepEqual([gt.points, gt.circles, gt.lines], [ids.length + hubs.length, ids.length, made.length]);
+  const gt = totals(doc).groups.get(group.id); // the distribution's group (what is in its subgroups too): its copies (shapes, their circles with them), its hubs
+  assert.deepEqual([gt.points, gt.shapes, gt.circles, gt.lines], [hubs.length, ids.length, 0, made.length]);
   // undone: what it made goes, its points and root stay
   assert.equal(unconnect(doc, r.connection.id), r.connection);
   assert.deepEqual([doc.lines.length, connections(doc).length], [1, 0]);

@@ -14,7 +14,7 @@
 // Elements hold positions only; what ties a place of one to another is in the drawing's links (one
 // table: { from: [id, index], to: a target, attach.js }), applied after each change.
 
-import { moveAbout, circle, sector } from '../geodesy.js';
+import { moveAbout, circle, sector, inverse, destination } from '../geodesy.js';
 import { norm360 } from '../geo.js';
 
 export const FORMAT = 'charts-drawing';
@@ -38,10 +38,12 @@ export const MEASURE_STYLE = Object.freeze({ fill: Object.freeze({ color: MEASUR
 // drawing's); the defaults fill it in. fill, stroke: as a style; text: its name on the map, its values
 // shown, and a label's size, colour (null: the default) and
 // background; offset: a line drawn this many px to the right of where it is (negative: left; 0: on
-// it; display only).
+// it; display only); scale: a shape a point holds (a circle, a closed line) drawn this many times its
+// size about its point, as a symbol drawn larger than it is: its geometry and values real (display only).
 export const INK = '#1f2c36'; // the UI's ink (style.css --ink), not the chart's (style.js INK): a label's text, and the drawing's handles and drafts (layers.js), follow the page, not the map
-const LOOK_TEXT = Object.freeze({ name: false, values: false, size: 'medium', color: INK, background: 'halo' });
-export const DEFAULT_LOOK = Object.freeze({ fill: DEFAULT_STYLE.fill, stroke: DEFAULT_STYLE.stroke, text: LOOK_TEXT, offset: 0 });
+const LOOK_TEXT = Object.freeze({ name: false, values: false, size: 13, color: INK, background: 'halo' });
+export const DEFAULT_LOOK = Object.freeze({ fill: DEFAULT_STYLE.fill, stroke: DEFAULT_STYLE.stroke, text: LOOK_TEXT, offset: 0, scale: 1 });
+export const SCALE = [0.1, 100]; // a shape's drawing scale, least and most
 export const SYMBOLS = ['diamond', 'square', 'triangle', 'dot', 'none'];
 export const DASHES = ['solid', 'dashed', 'dotted'];
 // The kinds of element: the document's list each lives in, and its name in the panel. In this order
@@ -53,7 +55,7 @@ export const KIND = {
 export const KINDS = Object.keys(KIND);
 // labels (docs/drawing-format.md §7.7): their leader's end, text size, background
 export const LEADERS = ['arrow', 'none']; // a line to what it points at, an arrow head there; or none
-export const LABEL_SIZES = ['small', 'medium', 'large'];
+export const TEXT_SIZE = [8, 48]; // px: a label's text size, least and most
 export const BACKGROUNDS = ['halo', 'box'];
 export const LABEL_OFFSET = Object.freeze([40, -40]); // px: a new label's text, up and to the right of what it points at
 const NEW_RADIUS = 1000; // a new circle's radius: a neutral starting value, not a preset
@@ -93,7 +95,25 @@ export function emptyDoc(now = Date.now()) {
 export function elements(doc) {
   return KINDS.flatMap((kind) => doc[KIND[kind].list].map((el) => ({ kind, el })));
 }
+// An index of doc while a pass only reads it (reading): each element by ID, what each group or point
+// holds, in the document's order. find, groupsOf, membersOf and holderOf use it then, else they scan
+// (an edit changes the document in place: an index kept across one would be stale).
+let IX = null;
+// fn() with doc indexed (a pass that does not change it: drawing the map, the totals, the tree)
+export function reading(doc, fn) {
+  if (IX?.doc === doc) return fn();
+  const byId = new Map(), held = new Map(), prev = IX;
+  for (const x of elements(doc)) {
+    byId.set(x.el.id, x);
+    if (x.el.groupId) { if (!held.has(x.el.groupId)) held.set(x.el.groupId, []); held.get(x.el.groupId).push(x); }
+  }
+  IX = { doc, byId, held };
+  try { return fn(); } finally { IX = prev; }
+}
+const ix = (doc) => (IX?.doc === doc ? IX : null);
 export function find(doc, id) {
+  const i = ix(doc);
+  if (i) return i.byId.get(id) ?? null;
   for (const kind of KINDS) { const el = doc[KIND[kind].list].find((x) => x.id === id); if (el) return { kind, el }; }
   return null;
 }
@@ -118,7 +138,12 @@ export function nextName(doc, kind, base = KIND[kind].name) {
   return `${base} ${used.length ? Math.max(...used) + 1 : 1}`;
 }
 // what holds an element: its group, or (a shape) its point
-const groupOf = (doc, el) => (el.groupId ? doc.groups.find((g) => g.id === el.groupId) ?? doc.points.find((p) => p.id === el.groupId) : null);
+const groupOf = (doc, el) => {
+  if (!el.groupId) return null;
+  const i = ix(doc);
+  if (i) { const x = i.byId.get(el.groupId); return x && (x.kind === 'group' || x.kind === 'point') ? x.el : null; }
+  return doc.groups.find((g) => g.id === el.groupId) ?? doc.points.find((p) => p.id === el.groupId) ?? null;
+};
 // The groups an element (or a group) is in, the nearest first: its group (a shape: its point, then
 // the point's group), that group's, and so on
 export function groupsOf(doc, el) {
@@ -130,6 +155,8 @@ export function groupsOf(doc, el) {
 export const groupsOnlyOf = (doc, el) => groupsOf(doc, el).filter((g) => !g.position);
 // What is in group gid: its members and subgroups (deep: and theirs, all the way down)
 export function membersOf(doc, gid, deep = false) {
+  const i = !deep && ix(doc);
+  if (i) return i.held.get(gid) ?? [];
   return elements(doc).filter((x) => (deep ? groupsOf(doc, x.el).some((g) => g.id === gid) : x.el.groupId === gid));
 }
 // What the elements ids stand for, none twice, in the document's order: each itself, a group
@@ -151,7 +178,7 @@ const MEASURE_LOOK = Object.freeze({ ...MEASURE_STYLE, text: Object.freeze({ nam
 function layered(looks) {
   const part = (k) => Object.assign({}, ...looks.map((l) => l?.[k]));
   const last = (k) => looks.reduce((v, l) => (l?.[k] != null ? l[k] : v), null);
-  return { fill: part('fill'), stroke: part('stroke'), text: part('text'), offset: last('offset') };
+  return { fill: part('fill'), stroke: part('stroke'), text: part('text'), offset: last('offset'), scale: last('scale') };
 }
 // The look an element is drawn with, every field: its own, else a guide's (faint, dashed) or a
 // measurement's (a guide showing its values: as while it is measured), else the drawing's, else the
@@ -167,6 +194,16 @@ export const styleOf = (doc, el) => { const l = lookOf(doc, el); return { fill: 
 export const isMeasurement = (doc, el) => !!el.guide && lookOf(doc, el).text.values;
 // how far a line is drawn from where it is (Offset: px, positive to the right of its direction, 0: on it)
 export const offsetOf = (doc, el) => lookOf(doc, el).offset;
+// A shape's drawing scale (Look's Scale: a circle's or a closed line's a point holds; any other 1)
+// and what it does to a position: { k, o (its point), f (a real position as drawn), back (a drawn
+// position as real) }. Display only: a drawn area is real geography, never drawn larger.
+export function drawnOf(doc, el) {
+  const n = (el.radius != null || el.closed) && holderOf(doc, el), k = n ? lookOf(doc, el).scale : 1;
+  if (k === 1) return { k, o: null, f: (q) => q, back: (q) => q };
+  const o = n.position;
+  const by = (m) => (q) => { const g = inverse(o, q); return g.s ? destination(o, g.azi, g.s * m) : [...o]; };
+  return { k, o, f: by(k), back: by(1 / k) };
+}
 // Set one field of x's own look (path: 'offset', 'fill.color', 'text.name'…); undefined takes it back
 // (the value then comes from the drawing, or the defaults).
 export function setLook(x, path, v) {
@@ -250,7 +287,12 @@ export function moveElements(doc, ids, from, to) {
   for (const n of doc.points) if (points.has(n.id)) carry(doc, n, mv(n.position));
 }
 // the point holding element el (its shapes'), or null
-export const holderOf = (doc, el) => (el?.groupId ? doc.points.find((p) => p.id === el.groupId) ?? null : null);
+export function holderOf(doc, el) {
+  if (!el?.groupId) return null;
+  const i = ix(doc);
+  if (i) { const x = i.byId.get(el.groupId); return x?.kind === 'point' ? x.el : null; }
+  return doc.points.find((p) => p.id === el.groupId) ?? null;
+}
 // whether el is chosen by the selection sel (a Set of IDs): selected, or a shape held by a point selected
 export const isChosen = (doc, sel, el) => sel.has(el.id) || (sel.has(el.groupId) && !!holderOf(doc, el));
 // A label pointing at position, linked to `to` (a target, attach.js) when given: on an element its
@@ -364,10 +406,10 @@ export function canHold(doc, gid, id) {
 const STYLE_FIELDS = ['fill.color', 'fill.opacity', 'stroke.color', 'stroke.opacity', 'stroke.width', 'stroke.dash'];
 export const LOOK_FIELDS = {
   point: ['stroke.color', 'stroke.opacity', 'text.name'], // its symbol's colour
-  circle: [...STYLE_FIELDS, 'text.name', 'text.values'],
-  line: [...STYLE_FIELDS, 'text.name', 'text.values', 'offset'], // a fill drawn only while closed
+  circle: [...STYLE_FIELDS, 'text.name', 'text.values', 'scale'],
+  line: [...STYLE_FIELDS, 'text.name', 'text.values', 'offset', 'scale'], // a fill only while closed; a scale only held by a point
   label: ['text.size', 'text.color', 'text.background'],
-  drawing: ['text.name', 'offset'], // the drawing's own look: what its Display sets, nothing else
+  drawing: ['text.name', 'offset', 'scale'], // the drawing's own look: what its Display sets, nothing else
 };
 // Move an element (or a group) into the group gid (a shape: into the point gid), or out of any (null):
 // only its membership changes, never its look; never into itself or a group inside it.

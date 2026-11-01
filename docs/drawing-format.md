@@ -70,7 +70,7 @@ stacking is fixed (drawing-ui.md §7). The writer writes points, then circles, l
 | `charts.created`, `charts.modified` | missing or not a time: the time of import |
 | `charts.meta` | three free-text fields |
 | `charts.view` | §4. Missing: importing leaves the map's view and layers as they are. |
-| `charts.look` | the drawing's look (§6): `text.name` and `offset` only, what every element takes unless it says otherwise; any other field is ignored (warning) |
+| `charts.look` | the drawing's look (§6): `text.name`, `offset` and `scale` only, what every element takes unless it says otherwise; any other field is ignored (warning) |
 | `charts.groups` | §7.1 |
 | `charts.rules` | §8 |
 | `charts.links` | §7.4 |
@@ -140,7 +140,7 @@ Only the element's **own** values are written here: a value it takes from the dr
 | `group` | the ID of what holds it, at most one: its group; a shape's (a circle's, a line's), its group or the point that holds it (§7.2) |
 | `visible` | `false`: hidden. Hidden elements are not drawn and not exported to GIS data, but they are in the file. A hidden group hides its members, a hidden point its shapes. |
 | `guide` | supporting geometry: drawn faint and dashed in one colour, left out of totals (not on labels). A guide showing its values is a **measurement**. |
-| `look` | the rest of its own look (§6), what no common style name holds: the stroke's `dash`, `text`, `offset` |
+| `look` | the rest of its own look (§6), what no common style name holds: the stroke's `dash`, `text`, `offset`, `scale` |
 | `properties` | the user's properties as `[{ "key", "value" }]`. Written only when a key had to be renamed as a column; the reader then takes this list rather than the columns. |
 
 ## 6. The look, the cascade
@@ -152,8 +152,8 @@ How an element is drawn is its **look**: one object, every field optional where 
 ```json
 { "fill": { "color": "#e8590c", "opacity": 0.15 },
   "stroke": { "color": "#e8590c", "opacity": 1, "width": 1.5, "dash": "solid" },
-  "text": { "name": false, "values": false, "size": "medium", "color": "#1f2c36", "background": "halo" },
-  "offset": 0 }
+  "text": { "name": false, "values": false, "size": 13, "color": "#1f2c36", "background": "halo" },
+  "offset": 0, "scale": 1 }
 ```
 
 | Field | Notes |
@@ -161,8 +161,9 @@ How an element is drawn is its **look**: one object, every field optional where 
 | `fill`, `stroke` | colours `#rrggbb`; opacities 0–1; width 0.5–20 px; dash `"solid"`, `"dashed"` or `"dotted"`. A line's fill is drawn while it is closed; a fill of opacity 0 is not drawn. A point has a stroke's colour and opacity only: its symbol's. |
 | `text.name` | its name drawn on the map (points, circles, lines: a closed one's at its centre; a group's: everything in it) |
 | `text.values` | its values drawn on the map: a line's legs, a closed line's area and perimeter, a circle's radius |
-| `text.size`, `text.color`, `text.background` | a label's text: `"small"`, `"medium"` or `"large"`; its colour; `"halo"` or `"box"` |
+| `text.size`, `text.color`, `text.background` | a label's text: its size in pixels, 8 to 48; its colour; `"halo"` or `"box"` |
 | `offset` | Offset: a line drawn this many pixels beside its geometry, to the right of its direction (negative: the left), −50 to 50; 0: on it. Display only, as QGIS offsets a line symbol. |
+| `scale` | Scale: a shape a point holds (a circle, a sector, a closed line) drawn this many times its size about its point, 0.1 to 100, as a symbol drawn larger than it is; a shape no point holds is always drawn as it is (an area drawn is real geography). Display only: its geometry, its values, the totals and the export stay real, and what is attached to it is attached to its real places. |
 
 Where it is written: an element's colours, opacities and stroke width as the common style names
 (§5), the rest in its `charts.look`; the drawing's in `charts.look` (§3: names on the map, offset). Only what each sets itself.
@@ -357,7 +358,7 @@ A `Point` geometry where the label points, with `"kind": "label"`:
   circle's); `{area}` (a closed line's, a circle's); `{perimeter}` (a closed line's).
 - **`offset`:** the text's centre, in screen pixels from where it points (x right, y down; ±2000).
 - **`leader`:** `"arrow"` (a line from the text to where it points, an arrow head there) or `"none"`.
-- **`look`:** its text's `size` (`"small"`, `"medium"` or `"large"`: 11, 13, 16 px), `color` (set
+- **`look`:** its text's `size` (pixels, 8 to 48), `color` (set
   nowhere: the default) and `background` (`"halo"` or `"box"`), as
   any look (§6).
 
@@ -635,8 +636,8 @@ What a value is when the file leaves it out. Writing it with this value means th
 | feature | `charts.guide` | `false` |
 | default look | fill | `#e8590c`, opacity 0.15 |
 | default look | stroke | `#e8590c`, opacity 1, width 1.5, `"solid"` |
-| default look | text | `name` `false`, `values` `false`, `size` `"medium"`, `color` `"#1f2c36"` (a label's only), `background` `"halo"` |
-| default look | `offset` | `0` |
+| default look | text | `name` `false`, `values` `false`, `size` `13`, `color` `"#1f2c36"` (a label's only), `background` `"halo"` |
+| default look | `offset`, `scale` | `0`, `1` |
 | guide style | fill; stroke | `#5d6d79`, opacity 0.05; `#5d6d79`, opacity 1, width 1, `"dashed"` |
 | measurement style | fill; stroke | `#b0127a`, opacity 0.08; `#b0127a`, opacity 1, width 2, `"dashed"` |
 | group | `name`; `properties`; `visible` | `""`; `[]`; `true` |

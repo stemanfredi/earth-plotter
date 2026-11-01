@@ -6,7 +6,7 @@
 import { h, svg, typing, morph, animate, NARROW } from '../dom.js';
 import { ask, askText, note } from '../menu.js';
 import { FINGER } from './layers.js';
-import { find, elements, groupsOf, membersOf, leavesOf, canHold, label, KIND, lookOf, lookField, setLook, LOOK_FIELDS, SYMBOLS, LABEL_OFFSET, makeGroup, setGroup, moveStep, MAX_RADIUS, MAX_OFFSET, STROKE_WIDTH, linkFrom, setLink, fewestPlaces, carry, holderOf, ringOf } from './document.js';
+import { find, elements, groupsOf, membersOf, leavesOf, canHold, label, KIND, lookOf, lookField, setLook, LOOK_FIELDS, SYMBOLS, LABEL_OFFSET, makeGroup, setGroup, moveStep, MAX_RADIUS, MAX_OFFSET, STROKE_WIDTH, TEXT_SIZE, SCALE, linkFrom, setLink, fewestPlaces, carry, holderOf, ringOf } from './document.js';
 import { insertPlace, deletePlace, reattach, partName, splitLine, lineRef, resolve, along } from './attach.js';
 import { labelValues, labelText, TOKENS } from './labels.js';
 import { lineTrace, totals, breakdown, nearestAlong } from './lines.js';
@@ -118,7 +118,8 @@ export function drawView(root, ctx) {
     const doc = drawing.doc;
     xs = flat(xs);
     if (!xs.length && !extra.length) return null; // an empty group
-    const has = (x, f) => LOOK_FIELDS[x.kind].includes(f) && !(f.startsWith('fill.') && x.kind === 'line' && !x.el.closed); // a line's fill: drawn while it is closed
+    const has = (x, f) => LOOK_FIELDS[x.kind].includes(f) && !(f.startsWith('fill.') && x.kind === 'line' && !x.el.closed) // a line's fill: while it is closed
+      && (f !== 'scale' || x.kind === 'drawing' || (!!holderOf(doc, x.el) && (x.kind === 'circle' || x.el.closed))); // a scale: a point's shapes'
     const shown = (f) => (!fields || fields.includes(f)) && xs.some((x) => has(x, f));
     const looks = xs.map((x) => lookOf(doc, x.el));
     const same = (f) => { const vs = xs.map((x, i) => (has(x, f) ? lookField(looks[i], f) : undefined)).filter((v) => v !== undefined); return vs.every((v) => v === vs[0]) ? vs[0] : null; };
@@ -145,13 +146,15 @@ export function drawView(root, ctx) {
       shown('stroke.color') ? row('Stroke', colour('stroke.color', 'Stroke colour'), opacity('stroke.opacity', 'Stroke opacity (%)'), back('stroke.color', 'stroke.opacity')) : null,
       shown('stroke.width') ? row('Width', num('stroke.width', 'Stroke width (px)', ...STROKE_WIDTH), funit('px'), back('stroke.width')) : null,
       shown('stroke.dash') ? row('Dash', choice('Dash', [['solid', '—', 'Solid'], ['dashed', '- -', 'Dashed'], ['dotted', '···', 'Dotted']], same('stroke.dash'), (v) => put('stroke.dash', v)), back('stroke.dash')) : null,
-      shown('text.size') ? row('Text size', choice('Text size', [['small', 'S', 'Small'], ['medium', 'M', 'Medium'], ['large', 'L', 'Large']], same('text.size'), (v) => put('text.size', v)), back('text.size')) : null,
+      shown('text.size') ? row('Text size', num('text.size', 'Text size (px)', ...TEXT_SIZE), funit('px'), back('text.size')) : null,
       shown('text.color') ? row('Text colour', colour('text.color', 'Text colour'), back('text.color')) : null,
       shown('text.background') ? row('Background', choice('Background', [['halo', 'Halo', 'A white halo'], ['box', 'Box', 'A white box']], same('text.background'), (v) => put('text.background', v)), back('text.background')) : null,
       shown('text.name') ? tick('text.name', xs.length > 1 || xs[0].kind === 'drawing' ? 'Names on map' : 'Name on map', 'Names are left out where they would collide; zooming in shows them') : null,
       shown('text.values') ? tick('text.values', 'Show values', 'Values on the map: each leg\'s length, a closed line\'s area and perimeter, a circle\'s radius') : null,
       shown('offset') ? row('Offset', F.number(() => same('offset'), (v) => put('offset', v), 'Offset (px)', { min: -MAX_OFFSET, max: MAX_OFFSET, placeholder: 'mixed', bad: `pixels from −${MAX_OFFSET} to ${MAX_OFFSET}`,
         title: 'Pixels beside its line, on screen only' }), funit('px'), back('offset')) : null,
+      shown('scale') ? row('Scale', F.number(() => same('scale'), (v) => put('scale', v), 'Drawing scale', { min: SCALE[0], max: SCALE[1], placeholder: 'mixed', bad: `a factor from ${SCALE[0]} to ${SCALE[1]}`,
+        title: 'Drawn this many times its size about its point, on the map only: its size, its values and the totals stay real' }), funit('×'), back('scale')) : null,
       ...extra);
   }
   // the group an element (or a group) is in: none, or one of the drawing's that can hold them all
@@ -814,7 +817,7 @@ export function drawView(root, ctx) {
       copy.push(['Areas', '', 'All areas', b.areas.count, '', b.areas.area, b.areas.perimeter]);
     }
     if (b.points.count) {
-      tr('sec', 'Points and circles', 'Count', '');
+      tr('sec', 'Points and shapes', 'Count', '');
       for (const [k, c] of [...b.points.kinds].sort((p, q) => q[1] - p[1])) { const kname = key ? keyName(k) : k; tr('item top', kname, String(c), ''); copy.push(['Points', '', kname, c, '', '', '']); }
       tr('all', 'All', String(b.points.count), '');
       copy.push(['Points', '', 'All', b.points.count, '', '', '']);

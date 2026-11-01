@@ -125,12 +125,12 @@ test('totals: per group and in all; guides left out; hidden elements flagged', (
   const g = makeGroup(doc, [ringedPoint.id, dot.id, c.id, inGroup.id]);
   const t = totals(doc);
   const a = lineTrace(doc, inGroup).length, b = lineTrace(doc, hidden).length;
-  assert.deepEqual({ ...t.all, length: 0 }, { length: 0, lines: 2, points: 2, circles: 1, areas: 1, hidden: true }, 'guides left out');
+  assert.deepEqual({ ...t.all, length: 0 }, { length: 0, lines: 2, points: 2, shapes: 0, circles: 1, areas: 1, hidden: true }, 'guides left out');
   near(t.all.length, a + b, 1e-6, 'all');
   // the group's: its two points and its circle
-  assert.deepEqual({ ...t.groups.get(g.id), length: 0 }, { length: 0, lines: 1, points: 2, circles: 1, areas: 0, hidden: false });
+  assert.deepEqual({ ...t.groups.get(g.id), length: 0 }, { length: 0, lines: 1, points: 2, shapes: 0, circles: 1, areas: 0, hidden: false });
   near(t.groups.get(g.id).length, a, 1e-9, 'the group\'s line');
-  assert.deepEqual({ ...t.groups.get(''), length: 0 }, { length: 0, lines: 1, points: 0, circles: 0, areas: 1, hidden: true });
+  assert.deepEqual({ ...t.groups.get(''), length: 0 }, { length: 0, lines: 1, points: 0, shapes: 0, circles: 0, areas: 1, hidden: true });
   // a hidden group hides its members: its totals say so
   g.visible = false;
   assert.equal(totals(doc).groups.get(g.id).hidden, true);
@@ -173,14 +173,30 @@ test('an attached end follows its point; one whose point is deleted stays where 
   assert.deepEqual([line.points[2], linkFrom(doc, line.id, 2), doc.links.length], [[12.4, 40], undefined, 1]);
 });
 
-test('totals: circles (sectors too) counted apart from points; a point\'s shapes each its own', () => {
+test('totals: circles (sectors too) counted apart from points; a point and its shapes one shape', () => {
   const doc = emptyDoc(0);
   addPoint(doc, [12, 40]);
   addCircle(doc, [12, 40], { aperture: 40 });
   addShape(doc, [12, 40], 'rings'); // a point and three circles
   addShape(doc, [12, 40]); // a point and its closed line
   addDot(doc, [12, 40]);
-  assert.deepEqual([totals(doc).all.points, totals(doc).all.circles, totals(doc).all.areas], [4, 4, 1]);
+  const t = totals(doc).all;
+  assert.deepEqual([t.points, t.shapes, t.circles, t.areas], [2, 2, 1, 0]);
+});
+
+test('breakdown: a placed shape counted once, by what was placed; its outline not an area, its circles not circles; lines alone', async () => {
+  const { placeKind } = await import('../../site/draw/place.js');
+  const doc = emptyDoc(0);
+  placeKind(doc, [12, 40], 'aerial-vehicle', []); placeKind(doc, [12.1, 40], 'aerial-vehicle', []);
+  placeKind(doc, [12.2, 40], 'sector', []); placeKind(doc, [12.3, 40], 'rings', []);
+  addCircle(doc, [13, 40], { aperture: 30 }); addPoint(doc, [13, 41]);
+  addRing(doc, [[12, 42], [12.1, 42], [12.1, 42.1]]);
+  const line = lineFrom(doc, [12, 39], [], [12.1, 39]);
+  const t = breakdown(doc);
+  assert.deepEqual(Object.fromEntries(t.points.kinds), { 'Aerial vehicle': 2, Sector: 2, Rings: 1, Point: 1 });
+  assert.equal(t.points.count, 6);
+  assert.deepEqual([t.areas.count, t.lines.count], [1, 1], 'the drawn polygon alone; the line alone');
+  near(t.lines.length, lineTrace(doc, line).length, 1e-9, 'the length: the line\'s only');
 });
 
 test('split: a vertex becomes a dot both parts are attached to; lengths unchanged; the dot moved, both follow', () => {

@@ -4,7 +4,7 @@
 
 import { circle, reachesPole, ccw, areaOf, destination, inverse } from '../geodesy.js';
 
-import { styleOf, lookOf, offsetOf, isShown, leavesOf, groupsOnlyOf, centroid, columnsOf, linkFrom, membersOf, positionsIn, holderOf, isChosen, ringOf } from './document.js';
+import { styleOf, lookOf, offsetOf, isShown, leavesOf, groupsOnlyOf, centroid, columnsOf, linkFrom, membersOf, positionsIn, holderOf, isChosen, ringOf, drawnOf, reading } from './document.js';
 import { mercator, unrollTo, metresPerPixel, D2R } from '../geo.js';
 import { lineTrace, anchorsOf, pointsAlong } from './lines.js';
 import { labelText } from './labels.js';
@@ -13,9 +13,11 @@ import { fmtArea, fmtBrg, fmtDist } from '../format.js';
 
 // whether a circle can be drawn: one reaching a pole cannot be a polygon
 export const drawable = (c, r = c.radius) => !reachesPole(c.position, r);
+// a circle as drawn: its Scale's (its centre carried about its point, its radius times it); itself at 1
+export const drawnCircle = (doc, c) => { const t = drawnOf(doc, c); return t.k === 1 ? c : { ...c, position: t.f(c.position), radius: c.radius * t.k }; };
 // how far a point's shapes reach from it (m): their farthest place, or circle's rim
-// how far they reach along its bearing: where its stalk starts
-export const frontOf = (doc, p) => Math.max(0, ...membersOf(doc, p.id).flatMap(({ kind, el }) => positionsIn(kind, el).map(([o, k]) => { const g = inverse(p.position, o[k]); return g.s * Math.cos((g.azi - p.bearing) * D2R) + (el.radius ?? 0); })));
+// how far they reach along its bearing, as drawn (each its Scale): where its stalk starts
+export const frontOf = (doc, p) => Math.max(0, ...membersOf(doc, p.id).flatMap(({ kind, el }) => { const t = drawnOf(doc, el); return positionsIn(kind, el).map(([o, k]) => { const g = inverse(p.position, t.f(o[k])); return g.s * Math.cos((g.azi - p.bearing) * D2R) + (el.radius ?? 0) * t.k; }); }));
 export const reachOf = (doc, p) => Math.max(0, ...membersOf(doc, p.id).flatMap(({ kind, el }) => positionsIn(kind, el).map(([o, k]) => inverse(p.position, o[k]).s + (el.radius ?? 0))));
 
 const HANDLE_GAP = 12; // px
@@ -38,7 +40,8 @@ const lineProps = (s) => ({ sc: s.color, so: s.opacity, sw: s.width, dash: s.das
 // grabs; a ring around a point's centre. A line with an Offset carries it (off, px): MapLibre draws it
 // beside its geometry (layers.js), display only. display: { zoom } (handles thinned at it, the stalks'
 // length), midPx. want: the parts to make (the others come back empty).
-export function drawParts(doc, sel = new Set(), hover = null, display = {}, want = { base: true, zoom: true, marks: true }) {
+export const drawParts = (doc, ...rest) => reading(doc, () => drawPartsIn(doc, ...rest)); // indexed while it reads
+function drawPartsIn(doc, sel = new Set(), hover = null, display = {}, want = { base: true, zoom: true, marks: true }) {
   const base = [], zoomed = [], marks = [];
   const markOf = (el) => (!want.marks ? null : isChosen(doc, sel, el) ? 'sel' : hover === el.id ? 'hover' : null); // a point's shapes with it
   // What says "selected": the one element selected shows its handles and its own stroke, untouched
@@ -110,8 +113,10 @@ export function drawParts(doc, sel = new Set(), hover = null, display = {}, want
   // circles: each a polygon; selected alone, its radius dragged by its handles (a circle's at its four
   // cardinal points, a sector's at the middle of its arc), a sector's ends each alone, and the stalk
   // beyond its arc's middle turns it
-  for (const c of doc.circles) {
-    if (!isShown(doc, c) || !drawable(c) || (!want.base && !markOf(c))) continue;
+  for (const real of doc.circles) {
+    if (!isShown(doc, real) || (!want.base && !markOf(real))) continue;
+    const c = drawnCircle(doc, real); // as its Scale draws it
+    if (!drawable(c)) continue;
     const st = styleOf(doc, c), rg = ringOf(c);
     if (want.base) {
       base.push({ type: 'Feature', properties: { id: c.id, kind: 'ring', z: Z.get(c.id), fill: st.fill.opacity > 0 ? 1 : 0, fc: st.fill.color, fo: st.fill.opacity, ...lineProps(st.stroke) }, geometry: { type: 'Polygon', coordinates: [rg] } });
@@ -127,20 +132,21 @@ export function drawParts(doc, sel = new Set(), hover = null, display = {}, want
   // both sides of it.
   for (const sg of doc.lines) {
     if (!isShown(doc, sg)) continue;
-    const { fill, stroke: st } = styleOf(doc, sg);
-    if (want.base && sg.closed) base.push({ type: 'Feature', properties: { id: sg.id, kind: 'polygon', z: Z.get(sg.id), fill: 1, fc: fill.color, fo: fill.opacity }, geometry: { type: 'Polygon', coordinates: [lineTrace(doc, sg).coords] } });
+    const { fill, stroke: st } = styleOf(doc, sg), t = drawnOf(doc, sg); // t: as its Scale draws it (a closed line's)
+    const traced = () => { const l = lineTrace(doc, sg); return t.k === 1 ? l : { ...l, coords: l.coords.map(t.f) }; };
+    if (want.base && sg.closed) base.push({ type: 'Feature', properties: { id: sg.id, kind: 'polygon', z: Z.get(sg.id), fill: 1, fc: fill.color, fo: fill.opacity }, geometry: { type: 'Polygon', coordinates: [traced().coords] } });
     // its named places: at their real positions, whatever the zoom
-    if (want.base && wants(sg)) sg.names.forEach((nm, i) => { if (nm.trim()) baseNames.push({ type: 'Feature', properties: { id: sg.id, kind: 'name', nm, c: st.color, vx: 1 }, geometry: { type: 'Point', coordinates: sg.points[i] } }); });
+    if (want.base && wants(sg)) sg.names.forEach((nm, i) => { if (nm.trim()) baseNames.push({ type: 'Feature', properties: { id: sg.id, kind: 'name', nm, c: st.color, vx: 1 }, geometry: { type: 'Point', coordinates: t.f(sg.points[i]) } }); });
     if (!want.zoom && !markOf(sg)) continue;
-    const line = lineTrace(doc, sg), off = offsetOf(doc, sg);
+    const line = traced(), off = offsetOf(doc, sg);
     const g = { type: 'LineString', coordinates: line.coords };
     if (want.zoom) {
       zoomed.push({ type: 'Feature', properties: { id: sg.id, kind: 'linehit', off }, geometry: g });
-      if (named(sg)) name(zoomNames, sg, sg.closed ? { type: 'Point', coordinates: centroid(sg.points) } : g, st.color, sg.closed ? { ctr: 1 } : {}); // a closed one's at its centre
+      if (named(sg)) name(zoomNames, sg, sg.closed ? { type: 'Point', coordinates: t.f(centroid(sg.points)) } : g, st.color, sg.closed ? { ctr: 1 } : {}); // a closed one's at its centre
       zoomed.push({ type: 'Feature', properties: { id: sg.id, kind: sg.guide ? 'guide' : 'path', z: Z.get(sg.id), off, ...lineProps(st) }, geometry: g });
     }
-    if (mark(sg, g, { sw: st.width, off }, () => sg.points) && own.has(sg.id)) {
-      const ps = sg.points;
+    if (mark(sg, g, { sw: st.width, off }, () => sg.points.map(t.f)) && own.has(sg.id)) {
+      const ps = sg.points.map(t.f); // its handles where it is drawn
       // held by a point, it is rigid: each place resizes it, the farthest kept (no + either)
       if (holderOf(doc, sg)) { handles(sg.id, ps.map((p, i) => ({ p, role: 'scale', ref: i }))); continue; }
       // its places: one linked to a point's centre moves the point; another (free, or linked to a
@@ -152,7 +158,7 @@ export function drawParts(doc, sel = new Set(), hover = null, display = {}, want
       if (mpp) {
         const mids = [];
         for (let i = 0; i < line.legs.length; i++) {
-          if (line.legs[i] / ground(ps[i][1]) > midPx) mids.push({ p: pointsAlong(line.coords, [(line.at[i] + line.at[i + 1]) / 2])[0].position, role: 'mid', ref: i, kind: 'mid' });
+          if (line.legs[i] * t.k / ground(ps[i][1]) > midPx) mids.push({ p: t.f(pointsAlong(lineTrace(doc, sg).coords, [(line.at[i] + line.at[i + 1]) / 2])[0].position), role: 'mid', ref: i, kind: 'mid' });
         }
         handles(sg.id, mids);
       }
@@ -182,13 +188,14 @@ const showsValues = (doc, el) => lookOf(doc, el).text.values;
 // The values of the elements showing them, as label features (the draw-value layer draws them): each leg
 // of a line its length (and its bearing, when bearings are on and the leg is straight), the total at
 // its end; a closed line its area and perimeter; a circle its radius. units: 'km' | 'nm'.
-export function valueFeatures(doc, units = 'km', bearings = false) {
+export const valueFeatures = (doc, ...rest) => reading(doc, () => valueFeaturesIn(doc, ...rest)); // indexed while it reads
+function valueFeaturesIn(doc, units = 'km', bearings = false) {
   const out = [];
   const label = (id, coord, text, anchor = 'center') => out.push({ type: 'Feature', properties: { id, label: text, anchor }, geometry: { type: 'Point', coordinates: coord } });
   for (const s of doc.lines) {
     if (!showsValues(doc, s) || !isShown(doc, s)) continue;
     const tr = lineTrace(doc, s), an = anchorsOf(s);
-    if (s.closed) { label(s.id, centroid(s.points), `${fmtArea(tr.area, units)}\nperimeter ${fmtDist(tr.length, units)}`); continue; }
+    if (s.closed) { label(s.id, drawnOf(doc, s).f(centroid(s.points)), `${fmtArea(tr.area, units)}\nperimeter ${fmtDist(tr.length, units)}`); continue; } // its real values, where it is drawn
     tr.legs.forEach((len, i) => {
       const mid = pointsAlong(tr.coords, [tr.at[i] + len / 2])[0].position;
       const straight = !an[i].hOut && !an[i + 1].hIn;
@@ -196,7 +203,7 @@ export function valueFeatures(doc, units = 'km', bearings = false) {
     });
     if (tr.legs.length > 1) label(s.id, s.points.at(-1), `Σ ${fmtDist(tr.length, units)}`, 'top');
   }
-  for (const c of doc.circles) if (showsValues(doc, c) && isShown(doc, c) && drawable(c)) label(c.id, destination(c.position, c.aperture ? c.bearing : 0, c.radius), `r ${fmtDist(c.radius, units)}`, 'bottom');
+  for (const c of doc.circles) { const d = drawnCircle(doc, c); if (showsValues(doc, c) && isShown(doc, c) && drawable(d)) label(c.id, destination(d.position, c.aperture ? c.bearing : 0, d.radius), `r ${fmtDist(c.radius, units)}`, 'bottom'); }
   return out;
 }
 
@@ -209,7 +216,8 @@ const m = (v) => +v.toFixed(3);
 // The drawing's visible elements as GeoJSON features, as drawn: real geometry, values in metres and
 // degrees; a circle as a polygon. Labels: a point where each points, with its text (live values in
 // the display units).
-export function exportFeatures(doc, units = 'km') {
+export const exportFeatures = (doc, ...rest) => reading(doc, () => exportFeaturesIn(doc, ...rest)); // indexed while it reads
+function exportFeaturesIn(doc, units = 'km') {
   const out = [];
   const groupName = (el) => groupsOnlyOf(doc, el).reverse().map((g) => g.name).join(' / '); // the groups it is in, outermost first
   const base = (kind, el) => ({ kind, id: el.id, name: el.name, group: groupName(el), ...(holderOf(doc, el) ? { point: el.groupId } : {}), ...(el.guide ? { guide: true } : {}) });
@@ -246,12 +254,12 @@ export const GEOMETRY = {
     bounds: (doc, n) => [n.position],
     inside: (doc, n, inBox) => inBox(n.position),
   },
-  circle: {
-    bounds: (doc, c) => (drawable(c) ? circle(c.position, c.radius, 16) : [c.position]),
+  circle: { // as drawn (its Scale's), so that Zoom to frames what is seen
+    bounds: (doc, c) => { const d = drawnCircle(doc, c); return drawable(d) ? circle(d.position, d.radius, 16) : [d.position]; },
     inside: (doc, c, inBox) => inBox(c.position),
   },
   line: {
-    bounds: (doc, sg) => lineTrace(doc, sg).coords,
+    bounds: (doc, sg) => lineTrace(doc, sg).coords.map(drawnOf(doc, sg).f),
     inside: (doc, sg, inBox) => lineTrace(doc, sg).coords.every(inBox),
   },
   label: {

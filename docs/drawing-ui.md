@@ -165,7 +165,7 @@ the drawing.
 It shows one element, several (its head counts them by kind; what they share, set on all at once;
 one Look for all; how far apart two points are, and the bearing from the first to the second;
 **Connect…**), a group (**Connect…** on the points in it), or the drawing (title, description, author, when it was created;
-**Display**, the drawing's look, the distance units and the leg bearings; **Totals** by group or by a property, Copy). A field applies on Enter
+**Display**, the drawing's look, the distance units and the leg bearings; **Totals** by group or by a property, Copy: the open lines' length, by group and by what a connection made; the areas drawn; the points and shapes by kind, a point and its shapes one, named by what was placed ("Aerial vehicle 2 · Sector 3"), its outline not an area). A field applies on Enter
 or when left, one undo step; a value that does not read stays marked and is not applied; Esc puts it
 back. ↑ ↓ nudge a number by its last digit (Shift: ten). Distances show to the decimetre (m), the
 metre (km) or about 2 m (NM); what is typed is kept as typed. Properties is updated in place as the
@@ -177,7 +177,8 @@ its **actions** (one row of buttons: Edit… and Select all for what a rule made
 Save as preset…, Select members, Connect…), its **Look**, then its foot (a shape's **Point**, **In
 group**, **Guide**, **Data**). Every number is 12 px, of one width; a unit stands beside its value in grey (a distance
 field shows its number, its unit next to it or in the column's head: typed with another unit, it is
-read in that one). One rule for every distance: metres below 1 km, else km; with NM, NM. A column
+read in that one). One rule for every distance: metres below 1 km, else km; with NM, NM; shown to the
+metre (km to three decimals, NM to three: about 2 m). A column
 takes one unit by its largest value.
 
 - **Rows**: a label, one value or a pair (latitude · longitude, colour · opacity), and a last column
@@ -233,7 +234,7 @@ takes one unit by its largest value.
   while it has any, what it **reads** under it; **Attached to** what and where (a line's point or leg,
   as its table numbers them), or its **Position**; **Along**, on
   a line; **Text offset**, where its text was dragged to (↺: back); **Leader**. Look:
-  text size, colour, background (halo or box).
+  text size (px), colour, background (halo or box).
 - A **group**: **Members** as the tree counts them (everything in it, its subgroups' too) and its
   subgroups, with the group's eye (as its row's); **Totals** as the drawing's, its members only, by subgroup
   (Copy); **Select members**; **Look · sets each member** (a group has no look of its own); its foot
@@ -305,8 +306,12 @@ Copies) opens its form (a click on the map picks a root):
   proportions too), the point moving to stay its centre; no **+**. The point itself shows no dot
   while it holds shapes.
 - **Display only** (never in lengths or exports): **Offset**, a line drawn beside itself (−50 to 50
-  px, as QGIS offsets a line symbol; ⇉ in the tree). A point's symbol keeps its shapes found at any
-  zoom: none is drawn larger than it is. Names collide
+  px, as QGIS offsets a line symbol; ⇉ in the tree); **Scale**, a point's shapes (what the
+  Shape tool and the presets place) drawn up to 100 times their size or down to a tenth, about the
+  point, so that they stay seen zoomed out (an area drawn is never drawn larger): set on one, on several at once, or in Display for
+  every one. Its handles are where it is drawn and set its real size through it; its values, the
+  totals, the file and what is attached to it keep the real one. A point's symbol keeps its shapes
+  found at any zoom. Names collide
   away; labels are always drawn.
 
 ## 8. Keys

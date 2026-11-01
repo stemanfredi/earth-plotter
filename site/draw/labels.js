@@ -4,13 +4,12 @@
 // gives the projection (view.project, view.unproject) and the size of a text (view.measure). Pure
 // otherwise: no map, no DOM.
 
-import { isShown, label, lookOf, linkFrom, ringOf } from './document.js';
+import { isShown, label, lookOf, linkFrom, ringOf, reading } from './document.js';
 import { resolve } from './attach.js';
 import { lineTrace } from './lines.js';
 import { areaOf } from '../geodesy.js';
 import { fmtArea, fmtBrg, fmtDist } from '../format.js';
 
-const SIZE_PX = { small: 11, medium: 13, large: 16 };
 const PAD = { halo: 3, box: 6 }; // px around the text a leader stops short of (a box's padding and border)
 
 // The live values a label can show of what it points at (to: its link's target, or none), each as
@@ -55,7 +54,8 @@ export function leaderFrom(t, p, half) {
 // view: { project, unproject, measure(text, px) → [w, h] }; units: the display units; texts: each
 // label's text by id, filled as read (kept by the caller while the drawing and the units stay as they
 // are: the map moving changes no text).
-export function labelFeatures(doc, view, sel = new Set(), hover = null, units = 'km', texts = new Map()) {
+export const labelFeatures = (doc, ...rest) => reading(doc, () => labelFeaturesIn(doc, ...rest)); // indexed while it reads
+function labelFeaturesIn(doc, view, sel = new Set(), hover = null, units = 'km', texts = new Map()) {
   const out = [];
   const pt = (properties, coordinates) => out.push({ type: 'Feature', properties, geometry: { type: 'Point', coordinates } });
   for (const a of doc.labels) {
@@ -64,7 +64,7 @@ export function labelFeatures(doc, view, sel = new Set(), hover = null, units = 
     if (on && !isShown(doc, on.el)) continue; // a hidden element's label is hidden with it
     if (!texts.has(a.id)) texts.set(a.id, labelText(doc, a, units));
     const text = texts.get(a.id);
-    const lt = lookOf(doc, a).text, px = SIZE_PX[lt.size], c = lt.color, mark = sel.has(a.id) ? 'sel' : hover === a.id ? 'hover' : '';
+    const lt = lookOf(doc, a).text, px = lt.size, c = lt.color, mark = sel.has(a.id) ? 'sel' : hover === a.id ? 'hover' : '';
     const p = view.project(a.position), t = [p[0] + a.offset[0], p[1] + a.offset[1]];
     if (text.trim()) pt({ id: a.id, kind: 'label', text, px, c, box: lt.background === 'box' ? 1 : 0, mark }, view.unproject(t));
     if (a.leader !== 'none') {

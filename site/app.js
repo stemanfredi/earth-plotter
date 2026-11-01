@@ -200,7 +200,6 @@ const depthEl = h('select', { class: 'pos depthchip', id: 'depth', 'aria-label':
 const scale = new maplibregl.ScaleControl({ maxWidth: 100, unit: 'metric' });
 const scaleEl = scale.onAdd(map);
 scaleEl.id = 'scale';
-const scaleMark = h('span', { class: 'scalemark', hidden: true }, '≈');
 const creditsText = h('span', { class: 'credits-text' });
 const credits = h('div', { class: 'credits' }, creditsText);
 // the fade at its end only while some of it is out of sight (cut, and not scrolled to its end)
@@ -209,7 +208,7 @@ credits.addEventListener('scroll', fadeCredits, { passive: true });
 new ResizeObserver(fadeCredits).observe(credits);
 // credits on the left; the time shown, cursor position and scale on the right (not for navigation:
 // About and the exports say it)
-statusEl.append(credits, h('div', { class: 'readout' }, shownEl, depthEl, posEl, scaleMark, scaleEl));
+statusEl.append(credits, h('div', { class: 'readout' }, shownEl, depthEl, posEl, scaleEl));
 // the legends sit above the bottom row, whose height follows its credits
 new ResizeObserver(() => { document.documentElement.style.setProperty('--status-h', `${statusEl.offsetHeight}px`); snapLegends(); }).observe(statusEl);
 
@@ -1140,8 +1139,8 @@ function scaleVariation() {
   return mercatorVariation(b.getSouth(), b.getNorth());
 }
 // its length as MapLibre writes it, with NM for its "nm" (the nanometre's symbol), as on charts and in
-// Measure; where the scale varies across the view, "≈" beside it (outside the bar: its length stays
-// what it says), by how much in their tooltips
+// Measure; where the scale varies across the view, "≈" just before the bar (style.css: outside it, as
+// the bar is as long as its text says), by how much in its tooltip
 let scaleSaid = '';
 function scaleText() {
   const v = scaleVariation(), varies = v > NOTE_AT, why = varies ? `The scale varies ${(v * 100).toFixed(0)}% across the view: this length is the centre's. ` : '';
@@ -1150,9 +1149,7 @@ function scaleText() {
   scaleSaid = `${why}${scaleEl.textContent}`;
   scaleEl.classList.toggle('varies', varies);
   scaleEl.title = `${why}Distance units: a click switches km and NM`;
-  scaleEl.setAttribute('aria-label', `Scale ${scaleEl.textContent}. ${scaleEl.title}`);
-  scaleMark.hidden = !varies;
-  scaleMark.title = why;
+  scaleEl.setAttribute('aria-label', `Scale ${varies ? 'about ' : ''}${scaleEl.textContent}. ${scaleEl.title}`);
 }
 
 // ---- credits, and the exports (PNG: png.js; GIS: below) ----------------------------------------

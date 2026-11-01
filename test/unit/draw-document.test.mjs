@@ -372,7 +372,7 @@ test('labels: on an element, along a line, on a vertex, or free; checked; writte
   const { doc, report } = read(collection([
     F('a', 'Point', [12, 40], { kind: 'point', look: { text: { name: true } } }), F('s', 'LineString', [[12, 40], [13, 40]], { kind: 'line' }),
     F('ar', 'Polygon', [[[12, 41], [13, 41], [13, 42], [12, 41]]], { kind: 'area' }),
-    F('l1', 'Point', [0, 0], { kind: 'label', text: '{name}', offset: [10, -20], leader: 'none', look: { text: { size: 'large', color: '#AA0000', background: 'box' } } }),
+    F('l1', 'Point', [0, 0], { kind: 'label', text: '{name}', offset: [10, -20], leader: 'none', look: { text: { size: 16, color: '#AA0000', background: 'box' } } }),
     F('l2', 'Point', [0, 0], { kind: 'label' }),
     F('l3', 'Point', [12, 41], { kind: 'label', leader: 'zigzag', offset: 'far', look: { text: { size: 'huge' } } }),
     F('l4', 'Point', [12, 42], { kind: 'label' }),
@@ -392,15 +392,15 @@ test('labels: on an element, along a line, on a vertex, or free; checked; writte
   assert.deepEqual(skippedIds(report), ['l7']);
   const [l1, l2, l3, l4, l5, l6, l8, l9, l10] = doc.labels;
   const text = (a) => d.lookOf(doc, a).text, at = (a) => placeIn(doc, a);
-  assert.deepEqual([l1.leader, l1.offset, l1.look, at(l1)], ['none', [10, -20], { text: { size: 'large', color: '#aa0000', background: 'box' } }, { position: [12, 40], to: { element: 'a' } }]);
+  assert.deepEqual([l1.leader, l1.offset, l1.look, at(l1)], ['none', [10, -20], { text: { size: 16, color: '#aa0000', background: 'box' } }, { position: [12, 40], to: { element: 'a' } }]);
   assert.deepEqual([at(l2).to, l2.text, l2.leader, l2.look, text(l2).background], [{ element: 's', edge: 0, at: 0.123456789 }, '', 'arrow', {}, 'halo']);
   assert.deepEqual(l2.position, resolve(doc, at(l2).to).position); // where it points
   assert.ok(Math.abs(resolve(doc, at(l2).to).along - 0.123456789 * resolve(doc, at(l2).to).length) < 1e-6);
-  assert.deepEqual([at(l3), l3.leader, l3.offset, l3.look, text(l3).size], [{ position: [12, 41], to: null }, 'arrow', [40, -40], {}, 'medium']);
+  assert.deepEqual([at(l3), l3.leader, l3.offset, l3.look, text(l3).size], [{ position: [12, 41], to: null }, 'arrow', [40, -40], {}, 13]); // an unknown size: the default's px
   assert.deepEqual([at(l4), at(l5), at(l6)], [{ position: [12, 42], to: null }, { position: [12, 40], to: { element: 's', edge: 0, at: 0 } }, { position: [12, 40], to: { element: 'a' } }]);
   assert.deepEqual([at(l8), at(l9), at(l10)], [{ position: [12, 43], to: null }, { position: d.centroid(doc.lines[1].points), to: { element: 'ar' } }, { position: [13, 42], to: { element: 'ar', vertex: 2 } }]);
   assert.ok(!('name' in l1.look.text));
-  for (const re of [/leader: unknown "zigzag"/, /offset: not \[x, y\]/, /size "huge" unknown/, /link to gone, which is not here/, /link to a, which is not here \(or has no such vertex/, /link from l7 0, which is not/]) warned(report, re);
+  for (const re of [/leader: unknown "zigzag"/, /offset: not \[x, y\]/, /size "huge": not a number of pixels/, /link to gone, which is not here/, /link to a, which is not here \(or has no such vertex/, /link from l7 0, which is not/]) warned(report, re);
   assert.deepEqual(doc.points[0].look, { text: { name: true } });
   const f = toFile(doc), out = (id) => f.features.find((x) => x.id === id), linked = (id) => f.charts.links.find((l) => l.from[0] === id)?.to;
   assert.deepEqual(linked('l2'), { element: 's', edge: 0, at: 0.123457 });
@@ -915,4 +915,34 @@ test('the example in drawing-format.md §15 reads with no word to say, and write
   const r = read(text);
   assert.deepEqual([r.report.skipped, r.report.warnings], [[], []]);
   assert.deepEqual(toFile(r.doc, r.view), JSON.parse(text));
+});
+
+test('a look\'s text size in px, kept in range; Scale a factor above 0, kept in range; each written back', () => {
+  const { doc, report } = read(collection([
+    F('l1', 'Point', [12, 40], { kind: 'label', look: { text: { size: 20 } } }),
+    F('l2', 'Point', [12, 40], { kind: 'label', look: { text: { size: 200 } } }),
+    F('l3', 'Point', [12, 40], { kind: 'label', look: { text: { size: 'huge' } } }),
+    F('a1', 'Polygon', [[[12, 41], [13, 41], [13, 42], [12, 41]]], { kind: 'area', look: { scale: 5 } }),
+    F('a2', 'Polygon', [[[12, 41], [13, 41], [13, 42], [12, 41]]], { kind: 'area', look: { scale: 1e6 } }),
+    F('a3', 'Polygon', [[[12, 41], [13, 41], [13, 42], [12, 41]]], { kind: 'area', look: { scale: -2 } }),
+  ]));
+  assert.deepEqual(doc.labels.map((x) => x.look), [{ text: { size: 20 } }, { text: { size: 48 } }, {}]);
+  assert.deepEqual(doc.lines.map((x) => x.look), [{ scale: 5 }, { scale: 100 }, {}]);
+  warned(report, /text size "huge"/);
+  warned(report, /Scale: not a number above 0/);
+  assert.deepEqual(again(doc).doc.lines.map((x) => x.look), [{ scale: 5 }, { scale: 100 }, {}]);
+});
+
+test('reading: find, groupsOf, membersOf and holderOf answer as a scan does, the index gone after', async () => {
+  const D = await import('../../site/draw/document.js');
+  const { build } = await import('../../site/draw/place.js');
+  const doc = D.emptyDoc(0), g = D.addGroup(doc, 'G'), sub = D.addGroup(doc, 'S', g.id);
+  const p = build(doc, [12, 40], 'rings'); p.groupId = sub.id;
+  D.addLine(doc, [[12, 40], [12.1, 40]], { groupId: g.id });
+  const ask = () => D.elements(doc).map((x) => [D.find(doc, x.el.id)?.el, D.groupsOf(doc, x.el).map((y) => y.id), D.membersOf(doc, x.el.id).map((y) => y.el.id), D.holderOf(doc, x.el)?.id ?? null]);
+  const scanned = ask();
+  assert.deepEqual(D.reading(doc, () => D.reading(doc, ask)), scanned, 'nested too');
+  assert.equal(D.reading(doc, () => D.find(doc, 'nothing')), null);
+  D.addPoint(doc, [13, 40]); // an edit after: seen, the index not kept
+  assert.equal(ask().length, scanned.length + 1);
 });

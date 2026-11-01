@@ -2,7 +2,7 @@
 // layers of layers.js from features.js and labels.js, with the placing tools, clicks, hit testing,
 // dragging and the box (Shift-drag); saved in this browser as it changes (saving.js).
 
-import { emptyDoc, addLine, addLabel, find, elements, positionsIn, isShown, nextName, KIND, LABEL_OFFSET, MAX_LABEL_OFFSET, lookOf, setLook, offsetOf, MAX_RADIUS, fewestPlaces, linkFrom, setLink, carry, holderOf, canHold, setGroup, moveElements, isChosen, ringOf } from './document.js';
+import { emptyDoc, addLine, addLabel, find, elements, positionsIn, isShown, nextName, KIND, LABEL_OFFSET, MAX_LABEL_OFFSET, lookOf, setLook, offsetOf, MAX_RADIUS, fewestPlaces, linkFrom, setLink, carry, holderOf, canHold, setGroup, moveElements, isChosen, ringOf, drawnOf } from './document.js';
 import { typing } from '../dom.js';
 import { placeKind, placeBox, build, BOX } from './place.js';
 import { norm360 } from '../geo.js';
@@ -11,10 +11,10 @@ import { DrawStore, settleGeometry } from './store.js';
 import { Saving } from './saving.js';
 import { note } from '../menu.js';
 import { addIcons, measureText, HIT_LAYERS, MARK_LAYERS, HANDLE_LAYERS, CURSOR, FINGER } from './layers.js';
-import { drawParts, GEOMETRY, valueFeatures } from './features.js';
+import { drawParts, GEOMETRY, valueFeatures, drawnCircle } from './features.js';
 import { lineTrace, nearestAlong } from './lines.js';
 import { labelFeatures } from './labels.js';
-import { inverse, moveAbout } from '../geodesy.js';
+import { inverse, destination, moveAbout } from '../geodesy.js';
 import { snapAt, stepped, neighbours, RADIUS as SNAP_RADIUS } from './snap.js';
 import { attachTo, insertPlace, deletePlace, refNear, lineRef, resolve } from './attach.js';
 import { clipOf, paste, centreOf } from './clipboard.js';
@@ -653,11 +653,15 @@ export class Drawing extends DrawStore {
         this.putPlace(doc, { kind: 'line', el }, i, { position: r.position, to: attachTo(doc, r.to) });
         return;
       }
-      case 'scale': { const n = holderOf(doc, el), r = scaledPlaces(n.position, n.bearing, el.points, +d.ref, p, e.shiftKey); carry(doc, n, r.centre); el.points = r.points; return; } // a held shape's place: the shape resized, the farthest place kept (Shift: its proportions too); its point moves to stay its centre, its other shapes with it
+      case 'scale': { // its places as drawn resized; their real ones that over its Scale, about the point's new place
+        const n = holderOf(doc, el), t = drawnOf(doc, el), r = scaledPlaces(n.position, n.bearing, el.points.map(t.f), +d.ref, p, e.shiftKey);
+        carry(doc, n, r.centre); el.points = r.points.map((q) => { const g = inverse(r.centre, q); return g.s ? destination(r.centre, g.azi, g.s / t.k) : [...r.centre]; });
+        return;
+      } // a held shape's place: the shape resized, the farthest place kept (Shift: its proportions too); its point moves to stay its centre, its other shapes with it
       case 'mid': { const q = this.snapped(pt, e, p, { exclude: new Set([el.id]) }).position; insertPlace(doc, el.id, +d.ref + 1, q); return; } // a place added halfway along a leg
-      case 'radius': el.radius = Math.max(1, Math.min(MAX_RADIUS - 1, radiusTo(el.position, p))); return; // a circle's size only: a sector's ends and the stalk turn it
-      case 'aperture': Object.assign(el, sectorEdgeTo(el.position, el.bearing, el.aperture, +d.ref, p, snap)); return; // one end of a sector's arc: its aperture, and its bearing (its middle)
-      case 'rotate': if (el.radius) el.bearing = bearingTo(el.position, p, snap); else carry(doc, el, el.position, bearingTo(el.position, p, snap)); // a sector; a point, its shapes with it
+      case 'radius': { const c = drawnCircle(doc, el); el.radius = Math.max(1, Math.min(MAX_RADIUS - 1, radiusTo(c.position, p) * el.radius / c.radius)); return; } // a circle's size only: a sector's ends and the stalk turn it
+      case 'aperture': Object.assign(el, sectorEdgeTo(drawnCircle(doc, el).position, el.bearing, el.aperture, +d.ref, p, snap)); return; // one end of a sector's arc: its aperture, and its bearing (its middle)
+      case 'rotate': if (el.radius) el.bearing = bearingTo(drawnCircle(doc, el).position, p, snap); else carry(doc, el, el.position, bearingTo(el.position, p, snap)); // a sector; a point, its shapes with it
     }
   }
   // a dragged position: snapped where the pointer is near something (snapFor), else where the drag

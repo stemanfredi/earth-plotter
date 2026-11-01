@@ -7,7 +7,7 @@
 
 import { densify, inverse, destination, areaOf, lengthOf } from '../geodesy.js';
 import { mercator, unmercator, D2R, nearestOnSegment, unrollTo } from '../geo.js';
-import { isShown, groupsOf, groupsOnlyOf, linkFrom } from './document.js';
+import { isShown, groupsOf, groupsOnlyOf, linkFrom, reading } from './document.js';
 
 const TOL = 1e-4; // a curve is sampled finer until its length changes by less than this, relative
 const MAX_SAMPLES = 4096;
@@ -140,25 +140,34 @@ export function nearestAlong(coords, p) {
   return at;
 }
 
+// A point holding shapes is one thing placed (a vehicle, a sector, a preset of the user's): what
+// it is, its preset's name, else its own less its number ("Aerial vehicle 3": "Aerial vehicle")
+const holders = (doc) => { const pts = new Set(doc.points.map((p) => p.id)); return new Set([...doc.circles, ...doc.lines].map((x) => x.groupId).filter((id) => pts.has(id))); };
+export const shapeKind = (p) => p.properties.find((x) => x.key === 'preset')?.value || p.name.replace(/\s+\d+$/, '').trim() || 'Shape';
+// held: a circle or a closed line a point holds (holding: holders'), counted with its point, not on its own
+const held = (holding, el) => (el.radius != null || el.closed) && holding.has(el.groupId);
+
 // Totals: the open lines' count and length (guides left out: they are supporting geometry), the
-// points' count, the circles' (sectors too) and the closed lines' (areas), per group (everything in it, its subgroups'
+// points' count, the shapes' (a point holding shapes, counted once with them), the free circles'
+// (sectors too) and the free closed lines' (areas), per group (everything in it, its subgroups'
 // too) and for the whole drawing. Hidden elements count, and each total says whether it includes any
 // (hidden: true). Groups by ID ('' for not grouped).
-export function totals(doc) {
-  const bucket = () => ({ length: 0, lines: 0, points: 0, circles: 0, areas: 0, hidden: false });
-  const groups = new Map(), all = bucket();
+export const totals = (doc, ...rest) => reading(doc, () => totalsIn(doc, ...rest)); // indexed while it reads
+function totalsIn(doc) {
+  const bucket = () => ({ length: 0, lines: 0, points: 0, shapes: 0, circles: 0, areas: 0, hidden: false });
+  const groups = new Map(), all = bucket(), holding = holders(doc);
   const into = (key) => { if (!groups.has(key)) groups.set(key, bucket()); return groups.get(key); };
   const each = (el, fn) => {
     const gs = groupsOf(doc, el).map((g) => g.id);
     for (const b of [...(gs.length ? gs : ['']).map(into), all]) { fn(b); if (!isShown(doc, el)) b.hidden = true; }
   };
   for (const s of doc.lines) {
-    if (s.guide) continue;
+    if (s.guide || held(holding, s)) continue;
     const len = s.closed ? 0 : lineTrace(doc, s).length;
     each(s, (b) => { if (s.closed) b.areas++; else { b.length += len; b.lines++; } });
   }
-  for (const p of doc.points) if (!p.guide) each(p, (b) => { b.points++; });
-  for (const c of doc.circles) if (!c.guide) each(c, (b) => { b.circles++; });
+  for (const p of doc.points) if (!p.guide) each(p, (b) => { b[holding.has(p.id) ? 'shapes' : 'points']++; });
+  for (const c of doc.circles) if (!c.guide && !held(holding, c)) each(c, (b) => { b.circles++; });
   return { groups, all };
 }
 
@@ -184,21 +193,23 @@ const PART_ORDER = ['trunk', 'branch', 'root link', 'link'];
 // The drawing's lengths and counts laid out for the Totals view (docs/drawing-ui.md §5): the lines
 // by group (or by the values of property `by`), each line listed under its group but for those a
 // connection made, which are summed by what they are (trunks and branches; a chain's root links and
-// the links between points); the closed lines (areas); the points and circles by kind. Guides are left out; hidden elements are
-// counted, and said. Pure: no formatting, no names (the panel puts those).
+// the links between points); the closed lines (areas); the points, shapes and circles by kind (a
+// point holding shapes counted once, by shapeKind: its outline not an area, its circles not
+// circles). Guides are left out; hidden elements are counted, and said. Pure: no formatting, no names (the panel puts those).
 //   { lines: { rows: [{ key, lines: [{ id, length }], parts: [{ part, count, length }], count, length, hidden }],
 //              count, length, hidden }, areas: { rows: [{ id, area, perimeter }], count, area, perimeter, hidden },
-//     points: { count, hidden, kinds: Map kind ('Point', 'Circle', 'Sector') → count (by a property: its value → count) } }
+//     points: { count, hidden, kinds: Map kind ('Point', 'Circle', 'Sector', a shape's) → count (by a property: its value → count) } }
 // only: a Set of the ids to count (a group's members), else all of them
-export function breakdown(doc, by = null, only = null) {
+export const breakdown = (doc, ...rest) => reading(doc, () => breakdownIn(doc, ...rest)); // indexed while it reads
+function breakdownIn(doc, by = null, only = null) {
   const counted = (el) => !el.guide && (!only || only.has(el.id)); // only: the ids counted (a group's members), else all
   const keyOf = (el) => (by ? el.properties.find((p) => p.key === by)?.value ?? '' : groupsOnlyOf(doc, el)[0]?.id ?? ''); // a group, not a shape's point
-  const made = madeLines(doc), rows = new Map();
+  const made = madeLines(doc), rows = new Map(), holding = holders(doc);
   const rowOf = (key) => { if (!rows.has(key)) rows.set(key, { key, lines: [], parts: new Map(), count: 0, length: 0, hidden: false }); return rows.get(key); };
   const lines = { count: 0, length: 0, hidden: false };
   const areas = { rows: [], count: 0, area: 0, perimeter: 0, hidden: false };
   for (const s of doc.lines) {
-    if (!counted(s)) continue;
+    if (!counted(s) || held(holding, s)) continue;
     if (s.closed) {
       const { area, length: perimeter } = lineTrace(doc, s);
       areas.rows.push({ id: s.id, area, perimeter });
@@ -213,8 +224,8 @@ export function breakdown(doc, by = null, only = null) {
   }
   const points = { count: 0, hidden: false, kinds: new Map() }; // kinds: by kind, or by the property's values
   for (const p of [...doc.points, ...doc.circles]) {
-    if (!counted(p)) continue;
-    const k = by ? keyOf(p) : p.radius ? (p.aperture ? 'Sector' : 'Circle') : 'Point';
+    if (!counted(p) || held(holding, p)) continue;
+    const k = by ? keyOf(p) : holding.has(p.id) ? shapeKind(p) : p.radius ? (p.aperture ? 'Sector' : 'Circle') : 'Point';
     points.kinds.set(k, (points.kinds.get(k) || 0) + 1);
     points.count++;
     if (!isShown(doc, p)) points.hidden = true;

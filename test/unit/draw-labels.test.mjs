@@ -79,8 +79,8 @@ test('nearest distance along a line, from a point beside it', () => {
 
 test('live values: name, length, distance along, in the display units; empty where they do not apply', () => {
   const doc = base();
-  assert.equal(textOn(doc, '{name}: {along} of {length}', on(doc, 12500)), 'Line: 12.50 km of 20.00 km');
-  assert.equal(textOn(doc, '{name}: {along} of {length}', on(doc, 12500), 'nm'), 'Line: 6.75 NM of 10.80 NM');
+  assert.equal(textOn(doc, '{name}: {along} of {length}', on(doc, 12500)), 'Line: 12.500 km of 20.000 km');
+  assert.equal(textOn(doc, '{name}: {along} of {length}', on(doc, 12500), 'nm'), 'Line: 6.749 NM of 10.799 NM');
   assert.equal(textOn(doc, '{name} {length}|', { element: 'a' }), 'Start |');
   assert.equal(textOn(doc, '{name} {along}|', { element: 'q' }), 'Area |');
   assert.equal(textOn(doc, '{name}|{along}', null), '|');
@@ -213,11 +213,11 @@ test('labels in the GIS export: a point where each points, its text with live va
   const labels = exportFeatures(doc).filter((x) => x.properties.kind === 'label');
   assert.deepEqual(labels.map((x) => x.properties.id), ['l1', 'l2']);
   const p = labels[0].properties;
-  assert.deepEqual([p.text, p.anchor, p.along_m, p.p_text], ['Line at 2.50 km', 's', 2500, 'mine']);
+  assert.deepEqual([p.text, p.anchor, p.along_m, p.p_text], ['Line at 2.500 km', 's', 2500, 'mine']);
   assert.equal(labels[0].geometry.type, 'Point');
   near(inverse([12, 40], labels[0].geometry.coordinates).s, 2500, 0.01, 'along the line');
   assert.deepEqual([labels[1].properties.anchor, labels[1].properties.along_m, labels[1].geometry.coordinates], ['', undefined, [1, 2]]);
-  assert.equal(exportFeatures(doc, 'nm').find((x) => x.properties.id === 'l1').properties.text, 'Line at 1.35 NM');
+  assert.equal(exportFeatures(doc, 'nm').find((x) => x.properties.id === 'l1').properties.text, 'Line at 1.350 NM');
 });
 
 test('live values on a vertex and a leg: a leg\'s bearing; a closed line\'s area and perimeter (a point\'s shape is one); a circle\'s radius and area', () => {
@@ -232,19 +232,19 @@ test('live values on a vertex and a leg: a leg\'s bearing; a closed line\'s area
   assert.equal(t('{area} {perimeter}', { element: 'hr' }, 'nm'), '0.001 NM² 0.162 NM');
   // on a closed line's place: its name, area and perimeter; as on any line, its length (the
   // perimeter) and the distance along it; no leg, so no bearing
-  assert.equal(t('{name} {area} {perimeter}|{length}|{bearing}|{along}', { element: 'q', vertex: 1 }), 'Area 46.72 km² 33.45 km|33.45 km||8.41 km');
-  assert.equal(t('{area} {perimeter}|{along}', { element: 'q' }), '46.72 km² 33.45 km|'); // its centre
+  assert.equal(t('{name} {area} {perimeter}|{length}|{bearing}|{along}', { element: 'q', vertex: 1 }), 'Area 46.72 km² 33.448 km|33.448 km||8.414 km');
+  assert.equal(t('{area} {perimeter}|{along}', { element: 'q' }), '46.72 km² 33.448 km|'); // its centre
   const corner = withLabel(doc, 'l1', { element: 'q', vertex: 1 });
   assert.deepEqual(corner.position, AREA[1]);
   assert.deepEqual(labelFeatures(doc, view).find((x) => x.properties.id === 'l1' && x.properties.kind === 'leader').geometry.coordinates[1], AREA[1]);
   // on a closed line's leg: as on any line's, its length, the distance along it, the leg's bearing
-  assert.equal(t('{length} {along} {bearing}', { element: 'q', edge: 1, at: 0.2 }), '33.45 km 10.63 km 000.0°T');
+  assert.equal(t('{length} {along} {bearing}', { element: 'q', edge: 1, at: 0.2 }), '33.448 km 10.635 km 000.0°T');
   assert.equal(t('{bearing}', { element: 'q', edge: 0, at: 0.2 }, 'nm'), '090.0°T');
   // on a line's leg: the line's length, the distance along it, the leg's bearing
-  assert.equal(t('{length} {along} {bearing}|{area}', on(doc, 15000)), '20.00 km 15.00 km 090.0°T|');
+  assert.equal(t('{length} {along} {bearing}|{area}', on(doc, 15000)), '20.000 km 15.000 km 090.0°T|');
   // a circle: its radius and area (a sector's its own); a point: neither
   addCircle(doc, [12, 40], { id: 'c' });
-  assert.equal(t('{radius}|{area}|{perimeter}|{bearing}', { element: 'c' }), '1.00 km|3.14 km²||');
+  assert.equal(t('{radius}|{area}|{perimeter}|{bearing}', { element: 'c' }), '1.000 km|3.14 km²||');
   assert.equal(t('{radius}', { element: 'c' }, 'nm'), '0.540 NM');
   addCircle(doc, [12, 40], { id: 'sc', aperture: 90 });
   assert.equal(t('{area}', { element: 'sc' }), '78.51 ha'); // a quarter of it

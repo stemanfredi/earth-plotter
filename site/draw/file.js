@@ -296,6 +296,7 @@ function lookOut(l, simple = false) {
   }
   if (l.text && Object.keys(l.text).length) out.text = { ...l.text };
   if (l.offset != null) out.offset = r3(l.offset);
+  if (l.scale != null) out.scale = r3(l.scale);
   return out;
 }
 // an element's own colours, opacities and stroke width as the common style names

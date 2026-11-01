@@ -7,8 +7,8 @@ export const escapeHtml = (t) => String(t).replace(/[&<>"']/g, (c) => `&#${c.cha
 
 // a length, an area, a bearing as read (in the display's units: 'km' or 'nm')
 export function fmtDist(m, units) {
-  if (units === 'nm') return m < NM ? `${(m / NM).toFixed(3)} NM` : `${(m / NM).toFixed(m < 100 * NM ? 2 : 1)} NM`;
-  return m < 1000 ? `${Math.round(m)} m` : `${(m / 1000).toFixed(m < 100e3 ? 2 : 1)} km`;
+  if (units === 'nm') return `${(m / NM).toFixed(3)} NM`; // to a thousandth (about 2 m)
+  return m < 1000 ? `${Math.round(m)} m` : `${(m / 1000).toFixed(3)} km`; // to the metre
 }
 export function fmtArea(a, units) {
   a = Math.abs(a);

@@ -329,9 +329,9 @@ test('values shown: each leg\'s length and bearing, the total; a closed line\'s 
   lineFrom(doc, [12, 38], [], [12.1, 38], { ...m(), visible: false }); // hidden
   const v = valueFeatures(doc);
   assert.deepEqual(v.map((x) => [x.properties.id, x.properties.label, x.properties.anchor]), [
-    [ruler.id, '10.00 km', 'center'], [ruler.id, '10.00 km', 'center'], [ruler.id, 'Σ 20.00 km', 'top'],
+    [ruler.id, '10.000 km', 'center'], [ruler.id, '10.000 km', 'center'], [ruler.id, 'Σ 20.000 km', 'top'],
     [area.id, `${fmtArea(areaOf([...area.points, area.points[0]]), 'km')}\nperimeter ${fmtDist(perimeterOf(area.points), 'km')}`, 'center'],
-    [ring.id, 'r 2.00 km', 'bottom']]);
+    [ring.id, 'r 2.000 km', 'bottom']]);
   near(inverse([12, 40], v[0].geometry.coordinates).s, 5000, 0.01, 'the leg\'s middle');
   assert.deepEqual(v[2].geometry.coordinates, E); // the total at the end
   near(inverse([13, 40], v[4].geometry.coordinates).s, 2000, 1e-6, 'at the radius');
@@ -358,4 +358,24 @@ test('measured elements are drawn as guides, in the style they are measured with
   assert.deepEqual(f.map((x) => x.properties.kind).sort(), ['guide', 'guide', 'linehit', 'linehit', 'polygon']);
   const area = f.find((x) => x.properties.kind === 'polygon').properties, line = f.find((x) => x.properties.kind === 'guide' && x.properties.id === area.id).properties;
   assert.deepEqual([area.fc, area.fo, line.sc, line.sw, line.dash], ['#b0127a', 0.08, '#b0127a', 2, 'dashed']); // as while measured
+});
+
+test('Scale: a point\'s shapes drawn about it, a circle its radius times it; a free one drawn as it is; values and export real', () => {
+  const doc = emptyDoc(0);
+  const s = addShape(doc, [12, 40]), box = s.shapes[0];
+  box.look.scale = 3;
+  const r = addShape(doc, [13, 40], 'circle'), c = r.shapes[0]; c.look.scale = 2;
+  const free = addRing(doc, [[14, 40], [14.01, 40], [14.01, 40.01], [14, 40.01]]); free.look.scale = 10;
+  const drawn = (id, kind) => drawFeatures(doc).features.find((f) => f.properties.id === id && f.properties.kind === kind).geometry.coordinates[0];
+  // the held outline: each place three times as far from its point
+  for (const [i, q] of box.points.entries()) near(inverse([12, 40], drawn(box.id, 'polygon')[i]).s, 3 * inverse([12, 40], q).s, 1e-6, `place ${i}`);
+  near(inverse([13, 40], drawn(c.id, 'ring')[0]).s, 2000, 1, 'the circle: twice its radius');
+  assert.deepEqual(drawn(free.id, 'polygon'), lineTrace(doc, free).coords, 'a drawn area: as it is');
+  // real: its values, its export
+  const ex = exportFeatures(doc).find((f) => f.properties.id === c.id);
+  near(ex.properties.radius_m, 1000, 1e-9, 'exported at its real radius');
+  assert.equal(c.radius, 1000);
+  // an open line has no scale: drawn as it is
+  const ln = lineFrom(doc, [15, 40], [], [15.1, 40]); ln.look.scale = 5;
+  assert.deepEqual(drawFeatures(doc).features.find((f) => f.properties.id === ln.id && f.properties.kind === 'path').geometry.coordinates, lineTrace(doc, ln).coords);
 });

@@ -265,7 +265,7 @@ What a vertex of a line, or a label, is attached to: one list, `charts.links`.
 
 | `to` | | From |
 |---|---|---|
-| `{ "element" }` | a point's position; a circle's centre; a closed line's centroid; an open line's middle | a line's vertex: a point only. A label: any. |
+| `{ "element" }` | a point's position; a circle's centre; a closed line's centre (the mean of its vertices); an open line's middle | a line's vertex: a point only. A label: any. |
 | `{ "element", "vertex" }` | a line's vertex | a line's vertex: a point's shape only. A label: any line. |
 | `{ "element", "edge", "at" }` | along edge k (vertex k to the next, as drawn), a fraction `at` (0–1; missing 0), turning and stretching with it | as `vertex` |
 
@@ -331,7 +331,7 @@ stays.
 
 The plan cuts the points, in order, into groups of consecutive points, each joined to one root, the
 cut and the roots chosen together as the cheapest (each group's length divided by its root's weight;
-a tie: the most even cut). Each tree has a hub of its own (a dot) at the geometric median of its
+a tie: the cut whose largest group is smallest). Each tree has a hub of its own (a dot) at the geometric median of its
 points and root. Its lines are plain lines attached to the points they join; what each is (trunk,
 branch, root link, link) follows from what its ends are attached to.
 

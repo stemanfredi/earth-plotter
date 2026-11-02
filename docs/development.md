@@ -36,10 +36,12 @@ rule in the code are in a comment next to it, not here.
 
 ## Tests, briefly
 
-- **Unit** (`test/unit/`): the drawing model and file (the format doc's
-  example among them), geodesy, the readers and writers (Zarr, GeoTIFF, zip),
-  the clipping cache, the data builds' maths (GEBCO, seagrass), the
-  catalogue's consistency, the vendored libraries and the security policy
+- **Unit** (`test/unit/`, `npm test`): a file per module that runs without a
+  browser: the drawing (model, file, attachments, rules, labels, values,
+  clipboard, presets, saving, undo; the format doc's example among them),
+  geodesy, the readers and writers (Zarr, GeoTIFF, zip), the clipping cache,
+  net, search, keys, formats, the data builds' maths (GEBCO, seagrass), the
+  catalogue's consistency, and the vendored libraries and the security policy
   against `package.json` and `site/hosts.js`.
 - **Smoke** (`test/smoke.mjs`): the page in a browser, in sections that fail
   on their own: layers, time, search, exports compared with the map, the
@@ -66,21 +68,17 @@ out of date), and test the page.
 
 ## The service worker
 
-`site/sw.js` keeps the page's own files, so that the page opens without a
-connection, and answers the saved hosts (`OFFLINE` in `site/hosts.js`, never
-Esri's) from the finished offline areas (`pack-…` caches with their
-`pack.json`); it stores nothing of them: the page saving an area fetches into
-its cache itself (`site/offline.js`, `fetchInto` in `site/net.js`). Its lists
-of files and hosts are written by `npm run vendor`, its version by
-the deploy; `dev`, on a development copy, is network first. The details are
-in its comments.
+What `site/sw.js` does is in architecture.md (Offline) and its comments. Its
+lists of files and hosts are written by `npm run vendor`, its version by the
+deploy; `dev`, on a development copy, is network first, so an edit shows at a
+reload.
 
 ## Continuous integration and deploy
 
 `.github/workflows/ci.yml` runs the unit, lint, smoke, drawing and layout
 tests on pushes to `main` and on pull requests, and deploys `main` to GitHub Pages when
-they pass; only `site/` is published, with the commit written into the page
-as its version and into `site/sw.js`. A provider's outage shows as warnings on a push and does not
+they pass; only `site/` is published, with the commit written into
+`site/version.json` (About shows it) and into `site/sw.js`. A provider's outage shows as warnings on a push and does not
 hold up a deploy; the weekly run is strict, so an outage that lasts a week is
 a failed run, mailed. The weekly run also lists newer library versions and
 reports newer density data. Pages must be enabled once in the repository
@@ -88,8 +86,20 @@ settings, with *Source: GitHub Actions*.
 
 ## Hosting a copy
 
-Any static web server can serve `site/`. Two things are the project's own and
-need replacing in a copy:
+Any static web server can serve `site/`. What a copy inherits:
+
+- **The providers are not yours.** Map tiles, imagery and ocean data are
+  fetched from public services, each under its own terms. Most are open data
+  with attribution; two are not: Esri's imagery is used under Esri's terms of
+  use, and the 2024 Sentinel-2 mosaic allows no commercial use. Any provider
+  may change its service, limit requests or go away, and a copy is bound by
+  the same terms as this one. The list is in the page, behind each layer's ⓘ,
+  and below (Providers).
+- **What a copy cannot promise:** that the providers stay available, or that
+  the data is as current as the original. A source that fails is marked in
+  the page rather than drawn blank.
+
+Two things are the project's own and need replacing in a copy:
 
 - **The data host.** GEBCO's depths and the seagrass tiles are read from the
   host named in `site/hosts.js`; a copy changes that one line. The host must be
@@ -108,9 +118,9 @@ need replacing in a copy:
   seagrass tiles from EMODnet's service, which takes a minute or more per
   tile. Both say how to run them at their top.
 
-The security policy in `site/index.html` is generated from `site/hosts.js`, and the
-module preloads beside it from the imports of `site/app.js`,
-so a copy that adds a host adds it there and runs `npm run vendor`.
+A copy that adds a host adds it to `site/hosts.js` and runs `npm run vendor`
+(the security policy and the preloads are written from it: architecture.md,
+Every host in one place).
 
 ## Providers
 

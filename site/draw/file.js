@@ -8,11 +8,11 @@
 // longitude and latitude: the geometry holds the vertices, "smooth" is the app's). Drawings of another format version are not read. Pure: no map, no DOM.
 
 import { FORMAT, VERSION, KINDS, KIND, SYMBOLS, LEADERS, LABEL_OFFSET, META_D, MAX_RADIUS, MAX_LABEL_OFFSET,
-  emptyDoc, newId, columnsOf, find, linkFrom, targetOf, elements, canHold, holderOf, positionsIn, adopt, framed } from './document.js';
+  emptyDoc, newId, columnsOf, find, targetOf, elements, canHold, holderOf, positionsIn, adopt, framed, reading } from './document.js';
 import { ID, isObj, fin, Skip, time, text, properties, flag, position, angle, look, aperture, readView, VIEW_D, VIEW_DATA_D } from './check.js';
 import { targetPosition, refreshAttached, placeAt, lineTarget } from './attach.js';
 import { settings, connectSettings, DISTRIBUTE_D, CONNECT_D } from './generator.js';
-import { norm180, norm360, samePosition, signedArea2 } from '../geo.js';
+import { norm180, norm360, samePosition, lonLatArea2 } from '../geo.js';
 
 const MAX_POSITIONS = 100000; // positions in one line: more would stall the page at every change
 const MAX_FEATURES = 20000; // elements in one file: the rest are skipped (as many points stall the list)
@@ -140,51 +140,59 @@ function read(raw, app, known, now, report) {
   }); } catch (e) { if (!(e instanceof Refused)) throw e; report.refused = e.message; return { doc: null, view: null }; }
 
   if (over) report.warnings.push(`${over} past the first ${MAX_FEATURES} elements: skipped`);
-  // what holds each: one of the drawing's groups, or (a shape: a circle, a line) one of its points
-  for (const { kind, el } of elements(doc)) {
-    if (kind === 'group' || el.groupId == null || (find(doc, el.groupId) && ['group', 'point'].includes(find(doc, el.groupId).kind) && canHold(doc, el.groupId, el.id))) continue;
-    report.warnings.push(`${kind} ${el.id}: group ${el.groupId.slice(0, 64)} not found; now standalone`);
-    el.groupId = null;
-  }
-  // a point's shapes: where their frames about it say (a frame wins, as a link does: a position more than
-  // 10⁻⁶° from it goes there, counted); one without a valid frame gets one from where it is
-  let reframed = 0;
-  for (const kind of ['circle', 'line']) {
-    for (const el of doc[KIND[kind].list]) {
-      const p = holderOf(doc, el), raw = rawFrames.get(el.id), n = positionsIn(kind, el).length;
-      if (!p) { if (raw !== undefined) report.warnings.push(`${kind} ${el.id}: a frame, but no point holds it; ignored`); continue; }
-      const ok = isObj(raw) && Array.isArray(raw.places) && raw.places.length === n && raw.places.every((q) => Array.isArray(q) && fin(q[0]) && fin(q[1]) && q[1] >= 0)
-        && (kind === 'line' || fin(raw.turn));
-      if (!ok) { if (raw !== undefined) report.warnings.push(`${kind} ${el.id}: frame not read; made from where it is`); adopt(p, kind, el); continue; }
-      const in180 = (a) => (a >= -180 && a < 180 ? a : norm180(a)), in360 = (a) => (a >= 0 && a < 360 ? a : norm360(a)); // as written, unless out of range
-      el.frame = { places: raw.places.map((q) => [in180(q[0]), q[1]]), ...(kind === 'circle' ? { turn: in360(raw.turn) } : {}) };
-      const f = framed(p, el);
-      positionsIn(kind, el).forEach(([o, k], i) => { if (!samePosition(o[k], f.places[i])) { o[k] = f.places[i]; reframed++; } });
-      if (kind === 'circle' && Math.abs(norm180(el.bearing - f.bearing)) > 1e-3) { el.bearing = f.bearing; reframed++; }
+  // the elements all in: indexed while what holds each, then the frames and the links, are read (none
+  // is added or taken away; reading() looks each up by ID, not along every list)
+  reading(doc, () => {
+    // what holds each: one of the drawing's groups, or (a shape: a circle, a line) one of its points
+    for (const { kind, el } of elements(doc)) {
+      if (kind === 'group' || el.groupId == null || canHold(doc, el.groupId, el.id)) continue;
+      report.warnings.push(`${kind} ${el.id}: group ${el.groupId.slice(0, 64)} not found; now standalone`);
+      el.groupId = null;
     }
-  }
-  if (reframed) report.warnings.push(`${reframed} place${reframed > 1 ? 's' : ''} of shapes moved to where ${reframed > 1 ? 'their points hold them' : 'its point holds it'} (the file was edited elsewhere)`);
+  });
+  reading(doc, () => { // indexed again: a group cleared above is not in the index any more
+    // a point's shapes: where their frames about it say (a frame wins, as a link does: a position more than
+    // 10⁻⁶° from it goes there, counted); one without a valid frame gets one from where it is
+    let reframed = 0;
+    for (const kind of ['circle', 'line']) {
+      for (const el of doc[KIND[kind].list]) {
+        const p = holderOf(doc, el), raw = rawFrames.get(el.id), n = positionsIn(kind, el).length;
+        if (!p) { if (raw !== undefined) report.warnings.push(`${kind} ${el.id}: a frame, but no point holds it; ignored`); continue; }
+        const ok = isObj(raw) && Array.isArray(raw.places) && raw.places.length === n && raw.places.every((q) => Array.isArray(q) && fin(q[0]) && fin(q[1]) && q[1] >= 0)
+          && (kind === 'line' || fin(raw.turn));
+        if (!ok) { if (raw !== undefined) report.warnings.push(`${kind} ${el.id}: frame not read; made from where it is`); adopt(p, kind, el); continue; }
+        const in180 = (a) => (a >= -180 && a < 180 ? a : norm180(a)), in360 = (a) => (a >= 0 && a < 360 ? a : norm360(a)); // as written, unless out of range
+        el.frame = { places: raw.places.map((q) => [in180(q[0]), q[1]]), ...(kind === 'circle' ? { turn: in360(raw.turn) } : {}) };
+        const f = framed(p, el);
+        positionsIn(kind, el).forEach(([o, k], i) => { if (!samePosition(o[k], f.places[i])) { o[k] = f.places[i]; reframed++; } });
+        if (kind === 'circle' && Math.abs(norm180(el.bearing - f.bearing)) > 1e-3) { el.bearing = f.bearing; reframed++; }
+      }
+    }
+    if (reframed) report.warnings.push(`${reframed} place${reframed > 1 ? 's' : ''} of shapes moved to where ${reframed > 1 ? 'their points hold them' : 'its point holds it'} (the file was edited elsewhere)`);
 
-  // links, once every element is in: the link wins, its vertex goes where its target is. One from a
-  // vertex that is not here, or to what is not (or to its own element), or a line's vertex to what is
-  // neither a point nor a point's shape, or a vertex of a point's shape, is dropped: the vertex stays
-  // free where the geometry says
-  const was = [];
+    // links, once every element is in: the link wins, its vertex goes where its target is. One from a
+    // vertex that is not here, or to what is not (or to its own element), or a line's vertex to what is
+    // neither a point nor a point's shape, or a vertex of a point's shape, is dropped: the vertex stays
+    // free where the geometry says
+    const was = [];
+    const linked = new Set(); // the places linked so far (one link a place)
   for (const v of Array.isArray(app?.links) ? app.links : []) {
-    const f = isObj(v) && Array.isArray(v.from) ? v.from : [], to = refIn(unpack(v?.to)), x = typeof f[0] === 'string' && find(doc, f[0]);
-    const place = x && ((x.kind === 'line' && !holderOf(doc, x.el)) || x.kind === 'label') && Number.isInteger(f[1]) && placeAt(doc, f);
+      const f = isObj(v) && Array.isArray(v.from) ? v.from : [], to = refIn(unpack(v?.to)), x = typeof f[0] === 'string' && find(doc, f[0]);
+      const place = x && ((x.kind === 'line' && !holderOf(doc, x.el)) || x.kind === 'label') && Number.isInteger(f[1]) && placeAt(doc, f);
 
-    const what = !place ? `from ${String(f[0]).slice(0, 64)} ${String(f[1]).slice(0, 8)}, which is not a line's or a label's place here`
-      : !to ? 'to nothing it can point at' : to.element === f[0] ? 'to its own element' : linkFrom(doc, f[0], f[1]) ? 'from a place already linked'
-        : !targetPosition(doc, to) ? `to ${String(to.element).slice(0, 64)}, which is not here (or has no such vertex or edge)`
-          : x.kind === 'line' && !lineTarget(doc, to) && `from a line's place to ${String(to.element).slice(0, 64)}, which is neither a point nor a point's shape`;
-    if (what) { report.warnings.push(`link ${what}: dropped`); continue; }
-    doc.links.push({ from: [f[0], f[1]], to });
-    was.push([f, [...place]]);
-  }
-  refreshAttached(doc);
-  const moved = was.filter(([f, p]) => !samePosition(p, placeAt(doc, f))).length; // more than the file's rounding
-  if (moved) report.warnings.push(`${moved} place${moved > 1 ? 's' : ''} moved to what ${moved > 1 ? 'they are' : 'it is'} linked to (the file was edited elsewhere)`);
+      const what = !place ? `from ${String(f[0]).slice(0, 64)} ${String(f[1]).slice(0, 8)}, which is not a line's or a label's place here`
+        : !to ? 'to nothing it can point at' : to.element === f[0] ? 'to its own element' : linked.has(`${f[0]} ${f[1]}`) ? 'from a place already linked'
+          : !targetPosition(doc, to) ? `to ${String(to.element).slice(0, 64)}, which is not here (or has no such vertex or edge)`
+            : x.kind === 'line' && !lineTarget(doc, to) && `from a line's place to ${String(to.element).slice(0, 64)}, which is neither a point nor a point's shape`;
+      if (what) { report.warnings.push(`link ${what}: dropped`); continue; }
+      doc.links.push({ from: [f[0], f[1]], to });
+    linked.add(`${f[0]} ${f[1]}`);
+      was.push([f, [...place]]);
+    }
+    refreshAttached(doc);
+    const moved = was.filter(([f, p]) => !samePosition(p, placeAt(doc, f))).length; // more than the file's rounding
+    if (moved) report.warnings.push(`${moved} place${moved > 1 ? 's' : ''} moved to what ${moved > 1 ? 'they are' : 'it is'} linked to (the file was edited elsewhere)`);
+  });
 
   // rules: what Distribute along and Connect keep linked, checked loosely (a reference gone is dropped at
   // the next change)
@@ -356,7 +364,7 @@ function feature(kind, el, doc) {
   } else if (kind === 'line') {
     // closed: a Polygon, counter-clockwise as RFC 7946 asks; a ring stored clockwise is written
     // reversed, and says so (its names stay in its own order)
-    const cw = el.closed && signedArea2(el.points) < 0, pts = cw ? el.points.slice().reverse() : el.points;
+    const cw = el.closed && lonLatArea2(el.points) < 0, pts = cw ? el.points.slice().reverse() : el.points;
     geometry = el.closed ? { type: 'Polygon', coordinates: [[...pts, pts[0]].map(pos)] } : { type: 'LineString', coordinates: pts.map(pos) };
     Object.assign(mine, lean({ smooth: el.smooth, reversed: cw }, { smooth: false, reversed: false }));
     if (el.names.some(Boolean)) mine.names = [...el.names];

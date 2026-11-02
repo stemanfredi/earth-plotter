@@ -109,12 +109,13 @@ function renumber(doc, id, index, n) {
   for (const l of doc.links) if (l.from[0] === id && l.from[1] >= index) l.from = [id, l.from[1] + n];
   reattach(doc, id);
 }
-// Split a line at its vertex index (not an end): a point (a dot, named as the vertex) made there, the
-// line ending there and a new one carrying on from it with the rest, both linked to it. The links from
-// the rest's vertices go with it (the one at the split goes: the point is there); those to its
-// vertices and edges, to the point when on that vertex, else to the half where they now are. Returns
-// the point. A closed line is opened there instead: one line from that vertex round to it again (its
-// start and its end there), nothing made; the links numbered from its new start.
+// Split a line at its vertex index (not an end): what the vertex is on (a point, a shape's corner),
+// else a point made there (a dot, named as the vertex); the line ending there and a new one carrying
+// on from it with the rest, both attached to it. The links from the rest's vertices go with it; those
+// to its vertices and edges, to what is there when on that vertex, else to the half where they now
+// are. Returns what both are attached to. A closed line is opened there instead: one line from that
+// vertex round to it again (its start and its end there, both attached where the vertex was), nothing
+// made; the links numbered from its new start.
 export function splitLine(doc, lineId, index) {
   const s = find(doc, lineId).el, n = s.points.length;
   if (s.closed) {
@@ -122,26 +123,29 @@ export function splitLine(doc, lineId, index) {
     s.names = [...s.names.slice(index), ...s.names.slice(0, index), ''];
     s.closed = false;
     for (const l of doc.links) if (l.from[0] === lineId) l.from = [lineId, (l.from[1] - index + n) % n];
+    const on = linkFrom(doc, lineId, 0)?.to;
+    if (on) setLink(doc, lineId, n, targetOf(on)); // its end where its start is: on what the vertex was on
     reattach(doc, lineId);
     return null;
   }
-  const taken = idsOf(doc), p = addDot(doc, s.points[index], s.names[index], taken);
+  // what the vertex is on already (a point, a shape's corner), else a dot made there: both halves on it
+  const taken = idsOf(doc), on = linkFrom(doc, lineId, index)?.to, at = on ? targetOf(on) : { element: addDot(doc, s.points[index], s.names[index], taken).id };
   const rest = { ...structuredClone(s), id: newId(doc, taken), name: nextName(doc, 'line'), points: s.points.slice(index), names: ['', ...s.names.slice(index + 1)] };
   s.points = s.points.slice(0, index + 1);
   s.names = [...s.names.slice(0, index), ''];
   doc.lines.splice(doc.lines.indexOf(s) + 1, 0, rest);
-  setLink(doc, lineId, index, { element: p.id });
+  setLink(doc, lineId, index, at);
   for (const l of doc.links) if (l.from[0] === lineId && l.from[1] > index) l.from = [rest.id, l.from[1] - index];
-  setLink(doc, rest.id, 0, { element: p.id });
+  setLink(doc, rest.id, 0, at);
   const halves = [s, rest].map((el) => ({ kind: 'line', el }));
   for (const l of doc.links) {
     const t = l.to;
     if (t.element !== lineId || (t.vertex == null && t.edge == null)) continue;
-    if (t.vertex === index) { l.to = { element: p.id }; continue; }
+    if (t.vertex === index) { l.to = at; continue; }
     const q = placeAt(doc, l.from);
     l.to = targetOf(halves.map((x) => refNear(doc, x, q, t.vertex != null)).reduce((a, b) => (b.d < a.d ? b : a)));
   }
-  return p;
+  return find(doc, at.element)?.el ?? null;
 }
 
 // where on a line it is attached, as its table numbers it: its point or leg
@@ -180,7 +184,7 @@ export function attachAt(doc, r) {
   let k = line.points.findIndex((q) => samePosition(q, r.position)); // found by position: an earlier attachment may have numbered the vertices again
   if (k < 0) { k = refNear(doc, x, r.position).edge + 1; insertVertex(doc, line.id, k, r.position); }
   const on = linkFrom(doc, line.id, k)?.to;
-  if (on) return { element: on.element };
+  if (on) return targetOf(on); // attached already (a point, a shape's corner): there too
   const p = addDot(doc, line.points[k], line.names[k]);
   setLink(doc, line.id, k, { element: p.id });
   return { element: p.id };

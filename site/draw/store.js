@@ -3,7 +3,7 @@
 // DOM (the tests run it in Node). The map's side (drawing.js) extends it and is told of each change:
 // changed() (the document), selectionChanged(), hoverChanged().
 
-import { emptyDoc, touch, find, elements, remove, frames } from './document.js';
+import { emptyDoc, touch, find, elements, remove, frames, reading } from './document.js';
 import { refreshAttached } from './attach.js';
 import { pruneRules } from './generator.js';
 
@@ -12,8 +12,7 @@ const UNDO_STEPS = 100, UNDO_BYTES = 20e6;
 // after any change, in one pass: every shape a point holds in its frame; the attached vertices and anchors where
 // what they are on is; the rules' lists what is still there (a rule follows nothing: Update)
 export function settleGeometry(doc) {
-  frames(doc);
-  refreshAttached(doc);
+  reading(doc, () => { frames(doc); refreshAttached(doc); }); // indexed: these add or take away no element
   pruneRules(doc);
 }
 
@@ -57,19 +56,20 @@ export class DrawStore {
     if (this.pending == null) this.pending = JSON.stringify(this.doc);
     fn(this.doc);
   }
-  // fn(doc) changes the document: one undo step (none when nothing changed: a field applied twice).
-  // One that fails leaves the document as it was before it, not half changed.
+  // fn(doc) changes the document: one undo step (none when nothing changed: a field applied twice),
+  // true when one was made. One that fails leaves the document as it was before it, not half changed.
   change(fn) {
     const before = this.pending ?? JSON.stringify(this.doc);
     this.pending = null;
     try { fn(this.doc); settleGeometry(this.doc); } catch (e) { this.doc = JSON.parse(before); this.settle(); throw e; }
-    if (JSON.stringify(this.doc) === before) return;
+    if (JSON.stringify(this.doc) === before) return false;
     touch(this.doc);
     this.undos.push(before);
     let bytes = this.undos.reduce((n, s) => n + s.length, 0);
     while (this.undos.length > UNDO_STEPS || (bytes > UNDO_BYTES && this.undos.length > 1)) bytes -= this.undos.shift().length;
     this.redos = [];
     this.settle();
+    return true;
   }
   undo() { this.step(this.undos, this.redos); }
   redo() { this.step(this.redos, this.undos); }

@@ -6,7 +6,7 @@
 import { h, typing, morph, animate, NARROW } from '../dom.js';
 import { ask, askText, note } from '../menu.js';
 import { FINGER } from './layers.js';
-import { find, elements, groupsOf, membersOf, leavesOf, canHold, label, KIND, lookOf, lookField, setLook, LOOK_FIELDS, SYMBOLS, LABEL_OFFSET, makeGroup, setGroup, moveStep, MAX_RADIUS, MAX_OFFSET, STROKE_WIDTH, TEXT_SIZE, SCALE, linkFrom, setLink, carry, holderOf, ringOf, refit, nextName } from './document.js';
+import { find, elements, groupsOf, membersOf, leavesOf, canHold, label, KIND, lookOf, lookField, setLook, LOOK_FIELDS, SYMBOLS, LABEL_OFFSET, makeGroup, setGroup, moveStep, MAX_RADIUS, MAX_OFFSET, STROKE_WIDTH, TEXT_SIZE, SCALE, linkFrom, setLink, carry, holderOf, ringOf, refit } from './document.js';
 import { partName, lineRef, resolve } from './attach.js';
 import { labelValues, labelText, TOKENS } from './labels.js';
 import { totals, breakdown } from './lines.js';
@@ -17,7 +17,7 @@ import { norm180, norm360 } from '../geo.js';
 import { fields, choice, select, check } from '../fields.js';
 import { mac, MOD } from '../keys.js';
 import { loadPresets, savePresets, presetOf, presetTool } from './presets.js';
-import { listGrid } from './grid.js';
+import { listGrid, forgetCurrent } from './grid.js';
 import { fmtArea, fmtDist, rowsText, plural } from '../format.js';
 import { fileGroup } from './files.js';
 import { createTools } from './tools.js';
@@ -210,26 +210,24 @@ export function drawView(root, ctx) {
   };
   const ruleActs = (id) => ruleRow(id)?.acts ?? [];
   // and its foot: the group it is in (a shape: its point), Guide, its data (Delete: in the head)
+  // Guide ticked or not: unticked, part of the drawing (a measurement too: no longer one)
+  const setGuide = (x, v) => { x.guide = v; if (!v) delete x.measure; };
   const commonBottom = (kind, id) => {
     const el = now(id);
-    // Guide (supporting geometry: faint, out of the totals): a measurement is a guide showing its
-    // values; unticking Guide makes it part of the drawing
-    const guide = kind !== 'label' && kind !== 'group' ? row('Guide', check(el.guide, (v) => set(id, (x) => { x.guide = v; if (!v) delete x.measure; }), { 'aria-label': 'Guide', title: 'Faint and dashed, out of the totals' })) : null; // unticked: part of the drawing (a measurement too)
-    return [kind === 'circle' || kind === 'line' ? pointRow(id) : null, holderOf(drawing.doc, el) ? null : groupRow([id]), guide, dataBlock(id)];
+    // Guide (supporting geometry: faint, out of the totals): a measurement is a guide of its own;
+    // unticking Guide makes either part of the drawing
+    const guide = kind !== 'label' && kind !== 'group' ? row('Guide', check(el.guide, (v) => set(id, (x) => setGuide(x, v)), { 'aria-label': 'Guide', title: 'Faint and dashed, out of the totals' })) : null; // unticked: part of the drawing (a measurement too)
+    return [kind === 'circle' || (kind === 'line' && el.closed) ? pointRow(id) : null, holderOf(drawing.doc, el) ? null : groupRow([id]), guide, dataBlock(id)]; // a Point row: on what a point can hold
   };
   // A shape's point: the one holding it (it moves and turns with it), and Detach (free, in the
-  // point's group); free (a circle, any line: canHold), Attach to… (the next click on a point)
+  // point's group); free (a circle, a closed line: canHold), Attach to… (the next click on a point)
   function pointRow(id) {
     const p = holderOf(drawing.doc, now(id)), waits = drawing.repointing?.id === id;
     const attach = h('button', { type: 'button', class: 'small', 'aria-pressed': String(waits), title: 'Then click the point that is to hold it',
       onclick: () => { if (waits) drawing.cancelRepoint(); else drawing.startRepoint(id, null); renderInspector(); } }, 'Attach to…');
     if (!p) return row('Point', fvalue('none'), attach);
     return row('Point', link(p.id), h('button', { type: 'button', class: 'x', title: 'Free, where it is', 'aria-label': 'Detach from its point',
-      onclick: () => set(id, (x, d) => { // free: an element of its own, named, never scaled (its attachments as the model allows them now)
-        setGroup(d, id, p.groupId);
-        setLook(x, 'scale', undefined);
-        if (!x.name) x.name = nextName(d, x.radius ? 'circle' : 'line', x.radius ? (x.aperture ? 'Sector' : 'Circle') : 'Area');
-      }) }, icon(...UI_ICON.detach)));
+      onclick: () => set(id, (x, d) => setGroup(d, id, p.groupId)) }, icon(...UI_ICON.detach))); // free (setGroup: named, never scaled)
   }
   // a point at position, turned to bearing, its shapes with it (each of xs: one of a field)
   const carryAll = (xs, fn) => drawing.change((d) => { for (const x of xs) { const p = find(d, x).el; carry(d, p, ...fn(p)); } });
@@ -408,7 +406,7 @@ export function drawView(root, ctx) {
       out.push(row('Radius', withUnit(F.dist(() => same(nowCs(), (c) => c.radius), (m) => each(circles, (c) => { c.radius = m; }), 'Radius of each circle', { check: radiusCheck }))));
     }
     if (lines.length > 1) out.push(row('Path', choice('Path of each line', [[false, 'Straight', 'Geodesics'], [true, 'Smooth', 'A curve through its bends']], same(lines, (x) => !!x.el.smooth), (v) => each(lines, (l) => { l.smooth = v; }))));
-    if (geo.length > 1) out.push(row('Guide', check(same(geo, (x) => x.el.guide), (v) => each(geo, (g) => { g.guide = v; if (!v) delete g.measure; }), { 'aria-label': 'Guide', title: 'Faint and dashed, out of the totals' })));
+    if (geo.length > 1) out.push(row('Guide', check(same(geo, (x) => x.el.guide), (v) => each(geo, (g) => setGuide(g, v)), { 'aria-label': 'Guide', title: 'Faint and dashed, out of the totals' })));
     return out;
   }
 
@@ -529,6 +527,7 @@ export function drawView(root, ctx) {
     const what = `${forms.current() ? `${forms.current().kind}:${forms.current().sel}` : ''}|${selKey()}`;
     // a field being edited, when something else is to be shown, is applied first, to the element it belongs to
     if (what !== shows && inspector.contains(document.activeElement)) document.activeElement.blur();
+    if (what !== shows) forgetCurrent(); // another selection: no table row current (Delete takes it, not a vertex chosen before)
     const kids = forms.current() ? forms.view() : !xs.length ? drawingInspector()
       : xs.length > 1 ? severalInspector(xs)
         : { point: pointInspector, circle: circleInspector, line: lineInspector, group: groupInspector, label: labelInspector }[xs[0].kind](xs[0].el.id);
@@ -555,6 +554,8 @@ export function drawView(root, ctx) {
   }
 
   // ---- map and files --------------------------------------------------------------------------
+  // a double-click on an element, with no tool on, turns Properties on (the map does not zoom)
+  map.on('dblclick', (e) => { if (!drawing.tool && drawing.hitAt(e.point).length) { e.preventDefault(); ctx.frame.setProps(true); } });
   function showOnMap(ids) {
     const b = boundsOf(drawing.doc, ids);
     if (b) map.fitBounds(b, { padding: ctx.free(), maxZoom: 20, animate: animate() }); // clear of the panel; close enough for a 6 m shape

@@ -1,7 +1,7 @@
 // The map's style, from the catalogue: every source, and every layer in draw order. A layer belongs
 // to a menu item through metadata.item; layers of a hidden item are set to visibility:none, and
 // MapLibre requests no tiles for a source whose layers are all hidden.
-import { DEM_SEA_MAX, DEM_LAND_MAX, DEPTH_ZMAX, OMT_TILEJSON, DENSITY, densityTiles, HA_CREDIT, GIBS, gibsTiles, CMEMS, ITEMS, DEPTH_SCHEMES, ISOBATH_ZOOMS, DEPTH_LEVELS, isMajorIsobath, NO_DEPTH, NO_DEPTH_M, SEAGRASS_ZOOMS, SEAGRASS_CLASSES } from './catalog.js';
+import { DEM_CREDITS, SEAMARKS_MIN, CONTOURS_MIN, DEM_SEA_MAX, DEM_LAND_MAX, DEPTH_ZMAX, OMT_TILEJSON, DENSITY, densityTiles, HA_CREDIT, GIBS, gibsTiles, CMEMS, ITEMS, DEPTH_SCHEMES, ISOBATH_ZOOMS, DEPTH_LEVELS, isMajorIsobath, NO_DEPTH, NO_DEPTH_M, SEAGRASS_ZOOMS, SEAGRASS_CLASSES } from './catalog.js';
 import { HOSTS } from './hosts.js';
 import { escapeHtml } from './format.js';
 
@@ -21,7 +21,7 @@ const FONT = ['Noto Sans Regular'], FONT_I = ['Noto Sans Italic'], FONT_B = ['No
 // what an offline area keeps of the style (offline.js): the fonts, the seamarks and where the isobaths
 // and the seamarks stop and start
 export const FONTS = [...FONT, ...FONT_I, ...FONT_B], GLYPHS = `${HOSTS.openfreemap}/fonts/{fontstack}/{range}.pbf`;
-export const SEAMARK_TILES = `${HOSTS.openseamap}/seamark/{z}/{x}/{y}.png`, SEAMARKS_MIN = 9, ISOBATH_MAX = 12;
+export const SEAMARK_TILES = `${HOSTS.openseamap}/seamark/{z}/{x}/{y}.png`, ISOBATH_MAX = 12;
 const NAME = ['coalesce', ['get', 'name:en'], ['get', 'name']];
 const HALO = { 'text-halo-color': 'rgba(255,255,255,0.9)', 'text-halo-width': 1.2 };
 
@@ -32,7 +32,7 @@ function sources({ seaDemUrl, landDemUrl, isobathUrl, contourUrl, date, density 
   // credits: the names each provider asks for, short enough for one line; what each layer is
   // made from is behind its ⓘ
   const ATTR_OSM = '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> · <a href="https://www.openmaptiles.org/">OpenMapTiles</a> · <a href="https://openfreemap.org">OpenFreeMap</a>';
-  const ATTR_DEM = '<a href="https://github.com/tilezen/joerd/blob/master/docs/attribution.md">Mapzen Terrain Tiles</a>'; // its sources' credits there
+  const ATTR_DEM = `<a href="${DEM_CREDITS}">Mapzen Terrain Tiles</a>`; // its sources' credits there
   const ATTR_GEBCO = '<a href="https://www.gebco.net">GEBCO 2026 Grid</a>'; // the sea's depths (gebco.js)
   const s = {
     omt: { type: 'vector', url: OMT_TILEJSON, attribution: ATTR_OSM },
@@ -128,7 +128,7 @@ function layers() {
     { id: 'relief', type: 'hillshade', source: 'dem', ...m('relief'),
       paint: { 'hillshade-exaggeration': 0.3, 'hillshade-shadow-color': '#3d4b55', 'hillshade-highlight-color': '#ffffff', 'hillshade-accent-color': '#5d6d79' } },
 
-    { id: 'contours', type: 'line', source: 'contours', 'source-layer': 'contours', minzoom: 9, ...m('contours'),
+    { id: 'contours', type: 'line', source: 'contours', 'source-layer': 'contours', minzoom: CONTOURS_MIN, ...m('contours'),
       filter: ['>', ['get', 'ele'], 0],
       paint: { 'line-color': C.contour, 'line-width': ['match', ['get', 'level'], 1, 0.8, 0.4] } },
     // Shore line drawn UNDER the water fill at twice its width: where two water polygons meet

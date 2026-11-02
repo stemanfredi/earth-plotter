@@ -341,13 +341,13 @@ export function connect(doc, params) {
   const groupId = doc.groups.some((g) => g.id === params.groupId) ? params.groupId
     : addGroup(doc, 'Connection', around).id;
   const inGroup = (el) => { el.groupId = groupId; return el; };
-  const before = idsOf(doc);
-  const made = (params.newRoots || []).map((pos) => inGroup(addPoint(doc, pos, { symbol: 'square' })));
+  const before = idsOf(doc), taken = new Set(before); // the IDs in use, kept as each is made (not read again each time)
+  const made = (params.newRoots || []).map((pos) => inGroup(addPoint(doc, pos, { symbol: 'square' }, taken)));
   const roots = [...given, ...made.map((n) => ({ id: n.id, weight: 1 }))];
   const { nodes, plan: p } = planConnection(doc, { pointIds: params.pointIds, roots, pattern, groupSize, minBranch });
   const rootPoints = roots.map((r) => doc.points.find((n) => n.id === r.id));
   // a straight line from a to b, its ends linked to both (what it is, a trunk or a branch: lines.js madeLines)
-  const line = (a, b) => { const s = inGroup(addLine(doc, [a.position, b.position])); setLink(doc, s.id, 0, { element: a.id }); setLink(doc, s.id, 1, { element: b.id }); };
+  const line = (a, b) => { const s = inGroup(addLine(doc, [a.position, b.position], {}, taken)); setLink(doc, s.id, 0, { element: a.id }); setLink(doc, s.id, 1, { element: b.id }); };
   for (const g of p.groups) {
     const o = rootPoints[g.root], ns = g.nodes.map((i) => nodes[i]);
     if (pattern === 'chain') {
@@ -356,7 +356,7 @@ export function connect(doc, params) {
       continue;
     }
     // a hub of its own, always: on one of the points (the median often is), a branch of 0 m to it
-    const b = inGroup(addDot(doc, g.hub));
+    const b = inGroup(addDot(doc, g.hub, '', taken));
     line(o, b);
     for (const n of ns) line(b, n);
   }

@@ -83,7 +83,7 @@ export const nearestLevel = (levels, depth) => (levels.length ? levels.reduce((a
 
 // part (product/dataset/variable) → promise of { time: its time domain, levels: its depth levels }
 // (timeDomain, depthLevels)
-const domains = lru(Infinity);
+const domains = lru(Infinity, 864e5); // a dataset's steps grow: asked again after a day
 export function domainOf(part) {
   return domains(part, () => fetchOk(cmemsCapsUrl(part)).then((r) => r.text())
     .then((xml) => {
@@ -105,9 +105,13 @@ export function partLevels(item, variant, depth) {
   return Promise.all(v.parts.map((p) => (v.depth ? domainOf(p).then(({ levels }) => nearestLevel(levels, depth), () => null) : null)));
 }
 
-function inArea(part, z, x, y) {
-  const area = regionOf(part)?.area, [w, s, e, n] = tileBounds(z, x, y);
+// whether a part covers any of the box [w, s, e, n] (a global part: everywhere; a regional one: its area)
+export function partIn(part, [w, s, e, n]) {
+  const area = regionOf(part)?.area;
   return !area || area.some((a) => e > a[0] && w < a[2] && s < a[3] && n > a[1]);
+}
+function inArea(part, z, x, y) {
+  return partIn(part, tileBounds(z, x, y));
 }
 
 // MapLibre protocol handler for cmems://item/variant/look/t/depth/z/x/y (look: what it draws,

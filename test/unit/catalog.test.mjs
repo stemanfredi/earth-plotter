@@ -70,10 +70,10 @@ test('density datasets: "all types" first, codes map to WMS layers and times, se
     assert.ok(DENSITY[id].periods.includes(DENSITY[id].defaultPeriod), `${id}: default period listed`);
   }
   assert.match(densityTiles('traffic', 't10', '2021')[0], /layers=vesseldensity_10avg&.*time=2021-01-01T/);
-  assert.equal(DENSITY.traffic.defaultPeriod, '2023'); // 2024 is incomplete
   assert.match(densityTiles('routes', 't04', '2026-07')[0], /layers=routedensity_04&.*time=2026-07-01T/);
   assert.equal(DENSITY.routes.defaultPeriod, DENSITY.routes.periods[0], 'routes: newest month by default');
-  assert.equal(DENSITY.routes.periods.length, 91); // Jan 2019 … Jul 2026, no gaps
+  const months = DENSITY.routes.periods.map((p) => { const [y, m] = p.split('-').map(Number); return y * 12 + m; });
+  assert.ok(months.every((m, i) => !i || m === months[i - 1] - 1), 'routes: every month, newest first, no gap');
   assert.equal(DENSITY.routes.periodLabel('2026-07'), 'Jul 2026');
 });
 

@@ -13,13 +13,12 @@
 // The depths are drawn as GEBCO has them: no filter; the spline that samples its cells smooths
 // nothing larger than a cell (gebco.js).
 
-import { NO_DEPTH_M } from './catalog.js';
+import { NO_DEPTH_M, OMT_MAX } from './catalog.js';
 import { HOSTS } from './hosts.js';
 import { gebcoTile } from './gebco.js';
 import { latOf, tileBounds, TILE } from './geo.js';
 import { fetchOk, fetchBytes, tileUrl, lru } from './net.js';
 
-const OMT_MAXZOOM = 14;
 // Every tile is cut, at every zoom: each shortcut tried (deep ocean, low zooms) left a hole
 // somewhere (islands under the tint, isobaths across the Jordan valley, seabed relief over
 // satellite imagery).
@@ -175,7 +174,7 @@ async function ancestorShore(ctx, id, oz, ox, oy) {
 // at z show at map zoom z → OMT z (omtOffset 0). levelAt(px, py) is the elevation above the
 // local surface (sea level, or a DATUMS surface); inDatum(px, py) says whether that is a datum.
 async function seaMask(ctx, z, x, y, levelAt, inDatum, omtOffset) {
-  const oz = Math.max(0, Math.min(z - omtOffset, OMT_MAXZOOM)), d = z - oz;
+  const oz = Math.max(0, Math.min(z - omtOffset, OMT_MAX)), d = z - oz;
   const ox = x >> d, oy = y >> d;
   const layer = await omtLayer(ctx.omtTemplate, oz, ox, oy);
   const c = new OffscreenCanvas(SIZE, SIZE), g = c.getContext('2d');
@@ -328,8 +327,9 @@ export function clipper({ template, mode, omtTileJson, remember = true }) {
     // and the tile is what the cut would make of it (0 m, all sea), its elevation never read (at sea
     // the land's tiles were half of what a view or a saved area fetched). A mask that would need
     // heights (inland water to classify, a shore read at a lower zoom) stops it: the cut as ever
+    let sea = null; // the land's mask made without heights: the mask itself, when it needed none
     if (mode === 'land') {
-      const sea = await seaMask({ omtTemplate, raw: NEEDS_HEIGHTS, waterLevel }, z, x, y, NEEDS_HEIGHTS, () => false, omtOffset)
+      sea = await seaMask({ omtTemplate, raw: NEEDS_HEIGHTS, waterLevel }, z, x, y, NEEDS_HEIGHTS, () => false, omtOffset)
         .catch((e) => { if (e === HEIGHTS) return null; throw e; });
       if (sea?.every((m) => m === DEPTH)) return { h: new Float32Array(SIZE * SIZE), mask: sea };
       if (signal.aborted) throw new Error('aborted');
@@ -346,7 +346,7 @@ export function clipper({ template, mode, omtTileJson, remember = true }) {
       for (const [, b, h0] of datums) { const lo = lonAt(i), la = latAt(j); if (lo >= b[0] && lo <= b[2] && la >= b[1] && la <= b[3]) return h0; }
       return 0;
     };
-    const mask = await seaMask({ omtTemplate, raw, waterLevel }, z, x, y, // px, py: a shore vertex's place, fractional
+    const mask = sea ?? await seaMask({ omtTemplate, raw, waterLevel }, z, x, y, // px, py: a shore vertex's place, fractional
       (px, py) => src[Math.floor(py) * SIZE + Math.floor(px)] - surface(px, py), (px, py) => surface(px, py) !== 0, omtOffset);
     if (signal.aborted) throw new Error('aborted');
     const out = new Float32Array(SIZE * SIZE);

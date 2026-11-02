@@ -5,7 +5,9 @@
 // elements as the document does, in this page, so they paste into another drawing opened in it too.
 // Pure.
 
-import { find, leavesOf, positionsIn, newId, idsOf, KIND, nextName, emptyDoc, follow } from './document.js';
+import { leavesOf, positionsIn, newId, idsOf, KIND, nextName, emptyDoc, follow } from './document.js';
+import { targetPosition } from './attach.js';
+import { samePosition } from '../geo.js';
 import { extentOf } from './features.js';
 
 const clone = (x) => structuredClone(x);
@@ -43,8 +45,13 @@ export function paste(doc, clip, mv) {
     made.push({ kind, el });
   }
   for (const { kind, el } of made) if (kind === 'point') follow(doc, el); // its shapes as its frame holds them: exactly as they were about it
+  // a link among the elements copied: to the copy; a label's to an element left behind: kept only if
+  // that element is where the label pointed when copied (the same drawing: the same element; another
+  // drawing's element of the same ID is not it), else the label free where it points
+  const copied = new Map(clip.items.map((x) => [x.el.id, x]));
+  const same = (from, to) => { const x = copied.get(from[0]), q = x?.kind === 'label' && targetPosition(doc, to); return !!q && samePosition(q, x.el.position); };
   for (const { from, to } of clip.links) {
-    const keep = ids.has(to.element) || (doc.labels.some((a) => a.id === ids.get(from[0])) && find(doc, to.element));
+    const keep = ids.has(to.element) || same(from, to);
     if (keep) doc.links.push({ from: [ids.get(from[0]), from[1]], to: { ...to, element: ids.get(to.element) ?? to.element } });
   }
   return made;

@@ -52,26 +52,13 @@ The map is Web Mercator, so the scale bar is exact only at the centre
 latitude, and the scale bar says so ("≈", in orange) when the scale varies
 across the view.
 
-**The drawing is a document.** `site/draw/document.js` holds points,
-circles (a sector is a circle with an aperture), lines (an area is a closed
-line), labels and groups as plain data, under five rules (The model, in
-[drawing-format.md](drawing-format.md)). Elements hold only positions; what
-attaches a place of one to another is one table, `doc.links`, applied in one
-pass after every change (`attach.js`): a line's place to a point or to a
-point's shape, a label's to anything; lines meet at a shared point. A point
-holds its shapes as a group holds members, and carries them when it moves or
-turns, each keeping its distance and bearing from it. A look is the element's own,
-else its role's (a guide's, a measurement's), else the drawing's, else the
-defaults: groups have none. Operations on the document are pure functions;
-the map, the panel and the file are views of it. The file is GeoJSON that any
-GIS opens, with the app's own structure under one member (`site/draw/file.js`;
-the format in [drawing-format.md](drawing-format.md)). Rules (`generator.js`)
-make copies along a line and connections to roots as plain elements and keep
-their settings in `doc.rules`, to be edited or brought up to date (Update):
-they follow nothing by themselves, so every change settles in one pass. Moving, pasting and dragging are one rigid move on the
-ellipsoid, so a shape keeps its size wherever it goes. Undo and
-the selection are the store's (`store.js`). Drawings are saved in the
-browser as they change (`saving.js`) and never sent.
+**The drawing is a document.** `site/draw/` holds what the user draws as
+plain data under the five rules of The model ([drawing-format.md](drawing-format.md),
+which is also its file's contract). Operations on it are pure functions
+(`document.js`, `attach.js`, `generator.js`), tested in Node; the map, the
+panel and the file are views of it. Undo and the selection are the store's
+(`store.js`); drawings are saved in the browser as they change (`saving.js`)
+and never sent.
 
 **Display-only is kept apart from geometry.** What changes how a line is
 drawn without changing where it is (an offset beside its path) is a look,
@@ -100,9 +87,8 @@ drawing file that cannot be read says why.
 
 **Privacy by construction.** No request carries a referrer; the security
 policy limits the page to its own files and the listed hosts; libraries are
-the page's own files, so no CDN sees a visit. Coordinates typed are parsed in
-the page. The only data that leaves the browser is what a tile request
-necessarily says, the area looked at, and the place name typed into search.
+the page's own files, so no CDN sees a visit. What leaves the browser is said
+once, in the README (Privacy).
 
 ## Where to look
 
@@ -121,6 +107,7 @@ necessarily says, the area looked at, and the place name typed into search.
 | The drawing's model, file and rules | `site/draw/document.js`, `file.js`, `generator.js` |
 | Links, snapping, placing, outlines, a line's trace and totals | `site/draw/attach.js`, `snap.js`, `place.js`, `outlines.js`, `lines.js` |
 | Undo, the selection, saving in the browser | `site/draw/store.js`, `saving.js` |
+| Copy and paste; the user's presets | `site/draw/clipboard.js`, `presets.js` |
 | The drawing on the map and in the panel | `site/draw/drawing.js` (with `drafting.js`, `dragging.js`, `boxing.js`, `input.js`), `layers.js`, `features.js`, `panel.js` (with `forms.js`, `lineview.js`), `tree.js` |
 | The bar's tools and its file group (Open, Download, Copy link) | `site/draw/tools.js`, `files.js` |
 | A line's elevation profile | `site/draw/profile.js`, `profileFor` in `site/app.js` |

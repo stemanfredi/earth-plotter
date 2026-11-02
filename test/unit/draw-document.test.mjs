@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { addShape, lineFrom, placeIn, addRing } from './helpers.mjs';
+import { addShape, lineFrom, placeIn, addRing, near } from './helpers.mjs';
 
 const d = await import('../../site/draw/document.js');
 const { parse, serialise, toFile } = await import('../../site/draw/file.js');
@@ -9,6 +9,7 @@ const { distributions, connections } = await import('../../site/draw/generator.j
 const { outlinePoints } = await import('../../site/draw/outlines.js');
 const { drawParts } = await import('../../site/draw/features.js');
 const { readFileSync } = await import('node:fs');
+const { settleGeometry } = await import('../../site/draw/store.js');
 const { emptyDoc, addPoint, addDot, addLabel, addCircle, addLine, carry, membersOf, dependents, remove, idsOf, newId, nextName,
   label, styleOf, offsetOf, isShown, isMeasurement, placeOf, makeGroup, setGroup, linkFrom,
   DEFAULT_STYLE, GUIDE_STYLE, FORMAT, VERSION } = d;
@@ -145,7 +146,7 @@ test('round trip: values come back rounded as the file writes them', () => {
   // the circle's frame: about its point as the file writes it (its bearing to 4 decimals), so that it
   // reads back where it was written, 4,600 km from its point
   assert.deepEqual(back.circles[0].position, want.circles[0].position, 'the circle where it was written');
-  assert.ok(Math.abs(back.circles[0].frame.places[0][1] - doc.circles[0].frame.places[0][1]) < 1, 'its distance from its point');
+  near(back.circles[0].frame.places[0][1], doc.circles[0].frame.places[0][1], 1, 'its distance from its point');
   want.circles[0].frame = back.circles[0].frame;
   assert.deepEqual(back, want);
   assert.equal(back.lines[0].points.at(-1)[0], back.points[0].position[0]); // the linked end where its point is
@@ -406,7 +407,7 @@ test('labels: on an element, along a line, on a vertex, or free; checked; writte
   assert.deepEqual([l1.leader, l1.offset, l1.look, at(l1)], ['none', [10, -20], { text: { size: 16, color: '#aa0000', background: 'box' } }, { position: [12, 40], to: { element: 'a' } }]);
   assert.deepEqual([at(l2).to, l2.text, l2.leader, l2.look, text(l2).background], [{ element: 's', edge: 0, at: 0.123456789 }, '', 'arrow', {}, 'halo']);
   assert.deepEqual(l2.position, resolve(doc, at(l2).to).position); // where it points
-  assert.ok(Math.abs(resolve(doc, at(l2).to).along - 0.123456789 * resolve(doc, at(l2).to).length) < 1e-6);
+  near(resolve(doc, at(l2).to).along, 0.123456789 * resolve(doc, at(l2).to).length, 1e-6, '');
   assert.deepEqual([at(l3), l3.leader, l3.offset, l3.look, text(l3).size], [{ position: [12, 41], to: null }, 'arrow', [40, -40], {}, 13]); // an unknown size: the default's px
   assert.deepEqual([at(l4), at(l5), at(l6)], [{ position: [12, 42], to: null }, { position: [12, 40], to: { element: 's', edge: 0, at: 0 } }, { position: [12, 40], to: { element: 'a' } }]);
   assert.deepEqual([at(l8), at(l9), at(l10)], [{ position: [12, 43], to: null }, { position: d.centroid(doc.lines[1].points), to: { element: 'ar' } }, { position: [13, 42], to: { element: 'ar', vertex: 2 } }]);
@@ -640,13 +641,12 @@ test('attached ends follow their point; a point gone leaves them free where they
   assert.deepEqual([placeIn(doc, s, 0), doc.links], [{ position: [0, 0.5], to: null }, []]);
 });
 
-test('split a line at a place: a dot carrying the place\'s name, both lines linked to it; the links of the second half go with it', () => {
+test('split a line at a vertex: a dot carrying its name, both lines attached to it; the links of the second half go with it; a vertex on a point already: that point, no dot', () => {
   const doc = emptyDoc(NOW);
   const a = addPoint(doc, [0, 0]), b = addPoint(doc, [3, 1]);
   const s = lineFrom(doc, a.id, [[1, 0], [2, 0], [3, 0]], [4, 0], { name: 'Main' });
   s.names[2] = 'bend';
   d.setLink(doc, s.id, 3, { element: b.id });
-  d.setLink(doc, s.id, 2, { element: b.id }); // the place split at: its link goes, the point is there
   const p = splitLine(doc, s.id, 2);
   const rest = doc.lines[1];
   assert.deepEqual([p.symbol, p.name, p.properties, p.position], ['dot', 'bend', [], [2, 0]]);
@@ -654,7 +654,26 @@ test('split a line at a place: a dot carrying the place\'s name, both lines link
   assert.deepEqual([rest.points, rest.names, rest.name], [[[2, 0], [3, 0], [4, 0]], ['', '', ''], 'Line 1']);
   assert.deepEqual(doc.links.map((l) => [l.from, l.to.element]), [[[s.id, 0], a.id], [[rest.id, 1], b.id], [[s.id, 2], p.id], [[rest.id, 0], p.id]]);
   assert.notEqual(rest.id, s.id);
-  assert.equal(splitLine(doc, s.id, 1).name, 'Point 3'); // an unnamed place: the next point's name
+  assert.equal(splitLine(doc, s.id, 1).name, 'Point 3'); // an unnamed vertex: the next point's name
+  // a vertex on a point already: both halves on that point, no dot made; the point moved, both follow
+  const points = doc.points.length;
+  assert.equal(splitLine(doc, rest.id, 1), b);
+  assert.equal(doc.points.length, points, 'no dot made');
+  const half = doc.lines.at(-1);
+  b.position = [3, 2];
+  settleGeometry(doc);
+  assert.deepEqual([rest.points.at(-1), half.points[0]], [[3, 2], [3, 2]]);
+});
+
+test('a closed line opened at a vertex on a point: its start and its end both on it, following it', () => {
+  const doc = emptyDoc(NOW), p = addPoint(doc, [1, 0]);
+  const g = addRing(doc, [[0, 0], [1, 0], [1, 1]]);
+  d.setLink(doc, g.id, 1, { element: p.id });
+  assert.equal(splitLine(doc, g.id, 1), null);
+  assert.deepEqual([placeIn(doc, g, 0).to, placeIn(doc, g, -1).to], [{ element: p.id }, { element: p.id }]);
+  p.position = [2, 0];
+  settleGeometry(doc);
+  assert.deepEqual([g.points[0], g.points.at(-1)], [[2, 0], [2, 0]]);
 });
 
 test('measurements: guides showing their values (a line, an area, a circle with its radius), drawn as while measured', () => {
@@ -996,7 +1015,7 @@ test('a point\'s shape: a frame once a point holds it, none once free; Attach to
   assert.ok(Math.abs(c.frame.places[0][0] - 90) < 0.01 && Math.abs(c.frame.turn - 100) < 1e-9);
   assert.deepEqual(c.position, [12.01, 41], 'where it was');
   d.carry(doc, p, p.position, 90); // turned: the circle about the point, its sector turned as much
-  assert.ok(Math.abs(c.bearing - 190) < 1e-9);
+  near(c.bearing, 190, 1e-9, '');
   d.setGroup(doc, c.id, null);
   assert.equal('frame' in c, false);
   const l = addRing(doc, [[12, 41.01], [12.01, 41.01], [12.01, 41.02]], { groupId: p.id });
@@ -1032,4 +1051,34 @@ test('across 180°: a point\'s shape reads back with no word of moving; an area\
   assert.deepEqual(again2.report.warnings, [], 'and again: never "edited elsewhere"');
   const c = d.centroid([[179, 0], [-179, 0], [-179, 1], [179, 1]]);
   assert.ok(Math.abs(Math.abs(c[0]) - 180) < 1e-9 && Math.abs(c[1] - 0.5) < 1e-9, `${c}`);
+});
+
+test('a closed line across 180° written counter-clockwise (RFC 7946), not said reversed', () => {
+  const doc = emptyDoc(NOW);
+  addRing(doc, [[179, 0], [-179, 0], [-179, 1], [179, 1]]); // counter-clockwise, across 180°
+  const f = toFile(doc).features[0];
+  assert.equal(f.properties.charts.reversed, undefined);
+  assert.deepEqual(f.geometry.coordinates[0].slice(0, 2), [[179, 0], [-179, 0]]);
+});
+
+test('a label pasted into another drawing: a link to an element left behind kept only if that element is where it pointed', async () => {
+  const { clipOf, paste } = await import('../../site/draw/clipboard.js');
+  const src = emptyDoc(NOW), q = addPoint(src, [10, 40], { id: 'x' });
+  const t = d.addLabel(src, q.position, { element: 'x' });
+  const clip = clipOf(src, [t.id]);
+  const same = emptyDoc(NOW); addPoint(same, [10, 40], { id: 'x' }); // the same element (the same drawing, or one like it)
+  const other = emptyDoc(NOW); addPoint(other, [20, 50], { id: 'x' }); // another element of the same ID
+  const [a] = paste(same, clip, (p) => p), [b] = paste(other, clip, (p) => p);
+  assert.equal(d.linkFrom(same, a.el.id)?.to.element, 'x');
+  assert.equal(d.linkFrom(other, b.el.id), undefined, 'free where it points');
+});
+
+test('a shape freed from its point (Detach, a drop in the tree: setGroup) is an element of its own: named, never scaled', () => {
+  const doc = emptyDoc(NOW);
+  const { point: p, shapes: [r] } = addShape(doc, [12, 41], 'rectangle');
+  const c = d.addCircle(doc, [12, 41], { groupId: p.id, aperture: 90, name: '' });
+  r.look.scale = 3; c.look.scale = 2;
+  d.setGroup(doc, r.id, null);
+  d.setGroup(doc, c.id, null);
+  assert.deepEqual([r.name, 'scale' in r.look, c.name, 'scale' in c.look], ['Area 1', false, 'Sector 1', false]);
 });

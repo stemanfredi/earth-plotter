@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { addShape, lineFrom, placeIn, addRing, labelOn } from './helpers.mjs';
+import { addShape, lineFrom, placeIn, addRing, labelOn, near } from './helpers.mjs';
 
 const { emptyDoc, addPoint, addDot, addCircle, centroid, remove, setLink, carry } = await import('../../site/draw/document.js');
 const { targetPosition, resolve, refreshAttached, reattach, insertVertex, deleteVertex, splitLine, attachAt, attachable, partName, refNear } = await import('../../site/draw/attach.js');
@@ -13,7 +13,8 @@ const { lineTrace } = await import('../../site/draw/lines.js');
 
 // place i of line s (-1 its end) as a target with its position: { position, element… } (free: { position })
 const ref = (doc, s, i = -1) => ({ position: placeIn(doc, s, i).position, ...placeIn(doc, s, i).to });
-const near = (a, b, m = 0.01) => assert.ok(inverse(a, b).s < m, `${a} is ${inverse(a, b).s} m from ${b}`);
+// two positions within m metres of each other (the shared near: two numbers)
+const nearM = (a, b, m = 0.01) => assert.ok(inverse(a, b).s < m, `${a} is ${inverse(a, b).s} m from ${b}`);
 // a flat screen: 10 000 px a degree about 10° E, 40° N (y down)
 const view = { project: ([lon, lat]) => [(lon - 10) * 1e4, -(lat - 40) * 1e4], unproject: ([x, y]) => [10 + x / 1e4, 40 - y / 1e4] };
 const px = (p) => view.project(p);
@@ -34,15 +35,15 @@ test('where a reference is: a centre, a vertex, a place along an edge or a leg; 
   assert.deepEqual(targetPosition(doc, { element: 'p' }), [10, 40]);
   assert.deepEqual(targetPosition(doc, { element: 'a' }), centroid(a.points)); // a closed line's centre: its centroid
   assert.deepEqual(targetPosition(doc, { element: 'a', vertex: 1 }), [10.02, 40.02]);
-  near(targetPosition(doc, { element: 'a', edge: 0, at: 0.5 }), [10.01, 40.02], 1);
+  nearM(targetPosition(doc, { element: 'a', edge: 0, at: 0.5 }), [10.01, 40.02], 1);
   // a line's places: 0 its start, then its vertices, the last its end
   assert.deepEqual([0, 1, 2].map((k) => targetPosition(doc, { element: 'l', vertex: k })), [[10.05, 40], [10.06, 40.01], [10.07, 40]]);
   const tr = lineTrace(doc, l), mid = resolve(doc, { element: 'l' }); // a line's centre: its middle along it
   assert.ok(Math.abs(mid.along - tr.length / 2) < 1e-6 && mid.length === tr.length);
   const leg = resolve(doc, { element: 'l', edge: 1, at: 0.5 }); // half way along its second leg
-  assert.ok(Math.abs(leg.along - (tr.at[1] + tr.legs[1] / 2)) < 1e-6);
-  assert.ok(Math.abs(leg.edge.length - tr.legs[1]) < 1e-6);
-  near(leg.position, [10.065, 40.005], 2);
+  near(leg.along, (tr.at[1] + tr.legs[1] / 2), 1e-6, '');
+  near(leg.edge.length, tr.legs[1], 1e-6, '');
+  nearM(leg.position, [10.065, 40.005], 2);
   assert.deepEqual(targetPosition(doc, { element: 'sh', vertex: 0 }), sh.points[0]); // a shape's corner: its place
   const c = addCircle(doc, [10.1, 40], { id: 'c' });
   assert.deepEqual(targetPosition(doc, { element: 'c' }), c.position); // a circle: its centre
@@ -58,14 +59,14 @@ test('labels follow what they point at: a shape turned with its point, an area\'
   const s2 = labelOn(doc, { element: 'a', edge: 1, at: 0.25 });
   const s3 = labelOn(doc, { element: 'l', vertex: 1 });
   refreshAttached(doc);
-  near(ref(doc, s1).position, sh.points[0]);
+  nearM(ref(doc, s1).position, sh.points[0]);
   carry(doc, shp, shp.position, 90);
   a.points[2] = [10.03, 40.05];
   l.points[1] = [10.06, 40.02];
   refreshAttached(doc);
-  near(ref(doc, s1).position, sh.points[0]);
-  near(ref(doc, s1).position, outlinePoints([10.02, 40], 90, 100, 50)[0]); // turned
-  near(ref(doc, s2).position, targetPosition(doc, { element: 'a', edge: 1, at: 0.25 }));
+  nearM(ref(doc, s1).position, sh.points[0]);
+  nearM(ref(doc, s1).position, outlinePoints([10.02, 40], 90, 100, 50)[0]); // turned
+  nearM(ref(doc, s2).position, targetPosition(doc, { element: 'a', edge: 1, at: 0.25 }));
   assert.deepEqual(ref(doc, s3).position, [10.06, 40.02]);
   assert.deepEqual([ref(doc, s1).vertex, ref(doc, s2).edge, ref(doc, s2).at, ref(doc, s3).vertex], [0, 1, 0.25, 1]);
   const was = [...ref(doc, s1).position];
@@ -110,7 +111,7 @@ test('an area\'s corners added and taken away, an outline changed: labels on cor
   assert.equal(ref(doc, c2).vertex, 3);
   assert.equal(ref(doc, e3).edge, 4);
   refreshAttached(doc);
-  near(ref(doc, e3).position, at, 1);
+  nearM(ref(doc, e3).position, at, 1);
   deleteVertex(doc, 'a', 3); // c2's: to the nearest one left
   refreshAttached(doc);
   assert.ok(ref(doc, c2).element === 'a' && ref(doc, c2).vertex != null);
@@ -137,7 +138,7 @@ test('a closed line: any place attached, following; its closing leg a target; sp
   const t = labelOn(doc, { element: 'g', edge: 3, at: 0.5 }); // on its closing leg
   refreshAttached(doc);
   assert.deepEqual(g.points[2], [10, 40]);
-  near(ref(doc, t).position, [10.01, 40.005], 1);
+  nearM(ref(doc, t).position, [10.01, 40.005], 1);
   p.position = [10.03, 40.02]; // the point moves: the ring's place follows
   refreshAttached(doc);
   assert.deepEqual(g.points[2], [10.03, 40.02]);
@@ -150,7 +151,7 @@ test('a closed line: any place attached, following; its closing leg a target; sp
   assert.deepEqual(placeIn(doc, g, 0).to, { element: 'p' }); // the link from place 2, now its start
   assert.deepEqual([ref(doc, t).element, ref(doc, t).edge], ['g', 1]); // the old closing leg, now leg 1
   refreshAttached(doc);
-  near(ref(doc, t).position, at, 1);
+  nearM(ref(doc, t).position, at, 1);
   assert.equal(doc.lines.length, 1);
 });
 
@@ -204,7 +205,7 @@ test('the file keeps the links: a line\'s places on points and on points\' shape
   assert.deepEqual(back.report.warnings, []);
   const bare = (ls) => ls.map(({ frame, ...x }) => x), frameOf = (ls) => ls.map((x) => x.frame?.places.flat() ?? []); // a frame comes back as the file rounds it
   assert.deepEqual([bare(back.doc.lines), back.doc.labels, back.doc.links], [bare(doc.lines), doc.labels, doc.links]);
-  frameOf(back.doc.lines).forEach((f, i) => f.forEach((v, k) => assert.ok(Math.abs(v - frameOf(doc.lines)[i][k]) < 1e-3)));
+  frameOf(back.doc.lines).forEach((f, i) => f.forEach((v, k) => near(v, frameOf(doc.lines)[i][k], 1e-3, '')));
   const raw = JSON.parse(text), linked = (id, i) => raw.charts.links.find((k) => k.from[0] === id && k.from[1] === i)?.to;
   assert.deepEqual([linked('y', 0), linked('y', 1), linked('z', 0), linked('z', 1), linked(t1.id, 0), linked(t2.id, 0), linked(t3.id, 0)],
     [{ element: 'p' }, { element: 'p' }, { element: 'sh', vertex: 3 }, { element: 'sh', edge: 1, at: 0.25 }, { element: 'a', edge: 2, at: 0.3 }, { element: 'l', vertex: 1 }, { element: 'a' }]);
@@ -227,14 +228,14 @@ test('snapping: a vertex before a crossing before an edge; within the radius; ne
   assert.deepEqual([v.kind, v.to, v.position], ['vertex', { element: 'p' }, [10, 40]]);
   const x = at([10.0201, 40.0102]);
   assert.equal(x.kind, 'crossing');
-  near(x.position, [10.02, 40.01], 0.5);
+  nearM(x.position, [10.02, 40.01], 0.5);
   assert.equal(x.to, null);
   const e = at([10.025, 40.0105]);
   assert.equal(e.kind, 'edge');
   assert.deepEqual([e.to.element, e.to.edge], ['h', 0]);
-  assert.ok(Math.abs(e.to.at - 0.75) < 0.01);
-  near(targetPosition(doc, e.to), e.position, 0.5);
-  near(e.position, [10.025, 40.01], 2);
+  near(e.to.at, 0.75, 0.01, '');
+  nearM(targetPosition(doc, e.to), e.position, 0.5);
+  nearM(e.position, [10.025, 40.01], 2);
   assert.equal(at([10.03, 40.03]), null);
   assert.equal(snapAt(doc, px([10.0003, 40.0003]), view, { exclude: new Set(['p']) }), null);
   // ids: the elements whose edges are looked at (the map's hits); vertices are looked at in all
@@ -255,7 +256,7 @@ test('snapping to corners and edges of shapes and areas, to a line\'s vertices, 
   const mid = [10.01, 40.0201];
   const e = snapAt(doc, px(mid), view);
   assert.deepEqual([e.kind, e.to.element, e.to.edge], ['edge', 'a', 0]);
-  assert.ok(Math.abs(e.to.at - 0.5) < 0.01);
+  near(e.to.at, 0.5, 0.01, '');
   const v = snapAt(doc, px([10.0601, 40.0101]), view);
   assert.deepEqual(v.to, { element: 'l', vertex: 1 }); // its place 1 (0 its start)
   doc.lines.find((x) => x.id === 'l').visible = false;
@@ -271,19 +272,19 @@ test('a line on a point\'s shape: on its corner or along its edge, following it 
   const corner = lineFrom(doc, [10, 39.9], [], { ...attachAt(doc, hit), position: hit.position });
   const side = lineFrom(doc, [10.04, 39.9], [], { element: 'sh', edge: 2, at: 0.5, position: [0, 0] });
   refreshAttached(doc);
-  near(ref(doc, corner).position, sh.points[1]);
+  nearM(ref(doc, corner).position, sh.points[1]);
   const q = refNear(doc, { kind: 'line', el: sh }, targetPosition(doc, { element: 'sh', edge: 1, at: 0.3 }));
   assert.deepEqual([q.edge, +q.at.toFixed(3)], [1, 0.3]);
   carry(doc, p, destination(p.position, 90, 500), 45); // the point moved and turned: its shape with it, the lines' ends on it
   settleGeometry(doc);
-  near(ref(doc, corner).position, sh.points[1]);
-  near(ref(doc, side).position, targetPosition(doc, { element: 'sh', edge: 2, at: 0.5 }));
+  nearM(ref(doc, corner).position, sh.points[1]);
+  nearM(ref(doc, side).position, targetPosition(doc, { element: 'sh', edge: 2, at: 0.5 }));
   sh.look.scale = 3; // drawn larger: the line still on its real corner
   settleGeometry(doc);
-  near(ref(doc, corner).position, sh.points[1]);
+  nearM(ref(doc, corner).position, sh.points[1]);
   const read = parse(serialise(doc), null, 0).doc, back = ref(read, read.lines.find((x) => x.id === corner.id));
   assert.deepEqual([back.element, back.vertex], ['sh', 1]);
-  near(back.position, ref(doc, corner).position);
+  nearM(back.position, ref(doc, corner).position);
 });
 
 test('a point\'s shape scaled (display only): snapped and boxed where it is drawn, not at its real places', () => {
@@ -293,18 +294,18 @@ test('a point\'s shape scaled (display only): snapped and boxed where it is draw
   const g = inverse(c, sh.points[0]), drawn = destination(c, g.azi, g.s * 2);
   const hit = snapAt(doc, px(drawn), view);
   assert.deepEqual([hit.kind, hit.to], ['vertex', { element: sh.id, vertex: 0 }]);
-  near(hit.position, drawn, 0.01);
+  nearM(hit.position, drawn, 0.01);
   assert.notEqual(snapAt(doc, px(sh.points[0]), view)?.kind, 'vertex', 'not at its real corner');
 });
 
 test('Shift: 15° steps from north, or from the leg before; the length kept', () => {
   const from = [10, 40];
   const q = stepped(from, [10.01, 40.012]); // about 33° from north
-  assert.ok(Math.abs(inverse(from, q).azi - 30) < 1e-6);
-  assert.ok(Math.abs(inverse(from, q).s - inverse(from, [10.01, 40.012]).s) < 1e-6);
+  near(inverse(from, q).azi, 30, 1e-6, '');
+  near(inverse(from, q).s, inverse(from, [10.01, 40.012]).s, 1e-6, '');
   const r = stepped(from, [10.012, 40.002], [9.99, 39.99]); // the leg before heads about 37°
   const base = inverse([9.99, 39.99], from).azi, d = inverse(from, r).azi - base;
-  assert.ok(Math.abs(d / 15 - Math.round(d / 15)) < 1e-6);
+  near(d / 15, Math.round(d / 15), 1e-6, '');
   assert.deepEqual(stepped(from, from), from);
   assert.deepEqual(neighbours([[0, 0], [1, 1], [2, 2]], 2), { from: [1, 1], prev: [0, 0] });
   assert.deepEqual(neighbours([[0, 0], [1, 1], [2, 2]], 0), { from: [1, 1], prev: [2, 2] });
@@ -332,7 +333,7 @@ test('an end snapped onto another line\'s leg: a point shared there, a place put
   const to = attachAt(doc, hit), m = lineFrom(doc, [10.03, 40.02], [], { ...to, position: hit.position });
   assert.equal(h.points.length, 4, 'a place put in it');
   assert.deepEqual([placeIn(doc, h, 2).to, placeIn(doc, m, -1).to], [to, to]);
-  near(h.points[2], [10.03, 40], 1);
+  nearM(h.points[2], [10.03, 40], 1);
   const dot = doc.points.find((x) => x.id === to.element);
   dot.position = [10.03, 40.01]; // the point moved: both lines with it
   settleGeometry(doc);
@@ -370,4 +371,16 @@ test('the model kept in one place: a shape given to a point drops its own attach
   // a point holds circles and closed lines only
   assert.equal(canHold(doc, 'A', l.id), false, 'an open line');
   assert.equal(canHold(doc, 'A', 'poly'), true);
+});
+
+test('an end snapped onto a vertex that is on a shape\'s corner: on that corner too (not dropped)', () => {
+  const doc = emptyDoc(0);
+  const { shapes: [sh] } = addShape(doc, [10.02, 40], 'rectangle', 2000);
+  const l = lineFrom(doc, [10, 39.9], [], { element: sh.id, vertex: 2, position: [0, 0] });
+  settleGeometry(doc);
+  const to = attachAt(doc, { to: { end: [l.id, 1] }, position: l.points[1] });
+  assert.deepEqual(to, { element: sh.id, vertex: 2 });
+  const m = lineFrom(doc, [10.1, 39.9], [], { ...to, position: l.points[1] });
+  settleGeometry(doc);
+  assert.deepEqual(placeIn(doc, m, -1).to, { element: sh.id, vertex: 2 }, 'kept after a change');
 });

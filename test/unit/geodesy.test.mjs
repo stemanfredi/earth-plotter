@@ -29,7 +29,7 @@ test('circle: every point at its radius (±1 mm), closed', () => {
 
 test('circle across the antimeridian keeps continuous longitudes', () => {
   const ring = circle([179.9, -16.5], 50e3);
-  for (let i = 1; i < ring.length; i++) assert.ok(Math.abs(ring[i][0] - ring[i - 1][0]) < 1, `jump at ${i}`);
+  for (let i = 1; i < ring.length; i++) near(ring[i][0], ring[i - 1][0], 1, `jump at ${i}`);
   assert.ok(ring.some((p) => p[0] > 180), 'goes past 180 without wrapping');
 });
 

@@ -2,7 +2,7 @@ import * as maplibregl from './vendor/maplibre-gl.mjs';
 import mlcontour from './vendor/maplibre-contour.mjs';
 import { GROUPS, ITEMS, GIBS, DEM_TILES, DEM_SEA_MAX, DEPTH_ZMAX, DEPTH_SOURCES, DEM_LAND_MAX, OMT_TILEJSON, ISOBATH_STEPS, DEPTH_SCHEMES, NO_DEPTH, DENSITY, ESRI_META, gibsTiles, gibsDomainUrl, domainEnd, densityTiles, CMEMS, CMEMS_DEPTHS, drawsOf, CLASS_LABELS, EMODNET_DEPTH_STOPS, SEAGRASS } from './catalog.js';
 import { buildStyle, depthRamp, OPACITY_PROP, SEA_PICTURES, LOCATION_LAYERS, INK, esriAttribution } from './style.js';
-import { cmemsTile, partTimes, partLevels, domainOf, cmemsLegend } from './cmems.js';
+import { cmemsTile, partTimes, partLevels, domainOf, cmemsLegend, partIn } from './cmems.js';
 import { workerClipper } from './clip.js';
 import { drawRamp, drawColormap, drawClasses, wmsClasses } from './legend.js';
 import { fmtAngle, fmtPos, fmtDepth, mercatorVariation, NOTE_AT, exportName } from './format.js';
@@ -266,8 +266,7 @@ function setDisplay(changes) {
   Object.assign(display, changes);
   renderUnits();
   writeHash();
-  drawing.render();
-  drawing.renderLabels();
+  drawing.render(); // the labels with it (their units)
   drawPanel.render('doc');
 }
 
@@ -453,7 +452,7 @@ async function creditEsri() {
 
 // NASA publishes each layer after its own delay (true colour within a day): GIBS says the newest
 // date of the layer shown, the last day the map's time can take while it is on
-const gibsEnd = lru(Infinity); // GIBS key → promise of its newest date, or null if unknown
+const gibsEnd = lru(Infinity, 864e5); // GIBS key → promise of its newest date, or null if unknown; asked again after a day
 function latestGibs(key) {
   return gibsEnd(key, () => fetchOk(gibsDomainUrl(key, shiftDay(today(), -60), today())).then((r) => r.text()).then(domainEnd)).catch(() => null);
 }
@@ -461,13 +460,15 @@ function latestGibs(key) {
 // Copernicus: each dataset at its own step for the hour shown, its time resolution (cmems.js draws
 // the tiles)
 const cmemsDepth = (id) => !!CMEMS[id][state.variant[id]].depth;
-// the time and level the item draws at: { variant, t, depth } as captured: its regional part's, drawn
-// on top. A part whose steps could not be read (partTimes: undefined) is drawn all the same, at no
-// known time: none said for it, rather than another part's
-async function cmemsDrawn(id, at) {
+// the time and level the item draws at over box [w, s, e, n]: { variant, t, depth } as captured: the
+// part drawn on top there (a regional one where the view meets its area, else the global one). A part
+// whose steps could not be read (partTimes: undefined) is drawn all the same, at no known time: none
+// said for it, rather than another part's
+async function cmemsDrawn(id, at, box) {
   const [times, levels] = await Promise.all([partTimes(id, at.variant, at.t), partLevels(id, at.variant, at.depth)]);
-  const k = times.length - 1 - [...times].reverse().findIndex((pt) => pt !== null);
-  return { time: times[k], level: levels[k] };
+  const parts = CMEMS[id][at.variant].parts;
+  const k = parts.map((p, i) => i).reverse().find((i) => times[i] !== null && partIn(parts[i], box)) ?? -1;
+  return k < 0 ? { time: null, level: null } : { time: times[k], level: levels[k] };
 }
 
 // a classed layer's classes, from its services' JSON legends (legend.js wmsClasses): a class drawn
@@ -636,6 +637,9 @@ async function updateRange() {
   if (all.some((s) => s?.[1] == null)) rangeKey = '';
 }
 const within = (t) => Math.min(range[1], Math.max(range[0], hour(t)));
+// the page shown again (a tab come back to, a phone woken, the next day): the dates the layers have asked
+// again (each provider's answer is kept a day: lru maxAge), not only at the next touch of a control
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && timeOn().length) { rangeKey = ''; updateRange(); } });
 // taken as it changes (a day clicked in the calendar, not when the calendar closes). A time typed
 // in the field changes with each key (year 0002, 0020, 0202, 2026): only a whole time within the
 // field's range is taken
@@ -1160,8 +1164,10 @@ function scaleText() {
 // (OpenStreetMap and Esri ask for theirs to be seen, and a line that does not fit scrolls from its start)
 const baseSources = new Set(ITEMS.filter((it) => it.group === 'base').flatMap((it) => (layersOf[it.id] || []).map((l) => l.source)));
 function creditParts() {
-  const srcs = [];
-  for (const l of style.layers) if (l.source && map.getLayoutProperty(l.id, 'visibility') !== 'none' && !srcs.includes(l.source)) srcs.push(l.source);
+  const srcs = [], z = map.getZoom();
+  // what is drawn at this zoom: a layer shown, and within its zoom range (the seamarks from 9 …)
+  const drawn = (l) => map.getLayoutProperty(l.id, 'visibility') !== 'none' && z >= (l.minzoom ?? 0) && z < (l.maxzoom ?? 24);
+  for (const l of style.layers) if (l.source && drawn(l) && !srcs.includes(l.source)) srcs.push(l.source);
   srcs.sort((a, b) => baseSources.has(b) - baseSources.has(a));
   const parts = [...new Set(srcs.map((s) => map.getSource(s)?.attribution).filter(Boolean))];
   return parts.filter((p) => !parts.some((q) => q !== p && q.includes(p))); // a credit another holds: once
@@ -1190,6 +1196,7 @@ function renderCredits() {
 }
 map.on('styledata', renderCredits);
 map.on('sourcedata', (e) => { if (!e.tile) renderCredits(); });
+map.on('zoomend', renderCredits); // a layer's zoom range entered or left
 // An export from button b: after before() (a library to load), the map's next frame, after pending
 // tiles (so a layer switched on a moment ago is in the picture). fn(canvas) runs while the canvas
 // still holds it, and must read it before awaiting; it returns what it left out, if anything. The
@@ -1292,8 +1299,7 @@ map.on('load', () => {
   }
   applyData();
   for (const it of ITEMS) refresh(it.id);
-  depthColours();
-  labelPaint();
+  depthColours(); // the labels' paint with it
   creditEsri();
   drawing.addIcons();
   drawing.saving.restore(); // its view, if the address had none, is already in it

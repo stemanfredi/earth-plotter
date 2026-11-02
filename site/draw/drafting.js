@@ -208,6 +208,7 @@ export class Drafting {
   placeLabel(point, p) {
     let el;
     this.change((doc) => { const r = this.anchorFor(point, p); el = addLabel(doc, r.position, r.to); });
+    this.snapMark = null; // placed: its mark gone with the click (drawn again as the pointer moves)
     this.select([el.id]);
     this.onChange('placed'); // the panel puts the cursor in its text
     return el;

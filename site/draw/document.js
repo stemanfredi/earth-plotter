@@ -243,8 +243,8 @@ export function addCircle(doc, position, opts = {}, taken = idsOf(doc)) {
 }
 // A line through positions (two or more; closed, three or more), its legs straight (geodesics), each
 // vertex unnamed. Returns it.
-export function addLine(doc, positions, opts = {}) {
-  const s = { ...base(doc, 'line'), points: positions.map((p) => [...p]), names: positions.map(() => ''), smooth: false, closed: false, guide: false, ...opts };
+export function addLine(doc, positions, opts = {}, taken = undefined) {
+  const s = { ...base(doc, 'line', taken), points: positions.map((p) => [...p]), names: positions.map(() => ''), smooth: false, closed: false, guide: false, ...opts };
   doc.lines.push(s);
   return s;
 }
@@ -304,9 +304,14 @@ export function frames(doc) {
 // once: a point carries its shapes; a line's vertex attached to a point moves that point (once, however
 // many vertices are on it); one on a point's shape, and a label on an element, follow what they are on.
 export function moveElements(doc, ids, from, to) {
+  reading(doc, () => moveIn(doc, ids, from, to)); // indexed: positions change, no element comes or goes
+}
+function moveIn(doc, ids, from, to) {
   // a point's shape moves only with its point (Detach it to move it apart): the point moved instead
   const leaves = leavesOf(doc, [...new Set([...ids].map((id) => holderOf(doc, find(doc, id)?.el)?.id ?? id))]), mv = moveAbout(from, to);
-  const attachedOf = (el) => new Map(doc.links.filter((l) => l.from[0] === el.id).map((l) => [l.from[1], l.to]));
+  const byFrom = new Map(); // each element's links, by where they start: read once
+  for (const l of doc.links) { if (!byFrom.has(l.from[0])) byFrom.set(l.from[0], []); byFrom.get(l.from[0]).push(l); }
+  const attachedOf = (el) => new Map((byFrom.get(el.id) ?? []).map((l) => [l.from[1], l.to]));
   // the points moved, found first so that each moves once: those among ids, then those the lines'
   // vertices are attached to (one on a point's shape stays on it: the shape moves with its point only)
   const points = new Set(leaves.filter((x) => x.kind === 'point').map((x) => x.el.id));
@@ -343,10 +348,19 @@ export function addLabel(doc, position, to = null) {
 // { element, vertex? | edge and at? } (attach.js resolve)
 export const targetOf = ({ element, vertex, edge, at }) => ({ element, ...(vertex != null ? { vertex } : edge != null ? { edge, at: at ?? 0 } : {}) });
 // the link from vertex (or anchor) index of element id, or undefined
-export const linkFrom = (doc, id, index = 0) => doc.links.find((l) => l.from[0] === id && l.from[1] === index);
+export function linkFrom(doc, id, index = 0) {
+  const i = ix(doc);
+  if (!i) return doc.links.find((l) => l.from[0] === id && l.from[1] === index);
+  // indexed (reading()): the links by where they start, made again when the list grew or shrank (a
+  // file's links read one by one, one dropped) or was replaced (setLink clears it)
+  if (i.links?.list !== doc.links || i.links.n !== doc.links.length) i.links = { list: doc.links, n: doc.links.length, by: new Map(doc.links.map((l) => [`${l.from[0]} ${l.from[1]}`, l])) };
+  return i.links.by.get(`${id} ${index}`);
+}
 // vertex (or anchor) index of element id attached to `to` (a target), or free where it is (to null): one link a vertex
 export function setLink(doc, id, index, to) {
-  doc.links = doc.links.filter((l) => l.from[0] !== id || l.from[1] !== index);
+  if (ix(doc)) ix(doc).links = null; // an index of the links (linkFrom) no longer right
+  const i = doc.links.findIndex((l) => l.from[0] === id && l.from[1] === index); // one link a place: the old one out, the new one added
+  if (i >= 0) doc.links.splice(i, 1);
   if (to) doc.links.push({ from: [id, index], to: targetOf(to) });
 }
 
@@ -430,9 +444,10 @@ export function moveStep(doc, id, dir) {
 }
 // whether group gid can take id: not itself, nor a group it is in; a point (gid) takes shapes only
 export function canHold(doc, gid, id) {
-  const h = gid && find(doc, gid);
+  if (!gid) return true; // out of any: at the top
+  const h = find(doc, gid);
   if (h?.kind === 'point') { const x = find(doc, id); return x?.kind === 'circle' || (x?.kind === 'line' && !!x.el.closed); } // a point holds circles and closed lines only
-  return !gid || (gid !== id && !groupsOf(doc, h?.el ?? {}).some((g) => g.id === id));
+  return h?.kind === 'group' && gid !== id && !groupsOf(doc, h.el).some((g) => g.id === id); // a group, never itself nor one inside it; nothing else holds
 }
 // The fields of a look each kind is drawn with
 const STYLE_FIELDS = ['fill.color', 'fill.opacity', 'stroke.color', 'stroke.opacity', 'stroke.width', 'stroke.dash'];
@@ -448,15 +463,20 @@ export const LOOK_FIELDS = {
 export function setGroup(doc, id, gid) {
   const x = find(doc, id);
   if (!x || !canHold(doc, gid, id)) return;
+  const was = holderOf(doc, x.el);
   x.el.groupId = gid;
   const p = holderOf(doc, x.el);
   if (p) adopt(p, x.kind, x.el); else delete x.el.frame; // held: in its point's frame from now on
+  if (was && !p) { // a shape freed (Detach, a drop in the tree): an element of its own, named, never scaled
+    setLook(x.el, 'scale', undefined);
+    if (!x.el.name) x.el.name = nextName(doc, x.kind, x.kind === 'circle' ? (x.el.aperture ? 'Sector' : 'Circle') : 'Area');
+  }
 }
 
 // ---- the user's properties as columns -----------------------------------------------------------------
 
 // keys the GIS export uses itself: a property so keyed is written p_<key>
-const GIS_COLUMNS = ['kind', 'id', 'name', 'group', 'point', 'guide', 'text', 'anchor', 'along_m', 'length_m', 'radius_m', 'area_m2', 'perimeter_m', 'bearing_deg', 'aperture_deg'];
+const GIS_COLUMNS = ['kind', 'id', 'name', 'group', 'point', 'guide', 'text', 'anchor', 'along_m', 'length_m', 'radius_m', 'area_m2', 'perimeter_m', 'bearing_deg', 'aperture_deg', 'surface_length_m'];
 // The user's properties ([{ key, value }]) as columns: one each, in order; a key the export uses (reserved)
 // prefixed p_, a repeated one numbered. { out, changed (a key had to be renamed) }
 export function columnsOf(props, reserved = GIS_COLUMNS) {

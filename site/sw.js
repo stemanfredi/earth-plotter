@@ -207,12 +207,12 @@ self.addEventListener('fetch', (e) => {
   const req = e.request;
   if (req.method !== 'GET') return;
   const url = new URL(req.url);
-  url.search = ''; // a file is the same file whatever its query; the view is in the hash, never sent
-  const key = req.mode === 'navigate' && url.href.startsWith(self.registration.scope) ? INDEX : url.href; // the page's address: index.html
+  url.search = ''; url.hash = ''; // a file is the same file whatever its query; the view is in the hash (a navigation's URL keeps it)
+  const key = req.mode === 'navigate' && (url.href === self.registration.scope || url.href === INDEX) ? INDEX : url.href; // the page's own address: index.html (another page of the site, a licence: itself)
   const host = SAVED.some((h) => req.url.startsWith(h));
   // asked of the provider itself (an area saved again: offline.js): the network, the connection noted
   if (host && req.cache === 'reload') { e.respondWith(net(req)); return; }
-  if (host && anyPack !== false) { // none saved: untouched
+  if (host && anyPack !== false) { // none saved: untouched (a base map blocked here is not a lost connection)
     e.respondWith(readPacks().then(({ areas }) => (areas.length ? fromPacks(req) : fetch(req))));
     return;
   }

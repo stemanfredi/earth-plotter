@@ -3,12 +3,18 @@
 
 import { HOSTS } from './hosts.js';
 
+// zooms more than one module keeps to: the base map's tiles stop at OMT_MAX (the map magnifies them
+// above); the seamarks and the land contours start at their own (the map's zoom)
+export const OMT_MAX = 14, SEAMARKS_MIN = 9, CONTOURS_MIN = 9;
+
 // the land's elevation (SRTM); the sea's depths are GEBCO's (gebco.js). Both cut to the OSM
 // coastline (clip.js), up to these zooms of 256 px tiles. Sea 13: depth shading shows up to map
 // zoom 13, and a tile at z shows at map zoom z − 1 and is cut with the OSM coastline of that zoom;
 // capped at 12, map zoom 12 was cut with the zoom-11 coastline, where small islands do not exist
 // yet, and they vanished under the tint. Land 12: the DEM's own last zoom
 export const DEM_TILES = `${HOSTS.terrain}/terrarium/{z}/{x}/{y}.png`;
+// its sources and their credits (Mapzen Terrain Tiles): one address, for the map's credit and an area's file
+export const DEM_CREDITS = 'https://github.com/tilezen/joerd/blob/master/docs/attribution.md';
 export const DEM_SEA_MAX = 13, DEM_LAND_MAX = 12;
 // the depth shading hides itself from this map zoom (the style's maxzoom; its item's, the last whole
 // zoom it shows, one less): GEBCO's 460 m cells have no more detail to give
@@ -124,7 +130,7 @@ export function gibsTiles(key, date) {
   const g = GIBS[key];
   return [`${HOSTS.gibs}/wmts/epsg3857/best/${g.layer}/default/${date}/GoogleMapsCompatible_Level${g.level}/{z}/{y}/{x}.${g.ext}`];
 }
-// NASA publishes each layer after its own delay (true colour within a day, MUR SST about two days):
+// NASA publishes each layer after its own delay (true colour: within a day):
 // GIBS DescribeDomains lists the dates a layer has between from and to (YYYY-MM-DD)
 export function gibsDomainUrl(key, from, to) {
   const g = GIBS[key];
@@ -313,14 +319,14 @@ export const ITEMS = [
     legend: (variant) => (variant === 'zones' ? MR_ZONES.map(([, label, fill]) => ({ label, colour: `${fill}55` })) // as drawn: its 80%, at half
       : `${MR_WMS}?service=WMS&request=GetLegendGraphic&version=1.0.0&format=application/json&layer=eez_boundaries`),
     info: { src: 'Marine Regions (Flanders Marine Institute, VLIZ): Maritime Boundaries v12 and the zones from it, v4 (2023)', lic: 'CC BY 4.0 · VLIZ; not for legal or navigational use (its terms)', res: 'World. Limits between countries: the lines between neighbours\' waters, as treaties, court rulings and joint regimes set them; where none does, a median line VLIZ computed, or the claims and disputes as they stand; and the baselines the zones are measured from. Zones: internal and archipelagic waters, the territorial sea (to 12 NM) and the contiguous zone (to 24 NM), whose outer edges are those limits. Compiled from public sources: not legal boundaries. Not for navigation', url: 'https://www.marineregions.org' } },
-  { id: 'seamarks', group: 'sea', label: 'Seamarks', minzoom: 9, opacity: 1,
+  { id: 'seamarks', group: 'sea', label: 'Seamarks', minzoom: SEAMARKS_MIN, opacity: 1,
     info: { src: 'OpenSeaMap seamark overlay', lic: 'CC BY-SA 2.0 · OpenSeaMap contributors', res: 'Crowd-sourced; completeness varies. Not an official chart', url: 'https://openseamap.org' } },
 
   { id: 'coastline', group: 'land', label: 'Coastline', on: true,
     info: { src: 'OSM water polygons via OpenFreeMap', lic: 'ODbL · © OpenStreetMap contributors', res: 'Detailed at zoom ≥ 10 where OSM is well mapped; generalised below', url: 'https://osmdata.openstreetmap.de/data/water-polygons.html' } },
   { id: 'relief', group: 'land', label: 'Relief shading', on: true, opacity: 0.3,
     info: { src: 'Hillshade from the Terrarium DEM', lic: 'As DEM', res: 'SRTM 30 m, land only: the DEM is cut to the OSM coastline', url: 'https://registry.opendata.aws/terrain-tiles/' } },
-  { id: 'contours', group: 'land', label: 'Land contours', minzoom: 9, opacity: 1,
+  { id: 'contours', group: 'land', label: 'Land contours', minzoom: CONTOURS_MIN, opacity: 1,
     info: { src: 'Contoured in your browser from the Terrarium DEM', lic: 'As DEM', res: 'SRTM 30 m; interval by zoom', url: 'https://github.com/onthegomap/maplibre-contour' } },
   { id: 'roads', group: 'land', label: 'Roads', on: true, minzoom: 6, opacity: 1,
     info: { ...OSM, src: 'OpenStreetMap via OpenFreeMap', res: 'Minor roads appear from zoom 12' } },

@@ -7,7 +7,7 @@
 
 import { densify, inverse, destination, areaOf, lengthOf } from '../geodesy.js';
 import { mercator, unmercator, D2R, nearestOnSegment, unrollTo } from '../geo.js';
-import { isShown, groupsOf, groupsOnlyOf, linkFrom, reading } from './document.js';
+import { isShown, groupsOf, groupsOnlyOf, linkFrom, reading, holderOf, membersOf } from './document.js';
 
 const TOL = 1e-4; // a curve is sampled finer until its length changes by less than this, relative
 const MAX_SAMPLES = 4096;
@@ -96,7 +96,7 @@ export function lineTrace(doc, line) {
     at.push(length);
   }
   const trace = { coords, length, at, legs, area: line.closed ? areaOf(coords) : 0 };
-  if (cache.size > 5000) cache.clear();
+  if (cache.size > Math.max(5000, 2 * doc.lines.length)) cache.clear(); // kept for every line a drawing has (one pass would miss them all)
   cache.set(line.id, { key, line: trace });
   return trace;
 }
@@ -142,10 +142,11 @@ export function nearestAlong(coords, p) {
 
 // A point holding shapes is one thing placed (a vehicle, a sector, a preset of the user's): what
 // it is, its preset's name, else its own less its number ("Aerial vehicle 3": "Aerial vehicle")
-const holders = (doc) => { const pts = new Set(doc.points.map((p) => p.id)); return new Set([...doc.circles, ...doc.lines].map((x) => x.groupId).filter((id) => pts.has(id))); };
 const shapeKind = (p) => p.properties.find((x) => x.key === 'preset')?.value || p.name.replace(/\s+\d+$/, '').trim() || 'Shape';
-// held: a circle or a closed line a point holds (holding: holders'), counted with its point, not on its own
-const held = (holding, el) => (el.radius != null || el.closed) && holding.has(el.groupId);
+// held: a shape a point holds (a circle, a closed line), counted with its point, not on its own; holds:
+// a point holding shapes (one thing placed). Read in an indexed pass (totals, breakdown: reading())
+const held = (doc, el) => !!holderOf(doc, el);
+const holds = (doc, p) => membersOf(doc, p.id).length > 0;
 
 // Totals: the open lines' count and length (guides left out: they are supporting geometry), the
 // points' count, what was placed (a point holding shapes, counted once with them), the free circles'
@@ -155,19 +156,19 @@ const held = (holding, el) => (el.radius != null || el.closed) && holding.has(el
 export const totals = (doc, ...rest) => reading(doc, () => totalsIn(doc, ...rest)); // indexed while it reads
 function totalsIn(doc) {
   const bucket = () => ({ length: 0, lines: 0, points: 0, placed: 0, circles: 0, areas: 0, hidden: false });
-  const groups = new Map(), all = bucket(), holding = holders(doc);
+  const groups = new Map(), all = bucket();
   const into = (key) => { if (!groups.has(key)) groups.set(key, bucket()); return groups.get(key); };
   const each = (el, fn) => {
     const gs = groupsOf(doc, el).map((g) => g.id);
     for (const b of [...(gs.length ? gs : ['']).map(into), all]) { fn(b); if (!isShown(doc, el)) b.hidden = true; }
   };
   for (const s of doc.lines) {
-    if (s.guide || held(holding, s)) continue;
+    if (s.guide || held(doc, s)) continue;
     const len = s.closed ? 0 : lineTrace(doc, s).length;
     each(s, (b) => { if (s.closed) b.areas++; else { b.length += len; b.lines++; } });
   }
-  for (const p of doc.points) if (!p.guide) each(p, (b) => { b[holding.has(p.id) ? 'placed' : 'points']++; });
-  for (const c of doc.circles) if (!c.guide && !held(holding, c)) each(c, (b) => { b.circles++; });
+  for (const p of doc.points) if (!p.guide) each(p, (b) => { b[holds(doc, p) ? 'placed' : 'points']++; });
+  for (const c of doc.circles) if (!c.guide && !held(doc, c)) each(c, (b) => { b.circles++; });
   return { groups, all };
 }
 
@@ -204,12 +205,12 @@ export const breakdown = (doc, ...rest) => reading(doc, () => breakdownIn(doc, .
 function breakdownIn(doc, by = null, only = null) {
   const counted = (el) => !el.guide && (!only || only.has(el.id)); // only: the ids counted (a group's members), else all
   const keyOf = (el) => (by ? el.properties.find((p) => p.key === by)?.value ?? '' : groupsOnlyOf(doc, el)[0]?.id ?? ''); // a group, not a shape's point
-  const made = madeLines(doc), rows = new Map(), holding = holders(doc);
+  const made = madeLines(doc), rows = new Map();
   const rowOf = (key) => { if (!rows.has(key)) rows.set(key, { key, lines: [], parts: new Map(), count: 0, length: 0, hidden: false }); return rows.get(key); };
   const lines = { count: 0, length: 0, hidden: false };
   const areas = { rows: [], count: 0, area: 0, perimeter: 0, hidden: false };
   for (const s of doc.lines) {
-    if (!counted(s) || held(holding, s)) continue;
+    if (!counted(s) || held(doc, s)) continue;
     if (s.closed) {
       const { area, length: perimeter } = lineTrace(doc, s);
       areas.rows.push({ id: s.id, area, perimeter });
@@ -224,8 +225,8 @@ function breakdownIn(doc, by = null, only = null) {
   }
   const points = { count: 0, hidden: false, kinds: new Map() }; // kinds: by kind, or by the property's values
   for (const p of [...doc.points, ...doc.circles]) {
-    if (!counted(p) || held(holding, p)) continue;
-    const k = by ? keyOf(p) : holding.has(p.id) ? shapeKind(p) : p.radius ? (p.aperture ? 'Sector' : 'Circle') : 'Point';
+    if (!counted(p) || held(doc, p)) continue;
+    const k = by ? keyOf(p) : holds(doc, p) ? shapeKind(p) : p.radius ? (p.aperture ? 'Sector' : 'Circle') : 'Point';
     points.kinds.set(k, (points.kinds.get(k) || 0) + 1);
     points.count++;
     if (!isShown(doc, p)) points.hidden = true;

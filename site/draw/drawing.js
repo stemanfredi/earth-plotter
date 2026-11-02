@@ -108,7 +108,11 @@ export class Drawing extends DrawStore {
     const set = (id, features) => this.map.getSource(id)?.setData({ type: 'FeatureCollection', features });
     if (parts.base) { set('draw', p.base); this.values = null; this.labelTexts = null; }
     if (parts.zoom) set('drawzoom', p.zoom);
-    if (parts.base || parts.marks) set('drawvalue', [...(this.values ??= valueFeatures(this.doc, this.units(), this.bearings())), ...this.draftValues()]);
+    // the values: again when the drawing changed, or while what is drawn or dragged shows its own (not
+    // at every move of the pointer otherwise: a drawing's values are many)
+    const draft = parts.base || parts.marks ? this.draftValues() : [];
+    if (parts.base || draft.length || this.draftShown) set('drawvalue', [...(this.values ??= valueFeatures(this.doc, this.units(), this.bearings())), ...draft]);
+    this.draftShown = draft.length > 0;
     if (parts.marks) {
       let over = [...p.marks, ...this.draftFeatures()];
       // the generator's form: the lines and nodes it would make, faint, and the roots picked, ringed; the
@@ -155,14 +159,16 @@ export class Drawing extends DrawStore {
     return [...new Set([...within(1), ...within(pad)])];
   }
   click(e) {
+    if (this.pressedHandle) { this.pressedHandle = false; e.cleared = true; return; } // the click a press on a handle ends: the handle's, not a selection's
     const p = [e.lngLat.lng, e.lngLat.lat];
     if (this.tool === 'line' || this.tool === 'measure') return this.lineClick(e.point, e.originalEvent);
     if (this.tool === 'shape') return this.shapeClick(e.point, e.originalEvent);
     if (this.tool === 'sector') return this.sectorClick(e.point, e.originalEvent);
     // picking (Connect's roots): a click on a point or anywhere is for the picker, not a selection
-    if (this.picking && !this.tool) { this.picking(this.pointAt(e.point), p); return; } // a point, or a place (no point there)
+    if (this.picking && !this.tool) { e.cleared = true; this.picking(this.pointAt(e.point), p); return; } // a point, or a place (no point there); used here, no depth asked
     if (this.keepSel && !this.tool) return;
     if (this.tool === 'label') return this.placeLabel(e.point, p);
+    if (this.repointing) e.cleared = true; // Attach to…'s click, a miss too: used here, no depth asked
     if (this.repointing?.index === null) { // a shape held by the point clicked (its inspector's Attach to…)
       const { id } = this.repointing, pid = this.pointAt(e.point);
       this.cancelRepoint();
@@ -215,6 +221,17 @@ export class Drawing extends DrawStore {
       return;
     }
     if (this.snapMark && !this.drag) { this.snapMark = null; this.renderMarks(); }
+    // Attach to… waiting, the Label tool: where a click would snap, marked as for drawing (a label points
+    // at anything a snap finds; a line's vertex attaches where the model allows)
+    const rp = this.repointing, label = this.tool === 'label' || (rp && find(this.doc, rp.id)?.kind === 'label');
+    if (label) { // where the label would point, as its click finds it (anchorFor): marked
+      const r = this.anchorFor(e.point, [e.lngLat.lng, e.lngLat.lat]);
+      this.snapMark = r.to ? { kind: r.to.edge != null ? 'edge' : 'vertex', position: r.position, free: false } : null;
+      this.renderMarks();
+    } else if (rp && rp.index !== null) {
+      this.snapFor(e.point, e.originalEvent, { exclude: new Set([rp.id]), attaches: true });
+      this.renderMarks();
+    }
     if (this.repointing || this.boxNext) { this.map.getCanvas().style.cursor = 'crosshair'; return; }
     // picking roots (the form's Connect): over a point, it is taken (or dropped); elsewhere, a new
     // root is placed there
@@ -261,7 +278,10 @@ export class Drawing extends DrawStore {
     this.repointing = { id, index };
     this.map.getCanvas().style.cursor = 'crosshair';
   }
-  cancelRepoint() { this.repointing = null; this.map.getCanvas().style.cursor = ''; }
+  cancelRepoint() { this.repointing = null; this.snapMark = null; this.map.getCanvas().style.cursor = ''; }
+  // Attach to… given up by something else started (a tool, Box select): the panel told, its button
+  // let go
+  giveUpRepoint() { if (!this.repointing) return; this.cancelRepoint(); this.renderMarks(); this.onChange('sel'); }
   // what a click on the map picks while the generator's form is open (fn(nodeId, position)), or null
   setPicking(fn, keepSel = !!fn) { this.picking = fn; this.keepSel = keepSel; if (!fn && !this.tool) this.map.getCanvas().style.cursor = ''; }
   // a tool's variant chosen (its row of kinds): the tool on with it
@@ -273,6 +293,7 @@ export class Drawing extends DrawStore {
   // ---- tools -----------------------------------------------------------------------------
   start(tool) {
     if (this.keepSel) this.onChange('cancel'); // a form open (Distribute, Connect): closed, as Esc closes it
+    this.giveUpRepoint(); // Attach to… waiting: given up (the next click is the tool's)
     if (this.tool) this.stop();
     this.boxNext = false;
     clearTimeout(this.dblZoom); // stop()'s, which would turn it on again after this
@@ -304,6 +325,7 @@ export class Drawing extends DrawStore {
     return this.clip.items.length;
   }
   paste(clip = this.clip, at = null) {
+    if (this.moving()) return 0;
     const c = clip && centreOf(clip);
     if (!c) return 0;
     const pt = at ?? this.lastPoint ?? this.map.project(this.map.getCenter());
@@ -315,6 +337,7 @@ export class Drawing extends DrawStore {
     return made.length;
   }
   duplicate() {
+    if (this.moving()) return 0;
     const clip = this.sel.size && clipOf(this.doc, [...this.sel]), c = clip && centreOf(clip);
     if (!c) return 0;
     const q = this.map.project(c);
@@ -356,21 +379,34 @@ export class Drawing extends DrawStore {
   }
 
   // Undo while a line or measurement is being drawn: its last point back (Backspace too)
-  undo() { if (this.draft) this.undoPoint(); else super.undo(); }
+  // while a drag moves nothing else changes the drawing (Undo, Redo, Delete, Paste…: its next move
+  // would put the drawing back as it was, the change and an undo step lost); Esc ends it first. A press
+  // not yet moved lets a change through (a field applied as it loses the focus to that press), and the
+  // drag then starts from the drawing so changed
+  moving() { return !!this.drag?.moved; }
+  pressed() { if (this.drag) this.drag.orig = JSON.stringify(this.doc); }
+  undo() { if (this.moving()) return; if (this.draft) this.undoPoint(); else super.undo(); this.pressed(); }
+  redo() { if (this.moving()) return; super.redo(); this.pressed(); }
+  change(fn) { if (this.moving()) return false; const made = super.change(fn); this.pressed(); return made; }
+  // Back one level (Esc, a right-click with nothing to finish, the touch Back): a drag put back, a box
+  // dropped, a form closed, Attach to… given up, what is half drawn dropped, else the tool ended, else
+  // Box select off, else the selection cleared
+  back() {
+    if (this.drag) return this.cancelDrag();
+    if (this.dropBox?.()) return; // a box being drawn: dropped
+    if (this.keepSel) return this.onChange('cancel'); // the form's Cancel
+    if (this.repointing) { this.cancelRepoint(); return this.onChange('sel'); }
+    if (this.tool) return this.escape();
+    if (this.boxNext) return this.boxSelect(false);
+    this.select([]);
+  }
   // The keys and clicks of what is being drawn, from anywhere but a field or a dialog: Enter, a
   // double-click or a right-click (not a right drag, which rotates the map) finishes the line or
   // polygon, as in QGIS; a right-click with nothing to finish steps back one level, as Esc does:
   // a drag undone, a form closed, Attach to… given up, what is half-drawn dropped, else the tool
   // ended, else the selection cleared. Backspace (or Undo) takes back a point.
   keyEvents(map) {
-    const escape = () => {
-      if (this.drag) return this.cancelDrag();
-      if (this.keepSel) return this.onChange('cancel'); // the form's Cancel
-      if (this.repointing) { this.cancelRepoint(); return this.onChange('sel'); }
-      if (this.tool) return this.escape();
-      if (this.boxNext) return this.boxSelect(false);
-      this.select([]);
-    };
+    const escape = () => this.back();
     let right = null;
     map.on('mousedown', (e) => { if (e.originalEvent.button === 2) right = e.point; });
     map.on('contextmenu', (e) => { if (right && Math.hypot(e.point.x - right.x, e.point.y - right.y) <= 3) { if (this.finishesOnDoubleClick() && this.pathPoints().length >= 2) this.finish(); else escape(); } });

@@ -39,18 +39,28 @@ export async function fetchBytes(url) {
 export const tileUrl = (template, z, x, y) => template.replace('{z}', z).replace('{x}', x).replace('{y}', y);
 // A cache of promises (max Infinity: every one kept), the least recently used forgotten past max: get(key, make) gives the
 // one kept or makes it (forgotten if it fails, so the next ask tries again); peek(key) the one kept,
-// if any, without counting as a use; drop(key) forgets it.
-export function lru(max) {
-  const m = new Map();
+// if any, without counting as a use; drop(key) forgets it. maxAge (ms): one older is made again (what a
+// service offers that grows, its dates: a page left open, or resumed the next day, asks again); if that
+// fails, the one kept stays, asked again an hour later (offline, a service down: the last known)
+export function lru(max, maxAge = Infinity) {
+  const m = new Map(), born = new Map();
   const get = (key, make) => {
-    if (m.has(key)) { const v = m.get(key); m.delete(key); m.set(key, v); return v; }
+    if (m.has(key) && Date.now() - born.get(key) < maxAge) { const v = m.get(key); m.delete(key); m.set(key, v); return v; }
+    if (m.has(key)) { // too old: made again, the one kept if that fails
+      const old = m.get(key);
+      born.set(key, Date.now());
+      const v = make().catch(() => { born.set(key, Date.now() - maxAge + 36e5); return old; });
+      m.delete(key); m.set(key, v);
+      return v;
+    }
+    born.set(key, Date.now());
     // forgotten only while it is the one kept: dropped, its key may hold a newer one by the time it fails
     const v = make().catch((e) => { if (m.get(key) === v) m.delete(key); throw e; });
     m.set(key, v);
-    if (m.size > max) m.delete(m.keys().next().value);
+    if (m.size > max) { const old = m.keys().next().value; m.delete(old); born.delete(old); }
     return v;
   };
   get.peek = (key) => m.get(key);
-  get.drop = (key) => m.delete(key);
+  get.drop = (key) => { born.delete(key); return m.delete(key); };
   return get;
 }

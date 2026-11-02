@@ -6,7 +6,7 @@
 //   CHROME=/path/to/chrome npm run smoke     (default: /usr/bin/google-chrome)
 // Network-dependent by design: it is also what tells us a provider changed or went down.
 import { readFile } from 'node:fs/promises';
-import { start, openPage, exportItem, unzip, settled, frames } from './browser.mjs';
+import { start, openPage, exportItem, unzip, settled, frames, until } from './browser.mjs';
 import { setSwVersion } from './serve.mjs';
 import { tileBounds } from '../site/geo.js';
 import { OFFLINE_PREFIXES } from '../site/hosts.js';
@@ -49,16 +49,25 @@ await section('the default view and the menu', async () => {
   // menu: a row's switch turns its layer on; the base cards swap chart and satellite
   await p.click('label[for=i-seamarks]');
   check((await visible(p, 'seamarks')) === 'visible', 'a layer row turns its layer on');
+  // credited only where drawn: the seamarks from zoom 9 (the default view is wider)
+  const seaCredit = () => p.evaluate(() => /OpenSeaMap/.test(document.querySelector('.credits-text')?.textContent || ''));
+  await frames(p); // the credits drawn (a frame after the layer comes on)
+  const z0 = await p.evaluate(() => map.getZoom()), wide = z0 < 9 && !(await seaCredit());
+  await p.evaluate(() => map.jumpTo({ zoom: 10 }));
+  await until(p, () => /OpenSeaMap/.test(document.querySelector('.credits-text')?.textContent || ''), null);
+  const close = await seaCredit();
+  await p.evaluate((z) => map.jumpTo({ zoom: z }), z0); // back as it was
+  check(wide && close, `credits: the seamarks credited where they are drawn, not below zoom 9 (${wide}, ${close})`);
   await p.click('.basecard[data-base=sat]');
   check((await visible(p, 'esri')) === 'visible' && (await visible(p, 'water')) === 'none', 'satellite replaces the chart base');
   // the credits follow the base map a moment later (Esri's text is fetched): waited for, not timed
-  await p.waitForFunction(() => /^Powered by Esri/.test(document.querySelector('.credits-text')?.textContent || ''), null, { timeout: 10000 }).catch(() => {});
+  await until(p, () => /^Powered by Esri/.test(document.querySelector('.credits-text')?.textContent || ''), null, 10000);
   const credits = await p.evaluate(() => document.querySelector('.credits-text')?.textContent || '');
   const live = await p.evaluate(async () => (await (await fetch('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer?f=json')).json()).copyrightText);
   check(credits.includes('Powered by Esri') && credits.includes(live), `Esri credits: "Powered by Esri" and the service's own text (${live})`, true);
   // the base map's credit first, so a line cut at its end ("…") never cuts it
   await p.click('.basecard[data-base=chart]');
-  await p.waitForFunction(() => /^© OpenStreetMap/.test(document.querySelector('.credits-text')?.textContent || ''), null, { timeout: 10000 }).catch(() => {});
+  await until(p, () => /^© OpenStreetMap/.test(document.querySelector('.credits-text')?.textContent || ''), null, 10000);
   const chartCredits = await p.evaluate(() => document.querySelector('.credits-text').textContent);
   check(credits.startsWith('Powered by Esri') && chartCredits.startsWith('© OpenStreetMap'), `the base map's credit first (${credits.slice(0, 30)}… / ${chartCredits.slice(0, 30)}…)`);
   await p.close();
@@ -72,7 +81,7 @@ await section('URL state, Link, Measure, a bad link', async () => {
   await p.keyboard.press('m'); // Measure, a distance
   await p.mouse.click(300, 300);
   await p.mouse.move(420, 340);
-  await p.waitForFunction(() => map.querySourceFeatures('drawvalue').length > 0, null, { timeout: 5000 }).catch(() => {}); // the leg's values drawn
+  await until(p, () => map.querySourceFeatures('drawvalue').length > 0, null); // the leg's values drawn
   const liveValues = await p.evaluate(() => map.querySourceFeatures('drawvalue').length);
   await p.mouse.dblclick(420, 340);
   const made = await p.evaluate(() => [drawing.doc.lines.length, drawing.sel.has(drawing.doc.lines[0]?.id), drawing.tool]);
@@ -105,7 +114,7 @@ await section('the frame', async () => {
     new URLSearchParams(location.hash.slice(1)).has('menu')]);
   const opened = await now();
   await pv.keyboard.press('l');
-  await pv.waitForFunction(() => document.querySelector('#side').hidden, null, { timeout: 5000 }).catch(() => {});
+  await until(pv, () => document.querySelector('#side').hidden, null);
   const closed = await now();
   await pv.click('#bar .ptab[data-tab=layers]');
   const back = await now();
@@ -144,7 +153,7 @@ await section('NASA true colour', async () => {
   // are of the day shown (no older day passed off as it)
   const tc = await open('#v=5/40/10/0&col=gibs:terra&on=chart,coastline', ctx, 'layers', ['data']);
   // the tiles of the day in the link (both set once NASA's days are read)
-  await tc.waitForFunction(() => { const day = /\/(\d{4}-\d{2}-\d{2})\//.exec(map.getSource('gibs-terra').tiles[0])?.[1]; return map.getLayoutProperty('gibs-terra', 'visibility') === 'visible' && day && location.hash.includes(`t=${day}`); }, null, { timeout: 20000 }).catch(() => {});
+  await until(tc, () => { const day = /\/(\d{4}-\d{2}-\d{2})\//.exec(map.getSource('gibs-terra').tiles[0])?.[1]; return map.getLayoutProperty('gibs-terra', 'visibility') === 'visible' && day && location.hash.includes(`t=${day}`); }, null, 20000);
   const [tcTiles, tcHash, rowsOn, tcNotes] = await tc.evaluate(() => [map.getSource('gibs-terra').tiles[0], location.hash, document.querySelector('#shown').hidden ? 'hidden' : 'shown',
     document.querySelectorAll('.item .note:not([hidden])').length]);
   const tcDay = /\/(\d{4}-\d{2}-\d{2})\//.exec(tcTiles)?.[1] || '', tcT = /t=([\d-]+T\d\d)/.exec(tcHash)?.[1] || '';
@@ -178,7 +187,7 @@ await section('search', async () => {
   let photonCalls = 0;
   sp.on('request', (r) => { if (r.url().includes('photon.komoot.io')) photonCalls++; });
   await findOpen(sp);
-  const arrived = (lat, lon, tol) => sp.waitForFunction(({ lat, lon, tol }) => { const c = map.getCenter(); return !map.isMoving() && Math.abs(c.lat - lat) < tol && Math.abs(c.lng - lon) < tol; }, { lat, lon, tol }, { timeout: 10000 }).catch(() => {});
+  const arrived = (lat, lon, tol) => until(sp, ({ lat, lon, tol }) => { const c = map.getCenter(); return !map.isMoving() && Math.abs(c.lat - lat) < tol && Math.abs(c.lng - lon) < tol; }, { lat, lon, tol }, 10000);
   await sp.fill('#q', '35 54N 14 31E');
   await sp.keyboard.press('Enter');
   await arrived(35.9, 14 + 31 / 60, 0.01);
@@ -200,7 +209,7 @@ await section('vessel density', async () => {
   check(await tr.evaluate(() => !!document.querySelector('#legends canvas[data-legend=traffic]')), 'vessel density legend shown', true);
   await tr.selectOption('.item:has(#i-traffic) select.variant', 't10');
   await tr.selectOption('.item:has(#i-traffic) select.period', '2019');
-  await tr.waitForFunction(() => /per=traffic:2019/.test(location.hash), null, { timeout: 5000 }).catch(() => {}); // written 250 ms after a change
+  await until(tr, () => /per=traffic:2019/.test(location.hash), null); // written 250 ms after a change
   const tiles = await tr.evaluate(() => map.getSource('traffic').tiles[0]);
   const hash = await tr.evaluate(() => location.hash);
   check(/vesseldensity_10avg&/.test(tiles) && /time=2019-/.test(tiles), 'ship type and year select the WMS layer and time');
@@ -214,7 +223,7 @@ await section('route density', async () => {
   check(rt.errors.length === 0 && !(await rt.evaluate(() => document.querySelector('#i-routes').closest('.item').classList.contains('error'))), `route density loads ${rt.errors.join(' | ')}`, true);
   await rt.selectOption('.item:has(#i-routes) select.variant', 't04');
   await rt.selectOption('.item:has(#i-routes) select.period', '2025-11');
-  await rt.waitForFunction(() => /per=[^&]*routes:2025-11/.test(location.hash), null, { timeout: 5000 }).catch(() => {}); // written 250 ms after a change
+  await until(rt, () => /per=[^&]*routes:2025-11/.test(location.hash), null); // written 250 ms after a change
   const rtiles = await rt.evaluate(() => map.getSource('routes').tiles[0]);
   check(/routedensity_04&/.test(rtiles) && /time=2025-11-01T/.test(rtiles) && /per=[^&]*routes:2025-11/.test(await rt.evaluate(() => location.hash)), 'route density month and type in tiles and link');
   check(await rt.evaluate(() => !!document.querySelector('#legends canvas[data-legend=routes]')), 'route density legend shown', true);
@@ -225,7 +234,7 @@ await section('route density', async () => {
 await section('Copernicus layers, the time line, About, the manifest, my location', async () => {
   // Copernicus sea state, waves in colour and currents in arrows: tiles load, the legends show
   const cm = await open('#v=6/40/14/0&col=waves:height&arr=currents:surface&on=chart,coastline,legend', ctx, 'layers', ['data']);
-  await cm.waitForFunction(() => document.querySelectorAll('#legends canvas[data-legend=waves], #legends canvas[data-legend=currents]').length === 2, null, { timeout: 30000 }).catch(() => {});
+  await until(cm, () => document.querySelectorAll('#legends canvas[data-legend=waves], #legends canvas[data-legend=currents]').length === 2, null, 30000);
   const cmBroken = await cm.evaluate(() => [...document.querySelectorAll('.item.error, .item.partial')].map((r) => `${r.querySelector('.name').textContent} (${r.title})`));
   check(cmBroken.length === 0 && cm.errors.length === 0, `Copernicus waves and currents load ${cmBroken.join(', ')} ${cm.errors.join(' | ')}`, true);
   const [cmPicks, cmLink] = await cm.evaluate(() => [[...document.querySelectorAll('.pick select')].map((s) => s.value).join(' '), location.hash]);
@@ -239,7 +248,7 @@ await section('Copernicus layers, the time line, About, the manifest, my locatio
   const [minMax, shownOn] = await cm.evaluate(() => [[document.querySelector('#shown input').min, document.querySelector('#shown input').max], !document.querySelector('#shown').hidden]);
   check(shownOn && minMax[0] > '2020' && minMax[1] > minMax[0] && !minMax[1].startsWith('2099'), `the field holds the dates the layers have (${minMax.join(' to ')})`, true);
   await cm.fill('#shown input', aLocal);
-  await cm.waitForFunction((t) => location.hash.includes(`t=${t}`), new Date(ahead).toISOString().slice(0, 13), { timeout: 5000 }).catch(() => {});
+  await until(cm, (t) => location.hash.includes(`t=${t}`), new Date(ahead).toISOString().slice(0, 13));
   const [shownText, cmHash] = await cm.evaluate(() => [document.querySelector('#shown').textContent, location.hash]);
   check(!shownText.startsWith('Today') && cmHash.includes(`t=${new Date(ahead).toISOString().slice(0, 13)}`), `a time picked on the time line is drawn, shown beside the coordinates and kept in the link (${shownText})`);
   const cmAgain = await open(cmHash);
@@ -247,10 +256,10 @@ await section('Copernicus layers, the time line, About, the manifest, my locatio
   // a day typed key by key passes through years 0002, 0020, 0202: none of them is taken
   await cm.focus('#shown input');
   await cm.keyboard.type(`${aLocal.slice(5, 7)}${aLocal.slice(8, 10)}${aLocal.slice(0, 4)}`); // en-US field: mm dd yyyy first
-  await cm.waitForFunction(() => /t=20\d\d-/.test(location.hash), null, { timeout: 5000 }).catch(() => {}); // a year before 2000 stays: the wait fails, the check too
+  await until(cm, () => /t=20\d\d-/.test(location.hash), null); // a year before 2000 stays: the wait fails, the check too
   check(/t=20\d\d-/.test(await cm.evaluate(() => location.hash)), 'a day typed key by key never jumps to a year before 2000');
   await cm.fill('#shown input', await cm.evaluate(() => { const d = new Date(), p = (n) => String(n).padStart(2, '0'); return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:00`; }));
-  await cm.waitForFunction(() => document.querySelector('#shown').textContent.startsWith('Today'), null, { timeout: 5000 }).catch(() => {});
+  await until(cm, () => document.querySelector('#shown').textContent.startsWith('Today'), null);
   check((await cm.evaluate(() => document.querySelector('#shown').textContent)).startsWith('Today'), 'now typed in the field goes back to today');
   // About, the bar's ⓘ
   await cm.click('#bar .aboutbtn');
@@ -268,7 +277,7 @@ await section('Copernicus layers, the time line, About, the manifest, my locatio
   await cm.context().setGeolocation({ latitude: 40.85, longitude: 14.27, accuracy: 30 });
   await cm.click('#locate');
   const shown = () => map.getSource('mylocation').serialize().data.features.length;
-  await cm.waitForFunction(() => map.getSource('mylocation').serialize().data.features.length === 2 && !map.isMoving(), null, { timeout: 15000 }).catch(() => {}); // a function: the policy refuses a string polled (eval)
+  await until(cm, () => map.getSource('mylocation').serialize().data.features.length === 2 && !map.isMoving(), null, 15000); // a function: the policy refuses a string polled (eval)
   const loc = await cm.evaluate(`[document.querySelector('#locate').getAttribute('aria-pressed'), (${shown})(), map.getCenter().lng, map.getCenter().lat]`);
   await cm.click('#locate');
   const off = await cm.evaluate(`[document.querySelector('#locate').getAttribute('aria-pressed'), (${shown})()]`);
@@ -294,7 +303,7 @@ await section('the Ocean data menus', async () => {
   await sl.evaluate(`window.looks = ${LOOKS}`); // for the waits below: the policy refuses a string polled (eval)
   // what is drawn once it is as expected (a wrong look: the wait fails, the check too)
   const looks = async (want, hash = '') => {
-    await sl.waitForFunction(([want, hash]) => window.looks() === want && location.hash.includes(hash), [want, hash], { timeout: 10000 }).catch(() => {});
+    await until(sl, ([want, hash]) => window.looks() === want && location.hash.includes(hash), [want, hash], 10000);
     return sl.evaluate(LOOKS);
   };
   const l1 = await looks('waves:colour currents:arrows');
@@ -305,7 +314,7 @@ await section('the Ocean data menus', async () => {
   const [l3, l3hash] = [await looks('currents:both', 'col=currents:surface&arr=currents:surface'), await sl.evaluate(() => location.hash)];
   await sl.selectOption('select[aria-label=Colours]', '');
   await sl.selectOption('select[aria-label=Arrows]', '');
-  await sl.waitForFunction(() => document.querySelector('#shown').hidden, null, { timeout: 10000 }).catch(() => {});
+  await until(sl, () => document.querySelector('#shown').hidden, null, 10000);
   const [l4, whenHidden] = [await looks(''), await sl.evaluate(() => document.querySelector('#shown').hidden)];
   check(l1 === 'waves:colour currents:arrows' && l2 === 'waves:colour wind:arrows' && l3 === 'currents:both' && /col=currents:surface&arr=currents:surface/.test(l3hash) && !l4 && whenHidden,
     `Ocean data menus: ${l1} → arrows wind: ${l2} → currents in both: ${l3} → none: ${l4 || 'nothing drawn, no time line'}`);
@@ -316,7 +325,7 @@ await section('water properties at a depth', async () => {
   // water properties at a depth from the link: "100 m deep" in its chip beside the time's, each model
   // at its own level (the export records it), no note under the row
   const wp = await open('#v=5/40/10/0&col=temperature:depth&on=chart,coastline,legend&dz=100', ctx, 'layers', ['data']);
-  await wp.waitForFunction(() => !!document.querySelector('#legends canvas[data-legend=temperature]')?.style.width, null, { timeout: 30000 }).catch(() => {});
+  await until(wp, () => !!document.querySelector('#legends canvas[data-legend=temperature]')?.style.width, null, 30000);
   const [wpDepth, wpNotes, wpBroken] = await wp.evaluate(() => [document.querySelector('#depth').value + ' ' + document.querySelector('#depth').selectedOptions[0]?.textContent,
     document.querySelectorAll('.item .note:not([hidden])').length, [...document.querySelectorAll('.item.error, .item.partial')].map((r) => r.title)]);
   check(wpDepth === '100 100 m deep' && !wpNotes && !wpBroken.length && !wp.errors.length, `temperature at 100 m, shown in the depth chip as "100 m deep": ${wpDepth} ${wpBroken.join(' ')} ${wp.errors.join(' | ')}`, true);
@@ -330,7 +339,7 @@ await section('a satellite observation', async () => {
   // a satellite observation opened at now: the time goes no later than its latest day, and the
   // day shown is the day drawn
   const ob = await open('#v=5/40/10/0&col=sst:measured&on=chart,coastline,legend', ctx, 'layers', ['data']);
-  await ob.waitForFunction(() => /t=/.test(location.hash) && !!document.querySelector('#legends canvas[data-legend=sst]')?.style.width, null, { timeout: 30000 }).catch(() => {});
+  await until(ob, () => /t=/.test(location.hash) && !!document.querySelector('#legends canvas[data-legend=sst]')?.style.width, null, 30000);
   const OB = () => {
     const t = /t=([\d-]+T\d\d)/.exec(location.hash)?.[1] || '', ms = Date.parse(`${t}:00:00Z`);
     return [t, ms <= new Date(document.querySelector('#shown input').max).getTime(), document.querySelector('#shown').textContent,
@@ -338,7 +347,7 @@ await section('a satellite observation', async () => {
   };
   // the time moved to the latest day the observation has: its day shown
   await ob.evaluate(`window.ob = ${OB}`);
-  await ob.waitForFunction(() => { const [t, within, shown, day] = window.ob(); return t && within && (shown === 'Today' || shown === day); }, null, { timeout: 10000 }).catch(() => {});
+  await until(ob, () => { const [t, within, shown, day] = window.ob(); return t && within && (shown === 'Today' || shown === day); }, null, 10000);
   const [obT, obWithin, obShown, obDay, obBroken] = await ob.evaluate(OB);
   check(obT && obWithin && (obShown === 'Today' || obShown === obDay) && !obBroken.length && !ob.errors.length && !ob.providerErrors.length,
     `sea surface temperature: the time within its days, its day shown (t=${obT}, ${obShown}) ${obBroken.join(' ')} ${[...ob.errors, ...ob.providerErrors].slice(0, 3).join(' | ')}`, true);
@@ -364,7 +373,7 @@ await section('the PNG and GIS exports', async () => {
   // an export that fails says so in the note, its button as it was, and the next click tries again
   await again.route('**/polygon-clipping*', (r) => r.abort());
   await exportItem(again, 'zip');
-  await again.waitForFunction(() => /export failed/.test(document.querySelector('.dnote:not(#update)')?.textContent || ''), null, { timeout: 15000 }).catch(() => {});
+  await until(again, () => /export failed/.test(document.querySelector('.dnote:not(#update)')?.textContent || ''), null, 15000);
   const [zipNote, zipLabel] = await again.evaluate(() => [document.querySelector('.dnote:not(#update)')?.textContent || '', document.querySelector('#zip span').textContent]);
   check(/^GIS data \(ZIP\): export failed: .*polygon-clipping/.test(zipNote) && zipLabel === 'GIS data (ZIP)', `a failed GIS export says so in the note (${zipNote}; the button: ${zipLabel})`);
   await again.unroute('**/polygon-clipping*');
@@ -387,7 +396,7 @@ await section('the PNG and GIS exports', async () => {
 await section('the values of a Copernicus layer in the GIS export', async () => {
   // the values of a Copernicus layer, from its datasets' Zarr stores: global and Mediterranean waves
   const cv = await open('#v=7/39.5/14/0&col=waves:height&on=chart,coastline', ctx, 'elements');
-  await cv.waitForFunction(() => /t=/.test(location.hash), null, { timeout: 30000 }).catch(() => {}); // its datasets' times read
+  await until(cv, () => /t=/.test(location.hash), null, 30000); // its datasets' times read
   const [dv] = await Promise.all([cv.waitForEvent('download', { timeout: 120000 }), exportItem(cv, 'zip')]);
   const { names: ve, item: vi } = await unzip(await readFile(await dv.path()));
   const wave = (k) => vi.assets[k]?.bands?.[0];
@@ -409,7 +418,7 @@ await section('export parity', async () => {
   ];
   for (const [what, hash, hasTime] of PARITY) {
     const pp = await open(`${hash}`, ctx, 'elements');
-    if (hasTime) await pp.waitForFunction(() => /t=/.test(location.hash), null, { timeout: 30000 }).catch(() => {}); // the time read and in the link
+    if (hasTime) await until(pp, () => /t=/.test(location.hash), null, 30000); // the time read and in the link
     const seen = await pp.evaluate(() => { // the map, read from MapLibre itself
       const z = map.getZoom(), on = new Set(), draws = {};
       for (const l of map.getStyle().layers) {
@@ -446,7 +455,7 @@ await section('EMODnet and the depth sources', async () => {
   // EMODnet: depth and its values, seabed substrate with its classes, the human activities overlays
   const em = await open('#v=9/52.6/3.2/0&on=chart,coastline,emodnetdepth,substrate,cables,windfarms,wrecks,worlddensity,depthsource,legend', ctx, 'elements');
   // the legends drawn from what the services say (their classes)
-  await em.waitForFunction(() => ['substrate', 'depthsource'].every((id) => document.querySelector(`#legends canvas[data-legend=${id}]`)?.getAttribute('aria-label')?.includes(',')), null, { timeout: 30000 }).catch(() => {});
+  await until(em, () => ['substrate', 'depthsource'].every((id) => document.querySelector(`#legends canvas[data-legend=${id}]`)?.getAttribute('aria-label')?.includes(',')), null, 30000);
   const [emBroken, emClasses] = await em.evaluate(() => [[...document.querySelectorAll('.item.error, .item.partial')].map((r) => `${r.querySelector('.name').textContent} (${r.title})`),
     document.querySelector('#legends canvas[data-legend=substrate]')?.getAttribute('aria-label') || '']);
   const [de] = await Promise.all([em.waitForEvent('download', { timeout: 120000 }), exportItem(em, 'zip')]);
@@ -493,7 +502,7 @@ await section('seagrass', async () => {
 await section('maritime zones', async () => {
   // Marine Regions' maritime limits load, with their legend (line types, from its WMS)
   const mz = await open('#v=6/40/16/0&on=chart,coastline,maritime,legend', ctx, 'elements');
-  await mz.waitForFunction(() => /Median line/.test(document.querySelector('#legends canvas[data-legend=maritime]')?.getAttribute('aria-label') || ''), null, { timeout: 30000 }).catch(() => {});
+  await until(mz, () => /Median line/.test(document.querySelector('#legends canvas[data-legend=maritime]')?.getAttribute('aria-label') || ''), null, 30000);
   const [mzBroken, mzLegend] = await mz.evaluate(() => [[...document.querySelectorAll('.item.error, .item.partial')].map((r) => r.title), document.querySelector('#legends canvas[data-legend=maritime]')?.getAttribute('aria-label') || '']);
   check(!mzBroken.length && !mz.errors.length && /Median line/.test(mzLegend), `maritime zones load, with their legend (${mzLegend.slice(0, 60)}…) ${mzBroken.join(', ')} ${mz.errors.join(' | ')}`, true);
   await mz.close();
@@ -545,12 +554,19 @@ await section('the page without a connection, and a new version', async () => {
   const kept = await sp.evaluate(async () => [(await caches.keys()).join(), (await (await caches.open('shell-a')).keys()).map((r) => new URL(r.url).pathname)]);
   const shell = (await readFile(new URL('../site/sw.js', import.meta.url), 'utf8')).match(/shell:start[^\n]*\n([\s\S]*?)\s*\/\/ shell:end/)[1].split('\n').length;
   check(kept[0] === 'shell-a' && kept[1].length === shell && kept[1].includes('/vendor/maplibre-gl.mjs'), `offline: the worker keeps the page's ${kept[1].length} of ${shell} files (${kept[0]})`);
+  // another page of the site (a licence About links to) is itself, not the app (the worker answers
+  // only the page's own address with index.html)
+  const lic = await sctx.newPage();
+  await lic.goto(new URL('vendor/LICENSE-maplibre-gl.txt', sp.url()).href);
+  const licText = await lic.evaluate(() => document.body.innerText.slice(0, 200));
+  await lic.close();
+  check(!/<html|Elements/i.test(licText) && /licen[cs]e|copyright/i.test(licText), `worker: a licence opened inside the site, through the worker, is the licence, not the app (${licText.slice(0, 40).replace(/\s+/g, ' ')}…)`);
   await sp.evaluate(async () => { const { addPoint } = await import('./draw/document.js'); drawing.change((d) => addPoint(d, [9.5, 43.5])); });
   await sp.waitForFunction(() => !drawing.saving.timer, null, { timeout: 5000 }); // saved (draw/saving.js: 400 ms after a change)
   const drawn = await sp.evaluate(() => drawing.doc.points.length);
   await sctx.setOffline(true);
   await sp.reload();
-  await sp.waitForFunction((n) => window.drawing?.doc.points.length === n, drawn, { timeout: 15000 }).catch(() => {}); // restored once the map has loaded
+  await until(sp, (n) => window.drawing?.doc.points.length === n, drawn, 15000); // restored once the map has loaded
   const offline = await sp.evaluate(() => [!document.querySelector('#nostart'), !!document.querySelector('#bar'), drawing.doc.points.length, document.querySelector('#update').hidden]);
   check(drawn === 1 && offline[0] && offline[1] && offline[2] === drawn && offline[3], `offline: the page opens without a connection, the map started, the bar there, its ${offline[2]} points kept (${offline})`);
   await sctx.setOffline(false);
@@ -604,7 +620,7 @@ await section('a saved area: served from it, online and without a connection; Es
   await ap.goto(base + view);
   await ap.waitForFunction(() => window.map?.loaded?.() && map.areTilesLoaded(), null, { timeout: 90000 });
   await settled(ap);
-  await new Promise((r) => { const quiet = () => (loading.size ? setTimeout(quiet, 100) : r()); quiet(); }); // and nothing of a saved host still on its way
+  await new Promise((r) => { const by = Date.now() + 30000, quiet = () => (loading.size && Date.now() < by ? setTimeout(quiet, 100) : r()); quiet(); }); // and nothing of a saved host still on its way (30 s at most: the checks after say what is not)
   await ap.evaluate(async (urls) => {
     const cache = await caches.open('pack-test');
     for (const u of urls) if (!(await cache.match(u))) { const r = await fetch(u, { credentials: 'omit', referrerPolicy: 'no-referrer' }).catch(() => null); if (r?.ok) await cache.put(u, r); }
@@ -613,7 +629,7 @@ await section('a saved area: served from it, online and without a connection; Es
   await (await actx.newCDPSession(ap)).send('Network.clearBrowserCache'); // only the saved area can answer
   await actx.setOffline(true);
   await ap.reload();
-  await ap.waitForFunction(() => window.map?.loaded?.() && map.areTilesLoaded(), null, { timeout: 60000 }).catch(() => {});
+  await until(ap, () => window.map?.loaded?.() && map.areTilesLoaded(), null, 60000);
   await settled(ap);
   const drawn = await ap.evaluate(() => {
     const at = (layer) => map.queryRenderedFeatures({ layers: map.getStyle().layers.filter((l) => l.source === layer).map((l) => l.id) }).length;
@@ -680,7 +696,7 @@ await section('Offline areas: the view saved from the dialog, drawn without a co
   for (const [z, lng, lat] of [[8, 9.85, 44.08], [10, 9.6, 44.0], [11, 10.1, 44.2], [12, 9.85, 44.08], [12, 9.55, 43.95]]) {
     wide = z < 11;
     await op.evaluate(([z, lng, lat]) => map.jumpTo({ zoom: z, center: [lng, lat] }), [z, lng, lat]);
-    await op.waitForFunction(() => map.loaded() && map.areTilesLoaded(), null, { timeout: 60000 }).catch(() => {});
+    await until(op, () => map.loaded() && map.areTilesLoaded(), null, 60000);
     await settled(op);
     seen.push(await op.evaluate(() => map.queryRenderedFeatures().length));
   }
@@ -688,7 +704,7 @@ await section('Offline areas: the view saved from the dialog, drawn without a co
   // still without a connection: the layers kept are not marked as failing (beyond the area is no
   // fault); one not kept says why; place search says there is no connection, asking nobody
   await op.evaluate(() => document.querySelector('#i-maritime').click());
-  await op.waitForFunction(() => document.querySelector('#i-maritime').closest('.item').classList.contains('error'), null, { timeout: 15000 }).catch(() => {});
+  await until(op, () => document.querySelector('#i-maritime').closest('.item').classList.contains('error'), null, 15000);
   await settled(op);
   const marks = await op.evaluate(() => [...document.querySelectorAll('.error, .partial')].filter((r) => r.title).map((r) => `${r.querySelector('input')?.id || r.textContent.trim().slice(0, 12)}: ${r.title}`));
   check(marks.length === 1 && /^i-maritime: No connection/.test(marks[0]), `offline: only a layer not kept is marked (${marks.join(' | ') || 'none'})`);
@@ -722,7 +738,7 @@ await section('Offline areas: the view saved from the dialog, drawn without a co
   await octx.setOffline(true);
   await op.reload();
   await op.evaluate(() => map.jumpTo({ zoom: 12, center: [9.85, 44.08] }));
-  await op.waitForFunction(() => map.loaded() && map.areTilesLoaded(), null, { timeout: 60000 }).catch(() => {});
+  await until(op, () => map.loaded() && map.areTilesLoaded(), null, 60000);
   await settled(op);
   const fromFile = await op.evaluate(() => map.queryRenderedFeatures().length), missed = failed.filter((u) => !u.includes('openseamap'));
   check(fromFile > 100 && !missed.length, `offline areas, file opened again: drawn offline (${fromFile} features), ${missed.length} requests failed but the seamarks'${missed.length ? `: ${missed.slice(0, 3).join(' ')}` : ''}`);

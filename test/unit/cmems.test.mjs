@@ -61,3 +61,12 @@ test('cmemsValues: a dataset whose time steps could not be read is said, not lef
     await assert.rejects(cmemsValues(id, { variant, t: Date.UTC(2026, 9, 1), depth: 0 }, [0, 40, 1, 41]), /time steps could not be read/);
   } finally { globalThis.fetch = was; }
 });
+
+test('partIn: a global part covers every view; a regional one only views meeting its area (the Mediterranean, not the Atlantic or the Black Sea)', async () => {
+  const { partIn } = await import('../../site/cmems.js');
+  const glo = 'GLOBAL_ANALYSISFORECAST_WAV_001_027/cmems_mod_glo_wav_anfc_0.083deg_PT3H-i_202411/VHM0';
+  const med = 'MEDSEA_ANALYSISFORECAST_WAV_006_017/cmems_mod_med_wav_anfc_4.2km_PT1H-i_202311/VHM0';
+  const atlantic = [-30, 40, -20, 45], tyrrhenian = [10, 38, 14, 42], black = [30, 42, 40, 46];
+  assert.ok([atlantic, tyrrhenian, black].every((b) => partIn(glo, b)));
+  assert.deepEqual([atlantic, tyrrhenian, black].map((b) => partIn(med, b)), [false, true, false]);
+});

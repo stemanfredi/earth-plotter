@@ -126,11 +126,12 @@ async function write() {
 
 // newest period the WMS offers for each density dataset vs the newest one catalog.js lists
 async function dataReport() {
-  const { DENSITY, HA_WMS } = await import('../site/catalog.js');
+  const { DENSITY, HA_WMS, ITEMS } = await import('../site/catalog.js');
   const r = await fetch(`${HA_WMS}?service=WMS&request=GetCapabilities&version=1.3.0`);
   if (!r.ok) throw new Error(`EMODnet capabilities ${r.status}`);
   const xml = await r.text();
   for (const [id, d] of Object.entries(DENSITY)) {
+    const title = ITEMS.find((x) => x.id === id)?.label ?? id; // the layer's name as the menu shows it
     const name = d.layer('all');
     const i = xml.indexOf(`<Name>${name}</Name>`);
     const times = (/name="time"[^>]*>([^<]*)/.exec(xml.slice(i, xml.indexOf('</Layer>', i))) || [])[1] || '';
@@ -138,8 +139,8 @@ async function dataReport() {
     const listed = [...d.periods].sort().at(-1);
     const offered = id === 'traffic' ? newest?.slice(0, 4) : newest;
     const newer = offered && offered > listed;
-    console.log(`${d.title.padEnd(24)} listed to ${listed.padEnd(8)} WMS offers to ${offered}${newer ? '   ← newer data: update catalog.js' : ''}`);
-    if (newer && process.env.GITHUB_ACTIONS) console.log(`::notice title=Newer ${d.title}::the WMS has ${offered}; catalog.js lists to ${listed}`);
+    console.log(`${title.padEnd(24)} listed to ${listed.padEnd(8)} WMS offers to ${offered}${newer ? '   ← newer data: update catalog.js' : ''}`);
+    if (newer && process.env.GITHUB_ACTIONS) console.log(`::notice title=Newer ${title}::the WMS has ${offered}; catalog.js lists to ${listed}`);
   }
 }
 

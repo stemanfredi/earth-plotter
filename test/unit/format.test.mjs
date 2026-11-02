@@ -24,9 +24,9 @@ test('fmtPos: latitude then longitude, one space, the longitude within ±180°',
 test('mercatorVariation: by |lat|, 0 at the equator crossing', () => {
   assert.equal(mercatorVariation(-1e-9, 1e-9), 0);
   const across = mercatorVariation(-14, 14);
-  assert.ok(Math.abs(across - (1 / Math.cos((14 * Math.PI) / 180) - 1)) < 1e-12);
+  near(across, (1 / Math.cos((14 * Math.PI) / 180) - 1), 1e-12, '');
   assert.ok(across > 0.03); // the case that used to read 0 %
-  assert.ok(Math.abs(mercatorVariation(60, 61) - mercatorVariation(-61, -60)) < 1e-12);
+  near(mercatorVariation(60, 61), mercatorVariation(-61, -60), 1e-12, '');
   assert.ok(Number.isFinite(mercatorVariation(80, 90))); // clamped at 85°
 });
 
@@ -106,7 +106,7 @@ test('distText: as read (to the metre, 2 m), in the unit the mode reads, as the 
   assert.deepEqual(distText(1852 * 1.5, 'nm'), { text: '1.5 NM', value: 1.5, unit: 'nm' });
   for (const m of [0.4, 999.4, 1000, 12345.678]) {
     const t = distText(m, 'km');
-    assert.ok(Math.abs(parseDist(t.text, t.unit) - m) < 0.51, t.text); // within half its last digit
+    near(parseDist(t.text, t.unit), m, 0.51, t.text); // within half its last digit
   }
 });
 

@@ -60,7 +60,7 @@ export function createTools(drawing, ctx, { del, fileBtns }) {
   const touchBtn = (text, title, run) => h('button', { type: 'button', title, onclick: run }, text);
   const touch = {
     done: touchBtn('Done', 'End the line or measurement being drawn (Enter, or a double-click)', () => drawing.finish()),
-    back: touchBtn('Back', 'Back one step: what is half drawn, else the tool, else the selection (Esc)', () => (drawing.tool ? drawing.escape() : drawing.select([]))),
+    back: touchBtn('Back', 'Back one step: what is half drawn, else the tool, else the selection (Esc)', () => drawing.back()),
     del: touchBtn('Delete', 'Delete the selection (Delete)', () => del([...drawing.sel])),
     dup: touchBtn('Duplicate', `A copy of the selection beside it (${MOD} D)`, () => drawing.duplicate()),
   };

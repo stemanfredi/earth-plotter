@@ -10,6 +10,7 @@ export class Boxing {
   // box (as Shift-drag does), then back to Select; on: false puts it off
   boxSelect(on) {
     if (on && this.tool) this.stop();
+    if (on) this.giveUpRepoint(); // Attach to… waiting: given up (the next drag is the box's)
     this.boxNext = on;
     this.map.getCanvas().style.cursor = on ? 'crosshair' : '';
     this.onChange('tool');
@@ -50,6 +51,8 @@ export class Boxing {
       if (this.boxNext) this.boxSelect(false); // one box, then Select again
     };
     window.addEventListener('pointercancel', () => { if (from) end(); }); // taken by the browser: nothing selected
+    // Esc while it is drawn (keyEvents): dropped, nothing selected; true when there was one
+    this.dropBox = () => { if (!from) return false; end(); return true; };
     window.addEventListener('pointerup', (e) => {
       if (!from) return;
       const p = at(e), a = from;

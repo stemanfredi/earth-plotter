@@ -77,7 +77,7 @@ test('across the antimeridian: continuous longitudes', () => {
   lineFrom(doc, [179.5, -17], [[179.9, -16.6]], [-179.5, -16], { smooth: true });
   for (const s of doc.lines) {
     const { coords } = lineTrace(doc, s);
-    for (let i = 1; i < coords.length; i++) assert.ok(Math.abs(coords[i][0] - coords[i - 1][0]) < 1, `${s.name}: jump at ${i}`);
+    for (let i = 1; i < coords.length; i++) near(coords[i][0], coords[i - 1][0], 1, `${s.name}: jump at ${i}`);
     assert.ok(coords.at(-1)[0] > 180);
   }
 });

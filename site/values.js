@@ -2,7 +2,7 @@
 // (zarr.js) and written as GeoTIFF (geotiff.js), over the view's bounding box [west, south, east,
 // north]. Each returns [{ key, file, w, h, transform, names, units, title, description, data }].
 import { CMEMS, EMODNET_DTM, GEBCO, GEBCO_TID } from './catalog.js';
-import { partTimes, partLevels, regionOf, cmemsStacUrl, storedVariables, partOf } from './cmems.js';
+import { partTimes, partLevels, regionOf, cmemsStacUrl, storedVariables, partOf, partIn } from './cmems.js';
 import { openStore, timeScale, nearest, cellsOf, readCells } from './zarr.js';
 import { geotiff } from './geotiff.js';
 import { gebcoStore } from './gebco.js';
@@ -37,8 +37,9 @@ export async function cmemsValues(id, at, box) {
   return (await Promise.all(v.parts.map(async (part, i) => {
     // partTimes: undefined where the dataset's steps could not be read (the map asked for its tiles
     // anyway): said, not left out in silence; null where it has nothing at this time
+    if (!partIn(part, box)) return null; // a region the view does not meet: not asked about at all
     if (times[i] === undefined) throw new Error('its time steps could not be read');
-    if (times[i] === null) return null;
+    if (times[i] === null) return null; // nothing at this time
     const { store, times: ts, lat, lon, elevation } = await storeOf(part);
     const ti = nearest(ts, times[i], 6e4), zi = elevation && levels[i] != null ? nearest(elevation, +levels[i]) : 0;
     const cells = cellsOf(lat, lon, box);

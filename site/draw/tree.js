@@ -163,7 +163,7 @@ export function createTree(drawing, { facts, drawingPicked = () => {} }) {
     e.preventDefault();
     const id = dragged, t = find(drawing.doc, r.dataset.id), x = find(drawing.doc, id);
     drawing.change((doc) => {
-      if (t.kind === 'group' || (t.kind === 'point' && canHold(doc, t.el.id, id))) setGroup(doc, id, t.el.id); // into a group; a shape into a point
+      if (canHold(doc, t.el.id, id)) setGroup(doc, id, t.el.id); // into a group; a shape into a point
       else if (t.kind === x.kind) moveBefore(doc, id, t.el.id);
       else setGroup(doc, id, t.el.groupId ?? null);
     });

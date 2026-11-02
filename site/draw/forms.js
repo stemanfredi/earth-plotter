@@ -169,10 +169,11 @@ export function createForms(kit) {
       differs ? h('p', { class: 'note warn' }, `Another number of points (${editing.pointIds.length} now): they are made anew${connected ? ', and connected again' : ''}. Changes made to those by hand are lost; Undo brings them back.`) : null,
       formButtons(editing ? 'Apply' : 'Create', points.length, () => {
         let r;
-        drawing.change((d) => { r = editing ? editDistribution(d, editing.id, dformParams()) : makeDistribution(d, dformParams()); });
-        closeForm();
-        renderInspector(); // the selection may stay as it was (the group)
-        drawing.select([r.distribution.groupId]);
+        const params = dformParams();
+        closeForm(); // first: the change's rendering shows what was made, not the form again
+        const made = drawing.change((d) => { r = editing ? editDistribution(d, editing.id, params) : makeDistribution(d, params); });
+        if (r) drawing.select([r.distribution.groupId]); // drawn again if the selection changes
+        if (!made) renderInspector(); // nothing changed (or refused): the form gone all the same
       })];
   }
 
@@ -186,12 +187,12 @@ export function createForms(kit) {
       ...connectRows(c),
       formButtons(editing ? 'Connect again' : 'Connect', c.plan, () => {
         let r;
-        drawing.change((d) => { r = editing ? reconnect(d, editing.id, conParams()) : connect(d, { pointIds: form.pointIds, ...conParams() }); });
-        const ids = form.pointIds;
-        closeForm();
-        renderInspector(); // the selection may stay as it was (the group)
-        drawing.select(r.connection.groupId ? [r.connection.groupId] : ids);
-        if (r.unused.length) note(unusedRoots(r.unused));
+        const ids = form.pointIds, params = conParams();
+        closeForm(); // first: the change's rendering shows what was made, not the form again
+        const made = drawing.change((d) => { r = editing ? reconnect(d, editing.id, params) : connect(d, { pointIds: ids, ...params }); });
+        if (r) drawing.select(r.connection.groupId ? [r.connection.groupId] : ids); // drawn again if the selection changes
+        if (!made) renderInspector(); // nothing changed (or refused): the form gone all the same
+        if (r?.unused.length) note(unusedRoots(r.unused));
       })];
   }
 

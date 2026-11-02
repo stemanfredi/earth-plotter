@@ -40,3 +40,37 @@ test('lru: a failure forgets only its own promise, not one made since under its 
   assert.equal(get.peek('k'), now, 'the newer one stays');
   assert.equal(await get('k', () => Promise.resolve('again')), 'new');
 });
+
+test('lru with maxAge: one older is made again, a newer one kept', async () => {
+  const { lru } = await import('../../site/net.js');
+  let now = 0, made = 0;
+  const real = Date.now;
+  Date.now = () => now;
+  try {
+    const get = lru(Infinity, 1000), make = () => { made++; return Promise.resolve(made); };
+    assert.equal(await get('a', make), 1);
+    now = 999;
+    assert.equal(await get('a', make), 1, 'within its age: kept');
+    now = 1000;
+    assert.equal(await get('a', make), 2, 'a day later: asked again');
+  } finally { Date.now = real; }
+});
+
+test('lru with maxAge: a refresh that fails keeps the one kept, and asks again an hour later', async () => {
+  const { lru } = await import('../../site/net.js');
+  let now = 0, made = 0, fail = false;
+  const real = Date.now;
+  Date.now = () => now;
+  try {
+    const get = lru(Infinity, 864e5), make = () => { made++; return fail ? Promise.reject(new Error('down')) : Promise.resolve(`v${made}`); };
+    assert.equal(await get('a', make), 'v1');
+    now = 864e5; fail = true;
+    assert.equal(await get('a', make), 'v1', 'offline the next day: the last known');
+    assert.equal(made, 2);
+    now += 1000;
+    assert.equal(await get('a', make), 'v1');
+    assert.equal(made, 2, 'not asked again at every request');
+    now += 36e5; fail = false;
+    assert.equal(await get('a', make), 'v3', 'an hour later: asked again');
+  } finally { Date.now = real; }
+});

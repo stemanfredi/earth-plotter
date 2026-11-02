@@ -31,13 +31,10 @@ in the history, not here.
   ends badly. A signed pixel offset per line, applied by MapLibre as GIS
   tools do, is a number the user sets and nothing to maintain.
 
-- **The deploy must know its own version** (2026-10). Telling a visitor that
-  a newer version is published works only if the page carries the commit it
-  was built from; reading a version file at load logs a 404 on every local
-  copy and cannot tell the page's own version from the latest. The notice was
-  cut later (2026-10-28): with no service worker, a reload gets the latest.
-  It came back with the service worker (2026-10-30), from the worker itself:
-  a new version waits until the page applies it.
+- **A new version is told by the service worker, not by a version file**
+  (2026-10). A file read at load cannot tell the page's own version from the
+  latest (and logs a 404 on every local copy); a new worker waits until the
+  page applies it, which is the moment to say so.
 
 - **A double scale bar costs a row** (2026-10). Two stacked bars made the
   bottom of the screen a row taller, and everything above it sat high,

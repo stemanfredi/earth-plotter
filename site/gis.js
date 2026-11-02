@@ -99,9 +99,9 @@ export function gisExport({ map, layersOf, kindOf, drawing, display, profiled, c
       const xs = corners.map((p) => p[0]), ys = corners.map((p) => p[1]), box = [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)];
       const values = (await Promise.all(layers.filter((l) => kindOf(l.id)?.values).map((l) => kindOf(l.id).values(l, box)
         .then((rs) => { l.assets.push(...rs.map((r) => r.key)); return rs; }, (e) => { console.warn(`${l.label} values:`, e.message); left.push(`${l.label} values (${e.message})`); return []; })))).flat();
-      // a Copernicus layer's time and level as drawn (its regional part's: its own step and level)
+      // a Copernicus layer's time and level as drawn (the part on top in the view: its own step and level)
       for (const l of layers.filter((l) => l.kind === 'cmems')) {
-        const { time, level } = await cmemsDrawn(l.id, l.at);
+        const { time, level } = await cmemsDrawn(l.id, l.at, box); // the part drawn over the view
         Object.assign(l, { time: time == null ? undefined : new Date(time).toISOString(), depth: level == null ? undefined : +Math.abs(+level).toFixed(2) });
       }
       // a line's length along the surface, seabed and ground (profile.js; a lower bound, the data's
@@ -138,7 +138,7 @@ export function gisExport({ map, layersOf, kindOf, drawing, display, profiled, c
         ...(drawingFile ? [{ name: 'drawing.geojson', data: drawingFile }] : []),
         ...rasters.map((r) => ({ name: r.file, data: r.data })),
         ...values.map((r) => ({ name: r.file, data: r.data })),
-      ], when), `${name}.zip`);
+      ], { date: new Date(when) }), `${name}.zip`); // its files dated as the view was captured
       return left;
     }, async () => { clipping = await polygonClipping(); });
   }

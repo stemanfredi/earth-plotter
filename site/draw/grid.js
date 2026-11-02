@@ -27,6 +27,9 @@ function takeFocus(name, from) {
 
 // a row made current from outside (its place picked on the map): the grid named name, built again
 export function setCurrent(name, i) { stateOf(name).current = i; }
+// another selection shown: no row current in any grid (Delete then takes the selection, not a vertex
+// of a line selected before)
+export function forgetCurrent() { for (const st of state.values()) st.current = null; }
 
 // A list grid. name: what keeps its state (the element's id and the list's); columns: [{ head,
 // width (px), title, cls }]; rows: [{ cells: [node], cls }]; add: the cells of the empty

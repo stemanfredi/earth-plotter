@@ -1,5 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { near } from './helpers.mjs';
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -122,7 +123,7 @@ test('gridTile: one pass gives the plain blend and the water-only blend of the s
     assert.equal(raw.length, 65536); assert.equal(sea.length, 65536);
     let shore = 0;
     for (let p = 0; p < raw.length; p++) {
-      if (Math.abs(raw[p] - 500) < 1e-2) assert.ok(Math.abs(sea[p] - 500) < 1e-2, `${p}: all land, drawn as read`);
+      if (Math.abs(raw[p] - 500) < 1e-2) near(sea[p], 500, 1e-2, `${p}: all land, drawn as read`);
       else { assert.ok(Math.abs(sea[p] + 500) < 1e-2, `${p}: water in reach (${raw[p]}): the water's depth alone`); if (raw[p] > -499) shore++; }
     }
     assert.ok(shore > 0, 'a band of pixels where the plain blend mixes land in');

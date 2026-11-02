@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { keyEntry, keyOf, openKey } from '../../site/keys.js';
+import { keyEntry, keyOf, openKey, KEYS } from '../../site/keys.js';
 
 test('keys: each single key opens one thing or one tool, in either case; a key with none gives nothing', () => {
   assert.equal(keyEntry('L').open, 'layers');
@@ -14,6 +14,7 @@ test('keys: each single key opens one thing or one tool, in either case; a key w
 });
 
 test('keys: no key is given twice', () => {
-  const seen = new Set();
-  for (const k of 'lei/bpgstm') { assert.ok(!seen.has(k)); seen.add(k); assert.ok(keyEntry(k), k); }
+  const keys = KEYS.filter((k) => k.key).map((k) => k.key.toLowerCase());
+  assert.ok(keys.length > 5);
+  assert.deepEqual(keys.filter((k, i) => keys.indexOf(k) !== i), [], 'a key given twice');
 });

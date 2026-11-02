@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { lineFrom, placeIn, addRing, addShape } from './helpers.mjs';
+import { lineFrom, placeIn, addRing, addShape, near } from './helpers.mjs';
 
 const { emptyDoc, addPoint, addLabel, addCircle, addLine, makeGroup } = await import('../../site/draw/document.js');
 const { outlinePoints } = await import('../../site/draw/outlines.js');
@@ -102,8 +102,8 @@ const pasteAt = (doc, clip, to) => paste(doc, clip, moveAbout(centreOf(clip), to
 test('pasted along the ellipsoid: a 100 m rectangle from the equator to 60°N is still 100 m', () => {
   const doc = emptyDoc(0), r = addRing(doc, outlinePoints([12, 0], 0, 100, 100));
   const [{ el }] = pasteAt(doc, clipOf(doc, [r.id]), [12, 60]), q = el.points;
-  for (let i = 0; i < 4; i++) assert.ok(Math.abs(inverse(q[i], q[(i + 1) % 4]).s - 100) < 1e-3, `side ${i}`);
-  assert.ok(Math.abs(centreOf(clipOf(doc, [el.id]))[1] - 60) < 1e-6, 'its middle there');
+  for (let i = 0; i < 4; i++) near(inverse(q[i], q[(i + 1) % 4]).s, 100, 1e-3, `side ${i}`);
+  near(centreOf(clipOf(doc, [el.id]))[1], 60, 1e-6, 'its middle there');
 });
 
 test('pasted, a point and its shapes: the copy of the point holds the copies of its shapes', () => {

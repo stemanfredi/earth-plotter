@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { addRing } from './helpers.mjs';
+import { addRing, near } from './helpers.mjs';
 
 const { inverse, areaOf } = await import('../../site/geodesy.js');
 const { emptyDoc, addLine, addCircle, isMeasurement } = await import('../../site/draw/document.js');
@@ -19,17 +19,17 @@ test('fmtDist: metres, km, NM, to the metre (NM: a thousandth)', () => {
 
 test('a line: one degree of longitude on the equator is 111 319.49 m (WGS 84), heading east', () => {
   const doc = emptyDoc(0), l = addLine(doc, [[0, 0], [1, 0]]);
-  assert.ok(Math.abs(lineTrace(doc, l).length - 111319.491) < 0.01);
-  assert.ok(Math.abs(inverse([0, 0], [1, 0]).azi - 90) < 1e-9);
+  near(lineTrace(doc, l).length, 111319.491, 0.01, '');
+  near(inverse([0, 0], [1, 0]).azi, 90, 1e-9, '');
 });
 
 test('a closed line: a 1° × 1° cell at the equator is about 12 308.8 km², its perimeter its four legs; smooth, a curve through them', () => {
   const doc = emptyDoc(0), cell = [[0, 0], [1, 0], [1, 1], [0, 1]];
   const g = addRing(doc, cell, { look: { text: { values: true } } }), tr = lineTrace(doc, g);
-  assert.ok(Math.abs(Math.abs(areaOf([...cell, cell[0]])) / 1e6 - 12308.8) < 1);
-  assert.ok(Math.abs(tr.area - areaOf([...cell, cell[0]])) < 1, 'its area, of its legs as drawn');
+  near(Math.abs(areaOf([...cell, cell[0]])) / 1e6, 12308.8, 1, '');
+  near(tr.area, areaOf([...cell, cell[0]]), 1, 'its area, of its legs as drawn');
   assert.deepEqual([tr.legs.length, tr.at.length], [4, 5]); // the closing leg too
-  assert.ok(Math.abs(tr.length - cell.reduce((t, p, i) => t + inverse(p, cell[(i + 1) % 4]).s, 0)) < 1e-6);
+  near(tr.length, cell.reduce((t, p, i) => t + inverse(p, cell[(i + 1) % 4]).s, 0), 1e-6, '');
   assert.match(labels(doc)[0], /^1230[89]\.\d km²\nperimeter 443\.\d{3} km$/); // one label, at its centre: no legs
   assert.equal(valueFeatures(doc).length, 1);
   g.smooth = true; // the curve bulges out of its places: more area, a longer perimeter; it still closes

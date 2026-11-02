@@ -4,7 +4,7 @@
 //  - nothing on screen leaves the viewport;
 //  - every visible control is a ≥ 44 × 44 px target (labels count for their checkbox).
 //   CHROME=/path/to/chrome npm run ui        Screenshots go to $UI_SHOTS if set.
-import { start, frames } from './browser.mjs';
+import { start, frames, until } from './browser.mjs';
 
 // phone and tablet are touch devices (pointer: coarse, 44 px targets); desktop has a mouse (36 px; 24
 // in the panels, 28 (32 drawn) in the bar, 32 in the map's controls and the search bar)
@@ -61,7 +61,7 @@ for (const [name, width, height, touch] of VIEWPORTS) {
       if (typeof menu === 'string') check(!(await page.evaluate(() => document.querySelector('.dinspect').textContent.includes('[object'))), `${name}: the ${menu} inspector shows no "[object …]"`);
       await page.mouse.move(width / 2, height / 2); // shows the cursor readout
       // (only with the map under the pointer: on a phone a panel may cover it)
-      await page.waitForFunction(([x, y]) => !document.elementFromPoint(x, y)?.closest('.maplibregl-canvas') || document.querySelector('#pos')?.textContent, [width / 2, height / 2], { timeout: 5000 }).catch(() => {});
+      await until(page, ([x, y]) => !document.elementFromPoint(x, y)?.closest('.maplibregl-canvas') || document.querySelector('#pos')?.textContent, [width / 2, height / 2]);
       await frames(page); // laid out as shown (the legends are there from the map's load; its tiles do not matter here)
       if (process.env.UI_SHOTS) await page.screenshot({ path: `${process.env.UI_SHOTS}/${name}-${typeof menu === 'string' ? menu : menu ? 'menu' : 'map'}.png` });
       const r = await page.evaluate(({ OVERLAYS }) => {

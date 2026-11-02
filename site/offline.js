@@ -8,8 +8,8 @@ import { h, editInPlace } from './dom.js';
 import { slug } from './format.js';
 import { icon, UI_ICON } from './icons.js';
 import { HOSTS, OFFLINE_PREFIXES } from './hosts.js';
-import { OMT_TILEJSON, DEM_TILES, DEM_LAND_MAX, DEM_SEA_MAX } from './catalog.js';
-import { FONTS, GLYPHS, SEAMARK_TILES, SEAMARKS_MIN, ISOBATH_MAX } from './style.js';
+import { OMT_TILEJSON, DEM_TILES, DEM_LAND_MAX, DEM_SEA_MAX, OMT_MAX, SEAMARKS_MIN, CONTOURS_MIN, DEM_CREDITS } from './catalog.js';
+import { FONTS, GLYPHS, SEAMARK_TILES, ISOBATH_MAX } from './style.js';
 import { fetchInto, tileUrl } from './net.js';
 import { tileXY, MAX_LAT } from './geo.js';
 import { ask } from './menu.js';
@@ -22,7 +22,7 @@ export const KEPT_SOURCES = new Set(['omt', 'dem', 'dem-sea', 'contours', 'isoba
 // OpenFreeMap's terms for an offline download: at most 3,000 tiles or 50 MB
 export const BASE_TILES = 3000;
 const BASE_BYTES = 50e6;
-export const TOP_MAX = 14; // the base map's tiles stop there; the map magnifies them above
+export const TOP_MAX = OMT_MAX; // the base map's tiles stop there; the map magnifies them above
 const CONTOUR_MAX = Math.min(ISOBATH_MAX, DEM_LAND_MAX); // the contours and isobaths stop there (style.js)
 const RANGES = [0, 256, 512, 768, 1024]; // the fonts' characters for Latin, Greek and Cyrillic
 // and the glyph files the map has asked for since the page opened (app.js transformRequest), as
@@ -124,11 +124,13 @@ async function saveArea({ bounds, from, top, name, fresh = false, signal, progre
     const cut = (mode, op) => (t) => () => clip.ask({ mode, op, zxy: t }).then((v) => v?.close?.()); // a picture made only for its files: let go
     // 256 px raster tiles show at map zoom z − 1: from + 1 to top + 1; the contours' 512 px tiles at z
     const base = [...[...glyphs].map((u) => () => get(u)), ...range(from, Math.min(top, TOP_MAX)).map((t) => () => get(tileUrl(omt, ...t)))];
+    // the seamarks' tiles from SEAMARKS_MIN: the map asks for those too (its layer starts at map zoom
+    // SEAMARKS_MIN, its 256 px tiles one zoom above; one missing, it asks for its parent)
     const seamarks = range(Math.max(from + 1, SEAMARKS_MIN), Math.min(top + 1, 18)).map((t) => () => get(tileUrl(SEAMARK_TILES, ...t)));
     // the cut elevation; for the contours its neighbours too (a contour tile reads 3 × 3)
     const elevation = [
       ...range(from + 1, Math.min(top + 1, DEM_LAND_MAX)).map(cut('land', 'bitmap')),
-      ...range(from, Math.min(top, CONTOUR_MAX), 1).map(cut('land', 'contourElevation')),
+      ...range(Math.max(from, CONTOURS_MIN), Math.min(top, CONTOUR_MAX), 1).map(cut('land', 'contourElevation')), // drawn from CONTOURS_MIN
       ...range(from + 1, Math.min(top + 1, DEM_SEA_MAX)).map(cut('sea', 'bitmap')),
       ...range(from, Math.min(top, CONTOUR_MAX), 1).map(cut('sea', 'contourElevation')),
     ];
@@ -206,7 +208,7 @@ Open it there: Open › Open a file…, or drop it on the map.
 
 Map data © OpenStreetMap contributors (ODbL), © OpenMapTiles (CC BY 4.0), served by OpenFreeMap.
 Land elevation: Mapzen Terrain Tiles (AWS Open Data; sources and their credits:
-https://github.com/tilezen/joerd/blob/main/docs/attribution.md).
+${DEM_CREDITS}).
 Depths: GEBCO Compilation Group (2026) GEBCO 2026 Grid (doi:10.5285/4f68d5c7-45eb-f999-e063-7086abc036fa).
 Fonts: Noto Sans, SIL Open Font License 1.1.
 Not for navigation.

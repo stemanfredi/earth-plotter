@@ -47,8 +47,10 @@ One layout at every width (`site/frame.js`).
   is one button showing the kind in use and a corner mark; its kinds are a row under it as it goes
   on, and at a right-click on its button; shut once one is picked or the map is clicked. A tool's
   button or key pressed again turns it off.
-- **Box select** (B): the next drag on the map, a mouse's or a finger's, draws a box; what lies
-  inside is selected, then Select again. A drag with Select moves the map; Shift-drag is the box too.
+- **Box select** (B): the next drag on the map, a mouse's or a finger's, draws a box (even one starting
+  on the selection); what lies inside is selected, then Select again. A drag with Select moves the map
+  (or, on the selection, moves it); Shift-drag is the box too, but on a handle (its proportions, its
+  15° steps). While a drag is under way, Undo, Redo, Delete and Paste wait: Esc puts the drag back.
   On a phone its button is in the dock.
 - **The left panel**: **Layers** or **Elements** (the tree, §4), as its
   button in the bar (or **L**, **E**) chose: pressed again, it closes. At first it is open on Layers;
@@ -144,7 +146,7 @@ presets) opens its kinds.
 - **Shift**: 15° steps from the leg before (from north for the first). **Alt**: nothing snapped or
   attached.
 - **Esc** (or a right-click with nothing to finish) steps back one level: a drag (put back), else a
-  form open (Distribute along, Connect), else Attach to… waiting, else what is half drawn, else the
+  box being drawn (dropped), else a form open (Distribute along, Connect), else Attach to… waiting, else what is half drawn, else the
   tool, else Box select, else the selection. A tool started while a form is open closes the form.
 
 ### 2.2 Snapping and attaching
@@ -210,7 +212,8 @@ or when left, one undo step; a value that does not read stays marked and is not 
 back. ↑ ↓ nudge a number by its last digit (Shift: ten). Distances show by the one rule below (to
 the metre); what is typed is kept as typed. Properties is updated in place as the
 drawing changes (a field being typed in keeps its text and the focus; Tab and a click go where they
-go), and follows a drag on the map as it moves.
+go); during a drag on the map it shows the drawing as it was, and is drawn again when the drag ends
+(the map shows the values while it moves).
 
 **Totals** (the drawing's, a group's), by group or by a property, with Copy: the open lines' length,
 by group and by what a connection made; the areas drawn; and what was **placed**, by kind: a point
@@ -320,11 +323,10 @@ Copies) opens its form (a click on the map picks a root):
 - **Tree** (root → hub → each point) or **Chain** (root → point → next point); **Group size** Auto
   (the cheapest cut; trees up to 32 points) or a number; **Min. branch** (a tree's hubs at least
   this far from their points and root); **Roots**, each with a **weight**. While roots are picked a
-  click places a new root, or takes or drops a point. The plan cuts the points, in order (a
-  distribution's along its line, else as selected), into groups of consecutive points, each joined
-  to one root, the cut and the roots chosen together as the cheapest (each group's length divided by
-  its root's weight; a tie goes to the cut whose largest group is smallest). The summary says the
-  groups, the roots used and the total length; a root that wins nothing is reported unused.
+  click places a new root, or takes or drops a point. The points are taken in order (a
+  distribution's along its line, else as selected) and planned as drawing-format.md §8.2 says. The
+  summary says the groups, the roots used and the total length; a root that wins nothing is
+  reported unused.
 - A faint preview follows the settings; **Connect** makes it in one undo step, in a group
   "Connection" (a distribution's beside its Copies, else in the points' group). Its lines follow the
   points they are attached to; a hub stays where it was made. **Update** plans it again from its

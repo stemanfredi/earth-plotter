@@ -25,8 +25,11 @@ export class Dragging {
     box.addEventListener('pointerdown', (e) => {
       // a second finger during a drag: everything back (as Esc), the map's pinch takes over
       if (this.drag && e.pointerId !== this.drag.pointer) { this.cancelDrag(); return; } // a second finger: everything as it was (Esc too: keyEvents)
-      if (e.button !== 0 || this.tool || this.picking || !this.sel.size || e.ctrlKey || e.metaKey) return;
+      this.pressedHandle = false;
+      if (e.button !== 0 || this.tool || this.picking || this.repointing || this.boxNext || !this.sel.size || e.ctrlKey || e.metaKey) return; // Box select: the box's; Attach to…: the click's
       const pt = at(e), h = this.handleAt(pt);
+      if (!h && e.shiftKey) return; // Shift on the selection: the box's (on a handle: its proportions, its 15° steps)
+      this.pressedHandle = !!h;
       const grab = h || (this.hitAt(pt, 3).some((id) => this.chosen(id)) ? { role: 'move' } : null);
       if (!grab) return;
       // a line's vertex (a handle of it) pressed: its row in Properties' table made current (place: the
@@ -65,8 +68,8 @@ export class Dragging {
       this.drag = null;
       this.snapMark = null;
       map.dragPan.enable();
-      if (d.moved) { this.pending = d.orig; this.change(() => {}); } // one undo step, from the document before the drag
-      this.onChange('drag');
+      if (d.moved) this.pending = d.orig;
+      if (!(d.moved && this.change(() => {}))) this.onChange('drag'); // one undo step, from the document before the drag (the change draws everything; else the drag's end does)
     });
   }
   cancelDrag() {

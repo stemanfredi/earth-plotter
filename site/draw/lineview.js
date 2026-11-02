@@ -123,8 +123,6 @@ export function createLineView(kit) {
       row('Length', fvalue(`${fmtDist(surface, u)} along the surface · ${fmtDist(length, u)} on the map`, { title: 'Along the surface, seabed and ground: a lower bound (relief finer than the data is not in it)' }),
       h('button', { type: 'button', class: 'small', title: 'The profile as a file', onclick: () => ctx.download(profileCsv(p.prof), `${(el.name || 'line').replace(/[^\p{L}\p{N}-]+/gu, '-')}-profile.csv`, 'text/csv') }, 'CSV')));
   }
-  // a double-click on an element, with no tool on, turns Properties on (the map does not zoom)
-  map.on('dblclick', (e) => { if (!drawing.tool && drawing.hitAt(e.point).length) { e.preventDefault(); ctx.frame.setProps(true); } });
   // pointing at a line on the map whose profile is shown: its place on the chart
   map.on('mousemove', (e) => {
     if (!profileCursor || drawing.sel.size !== 1) return;

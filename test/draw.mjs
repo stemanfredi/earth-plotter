@@ -5,7 +5,7 @@
 //   CHROME=/path/to/chrome npm run draw     (default: /usr/bin/google-chrome)
 // What needs a provider stays in smoke.mjs: the elevation profile (relief and depth tiles).
 import { readFile } from 'node:fs/promises';
-import { start, openPage, exportItem, unzip, settled, frames } from './browser.mjs';
+import { start, openPage, exportItem, unzip, settled, frames, until as untilOn } from './browser.mjs';
 
 const { browser, base, check, section, finish } = await start();
 // a context with no network but the site's own (base: http://127.0.0.1:8099/)
@@ -30,7 +30,7 @@ const saved = () => dw.evaluate(() => JSON.parse(localStorage.getItem(`charts.dr
 // the same, once written: 400 ms after the last change (draw/saving.js), its timer then cleared
 const written = async () => { await dw.waitForFunction(() => !drawing.saving.timer, null, { timeout: 5000 }); return saved(); };
 // the page at the state it is waited for, else on after timeout (the check then says what it found)
-const until = (fn, arg) => dw.waitForFunction(fn, arg, { timeout: 5000 }).catch(() => {});
+const until = (fn, arg) => untilOn(dw, fn, arg); // on the drawing's page
 const own = (f) => f.properties.charts; // the app's own part of a feature
 const featuresOf = (fc, kind) => (fc?.features || []).filter((f) => own(f)?.kind === kind && !own(f).measure);
 const measuredOf = (fc) => (fc?.features || []).filter((f) => own(f)?.measure);
@@ -380,6 +380,14 @@ await section('the rules: Distribute along, Connect', async () => {
     /Another number of points \(6 now\)/.test(document.querySelector('.dinspect .note.warn')?.textContent ?? '')]);
   check(bySpacing.every(Boolean), `rules: Edit… from Count to Spacing shows Spacing and says another number makes them anew (${bySpacing})`);
   await dw.keyboard.press('Escape'); // the form closed, nothing changed
+  // Edit…, then Apply with nothing changed: the form gone, the rule's view back, no error
+  const errs0 = dw.errors.length;
+  await dw.evaluate((id) => drawing.select([drawing.doc.rules.find((x) => x.kind === 'distribute' && x.along.element === id).groupId]), arcOf); // its group: what Apply selects (the same: nothing drawn but the change's)
+  await settled(dw);
+  await dw.click('.dinspect button:text-is("Edit…")');
+  await dw.click('.dinspect button.done:has-text("Apply")');
+  const afterApply = await dw.evaluate(() => [!!document.querySelector('.dinspect button.done'), !!document.querySelector('.dinspect .frow:has(.flabel)')]);
+  check(!afterApply[0] && afterApply[1] && dw.errors.length === errs0, `rules: Apply with nothing changed closes the form (${afterApply}; errors ${dw.errors.length - errs0})`);
   check(stayed.length === 6 && stayed.every((k) => k === 0.5) && updated.every((k) => k === 1),
     `drawing: points along a circle stay when its radius doubles (${stayed}); Update puts them round it (${updated})`);
   await dw.click('.dinspect button:has-text("Select all")'); // under Made by
@@ -649,7 +657,7 @@ await section('labels, names, data and totals', async () => {
   await dw.locator('.dinsphead .ititle').click();
   await dw.keyboard.press('Escape'); // the tool off; the label stays selected
   // drawn once its glyphs have loaded and it has been placed: a fixed wait was sometimes too short
-  await dw.waitForFunction(() => map.queryRenderedFeatures({ layers: ['draw-label-text'] }).length > 0, null, { timeout: 5000 }).catch(() => {});
+  await until(() => map.queryRenderedFeatures({ layers: ['draw-label-text'] }).length > 0);
   const lab = await dw.evaluate((id) => { const a = drawing.doc.labels[0], p = drawing.doc.points.find((x) => x.id === id); const q = map.project(p.position); return { a, point: p.position, x: q.x + a.offset[0], y: q.y + a.offset[1], undos: drawing.undos.length, drawn: map.queryRenderedFeatures({ layers: ['draw-label-text'] }).map((f) => f.properties.text), leader: map.queryRenderedFeatures({ layers: ['draw-leader'] }).length }; }, nid);
   const labTo = await dw.evaluate(async () => { const { linkFrom } = await import('./draw/document.js'); return linkFrom(drawing.doc, drawing.doc.labels[0].id)?.to.element; });
   check(labTo === nid && lab.a.text === 'Hi {name}' && lab.drawn.some((t) => /^Hi Circle \d+$/.test(t)) && lab.leader === 1,
@@ -743,6 +751,111 @@ await section('legs typed, list grids', async () => {
   await dw.click('.dinspect .fblock:has(h3:has-text("Vertices")) button:has-text("Copy")');
   const copied = await dw.evaluate(() => navigator.clipboard.readText());
   check(/^#\tLat\tLon/.test(copied) && /\n1\t/.test(copied) && copied.trim().split('\n').length === 3, `a list's Copy gives its rows, numbered from 1 (${copied.split('\n')[1]})`);
+});
+
+await section('the drawing UI: drags, boxes, handles, Attach to… (review)', async () => {
+  // a drawing of its own: a point, an open line, a rectangle (a point holding a closed line), on the sea
+  const ids = await dw.evaluate(async () => {
+    const { emptyDoc, addPoint, addLine } = await import('./draw/document.js'), { build } = await import('./draw/place.js');
+    drawing.adopt(emptyDoc());
+    const at = (x, y) => { const c = map.unproject([x, y]); return [c.lng, c.lat]; };
+    let p, l, r;
+    drawing.change((d) => { p = addPoint(d, at(700, 300)); l = addLine(d, [at(600, 450), at(700, 470), at(800, 450)]); r = build(d, at(900, 300), 'rectangle', 0, { size: [3000, 2000] }); });
+    return { p: p.id, l: l.id, r: r.id, shape: drawing.doc.lines.find((x) => x.groupId === r.id).id };
+  });
+  await settled(dw);
+  const scr = (pos) => dw.evaluate((q) => { const s = map.project(q), b = map.getCanvasContainer().getBoundingClientRect(); return [b.left + s.x, b.top + s.y]; }, pos);
+  const pos = (id) => dw.evaluate((x) => { const e = drawing.doc.points.find((n) => n.id === x) ?? drawing.doc.lines.find((n) => n.id === x); return e.position ?? e.points; }, id);
+  // Undo pressed during a drag: ignored; the drag ends as one step
+  await dw.evaluate((x) => drawing.select([x]), ids.p);
+  const u0 = await dw.evaluate(() => drawing.undos.length), p0 = await pos(ids.p), [px, py] = await scr(p0);
+  await dw.mouse.move(px, py); await dw.mouse.down(); await dw.mouse.move(px + 40, py + 20, { steps: 4 });
+  await dw.keyboard.press('Control+z');
+  await dw.mouse.move(px + 60, py + 30, { steps: 2 }); await dw.mouse.up();
+  const dragged = await dw.evaluate((x) => [drawing.undos.length, drawing.doc.points.find((n) => n.id === x).position], ids.p);
+  check(dragged[0] === u0 + 1 && dragged[1].join() !== p0.join(), `review: Undo during a drag ignored, the drag one step (${dragged[0] - u0})`);
+  // Box select on, a drag starting on the selection (the line, at its middle vertex): a box, nothing
+  // moved; the point inside it taken
+  await dw.evaluate((x) => drawing.select([x]), ids.l);
+  const l0 = await pos(ids.l), [mx, my] = await scr(l0[1]), [qx, qy] = await scr(await pos(ids.p));
+  await dw.keyboard.press('b');
+  await dw.mouse.move(mx, my); await dw.mouse.down(); await dw.mouse.move(qx + 30, qy - 30, { steps: 4 }); await dw.mouse.up();
+  const boxed = await dw.evaluate((x) => [drawing.doc.lines.find((n) => n.id === x.l).points.join(), drawing.sel.has(x.p)], ids);
+  check(boxed[0] === l0.join() && boxed[1], `review: with Box select a drag on the selection draws the box (the line unmoved: ${boxed[0] === l0.join()}, the point taken: ${boxed[1]})`);
+  const [bx, by] = [qx, qy];
+  // Esc while a Shift box is drawn: dropped, nothing selected
+  await dw.evaluate(() => drawing.select([]));
+  await dw.keyboard.down('Shift'); await dw.mouse.move(bx - 60, by - 60); await dw.mouse.down(); await dw.mouse.move(bx + 60, by + 60, { steps: 4 }); await dw.keyboard.up('Shift'); // round the point
+  await dw.keyboard.press('Escape'); await dw.mouse.up();
+  check(await dw.evaluate(() => drawing.sel.size === 0 && document.querySelector('.dbox').hidden), 'review: Esc drops a box being drawn');
+  // a press on a shape's corner handle (the shape selected alone): its vertex current, the shape still
+  // the one selected (not its point, as a click on it would)
+  await dw.evaluate((x) => drawing.select([x]), ids.shape);
+  await settled(dw);
+  const corner = await scr(await dw.evaluate((x) => drawing.doc.lines.find((l) => l.id === x).points[1], ids.shape));
+  await dw.mouse.click(corner[0], corner[1]);
+  const pressed = await dw.evaluate(() => [drawing.currentPlace, [...drawing.sel]]);
+  check(pressed[0]?.id === ids.shape && pressed[0]?.index === 1 && pressed[1].join() === ids.shape, `review: a press on a shape's corner handle makes its vertex current, the shape still selected (${JSON.stringify(pressed)})`);
+  // an open line: no Point row (a point holds closed lines only); its vertex current, another selection,
+  // the line again: no vertex current (Delete takes the line)
+  await dw.evaluate((x) => drawing.select([x]), ids.l);
+  await settled(dw);
+  const pointRow = await dw.locator('.dinspect .frow:has(.flabel:text-is("Point"))').count();
+  await dw.click('.dinspect [data-grid*=":points"] tbody tr[data-r="1"] td:first-child');
+  await dw.evaluate((x) => drawing.select([x]), ids.p);
+  await dw.evaluate((x) => drawing.select([x]), ids.l);
+  await settled(dw);
+  await dw.locator('.dinsphead .ititle').click();
+  await dw.keyboard.press('Delete');
+  const deleted = await dw.evaluate((x) => !drawing.doc.lines.some((l) => l.id === x), ids.l);
+  await dw.keyboard.press('Control+z');
+  check(pointRow === 0 && deleted, `review: an open line has no Point row (${pointRow}); after another selection Delete takes the line, not a vertex chosen before (${deleted})`);
+  // Attach to… waiting: a tool started gives it up; a miss on the sea opens no depth popup
+  await dw.evaluate((x) => { drawing.select([x]); drawing.startRepoint(x, 1); }, ids.l);
+  await dw.keyboard.press('p');
+  const given = await dw.evaluate(() => drawing.repointing === null);
+  await dw.keyboard.press('Escape');
+  await dw.evaluate((x) => { drawing.select([x]); drawing.startRepoint(x, 1); }, ids.l);
+  const [sx, sy] = await scr(await dw.evaluate(() => { const c = map.getCenter(); return [c.lng, c.lat - 0.02]; }));
+  await dw.mouse.click(sx, sy);
+  await frames(dw);
+  const popup = await dw.locator('.depthpop').count();
+  // the Label tool: a snap mark where the click would point
+  await dw.keyboard.press('t');
+  const [lx, ly] = await scr(await pos(ids.p));
+  await dw.mouse.move(lx + 1, ly + 1, { steps: 2 });
+  await frames(dw);
+  const marked = await dw.evaluate(() => map.querySourceFeatures('drawover').some((f) => f.properties.kind === 'snapvertex' && f.properties.free === 0));
+  await dw.keyboard.press('Escape');
+  check(given && popup === 0 && marked, `review: a tool gives Attach to… up (${given}); a miss opens no depth popup (${popup}: offline here, so no depth is read either way); the Label tool shows its snap (${marked})`);
+  // a value typed, then a press on the element (the field applied as it loses the focus to the press):
+  // kept, and a drag from that press starts from it
+  const cid = await dw.evaluate(async () => { const { addCircle } = await import('./draw/document.js'); let c; drawing.change((d) => { const q = map.unproject([700, 600]); c = addCircle(d, [q.lng, q.lat], { radius: 800 }); }); drawing.select([c.id]); return c.id; });
+  await settled(dw);
+  const rad = dw.locator('.dinspect input[aria-label="Radius"]');
+  await rad.fill('1500');
+  const [ccx, ccy] = await scr(await dw.evaluate((x) => drawing.doc.circles.find((c) => c.id === x).position, cid));
+  await dw.mouse.move(ccx, ccy); await dw.mouse.down(); await dw.mouse.move(ccx + 30, ccy, { steps: 3 }); await dw.mouse.up();
+  const typed = await dw.evaluate((x) => drawing.doc.circles.find((c) => c.id === x).radius, cid);
+  check(typed === 1500, `review: a radius typed, then a press on the circle that drags it: the radius kept (${typed})`);
+  // Attach to… waiting: Box select gives it up, its button let go; a click near the element's own
+  // handle is the attach, not a drag
+  await dw.evaluate((x) => drawing.select([x]), ids.l);
+  await settled(dw);
+  await dw.click('.dinspect [data-grid*=":points"] tbody tr[data-r="1"] td:first-child');
+  await dw.click('.dinspect .lbar button[aria-label="Attach vertex 2 to…"]');
+  await dw.click('#bar .boxbtn'); // Box select (its key would be the focused button's)
+  const boxGave = await dw.evaluate(() => [drawing.repointing === null, document.querySelector('.dinspect .lbar button[aria-label="Attach vertex 2 to…"]')?.getAttribute('aria-pressed') ?? 'none']);
+  await dw.keyboard.press('Escape');
+  await dw.evaluate((x) => { drawing.select([x]); drawing.startRepoint(x, 1); }, ids.l);
+  await settled(dw);
+  const [hx, hy] = await scr(await dw.evaluate((x) => drawing.doc.points.find((n) => n.id === x).position, ids.p));
+  const l1 = await pos(ids.l);
+  await dw.mouse.click(hx, hy); // on the point: the line's vertex 1 attached there
+  const attachedTo = await dw.evaluate((x) => drawing.doc.links.find((k) => k.from[0] === x && k.from[1] === 1)?.to.element, ids.l);
+  check(boxGave[0] && boxGave[1] !== 'true' && attachedTo === ids.p && (await pos(ids.l))[1].join() !== l1[1].join(),
+    `review: Box select gives Attach to… up, its button let go (${boxGave}); a click with Attach to… waiting attaches (${attachedTo === ids.p})`);
+  await dw.keyboard.press('Control+z');
 });
 
 await section('paging, Properties in place', async () => {

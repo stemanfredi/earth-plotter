@@ -9,7 +9,7 @@ import { h } from './dom.js';
 export const mac = typeof navigator !== 'undefined' && /Mac|iP(hone|ad)/.test(navigator.platform);
 export const MOD = mac ? '⌘' : 'Ctrl';
 
-const KEYS = [
+export const KEYS = [ // exported for its test (no key twice)
   { line: 1, key: '/', show: '[/]', text: 'find a place', open: 'search' },
   { line: 1, key: 'l', text: 'layers', open: 'layers' },
   { line: 1, key: 'e', text: 'elements', open: 'elements' },

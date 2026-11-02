@@ -44,25 +44,8 @@ names its provider.
 ## Hosting a copy
 
 The page is static: the `site/` folder can be served by any web server, with
-no build and nothing to install. What a copy inherits, and what it does not:
-
-- **The providers are not yours.** Map tiles, imagery and ocean data are
-  fetched from public services, each under its own terms. Most are open data
-  with attribution; two are not: Esri's imagery is used under Esri's terms of
-  use, and the 2024 Sentinel-2 mosaic allows no commercial use. Any provider
-  may change its service, limit requests or go away, and a copy is bound by
-  the same terms as this one. The list is in the page, behind each layer's ⓘ,
-  and in [docs/development.md](docs/development.md).
-- **The depths and the seagrass are served by this project itself,** from its
-  own file storage. A copy must provide its own: the two build tools produce
-  the files, and any static file host with public reads and cross-origin
-  access serves them. The storage used here is one way among many; the
-  address is a single line in `site/hosts.js`.
-- **What a copy cannot promise:** that the providers stay available, or that
-  the data is as current as the original. A source that fails is marked in
-  the page rather than drawn blank.
-
-How to set it up, test it and deploy it: [docs/development.md](docs/development.md).
+no build and nothing to install. What a copy inherits, what it must provide
+itself, and how to set it up: [docs/development.md](docs/development.md).
 
 ## More
 

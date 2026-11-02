@@ -4,11 +4,11 @@
 
 ![The Bay of Naples in Earth Plotter: depth shading, isobaths, relief and place names](site/preview.jpg)
 
-A map of the world's land and sea in one web page, from open data and with no
-keys. It draws the OpenStreetMap base map with relief and contours, depth
-shading and isobaths, satellite imagery, seamarks, shipping density, ocean
-data from Copernicus Marine and NASA's daily imagery. Measure and draw on it,
-export the view as GIS data, and save areas to use without a connection.
+A free map of the world's land and sea in your browser, from open data. It
+draws the OpenStreetMap base map with relief and contours, depth shading and
+isobaths, satellite imagery, seamarks, shipping density, ocean data from
+Copernicus Marine and NASA's daily imagery. Measure and draw on it, export the
+view as GIS data, and save areas to use without a connection.
 
 **Not for navigation.** Positions, coastlines and depths come from open
 datasets of varying accuracy. Depths are a global elevation model, not

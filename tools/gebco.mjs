@@ -1,7 +1,7 @@
 #!/usr/bin/env node
-// GEBCO's grids as Zarr stores for Charts: the grid itself repacked, the same cells and values,
+// GEBCO's grids as Zarr stores for Earth Plotter: the grid itself repacked, the same cells and values,
 // north up, in square compressed chunks, with coarser levels. The stores are published as plain
-// files at geodata.makaw.org/gebco-2026/ (docs/development.md: Hosting a copy, the data host); site/zarr.js reads them.
+// files at geodata.earthplotter.org/gebco-2026/ (docs/development.md: Hosting a copy, the data host); site/zarr.js reads them.
 //
 //   node tools/gebco.mjs download DIR                    the grids from CEDA into DIR (resumable)
 //   node tools/gebco.mjs build DIR elevation|tid         DIR/zarr/gebco-2026/<grid>.zarr
@@ -72,7 +72,7 @@ const GRIDS = {
     work: Float32Array, down: mean2, store: (a) => { const o = new Int16Array(a.length); for (let i = 0; i < a.length; i++) o[i] = Math.round(a[i]); return o; }, type: 'mean',
     attrs: { units: 'm', long_name: 'Elevation relative to mean sea level (negative below it), ice surface' },
     title: 'GEBCO 2026 Grid, ice surface elevation, as a multiscale Zarr store',
-    history: 'Level 0: the GEBCO 2026 grid unchanged (15 arc-second cells, metres). Level k+1: mean of 2 x 2 cells of level k, rounded to whole metres. Built for Charts (tools/gebco.mjs).',
+    history: 'Level 0: the GEBCO 2026 grid unchanged (15 arc-second cells, metres). Level k+1: mean of 2 x 2 cells of level k, rounded to whole metres. Built for Earth Plotter (tools/gebco.mjs).',
   },
   tid: {
     remote: 'type_identifier_grid', local: 'tid', match: /^gebco_2026_tid_n.*_geotiff\.tif$/, T: Int8Array, dtype: '|i1', fill: 127,
@@ -83,7 +83,7 @@ const GRIDS = {
       references: "https://www.gebco.net/data-products/gridded-bathymetry-data (the codes, in GEBCO's documentation)",
     },
     title: 'GEBCO 2026 Grid, type identifier (TID), as a multiscale Zarr store',
-    history: 'Level 0: the GEBCO 2026 TID grid unchanged (15 arc-second cells). Level k+1: the most common code of 2 x 2 cells of level k, on a tie the higher (less certain) code. Built for Charts (tools/gebco.mjs).',
+    history: 'Level 0: the GEBCO 2026 TID grid unchanged (15 arc-second cells). Level k+1: the most common code of 2 x 2 cells of level k, on a tie the higher (less certain) code. Built for Earth Plotter (tools/gebco.mjs).',
   },
 };
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
-// EMODnet Seabed Habitats' seagrass (the Essential Ocean Variable, 2025) as vector tiles for Charts:
+// EMODnet Seabed Habitats' seagrass (the Essential Ocean Variable, 2025) as vector tiles for Earth Plotter:
 // its WMS takes a minute or more a tile, so the data is cut into tiles once and published as plain
-// files at geodata.makaw.org/seagrass-2025/{z}/{x}/{y}.pbf (docs/development.md: Hosting a copy, the
+// files at geodata.earthplotter.org/seagrass-2025/{z}/{x}/{y}.pbf (docs/development.md: Hosting a copy, the
 // data host); the page reads them through its seagrass:// handler (app.js), asking only for the tiles
 // the index lists.
 //

@@ -271,7 +271,7 @@ await section('Copernicus layers, the time line, About, the manifest, my locatio
     const m = await (await fetch('manifest.webmanifest')).json();
     return [m.name, m.display, (await Promise.all(m.icons.map((i) => fetch(i.src).then((r) => r.ok)))).every(Boolean), m.icons.length];
   });
-  check(app[0] === 'Charts' && app[1] === 'standalone' && app[2] && app[3] >= 3, `the app's manifest and its icons (${app.join(', ')})`);
+  check(app[0] === 'Earth Plotter' && app[1] === 'standalone' && app[2] && app[3] >= 3, `the app's manifest and its icons (${app.join(', ')})`);
   // my location: off until pressed; on, the map goes there and shows the dot and its accuracy; off, gone
   await cm.context().grantPermissions(['geolocation']);
   await cm.context().setGeolocation({ latitude: 40.85, longitude: 14.27, accuracy: 30 });
@@ -746,7 +746,7 @@ await section('Offline areas: the view saved from the dialog, drawn without a co
   // as a file: written before the delete above (its File button), opened again, drawn offline from it
   const az = (await unzip(fileBytes)).files;
   const head = JSON.parse(az['area.json']);
-  check(head.format === 'charts-offline-area' && head.files.length > 100 && head.files.every((f) => az[f.name]) && !head.files.some((f) => f.url.includes('openseamap')) && /OpenStreetMap/.test(String(az['README.txt'])),
+  check(head.format === 'earthplotter-offline-area' && head.files.length > 100 && head.files.every((f) => az[f.name]) && !head.files.some((f) => f.url.includes('openseamap')) && /OpenStreetMap/.test(String(az['README.txt'])),
     `offline areas, file: ${head.files.length} files with their addresses, the credits, no seamarks (${Math.round(fileBytes.length / 1e6)} MB)`);
   await op.setInputFiles('input[type=file][accept*=".zip"]', { name: 'area.zip', mimeType: 'application/zip', buffer: fileBytes }); // the bar's Open › Open a file…
   await op.waitForSelector('dialog.offline .drawings li', { timeout: 60000 });

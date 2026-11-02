@@ -2,7 +2,7 @@
 // reads it as it is, and this app reads any GeoJSON (what is not its own becomes plain points and
 // lines, a polygon a closed line). Each element is a Feature with its real geometry; the user's
 // properties and the common style names (stroke, fill…) are its properties; what is the app's own is
-// under one key, "charts"; the drawing's view, look, groups, rules and links are a member "charts"
+// under one key, "earthplotter"; the drawing's view, look, groups, rules and links are a member "earthplotter"
 // of the collection.
 // Legs are geodesics, or a smooth curve through the vertices (other tools draw them straight in
 // longitude and latitude: the geometry holds the vertices, "smooth" is the app's). Drawings of another format version are not read. Pure: no map, no DOM.
@@ -19,7 +19,7 @@ const MAX_FEATURES = 20000; // elements in one file: the rest are skipped (as ma
 const MAX_TOTAL_POSITIONS = 1000000; // positions in a file's lines together: more is refused, as soon as read
 class Refused extends Error {}
 // the properties a feature's own are written beside: a user's key that is one of these gets a p_
-const FILE_PROPERTIES = ['name', 'stroke', 'stroke-width', 'stroke-opacity', 'fill', 'fill-opacity', 'charts'];
+const FILE_PROPERTIES = ['name', 'stroke', 'stroke-width', 'stroke-opacity', 'fill', 'fill-opacity', 'earthplotter'];
 const GEOMETRIES = ['Point', 'MultiPoint', 'LineString', 'MultiLineString', 'Polygon', 'MultiPolygon', 'GeometryCollection'];
 
 // ---- reading ---------------------------------------------------------------------------------
@@ -37,7 +37,7 @@ export function parse(text, known = null, now = Date.now()) {
   try { raw = JSON.parse(text); } catch { return refuse('This is not a drawing file: it is not JSON.'); }
   if (!isObj(raw)) return refuse('This is not a drawing file: it holds no document.');
   if (raw.type !== 'FeatureCollection' && raw.type !== 'Feature' && !GEOMETRIES.includes(raw.type)) return refuse('This is neither a drawing file nor GeoJSON.');
-  const app = isObj(unpack(raw.charts)) ? unpack(raw.charts) : null; // as text: a GIS may write it so
+  const app = isObj(unpack(raw.earthplotter)) ? unpack(raw.earthplotter) : null; // as text: a GIS may write it so
   if (app && app.version !== undefined && app.version !== VERSION) return refuse(`This drawing is of format version ${String(app.version).slice(0, 20)}; this app reads version ${VERSION}.`); // missing: this one
   const { doc, view } = read(raw, app, known, now, report);
   return report.refused ? { doc: null, view: null, report } : { doc, view, report };
@@ -113,7 +113,7 @@ function read(raw, app, known, now, report) {
     const g = f.geometry;
     if (!isObj(g)) { skip('no geometry'); return; }
     const props = isObj(f.properties) ? f.properties : {};
-    const own = unpack(props.charts);
+    const own = unpack(props.earthplotter);
     const mine = isObj(own) ? own : null;
     if (typeof g.type !== 'string') { skip('geometry type: not text'); return; }
     const parts = g.type === 'GeometryCollection' ? null : g.type.startsWith('Multi')
@@ -219,7 +219,7 @@ function read(raw, app, known, now, report) {
 
 // a feature's name and the user's properties (a description, a category: properties like any other):
 // the app's own list when it wrote one (keys a GIS column could not hold), else the feature's other
-// properties, as text. A feature from elsewhere (no `charts` of the app's) may say its name as Name or
+// properties, as text. A feature from elsewhere (no `earthplotter` of the app's) may say its name as Name or
 // title; the app's own features only as name (a user's property "title" stays one)
 function propertiesFrom(props, mine, c) {
   const pick = (...keys) => keys.map((k) => props[k]).find((v) => v != null);
@@ -372,7 +372,7 @@ function feature(kind, el, doc) {
     geometry = { type: 'Point', coordinates: pos(el.position) };
     Object.assign(mine, lean({ text: el.text, offset: [r3(el.offset[0]), r3(el.offset[1])], leader: el.leader }, { text: '', offset: LABEL_OFFSET, leader: 'arrow' }));
   }
-  return { type: 'Feature', id: el.id, geometry, properties: { ...props, charts: mine } };
+  return { type: 'Feature', id: el.id, geometry, properties: { ...props, earthplotter: mine } };
 }
 
 // The document as the file's object (with the view it is in: the map's, page state the file carries):
@@ -394,7 +394,7 @@ export function toFile(doc, v = null) {
       : lean({ ...a, roots: a.roots.map((r) => (r.weight === 1 ? { id: r.id } : { id: r.id, weight: +r.weight.toPrecision(6) })), pointIds: [...a.pointIds], created: [...a.created] }, CONNECT_D))),
     links: doc.links.map((l) => ({ from: [...l.from], to: refOut(l.to) })),
   }, { meta: {}, view: null, look: {}, groups: [], rules: [], links: [] });
-  return { type: 'FeatureCollection', charts: app, features: KINDS.filter((k) => k !== 'group').flatMap((k) => doc[KIND[k].list].map((el) => feature(k, el, doc))) };
+  return { type: 'FeatureCollection', earthplotter: app, features: KINDS.filter((k) => k !== 'group').flatMap((k) => doc[KIND[k].list].map((el) => feature(k, el, doc))) };
 }
 // The file's text: indented JSON, with each pair of numbers (a position) on one line. Only
 // the indentation's line breaks are matched: a string never holds one (JSON writes it \n).

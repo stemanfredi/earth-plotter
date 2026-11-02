@@ -61,8 +61,8 @@ export const frames = (page) => page.evaluate(() => new Promise((r) => requestAn
 // groups: the Layers groups open, as the page keeps them in this browser
 export async function openPage(ctx, url, tab = null, groups = null) {
   const page = await ctx.newPage();
-  if (tab) await page.addInitScript((t) => { const k = 'charts.frame'; localStorage.setItem(k, JSON.stringify({ ...JSON.parse(localStorage.getItem(k) || '{}'), tab: t })); }, tab);
-  if (groups) await page.addInitScript((gs) => localStorage.setItem('charts.groups.open', JSON.stringify(gs)), groups);
+  if (tab) await page.addInitScript((t) => { const k = 'earthplotter.frame'; localStorage.setItem(k, JSON.stringify({ ...JSON.parse(localStorage.getItem(k) || '{}'), tab: t })); }, tab);
+  if (groups) await page.addInitScript((gs) => localStorage.setItem('earthplotter.groups.open', JSON.stringify(gs)), groups);
   page.errors = []; // the page's own: thrown errors, and what it logs as an error
   page.providerErrors = []; // a provider's: a resource the browser could not load (an HTTP 500, a refused tile)
   page.on('pageerror', (e) => page.errors.push(e.message));

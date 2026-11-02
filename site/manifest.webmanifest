@@ -1,7 +1,7 @@
 {
-  "name": "Charts",
-  "short_name": "Charts",
-  "description": "A world chart from open data, with measuring and drawing tools.",
+  "name": "Earth Plotter",
+  "short_name": "EarthPlotter",
+  "description": "A map of the world's land and sea from open data, with measuring and drawing tools.",
   "id": "./",
   "start_url": "./",
   "scope": "./",

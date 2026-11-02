@@ -32,8 +32,8 @@ attachment as a **link** (§7.6).
   it as it is; the app reads any GeoJSON (§10).
 - Each element is a Feature with its real geometry. Its name and the user's properties are plain
   properties, its own colours the common style names. Everything else of the app's is under one
-  property, **`charts`**; the drawing's own (version, times, view, look, groups, rules, links) is a
-  foreign member `charts` of the collection.
+  property, **`earthplotter`**; the drawing's own (version, times, view, look, groups, rules, links) is a
+  foreign member `earthplotter` of the collection.
 - The writer leaves out every value equal to its default (§13). The reader is forgiving: what is
   missing takes its default, what is wrong is repaired or skipped, and the report says so (§10).
 
@@ -58,7 +58,7 @@ circles, lines and labels.
 
 ```json
 { "type": "FeatureCollection",
-  "charts": { "format": "charts-drawing", "version": 1, "created": "2026-10-22T09:30:00Z", "modified": "2026-10-22T10:02:11Z",
+  "earthplotter": { "format": "earthplotter-drawing", "version": 1, "created": "2026-10-22T09:30:00Z", "modified": "2026-10-22T10:02:11Z",
     "meta": { "title": "", "description": "", "author": "" }, "view": { … }, "look": { "text": { "name": true }, "offset": 3 },
     "groups": [], "rules": [], "links": [] },
   "features": [] }
@@ -66,7 +66,7 @@ circles, lines and labels.
 
 | Field | Notes |
 |---|---|
-| `format` | `"charts-drawing"`; written, not checked |
+| `format` | `"earthplotter-drawing"`; written, not checked |
 | `version` | `1`; missing: this version; anything else refuses the file |
 | `created`, `modified` | missing or not a time: the time of import |
 | `meta` | `title`, `description`, `author`: free text |
@@ -74,7 +74,7 @@ circles, lines and labels.
 | `look` | the drawing's look (§6): `text.name`, `offset`, `scale` only |
 | `groups`, `rules`, `links` | §7.1, §8, §7.6 |
 
-Without `charts` the file is plain GeoJSON, read as such.
+Without `earthplotter` the file is plain GeoJSON, read as such.
 
 ## 4. View
 
@@ -101,7 +101,7 @@ An unknown layer, variant, period, data entry or depth is skipped with a warning
 { "type": "Feature", "id": "l1",
   "geometry": { "type": "LineString", "coordinates": [[12.4, 41.9], [12.5, 41.88]] },
   "properties": { "name": "Line 1", "ref": "7", "stroke": "#1f77b4", "stroke-width": 3,
-    "charts": { "kind": "line", "group": "g1", "look": { "stroke": { "dash": "dashed" } } } } }
+    "earthplotter": { "kind": "line", "group": "g1", "look": { "stroke": { "dash": "dashed" } } } } }
 ```
 
 **Plain properties** (what a GIS shows as columns):
@@ -109,10 +109,10 @@ An unknown layer, variant, period, data entry or depth is skipped with a warning
 | Property | Notes |
 |---|---|
 | `name` | free text (not on a label: its text names it) |
-| the user's properties | one column each, in order, as text. A key equal to a name in this table or `charts` is written `p_<key>`, a repeated one `<key>_2`… |
+| the user's properties | one column each, in order, as text. A key equal to a name in this table or `earthplotter` is written `p_<key>`, a repeated one `<key>_2`… |
 | `stroke`, `stroke-width`, `stroke-opacity`, `fill`, `fill-opacity` | the element's **own** style only (§6) |
 
-**`charts`**, the app's own:
+**`earthplotter`**, the app's own:
 
 | Field | Notes |
 |---|---|
@@ -144,16 +144,16 @@ An unknown layer, variant, period, data entry or depth is skipped with a warning
 | `scale` | a point's shape drawn this many times its size about its point, 0.1–100; display only (its geometry, values, totals, export and attachments stay real). A shape no point holds is never scaled. |
 
 **The cascade:** each field an element leaves out comes from its role (a guide's: grey, faint,
-dashed; a measurement's: magenta, dashed, no name), else the drawing's `charts.look`, else the
+dashed; a measurement's: magenta, dashed, no name), else the drawing's `earthplotter.look`, else the
 defaults (§13). An element writes only what it sets itself: its colours, opacities and width as the
-common style names, the rest in `charts.look`. A group has no look; `visible` is not part of it: an
+common style names, the rest in `earthplotter.look`. A group has no look; `visible` is not part of it: an
 element is drawn only if every group it is in is shown.
 
 ## 7. Elements
 
 ### 7.1 Group
 
-Listed in the collection's `charts.groups`, not as features:
+Listed in the collection's `earthplotter.groups`, not as features:
 
 ```json
 { "id": "g2", "groupId": "g1", "name": "Group 2", "properties": [], "visible": true }
@@ -165,12 +165,12 @@ a group that is not there becomes standalone, and a group inside itself goes to 
 
 ### 7.2 Point
 
-A `Point` geometry: `"charts": { "kind": "point", "bearing": 45, "symbol": "diamond" }`.
+A `Point` geometry: `"earthplotter": { "kind": "point", "bearing": 45, "symbol": "diamond" }`.
 
 | Field | Notes |
 |---|---|
 | `bearing` | turning it turns the shapes it holds |
-| `symbol` | `diamond`, `square`, `triangle`, `dot`, `none` (the default; a feature without `charts`: `diamond`); a fixed screen size, never turned |
+| `symbol` | `diamond`, `square`, `triangle`, `dot`, `none` (the default; a feature without `earthplotter`: `diamond`); a fixed screen size, never turned |
 | properties | one placed from a user's preset keeps its properties, and `preset` names it |
 
 **Its shapes.** A circle or a closed line whose `group` is a point's ID is **held** by it: listed
@@ -203,7 +203,7 @@ A `LineString`: its vertices in order, the first its start. A **closed** line (a
 its last back to its first. Holes are not read.
 
 ```json
-"charts": { "kind": "line", "smooth": true, "names": ["", "bend 1", ""] }
+"earthplotter": { "kind": "line", "smooth": true, "names": ["", "bend 1", ""] }
 ```
 
 | Field | Notes |
@@ -222,7 +222,7 @@ with `"reversed": true`, and read back in its own order, so that its vertices ke
 
 ### 7.4 Circle
 
-A `Point` geometry at its centre: `"charts": { "kind": "circle", "radius": 5000, "aperture": 90, "bearing": 45 }`.
+A `Point` geometry at its centre: `"earthplotter": { "kind": "circle", "radius": 5000, "aperture": 90, "bearing": 45 }`.
 
 | Field | Notes |
 |---|---|
@@ -237,7 +237,7 @@ One reaching a pole is not drawn.
 A `Point` geometry where it points:
 
 ```json
-"charts": { "kind": "label", "text": "{name}\n{along}", "offset": [40, -40], "leader": "arrow",
+"earthplotter": { "kind": "label", "text": "{name}\n{along}", "offset": [40, -40], "leader": "arrow",
   "look": { "text": { "size": 16, "background": "box" } } }
 ```
 
@@ -252,7 +252,7 @@ A label has no name, no style names and no `guide`.
 
 ### 7.6 Links
 
-What a vertex of a line, or a label, is attached to: one list, `charts.links`.
+What a vertex of a line, or a label, is attached to: one list, `earthplotter.links`.
 
 ```json
 "links": [ { "from": ["l1", 0], "to": { "element": "a" } },
@@ -287,7 +287,7 @@ there; a closed line split there is opened instead, its links numbered from its 
 
 ## 8. Rules
 
-`charts.rules`: what Distribute along and Connect keep to be edited again or updated; they follow
+`earthplotter.rules`: what Distribute along and Connect keep to be edited again or updated; they follow
 nothing by themselves (drawing-ui.md §6). A `kind` other than `distribute` or `connect`, or no valid
 unused `id`: skipped. An ID of an element deleted since is not an error: it is dropped at the next
 change. A rule whose line or circle, copies, points or roots are all gone is dropped; what it made
@@ -348,12 +348,12 @@ branch, root link, link) follows from what its ends are attached to.
 
 Any GeoJSON: a FeatureCollection, a Feature or a bare geometry.
 
-- `Point` → a point (a circle, a label by `charts.kind`), `LineString` → a line, `Polygon` → a
+- `Point` → a point (a circle, a label by `earthplotter.kind`), `LineString` → a line, `Polygon` → a
   closed line; each part of a Multi geometry an element of its own (the first keeps the ID).
-- **Foreign features** (no `charts`): a point is a `diamond`; the name from `name`, `Name` or `title`
+- **Foreign features** (no `earthplotter`): a point is a `diamond`; the name from `name`, `Name` or `title`
   (the app's own: `name` only); the style from the common names; every other property a user's, as
   text (objects as JSON).
-- A `charts` (the collection's, a feature's, a link's `to`, `properties`) written back as text by a
+- A `earthplotter` (the collection's, a feature's, a link's `to`, `properties`) written back as text by a
   GIS is parsed again.
 - A missing, malformed or repeated ID gets a new one; a longitude past ±180° is brought back.
 - **Repaired** with a warning: opacities and widths clamped; angles normalised; a colour that is not
@@ -375,7 +375,7 @@ The report lists what was refused, skipped, repaired and moved, before the drawi
 ## 11. Other tools; the GIS export
 
 A GIS opening the file sees points, lines and closed lines (polygons) where they are, circles and
-labels as points, names and properties as columns, each element's own style, and `charts` (usually
+labels as points, names and properties as columns, each element's own style, and `earthplotter` (usually
 as text; the collection's is ignored by most). It does not see radii, sectors, symbols or label
 placement, nor geodesic or curved legs (straight in longitude and latitude: a 50 km east-west leg at
 40°N about 40 m apart in the middle).
@@ -387,7 +387,7 @@ sector's `bearing_deg` and `aperture_deg`); a line a `LineString` along its legs
 and `surface_length_m` when its elevation profile was read); a closed line a counter-clockwise
 `Polygon` (`area_m2`, `perimeter_m`); a label a `Point` with its `text`, `anchor` and `along_m`. Each
 has `kind`, `id`, `name`, `group` (`A / B`), `point` (a shape's), `guide`, then its properties
-(`p_`, `_2` as §5). No style, no `charts`.
+(`p_`, `_2` as §5). No style, no `earthplotter`.
 
 ## 12. Example
 
@@ -398,8 +398,8 @@ shortened only in layout.
 ```json
 {
   "type": "FeatureCollection",
-  "charts": {
-    "format": "charts-drawing",
+  "earthplotter": {
+    "format": "earthplotter-drawing",
     "version": 1,
     "created": "2026-10-22T09:30:00Z",
     "modified": "2026-10-22T09:30:00Z",
@@ -417,33 +417,33 @@ shortened only in layout.
     { "type": "Feature", "id": "a",
       "geometry": { "type": "Point", "coordinates": [12.4, 41.9] },
       "properties": { "name": "A",
-        "charts": { "kind": "point", "symbol": "diamond", "bearing": 45 } } },
+        "earthplotter": { "kind": "point", "symbol": "diamond", "bearing": 45 } } },
     { "type": "Feature", "id": "s",
       "geometry": { "type": "Point", "coordinates": [12.6, 41.95] },
       "properties": { "name": "Rectangle 1",
-        "charts": { "kind": "point", "bearing": 30 } } },
+        "earthplotter": { "kind": "point", "bearing": 30 } } },
     { "type": "Feature", "id": "j",
       "geometry": { "type": "Point", "coordinates": [12.5, 41.8] },
       "properties": { "name": "Point 1",
-        "charts": { "kind": "point", "symbol": "dot" } } },
+        "earthplotter": { "kind": "point", "symbol": "dot" } } },
     { "type": "Feature", "id": "c",
       "geometry": { "type": "Point", "coordinates": [12.4, 41.9] },
-      "properties": { "charts": { "kind": "circle", "group": "a", "frame": { "places": [[0, 0]], "turn": 0 }, "radius": 5000, "aperture": 90, "bearing": 45 } } },
+      "properties": { "earthplotter": { "kind": "circle", "group": "a", "frame": { "places": [[0, 0]], "turn": 0 }, "radius": 5000, "aperture": 90, "bearing": 45 } } },
     { "type": "Feature", "id": "r",
       "geometry": { "type": "Polygon", "coordinates": [[[12.6004227, 41.951897], [12.5980106, 41.9487782], [12.5995773, 41.948103], [12.6019894, 41.9512218], [12.6004227, 41.951897]]] },
-      "properties": { "charts": { "kind": "line", "group": "s",
+      "properties": { "earthplotter": { "kind": "line", "group": "s",
         "frame": { "places": [[20.5545352, 213.6011], [159.4443607, 213.5993], [-159.4435921, 213.6035], [-20.5561999, 213.5992]] }, "reversed": true } } },
     { "type": "Feature", "id": "l1",
       "geometry": { "type": "LineString", "coordinates": [[12.4, 41.9], [12.5, 41.8], [12.6, 41.95]] },
       "properties": { "name": "Line 1", "ref": "7",
-        "charts": { "kind": "line" } } },
+        "earthplotter": { "kind": "line" } } },
     { "type": "Feature", "id": "g1",
       "geometry": { "type": "Polygon", "coordinates": [[[12.5, 41.75], [12.55, 41.8], [12.5, 41.8], [12.45, 41.8], [12.5, 41.75]]] },
       "properties": { "name": "Area 1", "fill-opacity": 0.3,
-        "charts": { "kind": "line", "reversed": true } } },
+        "earthplotter": { "kind": "line", "reversed": true } } },
     { "type": "Feature", "id": "t1",
       "geometry": { "type": "Point", "coordinates": [12.4500389, 41.8500111] },
-      "properties": { "charts": { "kind": "label", "text": "{name}" } } }
+      "properties": { "earthplotter": { "kind": "label", "text": "{name}" } } }
   ]
 }
 ```
@@ -460,7 +460,7 @@ What a value is when the file leaves it out; writing it with this value means th
 
 | Where | Field | Default |
 |---|---|---|
-| collection | `charts` | none: plain GeoJSON |
+| collection | `earthplotter` | none: plain GeoJSON |
 | collection | `version`; `created`, `modified` | `1`; the time of import |
 | collection | `meta` | `{ "title": "", "description": "", "author": "" }` |
 | collection | `view`; `look` | none (the map stays as it is); `{}` |
@@ -470,7 +470,7 @@ What a value is when the file leaves it out; writing it with this value means th
 | view layer | `variant`, `opacity`, `period` | the layer's own |
 | view data | `colour`, `arrows`, `time`, `depth` | `null` |
 | feature | `id`; `name`; properties | a new one; `""`; none |
-| feature | style names, `charts.look` | none: the drawing's, else the defaults |
+| feature | style names, `earthplotter.look` | none: the drawing's, else the defaults |
 | feature | `kind`; `group`; `visible` | from the geometry; none; `true` |
 | feature | `guide`, `measure` | `false` |
 | default look | fill; stroke | `#e8590c` 0.15; `#e8590c` 1, width 1.5, `solid` |
@@ -479,7 +479,7 @@ What a value is when the file leaves it out; writing it with this value means th
 | guide style | fill; stroke | `#5d6d79` 0.05; `#5d6d79` 1, width 1, `dashed` |
 | measurement style | fill; stroke | `#b0127a` 0.08; `#b0127a` 1, width 2, `dashed` |
 | group | `groupId`; `name`; `properties`; `visible` | `null`; `""`; `[]`; `true` |
-| point | `bearing`; `symbol` | `0`; `none` (`diamond` without `charts`) |
+| point | `bearing`; `symbol` | `0`; `none` (`diamond` without `earthplotter`) |
 | circle | `aperture`; `bearing` | none (whole); `0` |
 | line | `names`; `smooth`; `reversed` | each `""`; `false`; `false` |
 | label | `text`; `offset`; `leader` | `""`; `[40, -40]`; `arrow` |

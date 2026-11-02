@@ -21,14 +21,14 @@ function drawing() {
 }
 const named = (title, at = [12, 41]) => { const doc = emptyDoc(); doc.meta.title = title; addPoint(doc, at); return doc; };
 // a drawing of another format version
-const another = (title, view) => JSON.stringify({ type: 'FeatureCollection', charts: { format: 'charts-drawing', version: 2, title, ...(view ? { view } : {}) }, features: [] });
+const another = (title, view) => JSON.stringify({ type: 'FeatureCollection', earthplotter: { format: 'earthplotter-drawing', version: 2, title, ...(view ? { view } : {}) }, features: [] });
 
 test('saved as the file is: GeoJSON text, read back as it was', () => {
   data.clear();
   const d = drawing();
   d.adopt(named('One'));
   d.saving.now();
-  const id = d.saving.list()[0].id, text = localStorage.getItem(`charts.drawing.${id}`);
+  const id = d.saving.list()[0].id, text = localStorage.getItem(`earthplotter.drawing.${id}`);
   assert.equal(JSON.parse(text).type, 'FeatureCollection');
   assert.equal(text, serialise(d.doc));
   const e = drawing();
@@ -40,9 +40,9 @@ test('saved as the file is: GeoJSON text, read back as it was', () => {
 test('a drawing of the list of another format version is not read: a new one opens, its text never saved over', () => {
   data.clear();
   const text = another('Old', { center: [12, 41], zoom: 6, bearing: 0 });
-  localStorage.setItem('charts.drawing.k1', text);
-  localStorage.setItem('charts.drawings', JSON.stringify([{ id: 'k1', title: 'Old', modified: '2026-01-01T00:00:00Z', size: text.length }]));
-  localStorage.setItem('charts.drawings.current', 'k1');
+  localStorage.setItem('earthplotter.drawing.k1', text);
+  localStorage.setItem('earthplotter.drawings', JSON.stringify([{ id: 'k1', title: 'Old', modified: '2026-01-01T00:00:00Z', size: text.length }]));
+  localStorage.setItem('earthplotter.drawings.current', 'k1');
   assert.equal(savedView(null), null);
   const d = drawing();
   const said = [], error = console.error;
@@ -54,7 +54,7 @@ test('a drawing of the list of another format version is not read: a new one ope
   assert.deepEqual(list.find((x) => x.id === 'k1') && [list.length, list.find((x) => x.open).id !== 'k1'], [2, true]);
   d.adopt(named('New'));
   d.saving.now();
-  assert.equal(localStorage.getItem('charts.drawing.k1'), text, 'its text left as it was');
+  assert.equal(localStorage.getItem('earthplotter.drawing.k1'), text, 'its text left as it was');
 });
 
 test('New, open another, delete: each drawing under its own key, the list up to date', () => {
@@ -81,10 +81,10 @@ test('the view moved: saved with the next save or when the page goes, never by a
   const d = drawing();
   d.adopt(named('One'));
   d.saving.now();
-  const saved = localStorage.getItem(`charts.drawing.${d.saving.id}`);
+  const saved = localStorage.getItem(`earthplotter.drawing.${d.saving.id}`);
   d.saving.viewChanged();
   assert.equal(d.saving.viewMoved, true);
-  assert.equal(localStorage.getItem(`charts.drawing.${d.saving.id}`), saved, 'nothing written yet');
+  assert.equal(localStorage.getItem(`earthplotter.drawing.${d.saving.id}`), saved, 'nothing written yet');
   d.saving.now();
   assert.equal(d.saving.viewMoved, false);
   d.saving.otherTab = true; // another tab saved this drawing since
@@ -94,8 +94,8 @@ test('the view moved: saved with the next save or when the page goes, never by a
 
 test('an index holding what is not an entry (null, a number) still lists the drawings', () => {
   data.clear();
-  localStorage.setItem('charts.drawings', JSON.stringify([null, 3, { id: 'k1', title: 'Kept', modified: '2026-01-01T00:00:00Z', size: 10 }]));
-  localStorage.setItem('charts.drawings.current', 'k9');
+  localStorage.setItem('earthplotter.drawings', JSON.stringify([null, 3, { id: 'k1', title: 'Kept', modified: '2026-01-01T00:00:00Z', size: 10 }]));
+  localStorage.setItem('earthplotter.drawings.current', 'k9');
   const d = drawing();
   assert.deepEqual(d.saving.list().map((x) => x.id).sort(), ['k1', 'k9']);
 });

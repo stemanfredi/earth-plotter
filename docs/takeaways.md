@@ -41,6 +41,15 @@ in the history, not here.
   wrongly on a phone. One bar in the chosen units is enough on screen; the
   picture export keeps both.
 
-- **Survey-grade depths in selected areas were not worth keeping** (2025).
-  Built as "area packs" and set aside because regular users could not obtain
-  the source data. The last working version is the tag `parked/area-packs`.
+- **Survey-grade depths in selected areas were not worth keeping** (October
+  2026). Built as "area packs", files of finer depths for one area made by a
+  separate tool, and set aside the next day because regular users could not
+  obtain the source data. What building them taught, for finer depths later:
+  - Measure EMODnet's coverage on the OSM open sea, not on GEBCO's
+    coastline, and fill only open-sea gaps from GEBCO.
+  - Never take GEBCO's depths in lagoons or lakes: the Venice Lagoon reads
+    10 m in GEBCO, about 1 m in EMODnet.
+  - OSM's land polygons put lagoons behind barrier islands on land: cut the
+    OSM inland water out of the land.
+  - Fill empty grid cells from their neighbours before contouring, and trace
+    the edge of no data with marching squares, or the edges come out stepped.

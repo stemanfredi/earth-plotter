@@ -836,7 +836,7 @@ function dataBlock(items, sections) {
   return h('ul', {}, pick('colour', 'Colours'), pick('arrows', 'Arrows'), h('li', { class: 'item' }, ...sourceRow(items, 'the ocean data shown')));
 }
 // the Layers groups open: kept in this browser, as the panel's tab (frame.js), not in the link
-const GROUPS_OPEN = 'charts.groups.open', keptOpen = store.json(GROUPS_OPEN);
+const GROUPS_OPEN = 'earthplotter.groups.open', keptOpen = store.json(GROUPS_OPEN);
 const groupsOpen = new Set(Array.isArray(keptOpen) ? keptOpen.filter((g) => GROUPS.some((x) => x.id === g)) : ['base', 'sea']);
 function groupBlock(g) {
   const items = ITEMS.filter((it) => it.group === g.id);
@@ -1050,18 +1050,19 @@ function reload() {
 }
 for (const b of document.querySelectorAll('[data-reload]')) b.addEventListener('click', reload);
 // About's version: the one published, version.json, written by the deploy (ci.yml; none on a
-// development copy), read when About first opens
+// development copy, which says so), read when About first opens. Not in the page's HTML, so that
+// what a crawler reads is not "a development copy"
 let versionShown = null;
-const showVersion = () => (versionShown ||= fetch('version.json', { cache: 'no-store' }).then((r) => (r.ok ? r.json() : null)).then((v) => {
-  if (!/^[0-9a-f]{40}$/.test(v?.commit)) return;
-  $('#version').replaceChildren('version ', h('a', { href: `https://github.com/stemanfredi/charts/commit/${v.commit}`, target: '_blank', rel: 'noopener' }, v.commit.slice(0, 7)), v.date ? ` of ${String(v.date).slice(0, 10)}` : '');
-}, () => {}));
+const showVersion = () => (versionShown ||= fetch('version.json', { cache: 'no-store' }).then((r) => (r.ok ? r.json() : null)).catch(() => null).then((v) => {
+  if (!/^[0-9a-f]{40}$/.test(v?.commit)) return $('#version').replaceChildren(' · a development copy');
+  $('#version').replaceChildren(' · version ', h('a', { href: `https://github.com/stemanfredi/earth-plotter/commit/${v.commit}`, target: '_blank', rel: 'noopener' }, v.commit.slice(0, 7)), v.date ? ` of ${String(v.date).slice(0, 10)}` : '');
+}));
 // Report an issue: a new GitHub issue with this view's link (the area and the layers; never the
 // measurements or the drawing), editable before it is submitted
 $('#issue').addEventListener('click', (e) => {
   writeHashNow();
   const body = `What happened, and what you expected:\n\n\nThe view (its link shows the area viewed and the layers; delete it if you prefer):\n${location.href}\n`;
-  e.currentTarget.href = `https://github.com/stemanfredi/charts/issues/new?body=${encodeURIComponent(body)}`;
+  e.currentTarget.href = `https://github.com/stemanfredi/earth-plotter/issues/new?body=${encodeURIComponent(body)}`;
 });
 about.querySelector('[data-close]').addEventListener('click', () => about.close());
 

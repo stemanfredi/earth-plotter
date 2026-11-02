@@ -97,7 +97,7 @@ const SAVED_HOSTS = {
   // hosts:start (written by tools/deps.mjs --write; do not edit by hand)
   openfreemap: 'https://tiles.openfreemap.org/',
   terrain: 'https://s3.amazonaws.com/elevation-tiles-prod/',
-  geodata: 'https://geodata.makaw.org/',
+  geodata: 'https://geodata.earthplotter.org/',
   openseamap: 'https://tiles.openseamap.org/',
   // hosts:end
 };

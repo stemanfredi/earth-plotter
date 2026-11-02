@@ -69,15 +69,15 @@ test('presets: a point and its shapes kept under a name, as they are; stored; a 
   assert.deepEqual([pre.doc.points[0].look, pre.doc.points[0].bearing, pre.doc.circles[0].look, pre.doc.circles[0].groupId], [p.look, 30, { fill: { opacity: 0 } }, pre.doc.points[0].id]);
   assert.notEqual(pre.doc.circles[0], doc.circles[0], 'a copy');
   const kept = JSON.parse(presetsFile([pre])).presets[0];
-  const back = readPresets(JSON.stringify({ format: 'charts-presets', presets: [kept, { name: '' }, { name: 'x' }, { name: 'none', drawing: { type: 'FeatureCollection', features: [] } }, kept] }));
+  const back = readPresets(JSON.stringify({ format: 'earthplotter-presets', presets: [kept, { name: '' }, { name: 'x' }, { name: 'none', drawing: { type: 'FeatureCollection', features: [] } }, kept] }));
   assert.deepEqual(back.map((x) => x.name), ['Mine']); // each name once, and holding a point
   assert.deepEqual([back[0].doc.circles[0].aperture, back[0].doc.lines[0].points.length, back[0].doc.circles[0].groupId], [45, 3, back[0].doc.points[0].id]);
   // read as a file is: what is not valid left out
-  const odd = readPresets(JSON.stringify({ format: 'charts-presets', presets: [{ name: 'Odd', drawing: { type: 'FeatureCollection', features: [
-    { type: 'Feature', geometry: { type: 'Point', coordinates: [0, 0] }, properties: { charts: { kind: 'point', symbol: 'star' } } },
-    { type: 'Feature', geometry: { type: 'Point', coordinates: [0, 0] }, properties: { charts: { kind: 'circle', radius: -5 } } }] } }] }));
+  const odd = readPresets(JSON.stringify({ format: 'earthplotter-presets', presets: [{ name: 'Odd', drawing: { type: 'FeatureCollection', features: [
+    { type: 'Feature', geometry: { type: 'Point', coordinates: [0, 0] }, properties: { earthplotter: { kind: 'point', symbol: 'star' } } },
+    { type: 'Feature', geometry: { type: 'Point', coordinates: [0, 0] }, properties: { earthplotter: { kind: 'circle', radius: -5 } } }] } }] }));
   assert.deepEqual([odd[0].doc.points[0].symbol, odd[0].doc.circles], ['none', []]);
-  assert.equal(readPresets('{"format":"charts-drawing"}'), null);
+  assert.equal(readPresets('{"format":"earthplotter-drawing"}'), null);
   assert.equal(readPresets('nope'), null);
   const store = new Map();
   globalThis.localStorage = { getItem: (k) => store.get(k) ?? null, setItem: (k, v) => store.set(k, v) };

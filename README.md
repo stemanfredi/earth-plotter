@@ -1,11 +1,14 @@
-# Charts
+# Earth Plotter
 
-**[charts.makaw.org](https://charts.makaw.org)**
+**[earthplotter.org](https://earthplotter.org)**
 
-A chart of the world's seas in one web page. It draws the OpenStreetMap base
-map with depth shading and isobaths, satellite imagery, seamarks, shipping
-density, ocean data from Copernicus Marine and NASA's daily imagery, and lets
-you measure and draw on it.
+![The Bay of Naples in Earth Plotter: depth shading, isobaths, relief and place names](site/preview.jpg)
+
+A map of the world's land and sea in one web page, from open data and with no
+keys. It draws the OpenStreetMap base map with relief and contours, depth
+shading and isobaths, satellite imagery, seamarks, shipping density, ocean
+data from Copernicus Marine and NASA's daily imagery. Measure and draw on it,
+export the view as GIS data, and save areas to use without a connection.
 
 **Not for navigation.** Positions, coastlines and depths come from open
 datasets of varying accuracy. Depths are a global elevation model, not

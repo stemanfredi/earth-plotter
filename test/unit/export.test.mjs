@@ -76,7 +76,7 @@ test('pngText: iTXt chunks after the header, UTF-8, with their CRC; empty fields
   // a PNG's signature and header, then the rest (here two bytes standing for its other chunks)
   const head = [137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 13, ...'IHDR'.split('').map((c) => c.charCodeAt(0)), ...Array(17).fill(0)];
   const png = new Uint8Array([...head, 7, 7]);
-  const out = pngText(png, { Title: 'Charts', Copyright: '© OpenStreetMap · ≈ 100 m', Comment: '' });
+  const out = pngText(png, { Title: 'Earth Plotter', Copyright: '© OpenStreetMap · ≈ 100 m', Comment: '' });
   assert.deepEqual([...out.subarray(0, 33)], head);
   assert.deepEqual([...out.subarray(-2)], [7, 7]);
   const chunks = [];
@@ -88,5 +88,5 @@ test('pngText: iTXt chunks after the header, UTF-8, with their CRC; empty fields
     chunks.push([key, text]);
     at += n + 12;
   }
-  assert.deepEqual(chunks, [['Title', 'Charts'], ['Copyright', '© OpenStreetMap · ≈ 100 m']]);
+  assert.deepEqual(chunks, [['Title', 'Earth Plotter'], ['Copyright', '© OpenStreetMap · ≈ 100 m']]);
 });

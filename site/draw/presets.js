@@ -10,8 +10,8 @@ import { alone } from './clipboard.js';
 import { store } from '../dom.js';
 import { note } from '../menu.js';
 
-const KEY = 'charts.presets';
-const PRESETS_FORMAT = 'charts-presets';
+const KEY = 'earthplotter.presets';
+const PRESETS_FORMAT = 'earthplotter-presets';
 
 // as kept: each preset's drawing as its file's object
 const kept = (list) => list.map((x) => ({ name: x.name, drawing: toFile(x.doc) }));

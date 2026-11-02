@@ -14,7 +14,7 @@ for (let r = 0; r < runs; r++) {
     const p = await ctx.newPage();
     const net = [0, 0]; // requests, bytes
     ctx.on('requestfinished', async (q) => {
-      if (!q.url().includes('geodata.makaw.org')) return;
+      if (!q.url().includes('geodata.earthplotter.org')) return;
       const s = await q.sizes().catch(() => null); net[0]++; net[1] += s?.responseBodySize || 0;
     });
     const t0 = Date.now();

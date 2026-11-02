@@ -1,12 +1,12 @@
 {
-  "name": "charts",
+  "name": "earth-plotter",
   "private": true,
   "license": "GPL-3.0-or-later",
   "type": "module",
-  "description": "A world chart in one static page: open map, depth and ocean data, with measuring and drawing tools. No build: these scripts are for development only.",
+  "description": "A map of the world's land and sea in one static page, from open data, with measuring and drawing tools. No build: these scripts are for development only.",
   "author": "Stefano Manfredi",
-  "homepage": "https://charts.makaw.org",
-  "repository": { "type": "git", "url": "git+https://github.com/stemanfredi/charts.git" },
+  "homepage": "https://earthplotter.org",
+  "repository": { "type": "git", "url": "git+https://github.com/stemanfredi/earth-plotter.git" },
   "scripts": {
     "test": "node --import ./test/unit/setup.mjs --test \"test/unit/*.test.mjs\"",
     "lint": "eslint .",

@@ -203,9 +203,9 @@ async function renameArea(id, name) {
 // compressed in memory). The seamarks stay out of files until OpenSeaMap has said they may be
 // shared (ROADMAP, Offline areas); opened again, an area has none. areaFile is exported for the
 // unit tests.
-const FORMAT = 'charts-offline-area', KEPT_HOSTS = Object.values(OFFLINE_PREFIXES);
+const FORMAT = 'earthplotter-offline-area', KEPT_HOSTS = Object.values(OFFLINE_PREFIXES);
 const NOT_IN_FILES = [OFFLINE_PREFIXES.openseamap];
-const README = `An area saved by Charts (https://charts.makaw.org) for use without a connection.
+const README = `An area saved by Earth Plotter (https://earthplotter.org) for use without a connection.
 Open it there: Open › Open a file…, or drop it on the map.
 
 Map data © OpenStreetMap contributors (ODbL), © OpenMapTiles (CC BY 4.0), served by OpenFreeMap.

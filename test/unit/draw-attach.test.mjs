@@ -206,11 +206,11 @@ test('the file keeps the links: a line\'s places on points and on points\' shape
   const bare = (ls) => ls.map(({ frame, ...x }) => x), frameOf = (ls) => ls.map((x) => x.frame?.places.flat() ?? []); // a frame comes back as the file rounds it
   assert.deepEqual([bare(back.doc.lines), back.doc.labels, back.doc.links], [bare(doc.lines), doc.labels, doc.links]);
   frameOf(back.doc.lines).forEach((f, i) => f.forEach((v, k) => near(v, frameOf(doc.lines)[i][k], 1e-3, '')));
-  const raw = JSON.parse(text), linked = (id, i) => raw.charts.links.find((k) => k.from[0] === id && k.from[1] === i)?.to;
+  const raw = JSON.parse(text), linked = (id, i) => raw.earthplotter.links.find((k) => k.from[0] === id && k.from[1] === i)?.to;
   assert.deepEqual([linked('y', 0), linked('y', 1), linked('z', 0), linked('z', 1), linked(t1.id, 0), linked(t2.id, 0), linked(t3.id, 0)],
     [{ element: 'p' }, { element: 'p' }, { element: 'sh', vertex: 3 }, { element: 'sh', edge: 1, at: 0.25 }, { element: 'a', edge: 2, at: 0.3 }, { element: 'l', vertex: 1 }, { element: 'a' }]);
-  assert.ok(raw.features.every((f) => !['start', 'end', 'anchor'].some((k) => k in f.properties.charts)), 'links only in the table');
-  raw.charts.links.push({ from: ['l', 0], to: { element: 'a', vertex: 1 } }, { from: ['l', 2], to: 'a' }, { from: ['sh', 0], to: 'p' });
+  assert.ok(raw.features.every((f) => !['start', 'end', 'anchor'].some((k) => k in f.properties.earthplotter)), 'links only in the table');
+  raw.earthplotter.links.push({ from: ['l', 0], to: { element: 'a', vertex: 1 } }, { from: ['l', 2], to: 'a' }, { from: ['sh', 0], to: 'p' });
   const r = parse(JSON.stringify(raw));
   assert.deepEqual([placeIn(r.doc, l, 0).to, placeIn(r.doc, l, -1).to], [null, null]);
   assert.equal(r.report.warnings.filter((w) => /line's place to a, which is neither a point nor a point's shape: dropped/.test(w)).length, 2);

@@ -25,13 +25,13 @@ const exportDrawing = async () => {
   await dw.click('#bar .dlbtn');
   await dw.click('.dmenu button:has-text("Drawing (GeoJSON)")');
 };
-// the drawing open, as saved in this browser (one key each, the open one's in charts.drawings.current): GeoJSON
-const saved = () => dw.evaluate(() => JSON.parse(localStorage.getItem(`charts.drawing.${localStorage.getItem('charts.drawings.current')}`) || 'null'));
+// the drawing open, as saved in this browser (one key each, the open one's in earthplotter.drawings.current): GeoJSON
+const saved = () => dw.evaluate(() => JSON.parse(localStorage.getItem(`earthplotter.drawing.${localStorage.getItem('earthplotter.drawings.current')}`) || 'null'));
 // the same, once written: 400 ms after the last change (draw/saving.js), its timer then cleared
 const written = async () => { await dw.waitForFunction(() => !drawing.saving.timer, null, { timeout: 5000 }); return saved(); };
 // the page at the state it is waited for, else on after timeout (the check then says what it found)
 const until = (fn, arg) => untilOn(dw, fn, arg); // on the drawing's page
-const own = (f) => f.properties.charts; // the app's own part of a feature
+const own = (f) => f.properties.earthplotter; // the app's own part of a feature
 const featuresOf = (fc, kind) => (fc?.features || []).filter((f) => own(f)?.kind === kind && !own(f).measure);
 const measuredOf = (fc) => (fc?.features || []).filter((f) => own(f)?.measure);
 let savedFile = null, ruler = null; // the drawing's file as exported, and its measurement: opened again in the next section
@@ -149,7 +149,7 @@ await section('the drawing: the bar, the tools, the kinds, the inspector, its fi
   const [dex] = await Promise.all([dw.waitForEvent('download'), (async () => { await dw.keyboard.press('Escape'); await exportDrawing(); })()]);
   savedFile = JSON.parse(await readFile(await dex.path(), 'utf8'));
   ruler = measuredOf(savedFile).find((f) => f.geometry.type === 'LineString' && f.geometry.coordinates[0][0] === 12);
-  check(/\.geojson$/.test(dex.suggestedFilename()) && savedFile.type === 'FeatureCollection' && savedFile.charts?.view?.layers?.some((l) => l.id === 'coastline') && ruler?.geometry.type === 'LineString',
+  check(/\.geojson$/.test(dex.suggestedFilename()) && savedFile.type === 'FeatureCollection' && savedFile.earthplotter?.view?.layers?.some((l) => l.id === 'coastline') && ruler?.geometry.type === 'LineString',
     `drawing: saved as GeoJSON with its view, layers and the measurement (a guide showing its values) (${dex.suggestedFilename()}, ${JSON.stringify(ruler?.geometry)})`);
 });
 
@@ -292,7 +292,7 @@ await section('lines, groups and the box', async () => {
   check(await dw.evaluate((t) => drawing.doc.groups.length === 1 && drawing.doc.lines.every((s) => s.groupId === t), top), 'drawing: a subgroup deleted alone: its lines back in the group above');
   const [dnet] = await Promise.all([dw.waitForEvent('download'), (async () => { await dw.keyboard.press('Escape'); await exportDrawing(); })()]);
   const back = JSON.parse(await readFile(await dnet.path(), 'utf8'));
-  check(featuresOf(back, 'line').length === 4 && featuresOf(back, 'point').length === 1 && back.charts.groups.length === 1 && new Set(back.charts.links.map((l) => l.from[0])).size === 4 && back.charts.links.every((l) => l.to.element === featuresOf(back, 'point')[0].id),
+  check(featuresOf(back, 'line').length === 4 && featuresOf(back, 'point').length === 1 && back.earthplotter.groups.length === 1 && new Set(back.earthplotter.links.map((l) => l.from[0])).size === 4 && back.earthplotter.links.every((l) => l.to.element === featuresOf(back, 'point')[0].id),
     'drawing: exported whole, the lines\' ends attached to the point');
 });
 

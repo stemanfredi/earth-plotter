@@ -9,8 +9,8 @@ import { parse } from './file.js';
 import { store } from '../dom.js';
 import { note } from '../menu.js';
 
-const INDEX = 'charts.drawings', CURRENT = 'charts.drawings.current', OPENING = 'charts.drawings.opening';
-const KEY = (id) => `charts.drawing.${id}`;
+const INDEX = 'earthplotter.drawings', CURRENT = 'earthplotter.drawings.current', OPENING = 'earthplotter.drawings.opening';
+const KEY = (id) => `earthplotter.drawing.${id}`;
 
 const newKey = () => [...crypto.getRandomValues(new Uint8Array(6))].map((b) => b.toString(36).padStart(2, '0')).join('');
 // the index as kept, but for what is not an entry (null, a value written by hand): it would break the list

@@ -11,7 +11,7 @@ import { icon, UI_ICON } from './icons.js';
 import { note } from './menu.js';
 import { openKey } from './keys.js';
 
-const KEY = 'charts.frame';
+const KEY = 'earthplotter.frame';
 const LEFT = { min: 200, max: 480, dflt: 260 }, RIGHT = { min: 260, max: 600, dflt: 320 }, SHEET = { min: 25, max: 90, dflt: 52 }; // px; the sheet in % of the window
 const MIN_MAP = 480; // px of map kept between the two panels
 const clamp = (v, r) => (Number.isFinite(v) ? Math.round(Math.max(r.min, Math.min(r.max, v))) : r.dflt); // what was saved, or the default

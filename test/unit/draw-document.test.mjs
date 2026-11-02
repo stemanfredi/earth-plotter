@@ -17,9 +17,9 @@ const { emptyDoc, addPoint, addDot, addLabel, addCircle, addLine, carry, members
 const NOW = Date.parse('2026-10-22T10:00:00Z');
 const warned = (r, re) => assert.ok(r.warnings.some((w) => re.test(w)), `no warning ${re}: ${r.warnings.join(' | ')}`);
 const skippedIds = (r) => r.skipped.map((s) => s.id);
-// a file of now: a FeatureCollection (charts: the collection's own member)
-const F = (id, type, coordinates, charts, props = {}) => ({ type: 'Feature', id, geometry: { type, coordinates }, properties: charts ? { ...props, charts } : props });
-const collection = (features, charts = { format: FORMAT, version: VERSION }) => ({ type: 'FeatureCollection', ...(charts ? { charts } : {}), features });
+// a file of now: a FeatureCollection (earthplotter: the collection's own member)
+const F = (id, type, coordinates, earthplotter, props = {}) => ({ type: 'Feature', id, geometry: { type, coordinates }, properties: earthplotter ? { ...props, earthplotter } : props });
+const collection = (features, earthplotter = { format: FORMAT, version: VERSION }) => ({ type: 'FeatureCollection', ...(earthplotter ? { earthplotter } : {}), features });
 const read = (o, known = null) => parse(typeof o === 'string' ? o : JSON.stringify(o), known, NOW);
 const VIEW = { center: [12.5, 41.9], zoom: 7.25, bearing: 10, layers: [{ id: 'chart' }], data: null, units: 'nm', bearings: true }; // a view the scene's file carries
 // written and read back, as the app would after a change (every point's shape in its frame)
@@ -134,9 +134,9 @@ test('round trip: values come back rounded as the file writes them', () => {
   addRing(doc, [[0, 0], [1.123456789, 0], [1, 1]]);
   const f = toFile(doc);
   assert.deepEqual(f.features[0].geometry.coordinates, [12.1234568, 41.9876543]);
-  assert.deepEqual(f.features[1].properties.charts, { kind: 'circle', group: p.id, radius: 1000.123, aperture: 90, bearing: 45.1235 });
+  assert.deepEqual(f.features[1].properties.earthplotter, { kind: 'circle', group: p.id, radius: 1000.123, aperture: 90, bearing: 45.1235 });
   assert.deepEqual([f.features[0].properties['stroke-opacity'], f.features[1].properties['fill-opacity'], f.features[1].properties['stroke-width']], [0.123, 0.123, 2]);
-  assert.equal(f.features[0].properties.charts.bearing, 45.1235);
+  assert.equal(f.features[0].properties.earthplotter.bearing, 45.1235);
   const { doc: back } = again(doc);
   // a label linked: where its target is in the drawing read (the link wins over the geometry)
   const want = rounded(doc), at = back.labels[0].position;
@@ -161,19 +161,19 @@ test('defaults are left out of the file; positions on one line', () => {
   addRing(doc, [[0, 0], [1, 0], [1, 1]]);
   const lb = labelAt(doc, { position: [12, 41], element: a.id });
   const text = serialise(doc), f = JSON.parse(text);
-  assert.deepEqual(Object.keys(f), ['type', 'charts', 'features']);
-  assert.deepEqual(f.charts, { format: FORMAT, version: VERSION, created: '2026-10-22T10:00:00Z', modified: '2026-10-22T10:00:00Z',
+  assert.deepEqual(Object.keys(f), ['type', 'earthplotter', 'features']);
+  assert.deepEqual(f.earthplotter, { format: FORMAT, version: VERSION, created: '2026-10-22T10:00:00Z', modified: '2026-10-22T10:00:00Z',
     links: [{ from: [doc.lines[0].id, 0], to: { element: a.id } }, { from: [lb.id, 0], to: { element: a.id } }] }); // the ties, in one table
   const [pt, dot, circ, line, area, lab] = f.features;
   assert.deepEqual(pt, { type: 'Feature', id: a.id, geometry: { type: 'Point', coordinates: [12, 41] },
-    properties: { name: 'Point 1', charts: { kind: 'point', symbol: 'diamond' } } }); // its symbol: written (the default is none)
-  assert.deepEqual(dot.properties.charts, { kind: 'point', symbol: 'dot' });
-  assert.deepEqual(circ, { type: 'Feature', id: c.id, geometry: { type: 'Point', coordinates: [13, 41] }, properties: { name: 'Circle 1', charts: { kind: 'circle', radius: 1000 } } }); // its radius always; no aperture: a whole circle
-  assert.deepEqual(line.properties.charts, { kind: 'line' }); // no names: none written
+    properties: { name: 'Point 1', earthplotter: { kind: 'point', symbol: 'diamond' } } }); // its symbol: written (the default is none)
+  assert.deepEqual(dot.properties.earthplotter, { kind: 'point', symbol: 'dot' });
+  assert.deepEqual(circ, { type: 'Feature', id: c.id, geometry: { type: 'Point', coordinates: [13, 41] }, properties: { name: 'Circle 1', earthplotter: { kind: 'circle', radius: 1000 } } }); // its radius always; no aperture: a whole circle
+  assert.deepEqual(line.properties.earthplotter, { kind: 'line' }); // no names: none written
   assert.deepEqual(line.geometry, { type: 'LineString', coordinates: [[12, 41], [14, 41]] });
-  assert.deepEqual(area.properties.charts, { kind: 'line' }); // closed: its geometry says so
+  assert.deepEqual(area.properties.earthplotter, { kind: 'line' }); // closed: its geometry says so
   assert.deepEqual(area.geometry, { type: 'Polygon', coordinates: [[[0, 0], [1, 0], [1, 1], [0, 0]]] });
-  assert.deepEqual(lab.properties.charts, { kind: 'label', text: '{name}' });
+  assert.deepEqual(lab.properties.earthplotter, { kind: 'label', text: '{name}' });
   assert.deepEqual(lab.geometry.coordinates, [12, 41]); // where it points
   assert.match(text, /"coordinates": \[12, 41\]/);
 });
@@ -183,9 +183,9 @@ test('closed lines are Polygons, written counter-clockwise; one stored clockwise
   const cw = addRing(doc, [[0, 0], [0, 1], [1, 1]], { names: ['a', 'b', ''] }), ccw = addRing(doc, [[0, 0], [1, 0], [1, 1]]);
   const [fa, fb] = toFile(doc).features;
   assert.deepEqual(fa.geometry.coordinates, [[[1, 1], [0, 1], [0, 0], [1, 1]]]); // closed
-  assert.deepEqual(fa.properties.charts, { kind: 'line', reversed: true, names: ['a', 'b', ''] }); // its names in its own order
+  assert.deepEqual(fa.properties.earthplotter, { kind: 'line', reversed: true, names: ['a', 'b', ''] }); // its names in its own order
   assert.deepEqual(fb.geometry.coordinates, [[[0, 0], [1, 0], [1, 1], [0, 0]]]);
-  assert.ok(!('reversed' in fb.properties.charts));
+  assert.ok(!('reversed' in fb.properties.earthplotter));
   const back = again(doc).doc;
   assert.deepEqual(back.lines.map((x) => [x.closed, x.points, x.names]), [[true, cw.points, cw.names], [true, ccw.points, ccw.names]]);
 });
@@ -197,10 +197,10 @@ test('properties: the user\'s as columns, a key colliding with the feature\'s ow
   const q = addPoint(doc, [1, 0], { properties: [{ key: 'a', value: '1' }] });
   const [fq, fp] = toFile(doc).features;
   assert.deepEqual(fp.properties, { name: 'Circle 1', description: 'about it', category: 'kind A', depth: '120', p_stroke: 'thin', depth_2: 'again',
-    stroke: '#ff0000', 'stroke-width': 3, 'stroke-opacity': 0.5, fill: '#00ff00', 'fill-opacity': 0.25, charts: fp.properties.charts });
-  assert.deepEqual(fp.properties.charts.properties, p.properties); // the keys as they are
-  assert.deepEqual(fp.properties.charts.look, { stroke: { dash: 'dashed' } }); // the rest of its look: the app's
-  assert.ok(!('properties' in fq.properties.charts)); // nothing renamed: the columns are enough
+    stroke: '#ff0000', 'stroke-width': 3, 'stroke-opacity': 0.5, fill: '#00ff00', 'fill-opacity': 0.25, earthplotter: fp.properties.earthplotter });
+  assert.deepEqual(fp.properties.earthplotter.properties, p.properties); // the keys as they are
+  assert.deepEqual(fp.properties.earthplotter.look, { stroke: { dash: 'dashed' } }); // the rest of its look: the app's
+  assert.ok(!('properties' in fq.properties.earthplotter)); // nothing renamed: the columns are enough
   assert.equal(fq.properties.a, '1');
   const back = again(doc).doc;
   assert.deepEqual([back.circles[0].properties, back.circles[0].look, back.points[0].properties], [p.properties, p.look, q.properties]);
@@ -300,7 +300,7 @@ test('circles in the file: a Point with kind circle, its radius always, aperture
   const doc = emptyDoc(NOW);
   addCircle(doc, [0, 0], { radius: 100.00049, aperture: 33.333333, bearing: 10, name: 'b', visible: false, guide: true });
   const f = toFile(doc).features[0];
-  assert.deepEqual([f.geometry, f.properties], [{ type: 'Point', coordinates: [0, 0] }, { name: 'b', charts: { kind: 'circle', visible: false, guide: true, radius: 100, aperture: 33.3333, bearing: 10 } }]);
+  assert.deepEqual([f.geometry, f.properties], [{ type: 'Point', coordinates: [0, 0] }, { name: 'b', earthplotter: { kind: 'circle', visible: false, guide: true, radius: 100, aperture: 33.3333, bearing: 10 } }]);
   assert.deepEqual(again(doc).doc.circles, rounded(doc.circles));
 });
 
@@ -334,7 +334,7 @@ test('any GeoJSON: Multi geometries split, holes dropped, foreign points diamond
 test('the app\'s own written back as text by another tool is read again', () => {
   const doc = sample();
   const f = toFile(doc);
-  for (const x of f.features) x.properties.charts = JSON.stringify(x.properties.charts);
+  for (const x of f.features) x.properties.earthplotter = JSON.stringify(x.properties.earthplotter);
   const { doc: back, report } = read(f);
   assert.deepEqual(report.warnings, []);
   assert.deepEqual(back, doc);
@@ -414,7 +414,7 @@ test('labels: on an element, along a line, on a vertex, or free; checked; writte
   assert.ok(!('name' in l1.look.text));
   for (const re of [/leader: unknown "zigzag"/, /offset: not \[x, y\]/, /size "huge": not a number of pixels/, /link to gone, which is not here/, /link to a, which is not here \(or has no such vertex/, /link from l7 0, which is not/]) warned(report, re);
   assert.deepEqual(doc.points[0].look, { text: { name: true } });
-  const f = toFile(doc), out = (id) => f.features.find((x) => x.id === id), linked = (id) => f.charts.links.find((l) => l.from[0] === id)?.to;
+  const f = toFile(doc), out = (id) => f.features.find((x) => x.id === id), linked = (id) => f.earthplotter.links.find((l) => l.from[0] === id)?.to;
   assert.deepEqual(linked('l2'), { element: 's', edge: 0, at: 0.123457 });
   assert.deepEqual([linked('l1'), linked('l9'), linked('l10'), linked('l4')], [{ element: 'a' }, { element: 'ar' }, { element: 'ar', vertex: 2 }, undefined]); // free: none
   assert.deepEqual(out('l1').geometry.coordinates, [12, 40]); // where it points
@@ -441,8 +441,8 @@ test('groups in the file: a group holds nothing of its own; a point holds shapes
   assert.deepEqual(membersOf(doc, 'm').map((x) => x.el.id), ['c', 'l']);
   assert.deepEqual([p.groupId, doc.labels[0].groupId, lost.groupId], [null, null, null]);
   for (const re of [/point p: group m not found; now standalone/, /label t: group c not found/, /group nowhere not found; now standalone/]) warned(report, re);
-  assert.ok(!('parts' in toFile(doc).charts.groups[0]) && !('radii' in toFile(doc).charts.groups[0]));
-  assert.deepEqual(toFile(doc).features.find((x) => x.id === 'c').properties.charts.group, 'm'); // its point
+  assert.ok(!('parts' in toFile(doc).earthplotter.groups[0]) && !('radii' in toFile(doc).earthplotter.groups[0]));
+  assert.deepEqual(toFile(doc).features.find((x) => x.id === 'c').properties.earthplotter.group, 'm'); // its point
   assert.deepEqual(again(doc).doc, rounded(doc)); // its shapes' frames as the file keeps them
 });
 
@@ -470,7 +470,7 @@ test('view: data is always written ({} when nothing is chosen), so that it is re
   const none = { colour: null, arrows: null, time: null, depth: null };
   for (const data of [null, none]) {
     const f = toFile(emptyDoc(NOW), { ...VIEW, data });
-    assert.deepEqual(f.charts.view.data, {}, `written as {} from ${JSON.stringify(data)}`);
+    assert.deepEqual(f.earthplotter.view.data, {}, `written as {} from ${JSON.stringify(data)}`);
     assert.deepEqual(read(f).view.data, none, 'read back: an object, every field null');
   }
   assert.equal(read(collection([], { view: { zoom: 5 } })).view.data, null, 'a hand-written file without it: none (the map\'s)');
@@ -495,7 +495,7 @@ test('rules (distribute, connect) are kept as records; defaults left out; an unk
   assert.deepEqual(distributions(doc).slice(1).map((x) => [x.groupId, x.copiesId, x.preset]), [[null, null, null], [null, null, null]]);
   assert.equal(connections(doc).length, 1); // the second c1: its ID used
   assert.deepEqual([c.kind, c.groupId, c.pattern, c.groupSize, c.created, 'hubs' in c, c.roots], ['connect', 'g3', 'tree', 3, ['gone'], false, [{ id: 'n9', weight: 1 }, { id: 'n8', weight: 2 }]]); // deleted since: not an error; a weight of 1 unless given
-  const f = toFile(doc).charts;
+  const f = toFile(doc).earthplotter;
   assert.deepEqual(f.rules[3], { id: 'c1', kind: 'connect', groupId: 'g3', groupSize: 3, roots: [{ id: 'n9' }, { id: 'n8', weight: 2 }], pointIds: ['n1'], created: ['gone'] });
   assert.deepEqual(f.rules[0], { id: 'a1', kind: 'distribute', groupId: 'g1', copiesId: 'g2', along: { element: 's' }, spacing: 1000, side: 'alternate', radius: 250,
     preset: 'preset:mine', pointIds: ['n1'] });
@@ -513,12 +513,12 @@ test('a user property title or Name stays one on the app\'s own features; on oth
   assert.deepEqual([foreign.name, foreign.properties], ['T', [{ key: 'Description', value: 'D' }]]);
 });
 
-test('the collection\'s charts member written as text by a GIS is read; a feature\'s visible not true or false warns', () => {
+test('the collection\'s earthplotter member written as text by a GIS is read; a feature\'s visible not true or false warns', () => {
   const doc = emptyDoc(NOW);
   doc.meta.title = 'Kept';
   const f = toFile(doc);
-  f.charts = JSON.stringify(f.charts);
-  f.features.push({ type: 'Feature', properties: { charts: { kind: 'point', visible: 'no' } }, geometry: { type: 'Point', coordinates: [10, 40] } });
+  f.earthplotter = JSON.stringify(f.earthplotter);
+  f.features.push({ type: 'Feature', properties: { earthplotter: { kind: 'point', visible: 'no' } }, geometry: { type: 'Point', coordinates: [10, 40] } });
   const r = read(f);
   assert.equal(r.doc.meta.title, 'Kept');
   assert.equal(r.doc.points[0].visible, true);
@@ -835,7 +835,7 @@ test('nested groups in the file: the parent kept; one missing or making a loop p
   warned(report, /group nowhere not found; now at the top/);
   warned(report, /in a group inside itself; now at the top/);
   assert.ok(!('look' in doc.groups[0]) && styleOf(doc, doc.points[0]).stroke.color === DEFAULT_STYLE.stroke.color, 'nothing from the groups');
-  assert.equal(toFile(doc).charts.groups.find((g) => g.id === 'c').groupId, 'b');
+  assert.equal(toFile(doc).earthplotter.groups.find((g) => g.id === 'c').groupId, 'b');
   assert.deepEqual(again(doc).doc, doc);
 });
 
@@ -852,9 +852,9 @@ test('the look: the drawing\'s defaults, then its own (a group adds nothing); a 
   d.setLook(a, 'text.name', undefined); // taken back
   assert.deepEqual(a.look, {});
   const f = toFile(doc);
-  assert.deepEqual(f.charts.look, { text: { name: true }, offset: 4 });
-  assert.ok(!('look' in f.charts.groups[0]));
-  assert.deepEqual(f.features.find((x) => x.id === m.id).properties.charts.look, { text: { values: true } });
+  assert.deepEqual(f.earthplotter.look, { text: { name: true }, offset: 4 });
+  assert.ok(!('look' in f.earthplotter.groups[0]));
+  assert.deepEqual(f.features.find((x) => x.id === m.id).properties.earthplotter.look, { text: { values: true } });
   assert.deepEqual(again(doc).doc, doc);
 });
 
@@ -883,9 +883,9 @@ test('hardening: a property key named like Object.prototype\'s is a column like 
   assert.equal(view.data.colour, null);
   for (const re of [/cut to 10000 characters/, /more than 200 properties/, /layer "__proto__" not known/, /layer "constructor" not known/, /colour: "toString" not known/]) warned(report, re);
   // the columns of the export keep every key as it is: toString, not toString_2
-  const cols = Object.entries(toFile(doc).features.find((f) => f.id === 'p').properties).filter(([k]) => k !== 'charts' && k !== 'name');
+  const cols = Object.entries(toFile(doc).features.find((f) => f.id === 'p').properties).filter(([k]) => k !== 'earthplotter' && k !== 'name');
   assert.deepEqual(cols, [['toString', 'a'], ['__proto__', 'b'], ['constructor', 'c']]);
-  assert.ok(!toFile(doc).features.find((f) => f.id === 'p').properties.charts.properties, 'no key had to be renamed');
+  assert.ok(!toFile(doc).features.find((f) => f.id === 'p').properties.earthplotter.properties, 'no key had to be renamed');
   const back = read(JSON.stringify(toFile(doc))).doc.points.find((n) => n.id === 'p');
   assert.deepEqual(back.properties, p.properties, 'read back as they were');
 });
@@ -895,14 +895,14 @@ test('a connection\'s settings: one rule for the file and Connect (a chain has n
     view: { zoom: 7.123456, bearing: 12.3456 } }));
   assert.deepEqual([doc.rules[0].minBranch, doc.rules[0].roots], [0, [{ id: 'a', weight: 1 }]]);
   const f = toFile(doc, { ...VIEW, zoom: 7.123456, bearing: 12.3456 });
-  assert.deepEqual([f.charts.view.zoom, f.charts.view.bearing], [7.12, 12.3]);
+  assert.deepEqual([f.earthplotter.view.zoom, f.earthplotter.view.bearing], [7.12, 12.3]);
   const d2 = emptyDoc(NOW), l = lineFrom(d2, [12, 40], [], [12.1, 40]), t = labelAt(d2, { element: l.id, edge: 0, at: 0 });
-  assert.deepEqual(toFile(d2).charts.links, [{ from: [t.id, 0], to: { element: l.id, edge: 0 } }]);
+  assert.deepEqual(toFile(d2).earthplotter.links, [{ from: [t.id, 0], to: { element: l.id, edge: 0 } }]);
   assert.deepEqual(again(d2).doc.links, [{ from: [t.id, 0], to: { element: l.id, edge: 0, at: 0 } }]);
 });
 
 test('root weights: read as given, small ones kept; 0, a negative, text read as 1; written as read', () => {
-  const pts = ['a', 'b', 'c', 'd', 'e'].map((id) => ({ type: 'Feature', id, geometry: { type: 'Point', coordinates: [12, 40] }, properties: { charts: { kind: 'point' } } }));
+  const pts = ['a', 'b', 'c', 'd', 'e'].map((id) => ({ type: 'Feature', id, geometry: { type: 'Point', coordinates: [12, 40] }, properties: { earthplotter: { kind: 'point' } } }));
   const { doc } = read(collection(pts, { rules: [{ id: 'c1', kind: 'connect', pointIds: ['a'],
     roots: [{ id: 'a', weight: 2 }, { id: 'b', weight: 0.0004 }, { id: 'c', weight: 0 }, { id: 'd', weight: -1 }, { id: 'e', weight: 'x' }] }] }));
   assert.deepEqual(doc.rules[0].roots.map((r) => r.weight), [2, 0.0004, 1, 1, 1]);
@@ -1033,11 +1033,11 @@ test('read: a point\'s shape where its frame says; moved in another tool, it goe
   const back = read(raw);
   warned(back.report, /^4 places of shapes moved to where their points hold them/);
   assert.ok(back.doc.lines[0].points.every((q, i) => Math.abs(q[0] - sh.points[i][0]) < 1e-6 && Math.abs(q[1] - sh.points[i][1]) < 1e-6));
-  delete f.properties.charts.frame; // a file by hand: where it is
+  delete f.properties.earthplotter.frame; // a file by hand: where it is
   const plain = read(raw);
   assert.deepEqual(plain.report.warnings, []);
   assert.equal(plain.doc.lines[0].frame.places.length, 4);
-  f.properties.charts.frame = { places: [[0, 1]] }; // too few places
+  f.properties.earthplotter.frame = { places: [[0, 1]] }; // too few places
   warned(read(raw).report, /frame not read; made from where it is/);
 });
 
@@ -1057,7 +1057,7 @@ test('a closed line across 180° written counter-clockwise (RFC 7946), not said 
   const doc = emptyDoc(NOW);
   addRing(doc, [[179, 0], [-179, 0], [-179, 1], [179, 1]]); // counter-clockwise, across 180°
   const f = toFile(doc).features[0];
-  assert.equal(f.properties.charts.reversed, undefined);
+  assert.equal(f.properties.earthplotter.reversed, undefined);
   assert.deepEqual(f.geometry.coordinates[0].slice(0, 2), [[179, 0], [-179, 0]]);
 });
 

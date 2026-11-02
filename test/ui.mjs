@@ -16,20 +16,20 @@ const OVERLAYS = {
 
 // a drawing as the app saves it (GeoJSON, version 1): a point holding two sectors, one holding a rectangle, a line
 // from and back to the point, a label along the line
-const DRAWING = JSON.stringify({ type: 'FeatureCollection', charts: { format: 'charts-drawing', version: 1,
+const DRAWING = JSON.stringify({ type: 'FeatureCollection', earthplotter: { format: 'earthplotter-drawing', version: 1,
   links: [{ from: ['g1', 0], to: 'n1' }, { from: ['g1', 3], to: 'n1' }, { from: ['l1', 0], to: { element: 'g1', edge: 0, at: 0.4 } }] }, features: [
   { type: 'Feature', id: 'n1', geometry: { type: 'Point', coordinates: [14, 44.5] }, properties: { name: 'Point 1', key: 'value',
-    charts: { kind: 'point', bearing: 45 } } },
-  { type: 'Feature', id: 's1', geometry: { type: 'Point', coordinates: [13, 44] }, properties: { name: 'Rectangle 1', charts: { kind: 'point' } } },
-  { type: 'Feature', id: 'c1', geometry: { type: 'Point', coordinates: [14, 44.5] }, properties: { name: 'Sector 1', charts: { kind: 'circle', group: 'n1', radius: 20000, aperture: 90, bearing: 45 } } },
-  { type: 'Feature', id: 'c2', geometry: { type: 'Point', coordinates: [14, 44.5] }, properties: { name: 'Sector 2', 'fill-opacity': 0, charts: { kind: 'circle', group: 'n1', radius: 40000, aperture: 90, bearing: 45 } } },
-  { type: 'Feature', id: 'r1', geometry: { type: 'Polygon', coordinates: [[[12.9, 43.95], [13.1, 43.95], [13.1, 44.05], [12.9, 44.05], [12.9, 43.95]]] }, properties: { name: 'Rectangle 1', charts: { kind: 'line', group: 's1' } } },
+    earthplotter: { kind: 'point', bearing: 45 } } },
+  { type: 'Feature', id: 's1', geometry: { type: 'Point', coordinates: [13, 44] }, properties: { name: 'Rectangle 1', earthplotter: { kind: 'point' } } },
+  { type: 'Feature', id: 'c1', geometry: { type: 'Point', coordinates: [14, 44.5] }, properties: { name: 'Sector 1', earthplotter: { kind: 'circle', group: 'n1', radius: 20000, aperture: 90, bearing: 45 } } },
+  { type: 'Feature', id: 'c2', geometry: { type: 'Point', coordinates: [14, 44.5] }, properties: { name: 'Sector 2', 'fill-opacity': 0, earthplotter: { kind: 'circle', group: 'n1', radius: 40000, aperture: 90, bearing: 45 } } },
+  { type: 'Feature', id: 'r1', geometry: { type: 'Polygon', coordinates: [[[12.9, 43.95], [13.1, 43.95], [13.1, 44.05], [12.9, 44.05], [12.9, 43.95]]] }, properties: { name: 'Rectangle 1', earthplotter: { kind: 'line', group: 's1' } } },
   { type: 'Feature', id: 'g1', geometry: { type: 'LineString', coordinates: [[14, 44.5], [14.5, 44.2], [14.2, 43.9], [14, 44.5]] }, properties: { name: 'Line 1',
-    charts: { kind: 'line', names: ['', 'a point', '', ''] } } },
+    earthplotter: { kind: 'line', names: ['', 'a point', '', ''] } } },
   { type: 'Feature', id: 'l1', geometry: { type: 'Point', coordinates: [14.2, 44.4] }, properties: { name: 'Label 1',
-    charts: { kind: 'label', text: '{name}\n{along}', look: { text: { background: 'box' } } } } }] });
+    earthplotter: { kind: 'label', text: '{name}\n{along}', look: { text: { background: 'box' } } } } }] });
 // put where the app keeps its drawings (draw/saving.js): the list, the one open, its text
-const SEED = (d) => { localStorage.setItem('charts.drawings', JSON.stringify([{ id: 'ui', title: '', modified: '2026-10-24T00:00:00Z', size: d.length }])); localStorage.setItem('charts.drawings.current', 'ui'); localStorage.setItem('charts.drawing.ui', d); };
+const SEED = (d) => { localStorage.setItem('earthplotter.drawings', JSON.stringify([{ id: 'ui', title: '', modified: '2026-10-24T00:00:00Z', size: d.length }])); localStorage.setItem('earthplotter.drawings.current', 'ui'); localStorage.setItem('earthplotter.drawing.ui', d); };
 
 const { browser, base, check, section, finish } = await start();
 
@@ -39,7 +39,7 @@ for (const [name, width, height, touch] of VIEWPORTS) {
       const page = await browser.newPage({ viewport: { width, height }, hasTouch: touch, isMobile: touch });
       // the Draw view with a drawing: a point with two sectors (its inspector shown) and a shape
       if (typeof menu === 'string') await page.addInitScript(SEED, DRAWING);
-      await page.addInitScript(() => localStorage.setItem('charts.groups.open', '["base","sea","data"]')); // the Layers groups open
+      await page.addInitScript(() => localStorage.setItem('earthplotter.groups.open', '["base","sea","data"]')); // the Layers groups open
       // a zoomed-out view (scale note shown), four stacked legends (they once ran over the
       // credits), a measurement
       await page.goto(`${base}#v=5/45/14/0&col=waves:height&arr=currents:surface&on=chart,coastline,depth,isobaths,traffic,legend`);

@@ -4,25 +4,25 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="referrer" content="no-referrer">
-  <title>Charts</title>
+  <title>Earth Plotter</title>
   <!-- the icon (site/icon.svg; the PNGs drawn from it) and the page installed as an app -->
   <link rel="icon" href="icon.svg" type="image/svg+xml">
   <link rel="icon" href="favicon-32.png" sizes="32x32" type="image/png">
   <link rel="apple-touch-icon" href="apple-touch-icon.png">
   <link rel="manifest" href="manifest.webmanifest">
   <meta name="theme-color" content="#1f5f86">
-  <meta name="description" content="A world chart in one static page, from open data with no keys: OpenStreetMap, satellite imagery, depth shading and isobaths, seamarks, shipping density, Copernicus Marine ocean data and NASA daily imagery, with measuring and drawing tools. Not for navigation.">
+  <meta name="description" content="A map of the world's land and sea in one static page, from open data with no keys: OpenStreetMap, relief and contours, depth shading and isobaths, satellite imagery, seamarks, shipping density, Copernicus Marine ocean data and NASA daily imagery, with measuring, drawing, GIS export and offline areas. Not for navigation.">
   <meta property="og:type" content="website">
-  <meta property="og:title" content="Charts">
-  <meta property="og:description" content="A world chart in one static page, from open data with no keys: OpenStreetMap, satellite imagery, depth shading and isobaths, seamarks, shipping density, Copernicus Marine ocean data and NASA daily imagery, with measuring and drawing tools. Not for navigation.">
-  <meta property="og:url" content="https://charts.makaw.org/">
-  <meta property="og:image" content="https://charts.makaw.org/preview.jpg">
+  <meta property="og:title" content="Earth Plotter">
+  <meta property="og:description" content="A map of the world's land and sea in one static page, from open data with no keys: OpenStreetMap, relief and contours, depth shading and isobaths, satellite imagery, seamarks, shipping density, Copernicus Marine ocean data and NASA daily imagery, with measuring, drawing, GIS export and offline areas. Not for navigation.">
+  <meta property="og:url" content="https://earthplotter.org/">
+  <meta property="og:image" content="https://earthplotter.org/preview.jpg">
   <meta property="og:image:width" content="1200">
   <meta property="og:image:height" content="630">
-  <meta property="og:image:alt" content="The chart of the Bay of Naples: depth shading, isobaths, relief and place names">
+  <meta property="og:image:alt" content="The Bay of Naples in Earth Plotter: depth shading, isobaths, relief and place names">
   <meta name="twitter:card" content="summary_large_image">
   <!-- csp:start (written by tools/deps.mjs --write from site/hosts.js; do not edit by hand) -->
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; connect-src 'self' https://tiles.openfreemap.org https://s3.amazonaws.com/elevation-tiles-prod/ https://tiles.maps.eox.at https://server.arcgisonline.com https://gibs.earthdata.nasa.gov https://tiles.openseamap.org https://ows.emodnet-humanactivities.eu https://wmts.marine.copernicus.eu https://tiles.emodnet-bathymetry.eu https://drive.emodnet-geology.eu https://tiles.arcgis.com https://geo.vliz.be https://photon.komoot.io https://stac.marine.copernicus.eu https://s3.waw3-1.cloudferro.com https://geodata.makaw.org; worker-src 'self'; manifest-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; connect-src 'self' https://tiles.openfreemap.org https://s3.amazonaws.com/elevation-tiles-prod/ https://tiles.maps.eox.at https://server.arcgisonline.com https://gibs.earthdata.nasa.gov https://tiles.openseamap.org https://ows.emodnet-humanactivities.eu https://wmts.marine.copernicus.eu https://tiles.emodnet-bathymetry.eu https://drive.emodnet-geology.eu https://tiles.arcgis.com https://geo.vliz.be https://photon.komoot.io https://stac.marine.copernicus.eu https://s3.waw3-1.cloudferro.com https://geodata.earthplotter.org; worker-src 'self'; manifest-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
   <!-- csp:end -->
   <!-- the libraries, copied from npm by tools/deps.mjs (site/vendor/, with their licences) -->
   <link rel="stylesheet" href="vendor/maplibre-gl.css">
@@ -134,7 +134,7 @@
   <footer id="status" class="status"></footer>
 
   <dialog id="about" aria-labelledby="about-title">
-    <h2 id="about-title">Charts</h2>
+    <h2 id="about-title">Earth Plotter</h2>
     <p><b>Not for navigation.</b> Positions, depths and coastlines come from open datasets of varying accuracy; depths are a coarse elevation model, not soundings.</p>
     <p>Map data © OpenStreetMap contributors (ODbL), © OpenMapTiles, served by OpenFreeMap; depths GEBCO Compilation Group (2026) GEBCO 2026 Grid (doi:10.5285/4f68d5c7-45eb-f999-e063-7086abc036fa); land elevation Mapzen Terrain Tiles; ocean data generated using E.U. Copernicus Marine Service Information. Each layer's source, licence and resolution are behind its <b>ⓘ</b> in Layers.</p>
     <p>Tile requests tell each provider which area you are viewing; a hidden layer makes none. A place name typed goes to the search provider with the map's centre, to a tenth of a degree. A line's elevation profile reads the depth and height tiles along that line. Your location, when you show it, stays in this page.</p>
@@ -143,8 +143,8 @@
     <ul class="keys"></ul> <!-- keys.js -->
     <p>Libraries, their licences beside them: <a href="vendor/LICENSE-maplibre-gl.txt" target="_blank">MapLibre GL JS</a> and <a href="vendor/LICENSE-maplibre-contour.txt" target="_blank">maplibre-contour</a> (BSD 3-Clause), <a href="vendor/LICENSE-geographiclib-geodesic.txt" target="_blank">GeographicLib</a> and <a href="vendor/LICENSE-polygon-clipping.txt" target="_blank">polygon-clipping</a> (MIT).</p>
     <h3>This site</h3>
-    <p class="site">© 2026 <a href="https://github.com/stemanfredi" target="_blank" rel="noopener">Stefano Manfredi</a> · <a href="https://github.com/stemanfredi/charts" target="_blank" rel="noopener">Source code</a> · <a href="https://github.com/stemanfredi/charts/blob/main/LICENSE" target="_blank" rel="noopener">GPL-3.0-or-later</a>, no warranty · <span id="version">a development copy</span> ·
-      <a id="issue" href="https://github.com/stemanfredi/charts/issues/new" target="_blank" rel="noopener" title="Opens a new issue on GitHub with this view's link filled in: it shows the area viewed and the layers, and can be deleted before submitting. Never the drawing.">Report an issue</a> ·
+    <p class="site">© 2026 <a href="https://github.com/stemanfredi" target="_blank" rel="noopener">Stefano Manfredi</a> · <a href="https://github.com/stemanfredi/earth-plotter" target="_blank" rel="noopener">Source code</a> · <a href="https://github.com/stemanfredi/earth-plotter/blob/main/LICENSE" target="_blank" rel="noopener">GPL-3.0-or-later</a>, no warranty<span id="version"></span> ·
+      <a id="issue" href="https://github.com/stemanfredi/earth-plotter/issues/new" target="_blank" rel="noopener" title="Opens a new issue on GitHub with this view's link filled in: it shows the area viewed and the layers, and can be deleted before submitting. Never the drawing.">Report an issue</a> ·
       <button type="button" class="linkbtn" data-reload title="Load the page again (an app installed on a phone has no reload button of its own)">Reload</button></p>
     <div class="fbuttons"><button type="button" data-close>Close</button></div>
   </dialog>

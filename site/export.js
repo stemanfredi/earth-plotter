@@ -68,7 +68,7 @@ export function stacItem({ id, title = 'Chart export', when, data, corners, zoom
     geometry,
     properties: {
       title,
-      description: 'One map view, exported from Charts. NOT FOR NAVIGATION: positions, coastlines and depths come from open datasets of varying accuracy.',
+      description: 'One map view, exported from Earth Plotter. NOT FOR NAVIGATION: positions, coastlines and depths come from open datasets of varying accuracy.',
       datetime: data?.at != null ? new Date(data.at).toISOString() : data?.day ? `${data.day}T00:00:00Z` : when.toISOString(),
       ...(data?.day && { start_datetime: `${data.day}T00:00:00Z`, end_datetime: `${data.day}T23:59:59Z` }),
       created: when.toISOString(),
@@ -81,7 +81,7 @@ export function stacItem({ id, title = 'Chart export', when, data, corners, zoom
       // draws: what a layer of the Ocean data draws, 'colour', 'arrows' or 'both'
       'chart:layers': layers.map(({ id: lid, label, variant, draws, date, period, time, depth, assets: a }) => ({ id: lid, title: label, ...(variant && { variant }), ...(draws && { draws }), ...(date && { date }), ...(period && { period }), ...(time && { time }), ...(depth != null && { depth_m: depth }), ...(a?.length && { assets: a }) })),
     },
-    links: link ? [{ rel: 'via', href: link, type: 'text/html', title: 'This view in Charts' }] : [],
+    links: link ? [{ rel: 'via', href: link, type: 'text/html', title: 'This view in Earth Plotter' }] : [],
     assets,
   };
 }

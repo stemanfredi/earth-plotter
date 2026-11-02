@@ -89,11 +89,11 @@ export function chartCanvas(src, s) {
   g.font = 'bold 10px system-ui, sans-serif'; g.textAlign = 'center'; g.fillText('N', 0, 15);
   g.restore();
   out.fields = {
-    Title: `Charts · ${s.at}`,
+    Title: `Earth Plotter · ${s.at}`,
     Description: [`Centre ${s.at}`, `zoom ${s.zoom.toFixed(2)}`, `bearing ${Math.round(s.bearing)}°`, 'Web Mercator (EPSG:3857)', s.dataText, s.drawText, s.link].filter(Boolean).join(' · '),
     Copyright: s.credits,
     'Creation Time': s.when.toUTCString(),
-    Software: 'Charts',
+    Software: 'Earth Plotter',
     Disclaimer: 'Not for navigation: positions, coastlines and depths come from open datasets of varying accuracy; depths are a coarse elevation model, not soundings.',
   };
   return out;

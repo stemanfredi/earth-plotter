@@ -18,7 +18,7 @@
 import { moveAbout, circle, sector, inverse, destination } from '../geodesy.js';
 import { norm360, norm180, unrollTo } from '../geo.js';
 
-export const FORMAT = 'charts-drawing';
+export const FORMAT = 'earthplotter-drawing';
 export const VERSION = 1; // the drawing's version: this code writes and reads it, and no other
 
 export const MAX_OFFSET = 50; // px: Offset's reach either side of a line

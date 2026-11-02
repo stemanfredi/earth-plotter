@@ -122,7 +122,7 @@ export function splitLine(doc, lineId, index) {
     s.points = [...s.points.slice(index), ...s.points.slice(0, index + 1)].map((q) => [...q]);
     s.names = [...s.names.slice(index), ...s.names.slice(0, index), ''];
     s.closed = false;
-    for (const l of doc.links) if (l.from[0] === lineId) l.from = [lineId, (l.from[1] - index + n) % n];
+    doc.links = doc.links.map((l) => (l.from[0] === lineId ? { ...l, from: [lineId, (l.from[1] - index + n) % n] } : l)); // a new list: linkFrom's index made again
     const on = linkFrom(doc, lineId, 0)?.to;
     if (on) setLink(doc, lineId, n, targetOf(on)); // its end where its start is: on what the vertex was on
     reattach(doc, lineId);
@@ -135,7 +135,7 @@ export function splitLine(doc, lineId, index) {
   s.names = [...s.names.slice(0, index), ''];
   doc.lines.splice(doc.lines.indexOf(s) + 1, 0, rest);
   setLink(doc, lineId, index, at);
-  for (const l of doc.links) if (l.from[0] === lineId && l.from[1] > index) l.from = [rest.id, l.from[1] - index];
+  doc.links = doc.links.map((l) => (l.from[0] === lineId && l.from[1] > index ? { ...l, from: [rest.id, l.from[1] - index] } : l)); // a new list, as above
   setLink(doc, rest.id, 0, at);
   const halves = [s, rest].map((el) => ({ kind: 'line', el }));
   for (const l of doc.links) {

@@ -65,6 +65,7 @@ const SHELL = [
   'icon.svg',
   'icons.js',
   'index.html',
+  'isobaths.js',
   'keys.js',
   'legend.js',
   'manifest.webmanifest',

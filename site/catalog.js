@@ -6,6 +6,10 @@ import { HOSTS } from './hosts.js';
 // zooms more than one module keeps to: the base map's tiles stop at OMT_MAX (the map magnifies them
 // above); the seamarks and the land contours start at their own (the map's zoom)
 export const OMT_MAX = 14, SEAMARKS_MIN = 9, CONTOURS_MIN = 9;
+// the isobaths' tiles stop with the base map's: each is cut, in vector space, with the sea polygons
+// of the base map's tile at its own zoom (clip.js isobaths), so a line ends on the shore as the map
+// draws it, and above 14 both are magnified together
+export const ISOBATH_MAX = OMT_MAX;
 
 // the land's elevation (SRTM); the sea's depths are GEBCO's (gebco.js). Both cut to the OSM
 // coastline (clip.js), up to these zooms of 256 px tiles. Sea 13: depth shading shows up to map
@@ -19,6 +23,9 @@ export const DEM_SEA_MAX = 13, DEM_LAND_MAX = 12;
 // the depth shading hides itself from this map zoom (the style's maxzoom; its item's, the last whole
 // zoom it shows, one less): GEBCO's 460 m cells have no more detail to give
 export const DEPTH_ZMAX = 13;
+// the isobaths are traced at this zoom at most, the data's last detail (the shading's last whole zoom):
+// a tile above it is the lines of its tile at this zoom, cut with the coastline of its own
+export const ISOBATH_TRACE = DEPTH_ZMAX - 1;
 export const OMT_TILEJSON = `${HOSTS.openfreemap}/planet`;
 
 // Shipping density from EMODnet Human Activities (WMS, keyless, CORS), on a 1 km grid over
@@ -48,7 +55,7 @@ export const DENSITY = {
   routes: {
     unit: 'routes per 1 km cell per month',
     types: { all: 'All ship types', t01: 'Cargo', t04: 'Tanker', t03: 'Passenger', t02: 'Fishing', t05: 'Other' },
-    periods: months('2019-01', '2026-07'), // newest month in the WMS on 2026-10-20; npm run data-check reports newer ones
+    periods: months('2019-01', '2026-09'), // newest month in the WMS on 2026-11-02; npm run data-check reports newer ones
     get defaultPeriod() { return this.periods[0]; },
     periodLabel: (p) => `${MONTHS[+p.slice(5) - 1]} ${p.slice(0, 4)}`,
     layer: (type) => `routedensity_${type.replace(/^t/, '')}`, time: (p) => `${p}-01`, stops: STOPS,
@@ -254,7 +261,7 @@ export const ITEMS = [
     variants: { atlas: 'Darker = deeper (atlas)', nautical: 'Darker = shallower (nautical chart)' },
     info: { src: 'GEBCO 2026 Grid (GEBCO Compilation Group), read as a Zarr store from geodata.makaw.org (tools/gebco.mjs)', lic: GEBCO_LIC, res: 'GEBCO\'s cells of 15 arc-seconds (about 460 m), worldwide: about a quarter of the seabed from surveys, the rest interpolated or predicted from satellite gravity (in Europe, EMODnet depth is finer: its own layer). Cut to the OSM coastline, so land below sea level is never tinted; sea the grid calls dry is shown as the shallowest class. Inland water is classified once per water body from the grid at its shore: at sea level (limans, lagoons, harbour basins) it is shown flat in the shallowest class, depth unknown; lakes above it are grey, no depth data. Caspian depths are measured from its surface (−28 m), not from sea level. Off above zoom 12: the data has no more detail', url: 'https://www.gebco.net' } },
   { id: 'isobaths', group: 'sea', label: 'Isobaths', on: true, opacity: 1, minzoom: 2,
-    info: { src: 'Contoured in your browser from GEBCO 2026 (maplibre-contour)', lic: 'As GEBCO', res: 'At the depths nautical charts use, more of them as you zoom in: 3000 and 5000 m from zoom 2 (ridges, trenches, abyssal plains); 200 m (the shelf edge) and every 1000 m from zoom 4; 20, 50, 100 and 500 m from zoom 6; 10, 30, 300, 1500 and 2500 m from zoom 8; 5 m from zoom 10. Indicative only: GEBCO\'s cells are about 460 m, many of them interpolated where there are no surveys. As coarse as the grid beneath: smoothed shapes, not surveyed soundings. Traced on the depths cut to the OSM coastline (to zoom 12, about 38 m per pixel). Above zoom 12 the same lines are magnified: they can stop short of the coast or cross it by a few pixels', url: 'https://github.com/onthegomap/maplibre-contour' } },
+    info: { src: 'Contoured in your browser from GEBCO 2026 (maplibre-contour)', lic: 'As GEBCO', res: 'At the depths nautical charts use, more of them as you zoom in: 3000 and 5000 m from zoom 2 (ridges, trenches, abyssal plains); 200 m (the shelf edge) and every 1000 m from zoom 4; 20, 50, 100 and 500 m from zoom 6; 10, 30, 300, 1500 and 2500 m from zoom 8; 5 m from zoom 10. Indicative only: GEBCO\'s cells are about 460 m, many of them interpolated where there are no surveys. As coarse as the grid beneath: smoothed shapes, not surveyed soundings. Traced on the depths as GEBCO has them, to zoom 12 (about 38 m per pixel), and cut to the OSM coastline as the base map draws it at each zoom, so the lines end on the shore; above zoom 14 both are magnified together', url: 'https://github.com/onthegomap/maplibre-contour' } },
   { id: 'depthsource', group: 'sea', label: 'Depth sources (GEBCO)', opacity: 0.6, kind: 'gebcotid', legendSub: 'where the depths come from',
     legend: () => DEPTH_SOURCES.map(({ label, colour }) => ({ label, colour })), // GEBCO's type identifier grid, by group (gebco.js draws it)
     info: { src: 'GEBCO 2026 type identifier grid (GEBCO Compilation Group), read as a Zarr store from geodata.makaw.org (tools/gebco.mjs)', lic: GEBCO_LIC, res: 'For each of GEBCO\'s 15″ cells (about 460 m), how its depth was obtained: surveyed (multibeam, single-beam, seismic, lidar, soundings), optical (read from the water\'s colour in a satellite image: a few metres at most, and less in turbid water, where a 10 m harbour can read 3 m), estimated (predicted from satellite gravity, interpolated, from chart contours), or taken from another grid or of unknown origin. Zoomed out, each cell shows the most common source of the cells it covers (the less certain on a tie). The depth shading and isobaths are only as good as their source here. Its codes go in the GIS export', url: 'https://www.gebco.net' } },

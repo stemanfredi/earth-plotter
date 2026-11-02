@@ -1,6 +1,6 @@
 import * as maplibregl from './vendor/maplibre-gl.mjs';
 import mlcontour from './vendor/maplibre-contour.mjs';
-import { GROUPS, ITEMS, GIBS, DEM_TILES, DEM_SEA_MAX, DEPTH_ZMAX, DEPTH_SOURCES, DEM_LAND_MAX, OMT_TILEJSON, ISOBATH_STEPS, DEPTH_SCHEMES, NO_DEPTH, DENSITY, ESRI_META, gibsTiles, gibsDomainUrl, domainEnd, densityTiles, CMEMS, CMEMS_DEPTHS, drawsOf, CLASS_LABELS, EMODNET_DEPTH_STOPS, SEAGRASS } from './catalog.js';
+import { GROUPS, ITEMS, GIBS, DEM_TILES, DEM_SEA_MAX, DEPTH_ZMAX, DEPTH_SOURCES, DEM_LAND_MAX, OMT_TILEJSON, DEPTH_SCHEMES, NO_DEPTH, DENSITY, ESRI_META, gibsTiles, gibsDomainUrl, domainEnd, densityTiles, CMEMS, CMEMS_DEPTHS, drawsOf, CLASS_LABELS, EMODNET_DEPTH_STOPS, SEAGRASS } from './catalog.js';
 import { buildStyle, depthRamp, OPACITY_PROP, SEA_PICTURES, LOCATION_LAYERS, INK, esriAttribution } from './style.js';
 import { cmemsTile, partTimes, partLevels, domainOf, cmemsLegend, partIn } from './cmems.js';
 import { workerClipper } from './clip.js';
@@ -133,17 +133,17 @@ let gibsDay = dayOf(state.time); // NASA daily: the day its sources draw (gibs.s
 // Its own caches hold copies of those tiles (256 KB each): enough for a screen's contours and
 // their neighbours (a contour tile reads 3 × 3 DEM tiles), not hundreds (200 per source: 100 MB)
 const demOpts = { url: DEM_TILES, encoding: 'terrarium', worker: false, cacheSize: 64 };
-const seaDem = new mlcontour.DemSource({ ...demOpts, id: 'sea', maxzoom: DEM_SEA_MAX });
 const landDem = new mlcontour.DemSource({ ...demOpts, id: 'land', maxzoom: DEM_LAND_MAX });
 const seaClip = workerClipper({ mode: 'sea', omtTileJson: OMT_TILEJSON });
 const landClip = workerClipper({ template: DEM_TILES, mode: 'land', omtTileJson: OMT_TILEJSON });
-for (const [dem, clip] of [[seaDem, seaClip], [landDem, landClip]]) {
+for (const [dem, clip] of [[landDem, landClip]]) { // the land contours; the isobaths are the sea clipper's own tiles (isobath://)
   dem.manager.getTile = clip.getTile;
   dem.manager.decodeImage = clip.decodeImage;
   dem.setupMaplibre(maplibregl); // registers the contour protocol
 }
 maplibregl.addProtocol('clip-sea', seaClip.protocol);
 maplibregl.addProtocol('clip-land', landClip.protocol);
+maplibregl.addProtocol('isobath', seaClip.isobaths);
 maplibregl.addProtocol('cmems', cmemsTile);
 maplibregl.addProtocol('gebco-tid', tidTile);
 // seagrass tiles (tools/seagrass.mjs) exist only where there is seagrass: its index lists them, and
@@ -161,8 +161,8 @@ const contourOpts = { contourLayer: 'contours', elevationKey: 'ele', levelKey: '
 const style = buildStyle({
   seaDemUrl: 'clip-sea://{z}/{x}/{y}',
   landDemUrl: 'clip-land://{z}/{x}/{y}',
-  // zoom → [interval] in metres (isobaths: traced at the steps their depths need, catalog.js)
-  isobathUrl: seaDem.contourProtocolUrl({ ...contourOpts, thresholds: ISOBATH_STEPS }),
+  isobathUrl: 'isobath://{z}/{x}/{y}',
+  // zoom → [interval] in metres
   contourUrl: landDem.contourProtocolUrl({ ...contourOpts, thresholds: { 9: [100, 500], 11: [50, 250], 12: [20, 100] } }),
   date: gibsDay,
   density: Object.fromEntries(Object.keys(DENSITY).map((id) => [id, [state.variant[id], state.period[id]]])),

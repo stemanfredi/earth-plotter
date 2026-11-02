@@ -3,5 +3,5 @@
 import { createRequire } from 'node:module';
 
 globalThis.geodesic = createRequire(import.meta.url)('geographiclib-geodesic');
-globalThis.window ??= { addEventListener() {} };
+globalThis.window ??= { addEventListener() {}, URL }; // URL: maplibre-contour makes its worker's blob URL at load
 globalThis.document ??= { addEventListener() {}, visibilityState: 'visible' };

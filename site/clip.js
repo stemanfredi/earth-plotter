@@ -13,7 +13,8 @@
 // The depths are drawn as GEBCO has them: no filter; the spline that samples its cells smooths
 // nothing larger than a cell (gebco.js).
 
-import { NO_DEPTH_M, OMT_MAX } from './catalog.js';
+import { NO_DEPTH_M, OMT_MAX, ISOBATH_STEPS, ISOBATH_TRACE } from './catalog.js';
+import { traceLines, clipLines, encodeLines, EXTENT } from './isobaths.js';
 import { HOSTS } from './hosts.js';
 import { gebcoTile } from './gebco.js';
 import { latOf, tileBounds, TILE } from './geo.js';
@@ -43,7 +44,7 @@ const SEA_LEVEL_WATER_M = 8;
 // what a water body shows (also the values of the water mask, 0 being land): DEPTH real depths
 // (the sea, or a DATUMS water body), FLAT inland water at sea level, LAKE no depth source
 const DEPTH = 1, FLAT = 2, LAKE = 3;
-// land value in the shaded sea tiles (contours still get +1 m): pulls the tint edge back to the
+// land value in the shaded sea tiles: pulls the tint edge back to the
 // water pixels, so it never covers the shore line; the sliver it leaves shows the water fill,
 // which app.js colours like the shallowest band while depth shading is on
 const LAND_SHADE_M = 500;
@@ -167,18 +168,21 @@ async function ancestorShore(ctx, id, oz, ox, oy) {
   return null;
 }
 
-// Water mask for elevation tile z/x/y: 0 land, else DEPTH, FLAT or LAKE.
+// The water bodies of the OpenMapTiles tile under elevation tile z/x/y, each DEPTH, FLAT or LAKE:
+// { layer, classes (feature → kind), at(scale) } where at(scale) gives { k, sx, sy } to put the
+// layer's coordinates into the tile's at scale units across it (r * k − sx).
 // It must use the OpenMapTiles tile the basemap shows at the same map zoom, or the two
 // coastlines differ where OSM is generalised: 256 px raster-dem tiles at z show at map
 // zoom z−1 (with roundZoom off, see app.js) → OMT z−1 (omtOffset 1); 512 px contour tiles
 // at z show at map zoom z → OMT z (omtOffset 0). levelAt(px, py) is the elevation above the
-// local surface (sea level, or a DATUMS surface); inDatum(px, py) says whether that is a datum.
-async function seaMask(ctx, z, x, y, levelAt, inDatum, omtOffset) {
+// local surface (sea level, or a DATUMS surface) at a place of the SIZE × SIZE tile; inDatum(px, py)
+// says whether that is a datum.
+async function waterClasses(ctx, z, x, y, levelAt, inDatum, omtOffset) {
   const oz = Math.max(0, Math.min(z - omtOffset, OMT_MAX)), d = z - oz;
   const ox = x >> d, oy = y >> d;
   const layer = await omtLayer(ctx.omtTemplate, oz, ox, oy);
-  const c = new OffscreenCanvas(SIZE, SIZE), g = c.getContext('2d');
-  const k = (SIZE * 2 ** d) / layer.extent, sx = (x - (ox << d)) * SIZE, sy = (y - (oy << d)) * SIZE;
+  const at = (scale) => ({ k: (scale * 2 ** d) / layer.extent, sx: (x - (ox << d)) * scale, sy: (y - (oy << d)) * scale });
+  const { k, sx, sy } = at(SIZE);
   const classify = async (f) => {
     if (f.id && ctx.waterLevel.has(f.id)) return ctx.waterLevel.get(f.id); // decided once: every tile agrees
     let vals = [];
@@ -203,9 +207,17 @@ async function seaMask(ctx, z, x, y, levelAt, inDatum, omtOffset) {
     if (f.id) ctx.waterLevel.set(f.id, v);
     return v;
   };
-  // painted as colour channels: LAKE blue, FLAT green, DEPTH red, each over the ones before
   const classes = new Map();
   for (const f of layer.features) if (f.cls !== 'swimming_pool') classes.set(f, SEA_CLASSES.has(f.cls) ? DEPTH : await classify(f));
+  return { layer, classes, at };
+}
+
+// Water mask for elevation tile z/x/y: 0 land, else DEPTH, FLAT or LAKE (waterClasses, painted)
+async function seaMask(ctx, z, x, y, levelAt, inDatum, omtOffset) {
+  const { classes, at } = await waterClasses(ctx, z, x, y, levelAt, inDatum, omtOffset);
+  const { k, sx, sy } = at(SIZE);
+  const c = new OffscreenCanvas(SIZE, SIZE), g = c.getContext('2d');
+  // painted as colour channels: LAKE blue, FLAT green, DEPTH red, each over the ones before
   for (const kind of [LAKE, FLAT, DEPTH]) {
     g.fillStyle = { [DEPTH]: '#f00', [FLAT]: '#0f0', [LAKE]: '#00f' }[kind];
     for (const [f, c] of classes) {
@@ -289,7 +301,7 @@ const NEEDS_HEIGHTS = () => { throw HEIGHTS; };
 export function clipper({ template, mode, omtTileJson, remember = true }) {
   const omtTemplate = () => omtTemplateOf(omtTileJson);
   // 64 tiles each: a view and its surroundings (raw 256 kB, the sea's 512 kB: as read and as drawn; cut 320 kB: two clippers, two cuts of a sea tile)
-  const rawCache = lru(64), cache = lru(64), waterLevel = remember ? new Map() : { has: () => false, set() {} }; // waterLevel: OSM id → DEPTH, FLAT or LAKE
+  const rawCache = lru(64), cache = lru(64), waterLevel = remember ? new Map() : { has: () => false, get: () => undefined, set() {} }; // waterLevel: OSM id → DEPTH, FLAT or LAKE
   // a tile's elevation in metres, { raw, drawn }: raw as the data has it (no mask), also what inland
   // water is classified from, at lower zooms too; drawn the sea's depths blended from water cells
   // alone (gebco.js), so the shore's land cells do not pull them shallower; the land's its DEM, as it
@@ -322,6 +334,63 @@ export function clipper({ template, mode, omtTileJson, remember = true }) {
     }
     return p;
   };
+  // the surface per pixel of tile z/x/y, (i, j) → 0, or a DATUMS surface for pixels inside its box
+  const surfaceOf = (z, x, y) => {
+    const [tw, ts, te, tn] = tileBounds(z, x, y);
+    const datums = mode === 'sea' ? DATUMS.filter(([, b]) => b[0] < te && b[2] > tw && b[1] < tn && b[3] > ts) : [];
+    if (!datums.length) return () => 0;
+    const lonAt = (i) => tw + ((i + 0.5) / SIZE) * (te - tw);
+    const latAt = (j) => latOf((y + (j + 0.5) / SIZE) / 2 ** z);
+    return (i, j) => {
+      for (const [, b, h0] of datums) { const lo = lonAt(i), la = latAt(j); if (lo >= b[0] && lo <= b[2] && la >= b[1] && la <= b[3]) return h0; }
+      return 0;
+    };
+  };
+  // ---- isobaths (isobaths.js): traced from the depths uncut at ISOBATH_TRACE, where the data has
+  // its last detail, and cut in vector space against the sea polygons of the base map's tile at the
+  // tile's own zoom, so that a line ends on the shore as the map draws it, at any zoom -----
+  const stepFor = (z) => { let s = 0; for (const [k, [v]] of Object.entries(ISOBATH_STEPS)) if (+k <= z) s = v; return s; }; // every step m from zoom k
+  // the depths as traced: from the surface (a DATUMS water body's), half a metre shallower (GEBCO is
+  // in whole metres, so on a flat shelf whole groups of cells read exactly −20, and the 20 m line
+  // traced their edges cell by cell; a whole metre stands for ±0.5 m, and with the half added no flat
+  // lies on a line, which crosses the slope between values instead, towards shallower: the shallow
+  // side a line encloses is never smaller); what the data calls dry 0, so that no line is traced on
+  // land (the 0 line is left out) and the shallow lines run to the data's own shore
+  const tracedMetres = async (z, x, y) => {
+    const v = await drawn(z, x, y), surface = surfaceOf(z, x, y), out = new Float32Array(v.length);
+    for (let j = 0; j < SIZE; j++) for (let i = 0; i < SIZE; i++) { const k = j * SIZE + i, h = v[k] - surface(i, j); out[k] = h < 0 ? h + 0.5 : 0; }
+    return out;
+  };
+  const traced = lru(64); // `zt/x/y/step` → [{ value, lines }]: a tile's lines traced, with its neighbours' for seamless lines
+  const tracedLines = (zt, tx, ty, step) => traced(`${zt}/${tx}/${ty}/${step}`, async () => {
+    const max = 2 ** zt, nb = [];
+    for (let j = ty - 1; j <= ty + 1; j++) for (let i = tx - 1; i <= tx + 1; i++) nb.push(j < 0 || j >= max ? undefined : tracedMetres(zt, (i + max) % max, j));
+    const lines = traceLines(await Promise.all(nb), SIZE, step);
+    return Object.entries(lines).filter(([lv]) => +lv < 0).map(([lv, ls]) => ({ value: +lv, lines: ls }));
+  });
+  const BUFFER = 128; // beyond the tile, as MapLibre keeps (its default buffer), so that a line's end is not cut at the tile's edge
+  const isobaths = async (z, x, y, signal) => {
+    const step = stepFor(z);
+    if (!step) return encodeLines('contours', 'ele', []);
+    const zt = Math.min(z, ISOBATH_TRACE), d = z - zt, tx = x >> d, ty = y >> d, f = 2 ** d;
+    const oz = Math.min(z, OMT_MAX), layer = await omtLayer(omtTemplate, oz, x >> (z - oz), y >> (z - oz));
+    if (!layer.features.some((q) => SEA_CLASSES.has(q.cls) || (q.cls !== 'swimming_pool' && waterLevel.get(q.id) !== LAKE))) return encodeLines('contours', 'ele', []); // no sea here: no line
+    const lines = await tracedLines(zt, tx, ty, step);
+    if (signal?.aborted) throw new Error('aborted');
+    // the water bodies to classify (a lagoon flat, a lake none) read their heights at the traced zoom
+    const needs = layer.features.some((q) => q.cls !== 'swimming_pool' && !SEA_CLASSES.has(q.cls) && !(q.id && waterLevel.has(q.id)));
+    const src = needs ? await raw(zt, tx, ty) : null, surface = surfaceOf(zt, tx, ty);
+    const there = (px, py) => [Math.min(SIZE - 1, Math.floor((px + (x - (tx << d)) * SIZE) / f)), Math.min(SIZE - 1, Math.floor((py + (y - (ty << d)) * SIZE) / f))];
+    const levelAt = (px, py) => { const [i, j] = there(px, py); return src[j * SIZE + i] - surface(i, j); }, inDatum = (px, py) => surface(...there(px, py)) !== 0;
+    const { classes, at } = await waterClasses({ omtTemplate, raw, waterLevel }, z, x, y, levelAt, inDatum, 0);
+    if (signal?.aborted) throw new Error('aborted');
+    const { k, sx, sy } = at(EXTENT), rings = [];
+    for (const [q, c] of classes) if (c === DEPTH) for (const r of q.rings) rings.push(r.map((v, i) => v * k - (i % 2 ? sy : sx)));
+    const ox = (x - (tx << d)) * EXTENT, oy = (y - (ty << d)) * EXTENT; // this tile's share of the traced tile
+    const place = (ls) => ls.map((l) => l.map((v, i) => v * f - (i % 2 ? oy : ox)));
+    const box = [[-BUFFER, -BUFFER, EXTENT + BUFFER, -BUFFER, EXTENT + BUFFER, EXTENT + BUFFER, -BUFFER, EXTENT + BUFFER]];
+    return encodeLines('contours', 'ele', lines.map(({ value, lines: ls }) => ({ value, lines: clipLines(clipLines(place(ls), box), rings) })));
+  };
   const cut = async (z, x, y, omtOffset, signal) => {
     // The land's tile all open sea needs no heights: its water mask from the base map alone says so,
     // and the tile is what the cut would make of it (0 m, all sea), its elevation never read (at sea
@@ -334,18 +403,9 @@ export function clipper({ template, mode, omtTileJson, remember = true }) {
       if (sea?.every((m) => m === DEPTH)) return { h: new Float32Array(SIZE * SIZE), mask: sea };
       if (signal.aborted) throw new Error('aborted');
     }
-    const [tw, ts, te, tn] = tileBounds(z, x, y);
-    const datums = mode === 'sea' ? DATUMS.filter(([, b]) => b[0] < te && b[2] > tw && b[1] < tn && b[3] > ts) : [];
     const src = await raw(z, x, y), val = await drawn(z, x, y);
     if (signal.aborted) throw new Error('aborted'); // nobody waits: not cut (the lru forgets a make that fails: asked again, it is)
-    // surface per tile pixel: 0, or a DATUMS surface for pixels inside its box
-    const lonAt = (i) => tw + ((i + 0.5) / SIZE) * (te - tw);
-    const latAt = (j) => latOf((y + (j + 0.5) / SIZE) / 2 ** z);
-    const surface = (i, j) => {
-      if (!datums.length) return 0;
-      for (const [, b, h0] of datums) { const lo = lonAt(i), la = latAt(j); if (lo >= b[0] && lo <= b[2] && la >= b[1] && la <= b[3]) return h0; }
-      return 0;
-    };
+    const surface = surfaceOf(z, x, y);
     const mask = sea ?? await seaMask({ omtTemplate, raw, waterLevel }, z, x, y, // px, py: a shore vertex's place, fractional
       (px, py) => src[Math.floor(py) * SIZE + Math.floor(px)] - surface(px, py), (px, py) => surface(px, py) !== 0, omtOffset);
     if (signal.aborted) throw new Error('aborted');
@@ -376,19 +436,14 @@ export function clipper({ template, mode, omtTileJson, remember = true }) {
       }
       return createImageBitmap(img, { premultiplyAlpha: 'none', colorSpaceConversion: 'none' });
     },
-    // metres for maplibre-contour (512 px contour tiles: cut with the coastline of the same zoom)
+    // metres for maplibre-contour (the land's 512 px contour tiles: cut with the coastline of the same
+    // zoom); always a new array: the worker transfers it, which would empty the cached tile
     async contourElevation(z, x, y, signal) {
       const { h: e } = await elevation(z, x, y, 0, signal);
-      // lakes carry NO_DEPTH_M for the shading's grey; for contours they are just "not sea"
-      // (+1 m), or every lake would be ringed by contours from 0 to 9000 m. Depths half a metre
-      // shallower: GEBCO is in whole metres, so on a flat shelf whole groups of cells read exactly
-      // −20, and the 20 m line traced their edges cell by cell (a staircase, Adriatic at zoom 12);
-      // a whole metre stands for ±0.5 m, and with the half added no flat lies on a line, which
-      // crosses the slope between values instead (towards shallower: the shallow side a line
-      // encloses is never smaller)
-      // always a new array: the worker transfers it, which would empty the cached tile
-      return mode === 'sea' ? e.map((v) => (v > 1 ? 1 : v < 0 ? v + 0.5 : v)) : e.slice();
+      return e.slice();
     },
+    // the isobaths' vector tile z/x/y (above), as bytes
+    isobaths,
     // metres as the raster-dem tile draws them, NaN where it shows no value of its own: for the sea
     // land, lakes and inland water at sea level (flat, depth unknown); for the land the sea (ZIP export)
     async metres(z, x, y) {
@@ -453,6 +508,7 @@ export function workerClipper({ template, mode, omtTileJson }) {
       return { data: await ask({ mode, op: 'bitmap', zxy: zxy(params.url) }, abortController?.signal) };
     },
     getTile: async (url, ac) => ({ data: { elevation: await ask({ mode, op: 'contourElevation', zxy: zxy(url) }, ac?.signal) } }),
+    isobaths: async (params, abortController) => ({ data: (await ask({ mode, op: 'isobaths', zxy: zxy(params.url) }, abortController?.signal)).buffer }),
     decodeImage: async (data) => ({ width: SIZE, height: SIZE, data: data.elevation }),
     metres: (z, x, y) => ask({ mode, op: 'metres', zxy: [z, x, y] }),
   };

@@ -24,7 +24,10 @@ test('baseTiles: what OpenFreeMap\'s terms count, from a zoom to the top (at mos
   assert.ok(n > 500 && n < BASE_TILES, `${n}`);
   assert.equal(baseTiles(alps, 8, 20), baseTiles(alps, 8, TOP_MAX));
   assert.ok(baseTiles(alps, 0, 14) - baseTiles(alps, 8, 14) < 60); // zooms 0–7: a few tiles each, the ring included
-  assert.equal(baseTiles(alps, 13, 13), tilesIn(alps, 13).length); // above the contours' zooms: no ring // the base map's tiles stop at 14
+  // the ring around the area only at the land contours' zooms (9–12), not above nor below
+  assert.equal(baseTiles(alps, 12, 12), tilesIn(alps, 12, 1).length);
+  assert.equal(baseTiles(alps, 13, 14), tilesIn(alps, 13).length + tilesIn(alps, 14).length);
+  assert.equal(baseTiles(alps, 8, 8), tilesIn(alps, 8).length);
   // 320 km at sea to zoom 12 is about the limit; to zoom 14 far over it
   const sea = [8, 42.5, 12, 45.4];
   assert.ok(baseTiles(sea, 5, 12) < 4000 && baseTiles(sea, 5, 14) > 3 * BASE_TILES);

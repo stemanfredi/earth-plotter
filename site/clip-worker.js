@@ -18,7 +18,7 @@ self.onmessage = async ({ data }) => {
     const ac = new AbortController();
     running.set(data.seq, ac);
     const value = await clippers[data.mode][data.op](...data.zxy, ac.signal).finally(() => running.delete(data.seq));
-    self.postMessage({ seq: data.seq, value }, [value instanceof Float32Array ? value.buffer : value]);
+    self.postMessage({ seq: data.seq, value }, [ArrayBuffer.isView(value) ? value.buffer : value]);
   } catch (err) {
     self.postMessage({ seq: data.seq, error: String(err?.message || err), name: err?.name }); // its name: a storage full is said as one
   }

@@ -8,8 +8,8 @@ import { h, editInPlace } from './dom.js';
 import { slug } from './format.js';
 import { icon, UI_ICON } from './icons.js';
 import { HOSTS, OFFLINE_PREFIXES } from './hosts.js';
-import { OMT_TILEJSON, DEM_TILES, DEM_LAND_MAX, DEM_SEA_MAX, OMT_MAX, SEAMARKS_MIN, CONTOURS_MIN, DEM_CREDITS } from './catalog.js';
-import { FONTS, GLYPHS, SEAMARK_TILES, ISOBATH_MAX } from './style.js';
+import { OMT_TILEJSON, DEM_TILES, DEM_LAND_MAX, DEM_SEA_MAX, OMT_MAX, SEAMARKS_MIN, CONTOURS_MIN, DEM_CREDITS, ISOBATH_MAX } from './catalog.js';
+import { FONTS, GLYPHS, SEAMARK_TILES } from './style.js';
 import { fetchInto, tileUrl } from './net.js';
 import { tileXY, MAX_LAT } from './geo.js';
 import { ask } from './menu.js';
@@ -23,7 +23,7 @@ export const KEPT_SOURCES = new Set(['omt', 'dem', 'dem-sea', 'contours', 'isoba
 export const BASE_TILES = 3000;
 const BASE_BYTES = 50e6;
 export const TOP_MAX = OMT_MAX; // the base map's tiles stop there; the map magnifies them above
-const CONTOUR_MAX = Math.min(ISOBATH_MAX, DEM_LAND_MAX); // the contours and isobaths stop there (style.js)
+// the land contours stop at the DEM's last zoom, the isobaths at the base map's (catalog.js)
 const RANGES = [0, 256, 512, 768, 1024]; // the fonts' characters for Latin, Greek and Cyrillic
 // and the glyph files the map has asked for since the page opened (app.js transformRequest), as
 // addresses (a space %20): the other scripts its views have shown. Not the browser's list of what it
@@ -50,8 +50,10 @@ export function tilesIn([w, s, e, n], z, margin = 0) {
   return out;
 }
 // the base map's tiles an area from zoom from to top takes (the number OpenFreeMap's terms count): to
-// the contours' last zoom with the ring around the area that their cut reads too
-export const baseTiles = (bounds, from, top) => Array.from({ length: Math.max(0, Math.min(top, TOP_MAX) - from + 1) }, (_, i) => tilesIn(bounds, from + i, from + i <= CONTOUR_MAX ? 1 : 0).length).reduce((a, b) => a + b, 0);
+// the top, and at the land contours' zooms the ring around the area that their cut reads too (an
+// isobath tile reads only its own: its neighbours come from the depths, clip.js)
+const ringed = (z) => z >= CONTOURS_MIN && z <= DEM_LAND_MAX;
+export const baseTiles = (bounds, from, top) => Array.from({ length: Math.max(0, Math.min(top, TOP_MAX) - from + 1) }, (_, i) => tilesIn(bounds, from + i, ringed(from + i) ? 1 : 0).length).reduce((a, b) => a + b, 0);
 // the lowest zoom an area keeps: a few below the view's (lower, the area is a speck, and the
 // world's tiles are the largest)
 export const fromZoom = (viewZoom) => Math.max(0, Math.min(TOP_MAX, Math.floor(viewZoom)) - 3);
@@ -127,12 +129,12 @@ async function saveArea({ bounds, from, top, name, fresh = false, signal, progre
     // the seamarks' tiles from SEAMARKS_MIN: the map asks for those too (its layer starts at map zoom
     // SEAMARKS_MIN, its 256 px tiles one zoom above; one missing, it asks for its parent)
     const seamarks = range(Math.max(from + 1, SEAMARKS_MIN), Math.min(top + 1, 18)).map((t) => () => get(tileUrl(SEAMARK_TILES, ...t)));
-    // the cut elevation; for the contours its neighbours too (a contour tile reads 3 × 3)
+    // the cut elevation; for the land contours its neighbours too (a contour tile reads 3 × 3)
     const elevation = [
       ...range(from + 1, Math.min(top + 1, DEM_LAND_MAX)).map(cut('land', 'bitmap')),
-      ...range(Math.max(from, CONTOURS_MIN), Math.min(top, CONTOUR_MAX), 1).map(cut('land', 'contourElevation')), // drawn from CONTOURS_MIN
+      ...range(Math.max(from, CONTOURS_MIN), Math.min(top, DEM_LAND_MAX), 1).map(cut('land', 'contourElevation')), // drawn from CONTOURS_MIN
       ...range(from + 1, Math.min(top + 1, DEM_SEA_MAX)).map(cut('sea', 'bitmap')),
-      ...range(from, Math.min(top, CONTOUR_MAX), 1).map(cut('sea', 'contourElevation')),
+      ...range(from, Math.min(top, ISOBATH_MAX)).map(cut('sea', 'isobaths')), // the depths' neighbours read from GEBCO, the coastline of its own tile only: no ring
     ];
     const total = base.length + seamarks.length + elevation.length;
     let done = 0, failed = 0, full = false;

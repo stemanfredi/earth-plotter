@@ -37,7 +37,11 @@ DEM. Inland water is classified per water body from the elevation along its
 shore: at sea level, a lake with no depth, or a sea with its own surface
 (the Caspian). The depths are drawn as GEBCO has them, no filter; the
 isobaths trace them half a metre shallower, so that a flat of whole metres
-is never traced cell by cell.
+is never traced cell by cell. The isobaths are traced from the depths uncut,
+at the zoom where the data has its last detail, and cut in vector space
+against the sea polygons of the base map's own tile at each zoom
+(`site/isobaths.js`): the raster says how deep, the vector says where the
+sea is, and a line ends on the shore as the map draws it.
 
 **Depths as data, not pictures.** Depth layers that come as images from their
 providers are not used for the sea, because their land is baked in and cannot

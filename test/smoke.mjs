@@ -487,6 +487,24 @@ await section('the depth on a click', async () => {
   const ink = await dp.evaluate(() => [map.getPaintProperty('isobaths', 'line-color'), map.getStyle().layers.find((l) => l.id === 'depth').maxzoom]);
   check(Array.isArray(ink[0]) && ink[0][0] === 'step' && ink[0][3] === ink[1] && ink[0][4] === '#335f97', `isobaths: the shading's colours up to zoom ${ink[1]}, its deepest blue above (${JSON.stringify(ink[0]).slice(0, 80)})`);
   await dp.close();
+  // cut in vector space with the base map's coastline: at a harbour zoom the lines are there, from
+  // zoom 14 tiles (the source's last), and no vertex of theirs in the view lies on land (the base
+  // map's own water polygons say where the sea is)
+  const hz = await open('#v=15.5/44.0267/9.8508/0&on=chart,coastline,isobaths', ctx, 'elements');
+  const traced = await hz.evaluate(() => {
+    const polys = map.querySourceFeatures('omt', { sourceLayer: 'water' }).flatMap((f) => { const g = f.toJSON().geometry; return g.type === 'Polygon' ? [g.coordinates] : g.type === 'MultiPolygon' ? g.coordinates : []; });
+    const inRing = ([x, y], ring) => { let c = false; for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) { const [xi, yi] = ring[i], [xj, yj] = ring[j]; if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) c = !c; } return c; };
+    const inWater = (q) => polys.some((poly) => inRing(q, poly[0]) && !poly.slice(1).some((h) => inRing(q, h)));
+    const b = map.getBounds(), inView = ([x, y]) => x > b.getWest() && x < b.getEast() && y > b.getSouth() && y < b.getNorth();
+    let pts = 0, land = 0;
+    for (const f of map.querySourceFeatures('isobaths', { sourceLayer: 'contours' })) {
+      const g = f.toJSON().geometry;
+      for (const q of (g.type === 'LineString' ? [g.coordinates] : g.coordinates).flat().filter(inView)) { pts++; if (!inWater(q)) land++; }
+    }
+    return [map.getSource('isobaths').maxzoom, pts, land];
+  });
+  check(traced[0] === 14 && traced[1] > 0 && traced[2] === 0 && !hz.errors.length, `isobaths at zoom 15.5, from zoom ${traced[0]} tiles: ${traced[1]} vertices in view, ${traced[2]} on land (${hz.errors.join(' | ')})`);
+  await hz.close();
 });
 
 await section('seagrass', async () => {

@@ -352,7 +352,8 @@ export function linkFrom(doc, id, index = 0) {
   const i = ix(doc);
   if (!i) return doc.links.find((l) => l.from[0] === id && l.from[1] === index);
   // indexed (reading()): the links by where they start, made again when the list grew or shrank (a
-  // file's links read one by one, one dropped) or was replaced (setLink clears it)
+  // file's links read one by one, one dropped) or was replaced (setLink clears it). A link renumbered
+  // in place is not seen: renumber with a new list (attach.js splitLine, reattach)
   if (i.links?.list !== doc.links || i.links.n !== doc.links.length) i.links = { list: doc.links, n: doc.links.length, by: new Map(doc.links.map((l) => [`${l.from[0]} ${l.from[1]}`, l])) };
   return i.links.by.get(`${id} ${index}`);
 }

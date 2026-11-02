@@ -176,7 +176,7 @@ function read(raw, app, known, now, report) {
     // free where the geometry says
     const was = [];
     const linked = new Set(); // the places linked so far (one link a place)
-  for (const v of Array.isArray(app?.links) ? app.links : []) {
+    for (const v of Array.isArray(app?.links) ? app.links : []) {
       const f = isObj(v) && Array.isArray(v.from) ? v.from : [], to = refIn(unpack(v?.to)), x = typeof f[0] === 'string' && find(doc, f[0]);
       const place = x && ((x.kind === 'line' && !holderOf(doc, x.el)) || x.kind === 'label') && Number.isInteger(f[1]) && placeAt(doc, f);
 
@@ -186,7 +186,7 @@ function read(raw, app, known, now, report) {
             : x.kind === 'line' && !lineTarget(doc, to) && `from a line's place to ${String(to.element).slice(0, 64)}, which is neither a point nor a point's shape`;
       if (what) { report.warnings.push(`link ${what}: dropped`); continue; }
       doc.links.push({ from: [f[0], f[1]], to });
-    linked.add(`${f[0]} ${f[1]}`);
+      linked.add(`${f[0]} ${f[1]}`);
       was.push([f, [...place]]);
     }
     refreshAttached(doc);

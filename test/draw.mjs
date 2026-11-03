@@ -679,7 +679,7 @@ await section('labels, names, data and totals', async () => {
   // otherwise; a point's own switch still wins
   await dw.evaluate((id) => { drawing.change((doc) => { doc.points.find((n) => n.id === id).look = {}; }); drawing.select([]); }, nid);
   await dw.click('.droot .dname');
-  await dw.locator('.dinspect .fblock:has(h3:text-is("Display")) input[aria-label="Names on map"]').check();
+  await dw.locator('.dinspect .fblock:has(h3 .hfold:text-is("Display")) input[aria-label="Names on map"]').check();
   const byDefault = await dw.evaluate((id) => [drawing.doc.look.text?.name, drawing.doc.points.find((n) => n.id === id).look.text], nid);
   await until(() => map.queryRenderedFeatures({ layers: ['draw-name-point'] }).length > 0);
   const named = await dw.evaluate(() => map.queryRenderedFeatures({ layers: ['draw-name-point'] }).length);
@@ -751,6 +751,20 @@ await section('legs typed, list grids', async () => {
   await dw.click('.dinspect .fblock:has(h3:has-text("Vertices")) button:has-text("Copy")');
   const copied = await dw.evaluate(() => navigator.clipboard.readText());
   check(/^#\tLat\tLon/.test(copied) && /\n1\t/.test(copied) && copied.trim().split('\n').length === 3, `a list's Copy gives its rows, numbered from 1 (${copied.split('\n')[1]})`);
+  // every section folds; Vertices folded stays folded on another line, and opens again
+  const heads = await dw.evaluate(() => [...document.querySelectorAll('.dinspect h3')].map((x) => [x.textContent, x.classList.contains('folds')]));
+  await dw.click('.dinspect h3 .hfold:has-text("Vertices")');
+  await dw.evaluate((id) => drawing.select([id]), legIds[1]);
+  const folded = await dw.evaluate(() => !document.querySelector('.dinspect .lgrid[data-grid*=":points@"]') && !!document.querySelector('.dinspect h3.folds:not(.open) .hfold')?.textContent.startsWith('Vertices'));
+  await dw.click('.dinspect h3 .hfold:has-text("Vertices")');
+  const reopened = await dw.evaluate(() => !!document.querySelector('.dinspect .lgrid[data-grid*=":points@"]'));
+  // the head clicked at its arrow (its right end, not its title), on the same element: folds, then opens
+  const atArrow = async (t) => { const b = await dw.locator(`.dinspect h3.folds:has(.hfold:text-is("${t}"))`).boundingBox(); await dw.mouse.click(b.x + b.width - 4, b.y + b.height / 2); };
+  const isOpen = (t) => dw.evaluate((t) => [...document.querySelectorAll('.dinspect h3.folds')].find((x) => x.querySelector('.hfold').textContent === t)?.classList.contains('open'), t);
+  const arrow = [];
+  for (const t of ['Look', 'Data']) { const was = await isOpen(t); await atArrow(t); const a = await isOpen(t); await atArrow(t); arrow.push(`${t} ${was}→${a}→${await isOpen(t)}`); }
+  check(heads.length > 2 && heads.every(([, f]) => f) && folded && reopened && arrow.every((x) => /^\w+ (true→false→true|false→true→false)$/.test(x)),
+    `every section folds (${heads.map(([t]) => t).join(', ')}); Vertices folded stays folded on the next line (${folded}), opens again (${reopened}); at the arrow, twice: ${arrow.join(', ')}`);
 });
 
 await section('the drawing UI: drags, boxes, handles, Attach to… (review)', async () => {

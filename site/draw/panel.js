@@ -140,7 +140,7 @@ export function drawView(root, ctx) {
     // Fill and Stroke: rows of the grid like any other (a colour, its opacity), Width and Dash their own
     // an opacity as a percentage (kept as 0 to 1)
     const opacity = (f, aria) => [F.number(() => { const v = same(f); return v === null ? null : Math.round(v * 100); }, (v) => put(f, v / 100), aria, { max: 100, placeholder: 'mixed', bad: 'a percentage, 0 to 100', title: 'Opacity' }), funit('%')];
-    return h('div', { class: 'fblock' }, h('h3', {}, title),
+    return section(title, title, {},
       shown('fill.color') ? row('Fill', colour('fill.color', 'Fill colour'), opacity('fill.opacity', 'Fill opacity (%)'), back('fill.color', 'fill.opacity')) : null,
       shown('stroke.color') ? row('Stroke', colour('stroke.color', 'Stroke colour'), opacity('stroke.opacity', 'Stroke opacity (%)'), back('stroke.color', 'stroke.opacity')) : null,
       shown('stroke.width') ? row('Width', num('stroke.width', 'Stroke width (px)', ...STROKE_WIDTH), funit('px'), back('stroke.width')) : null,
@@ -170,12 +170,22 @@ export function drawView(root, ctx) {
   // category: properties like any other)
   // Data, folded while it has nothing of the user's: the preset a point was placed from is said under
   // its heading (it is a property all the same, in the list once open)
-  // A folding section's head (drawing-ui.md §5: Data, Elevation profile, Totals), as a group's in Layers:
+  // A folding section's head (drawing-ui.md §5: every section folds), as a group's in Layers:
   // the whole head folds it (its title a button, for keys), the arrow at its right; extras: buttons
-  // after the title (Copy, +)
-  const foldHead = (title, open, toggle, ...extras) => h('h3', { class: open ? 'folds open' : 'folds', onclick: (e) => { if (!e.target.closest('.hbtns, .hfold')) toggle(); } },
+  // after the title (Copy, +). data-key: its state, so that morph never keeps a head whose click
+  // would toggle from the state it was made in
+  const foldHead = (title, open, toggle, ...extras) => h('h3', { class: open ? 'folds open' : 'folds', 'data-key': open ? 'open' : 'folded', onclick: (e) => { if (!e.target.closest('.hbtns, .hfold')) toggle(); } },
     h('button', { type: 'button', class: 'hfold', 'aria-expanded': String(open), 'aria-label': `${open ? 'Fold' : 'Open'} ${title}`, onclick: toggle }, title),
     h('span', { class: 'hbtns' }, ...extras.flat().filter(Boolean)));
+  // Any other section: open to start with, folded by hand (by its key, this session: Look folded stays
+  // folded from one element to the next); extras (Copy) and body shown while open; tip: its head's title
+  const sectionsFolded = new Set();
+  const section = (key, title, { extras = [], tip } = {}, ...body) => {
+    const open = !sectionsFolded.has(key);
+    const head = foldHead(title, open, () => { sectionsFolded[open ? 'add' : 'delete'](key); renderInspector(); }, open ? extras : []);
+    if (tip) head.title = tip;
+    return h('div', { class: 'fblock' }, head, ...(open ? body : []));
+  };
   // the row of what can be done to it (one place, before Look): the rule's Edit… and Select all, then its own
   const actionsRow = (...btns) => { btns = btns.flat().filter(Boolean); return btns.length ? row('', ...btns) : null; };
   const dataOpen = new Set(); // the elements whose Data was opened by hand
@@ -345,7 +355,7 @@ export function drawView(root, ctx) {
   } }, 'Copy');
 
   // a line: its table of vertices, its profile, its inspector (lineview.js)
-  const lines = createLineView({ drawing, map, ctx, F, field, row, funit, fvalue, valued, distValue, link, now, set, item, foldHead, actionsRow, act, copyBtn, paged, PAGE, pageAt,
+  const lines = createLineView({ drawing, map, ctx, F, field, row, funit, fvalue, valued, distValue, link, now, set, item, foldHead, section, actionsRow, act, copyBtn, paged, PAGE, pageAt,
     attachBtn, detach, commonTop, commonBottom, lookBlock, ruleActs, openDistribution: (...a) => openDistribution(...a), inspector, render: () => renderInspector() });
   const { lineInspector, pickPlace, dropProfileCursor } = lines;
   const radiusCheck = (m) => (m < MAX_RADIUS ? null : 'a distance under 10 000 km');
@@ -377,7 +387,7 @@ export function drawView(root, ctx) {
       row('Members', fvalue([plural(below.length, 'element'), allSubs ? plural(allSubs, 'subgroup') : ''].filter(Boolean).join(' · ')), direct.length ? shownEye : null),
       totalsOf,
       actionsRow(ruleActs(id), h('button', { type: 'button', class: 'small', title: 'Everything in it', disabled: !below.length, onclick: () => drawing.select(tops(below)) }, 'Select members'), connectBtn(below)),
-      ...(shared.length ? [h('div', { class: 'fblock' }, h('h3', {}, 'Each member'), ...shared)] : []),
+      ...(shared.length ? [section('Each member', 'Each member', {}, ...shared)] : []),
       lookBlock([item(id)], null, 'Look · sets each member'), ...commonBottom('group', id)];
   }
 
@@ -431,7 +441,7 @@ export function drawView(root, ctx) {
   // Connect… for the points among xs (a group's: everything in it), two or more
   // the rules' forms (forms.js), built with the inspector's parts
   const selKey = () => [...drawing.sel].sort().join(' ');
-  const forms = createForms({ drawing, map, F, row, pair, funit, fvalue, withUnit, distValue, link, now, tops, radiusCheck, selKey,
+  const forms = createForms({ drawing, map, F, row, section, pair, funit, fvalue, withUnit, distValue, link, now, tops, radiusCheck, selKey,
     setTitle: (t) => { title = t; }, render: () => renderInspector() });
   const { ruleRow, connectBtn, openDistribution, closeForm, formPreview } = forms;
   function drawingInspector() {

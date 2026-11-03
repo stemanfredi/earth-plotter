@@ -14,7 +14,7 @@ import { listGrid, setCurrent } from './grid.js';
 import { fmtArea, fmtDist, fmtElevation, distText, UNIT_TEXT, inUnit } from '../format.js';
 
 export function createLineView(kit) {
-  const { drawing, map, ctx, F, field, row, funit, fvalue, valued, distValue, link, now, set, item, foldHead, actionsRow, act, copyBtn, paged, PAGE, pageAt,
+  const { drawing, map, ctx, F, field, row, funit, fvalue, valued, distValue, link, now, set, item, foldHead, section, actionsRow, act, copyBtn, paged, PAGE, pageAt,
     attachBtn, detach, commonTop, commonBottom, lookBlock, ruleActs, openDistribution, inspector, render: renderInspector } = kit;
   // Legs typed (the line's table of vertices): the straight leg arriving at a vertex from the one before
   // (a closed line's first: from its last), its length and its bearing. A value typed moves that
@@ -46,7 +46,7 @@ export function createLineView(kit) {
       columns: [...PLACE_COLUMNS, { head: `Leg ${UNIT_TEXT[unit]}`, width: 56, cls: 'n', title: 'From the vertex before' }, { head: 'Brg °T', width: 52, cls: 'n', title: 'Its bearing' }],
       rows: pg.rows.map(rowAt), actions: (r) => actions(abs(r)), keys: { insert: (r) => insert(abs(r)), remove: (r) => remove(abs(r)) },
       current: (r) => drawing.setPlace(r == null ? null : { id, index: abs(r) }) });
-    return h('div', { class: 'fblock' }, h('h3', { title: 'A row clicked is ringed on the map' }, `Vertices (${total})`, copyBtn(copy)), table, pg.pager);
+    return section('Vertices', `Vertices (${total})`, { extras: [copyBtn(copy)], tip: 'A row clicked is ringed on the map' }, table, pg.pager);
   }
   // a table's distances: one unit for the column (its head says it), by the rule a field's value
   // follows (format.js distText): metres while its largest is under 1 km, else km; NM in NM

@@ -15,7 +15,7 @@ import { fmtDist, plural } from '../format.js';
 import { groupPath } from './tree.js';
 
 export function createForms(kit) {
-  const { drawing, map, F, row, pair, funit, fvalue, withUnit, distValue, link, now, tops, radiusCheck, selKey, setTitle, render: renderInspector } = kit;
+  const { drawing, map, F, row, section, pair, funit, fvalue, withUnit, distValue, link, now, tops, radiusCheck, selKey, setTitle, render: renderInspector } = kit;
   const connectBtn = (xs) => { const ids = xs.filter((x) => x.kind === 'point').map((x) => x.el.id); return ids.length > 1 ? h('button', { type: 'button', class: 'small', title: 'Lines from roots to these points', onclick: () => openConnect(ids) }, 'Connect…') : null; };
   const copies = (n) => `${n} ${n === 1 ? 'copy' : 'copies'}`;
   // a root no group is cheapest from, once made: said, as the form said it before
@@ -128,7 +128,7 @@ export function createForms(kit) {
       con.pattern === 'tree' ? row('Min. branch', withUnit(F.dist(() => con.minBranch, (m) => { con.minBranch = m; redo(); }, 'Shortest branch', { zero: true,
         title: 'A hub at least this far from its points' }))) : null,
       // the roots, a table: a point's name (a link), or a new root's place; its weight; × drops it
-      h('div', { class: 'fblock' }, h('h3', { title: 'Click the map, or a point' }, `Roots (${c.roots.length})`),
+      section('Roots', `Roots (${c.roots.length})`, { tip: 'Click the map, or a point' },
         names.length ? listGrid({ name: 'roots', plain: true, head: true, columns: [{ head: 'Root', width: 170 }, { head: 'Weight', width: 70, cls: 'n', title: 'Its pull' }, { width: 40 }],
           rows: names.map((name, k) => ({ cells: [k < con.roots.length ? link(con.roots[k].id) : fvalue(name, { title: `${con.newRoots[k - con.roots.length][1].toFixed(5)}, ${con.newRoots[k - con.roots.length][0].toFixed(5)}` }),
             weight(k), h('button', { type: 'button', class: 'x', 'aria-label': `Drop ${name}`, title: 'Drop it', onclick: drop(k) }, '×')] })) }) : null),

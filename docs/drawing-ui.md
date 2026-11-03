@@ -239,8 +239,10 @@ takes one unit by its largest value.
   gives every row, tab-separated, for a spreadsheet. Numbers are right-aligned, with fixed decimals:
   degrees to 6 (a decimetre), distances in the column's unit (in its head) to the metre, bearings
   to 1.
-- **Sections** have the heads of Layers' groups, the arrow at the right where one folds: **Data**, open while it has properties of the user's;
-  **Elevation profile**, read when opened; **Totals**, open to start with.
+- **Sections** have the heads of Layers' groups, and each folds, the arrow at its right: **Data**,
+  open while it has properties of the user's; **Elevation profile**, read when opened; **Totals**,
+  open to start with; the others (Look, Vertices…) open to start with, one folded staying folded from
+  one element to the next.
 - **A line**: its **Length**; closed, its **Area** and **Perimeter** instead. **Closed** (three
   vertices or more) joins its last vertex to its first, unticked opens it again.
 - **A line's vertices**, 1 (its start) to N (its end): Lat, Lon; the **leg** from the vertex before

@@ -11,7 +11,11 @@
 //               Two blends from the one pass: raw, over every cell, what inland water is classified
 //               from; sea, over the water cells only, the sea's drawn depths: a land cell beside the
 //               shore (tens of metres up) no longer pulls the water next to it shallower over a
-//               cell's width
+//               cell's width. Where water holds less than WATER_FULL of the weights (the OSM sea
+//               beyond GEBCO's coast: a harbour basin it calls land), its depth is divided by
+//               WATER_FULL instead, so it fades to the shore over about a cell: divided by its own
+//               weight, a single water cell at the window's edge drew its whole depth at once, and
+//               every isobath down to it on one line (the port of La Spezia: 0 to 33 m in 50 m)
 //   tidTile     where the depths come from (the type identifier grid): each cell's own code,
 //               coloured by its group (catalog.js DEPTH_SOURCES), a MapLibre tile handler
 //   tidAt       the code of the cell at a point (the depth on a click)
@@ -20,7 +24,7 @@ import { latOf, TILE } from './geo.js';
 import { fetchBytes, lru } from './net.js';
 import { GEBCO, GEBCO_TID, DEPTH_SOURCES } from './catalog.js';
 
-const SIZE = TILE, CELL = 15 / 3600, LEVELS = 7, KEEP = 96; // KEEP: chunks kept (512 kB each at most): a zoomed-out view's, and its neighbours'
+const SIZE = TILE, CELL = 15 / 3600, LEVELS = 7, KEEP = 96, WATER_FULL = 0.5; // KEEP: chunks kept (512 kB each at most): a zoomed-out view's, and its neighbours'
 
 // the level for tiles of zoom z: the coarsest whose cells are no larger than the tile's pixels
 const levelFor = (z) => Math.max(0, Math.min(LEVELS - 1, Math.floor(Math.log2(360 / (SIZE * 2 ** z) / CELL))));
@@ -94,7 +98,7 @@ export async function gridTile(url, variable, z, x, y, nearest) {
         }
       }
       out[j * SIZE + i] = sum;
-      seaOut[j * SIZE + i] = ws > 0 ? sea / ws : sum;
+      seaOut[j * SIZE + i] = ws > 0 ? sea / Math.max(ws, WATER_FULL) : sum;
     }
   }
   return { raw: out, sea: seaOut };

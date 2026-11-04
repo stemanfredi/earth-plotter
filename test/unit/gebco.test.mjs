@@ -121,12 +121,16 @@ test('gridTile: one pass gives the plain blend and the water-only blend of the s
     const url = `http://127.0.0.1:${server.address().port}/zarr/gebco-2026/elevation.zarr`;
     const { raw, sea } = await gridTile(url, 'elevation', 8, 3, 0, false); // columns 1012–1349: across the shore
     assert.equal(raw.length, 65536); assert.equal(sea.length, 65536);
-    let shore = 0;
+    // the water's weight w from the plain blend (500 − 1000 w): from half of it, the water's depth
+    // alone; below, its depth fading to the shore (−1000 w = raw − 500), never a jump to −500
+    let shore = 0, fading = 0;
     for (let p = 0; p < raw.length; p++) {
       if (Math.abs(raw[p] - 500) < 1e-2) near(sea[p], 500, 1e-2, `${p}: all land, drawn as read`);
-      else { assert.ok(Math.abs(sea[p] + 500) < 1e-2, `${p}: water in reach (${raw[p]}): the water's depth alone`); if (raw[p] > -499) shore++; }
+      else if (raw[p] <= 0) { near(sea[p], -500, 1e-2, `${p}: water half the weight or more (${raw[p]}): the water's depth alone`); if (raw[p] > -499) shore++; }
+      else { near(sea[p], raw[p] - 500, 1e-2, `${p}: little water in reach (${raw[p]}): its depth faded`); fading++; }
     }
     assert.ok(shore > 0, 'a band of pixels where the plain blend mixes land in');
+    assert.ok(fading > 0, 'a band where the water fades to the shore');
   } finally {
     server.close();
     rmSync(dir, { recursive: true, force: true });

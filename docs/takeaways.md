@@ -53,3 +53,30 @@ in the history, not here.
     OSM inland water out of the land.
   - Fill empty grid cells from their neighbours before contouring, and trace
     the edge of no data with marching squares, or the edges come out stepped.
+- **EMODnet merged with GEBCO was not worth keeping** (November 2026). Its
+  DTM 2024 merged with GEBCO 2026 into one store over Europe, on the branch
+  `emodnet-depth` (tools/emodnet.mjs). What it taught, for a depth surface
+  built later:
+  - GEBCO 2026 already holds EMODnet's surveys in Europe, coarser (median
+    difference 0.5 m at La Spezia): the gain is resolution, large on rocky,
+    island and fjord coasts (Split, Oslofjord, Marseille: GEBCO more than
+    3 m off in 21–53 % of surveyed cells under 50 m), small on flat gulfs.
+  - Both are from lowest astronomical tide in Europe's surveyed tidal
+    waters: GEBCO took EMODnet's values as they are (St Malo: median 0.1 m
+    apart where mean sea level stands 6.5 m higher).
+  - EMODnet's interpolation flag has three states: 1 interpolated, 0 and no
+    flag at all surveyed (most of the Solent, the Gulf of La Spezia). A cell
+    flagged 1 is a guess whatever it holds: its 0 m in ports it has no
+    soundings of (La Spezia's) turned sea into land.
+  - Two grids with two coastlines make seams, each found by looking:
+    speckle and checkerboards of surveyed and interpolated cells
+    (Tenerife), steps where surveys meet the other grid, GEBCO's coast
+    strip drawn as land under OSM's sea (Cinque Terre), squares from
+    averaging near steep shores (Tromsø), straight edges at block borders.
+  - Resampling GEBCO into a finer store changes it even where nothing else
+    does: its water reached further inland and its lines moved. Keep a
+    merged store to the surveys and their blending zone, the rest drawn
+    from GEBCO's own.
+  - Every chunk of a store must exist: a saved offline area cannot hold a
+    file that is not there. Land as one value, not its heights, halved the
+    store (4.9 GB to 2.8 GB).

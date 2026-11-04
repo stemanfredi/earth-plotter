@@ -55,7 +55,7 @@ export const DENSITY = {
   routes: {
     unit: 'routes per 1 km cell per month',
     types: { all: 'All ship types', t01: 'Cargo', t04: 'Tanker', t03: 'Passenger', t02: 'Fishing', t05: 'Other' },
-    periods: months('2019-01', '2026-09'), // newest month in the WMS on 2026-11-02; npm run data-check reports newer ones
+    periods: months('2019-01', '2026-10'), // newest month in the WMS on 2026-11-04; npm run data-check reports newer ones
     get defaultPeriod() { return this.periods[0]; },
     periodLabel: (p) => `${MONTHS[+p.slice(5) - 1]} ${p.slice(0, 4)}`,
     layer: (type) => `routedensity_${type.replace(/^t/, '')}`, time: (p) => `${p}-01`, stops: STOPS,

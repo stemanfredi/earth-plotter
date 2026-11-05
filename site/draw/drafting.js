@@ -34,6 +34,7 @@ export class Drafting {
   finishLine(closed = false) {
     const d = this.draft, measured = this.tool === 'measure';
     if (!(d?.pts.length > 1)) return; // no second point: nothing to make yet
+    if (this.tool === 'line' && this.variant.line === 'area') { if (d.pts.length < 3) return; closed = true; } // an area: closed as it ends, three vertices at least
     this.draft = null;
     let seg;
     this.change((doc) => {

@@ -33,7 +33,7 @@ button { cursor: pointer; }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 svg { flex: none; }
 /* what floats over the map (a box, a menu, the map's controls): a white card */
-:is(.mapctl, .search, .results, .kinds, .dmenu) { background: #fff; border: 1px solid var(--line); border-radius: 8px; box-shadow: var(--shadow); }
+:is(.mapctl, .search, .results, .dmenu) { background: #fff; border: 1px solid var(--line); border-radius: 8px; box-shadow: var(--shadow); }
 /* a name or a value on one line, cut with "…" */
 :is(.drow .dname, .vrow .flabel, .vcell .fvalue, .vcell .funit, button.small.link, .drawings .dname, .dinsphead .ititle) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
@@ -383,12 +383,12 @@ svg.profile .pcursor { stroke: var(--magenta); stroke-width: 1; }
 .bar { position: absolute; z-index: 9; left: 0; right: 0; top: 0; height: var(--bar-h); display: flex; align-items: center; gap: 2px; padding: 0 6px 1px;
   background: var(--bg2); box-shadow: inset 0 -1px var(--line); } /* its edge drawn inside: the buttons centred in what is seen */
 .dock { display: none; } /* a phone's (below) */
-/* an icon button of the bar, the dock, the map's controls and a tool's kinds: --tap (32 px, 44 with a finger), a 20 px icon */
-:is(.bar, .dock) > button, :is(.mapctl, .kinds) button { width: var(--tap); height: var(--tap); flex: none; padding: 0; border: 0; border-radius: 6px; background: none; display: grid; place-items: center; color: var(--ink); }
+/* an icon button of the bar, the dock and the map's controls: --tap (32 px, 44 with a finger), a 20 px icon */
+:is(.bar, .dock) > button, .mapctl button { width: var(--tap); height: var(--tap); flex: none; padding: 0; border: 0; border-radius: 6px; background: none; display: grid; place-items: center; color: var(--ink); }
 :is(.bar, .dock) > button { position: relative; }
-:is(:is(.bar, .dock) > button, :is(.mapctl, .kinds) button):not(:disabled):hover { background: var(--hover); }
+:is(:is(.bar, .dock) > button, .mapctl button):not(:disabled):hover { background: var(--hover); }
 /* what is pressed, everywhere: the accent, white on it */
-:is(.bar, .dock) > button[aria-pressed="true"], :is(.mapctl, .kinds, .touchbar, .seg) button[aria-pressed="true"], button.small[aria-pressed="true"], .vrow .x[aria-pressed="true"], button.done {
+:is(.bar, .dock) > button[aria-pressed="true"], :is(.mapctl, .touchbar, .seg) button[aria-pressed="true"], button.small[aria-pressed="true"], .vrow .x[aria-pressed="true"], button.done {
   background: var(--accent); border-color: var(--accent); color: #fff; }
 .seg button[aria-pressed="true"], button.done { font-weight: 600; }
 .bar > :is(.ptoggle, #b-find)[aria-pressed="true"], .bar > #b-find[aria-expanded="true"] { background: var(--sel); color: var(--accent); }
@@ -401,17 +401,16 @@ svg.profile .pcursor { stroke: var(--magenta); stroke-width: 1; }
   .bar > .filebtn svg:first-child { display: none; }
   .bar > .filebtn svg + svg { display: block; }
 }
-/* a tool with kinds (draw/tools.js): a mark in its button's corner */
-:is(.bar, .dock) > button.haskinds::after { content: ""; position: absolute; right: 3px; bottom: 3px; border: 2.5px solid transparent; border-right-color: currentColor; border-bottom-color: currentColor; opacity: .55; }
 /* dividers between the tools' groups: short, centred */
 .tsep { width: 1px; height: 22px; background: var(--line); margin: 0 4px; flex: none; }
 .bar > .grow { flex: 1; }
-/* a tool's kinds: a row under its button, over the panel while they are picked */
-.kinds { position: absolute; display: flex; gap: 2px; padding: 4px; }
-.kinds button { width: auto; min-width: var(--tap); padding: 0 4px; } /* a kind's initials take their room */
-.kinds .initials { font-size: 12px; font-weight: 600; }
-/* a phone: the bar ☰, find a place, Layers, Elements; the dock along the bottom, Undo and the tools (while
-   one is on: Back, it, Done), its kinds in a row above it; the panels a bottom sheet over the dock, as
+/* the Library (draw/library.js): a preset's picture larger than a row's icon, its own colours */
+.lib .drow .kind svg { width: 22px; height: 22px; }
+.lib .drow .kind { width: 26px; }
+svg.thumb { overflow: visible; }
+.lib .drow .dname { white-space: normal; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-height: 1.25; padding-block: 3px; } /* a long name on two lines, not cut short */
+/* a phone: the bar ☰, find a place, Layers, Elements, Library; the dock along the bottom, Undo, Redo, Box
+   select and Measure (while drawing: Back, Undo, Redo, what is drawn, Done); the panels a bottom sheet over the dock, as
    tall as dragged at its grip, the map's foot above it; Properties, while off, its head alone (a peek) */
 @media (max-width: 719px) {
   .pos:not(.shown, .depthchip) { display: none; } /* no cursor position; the time and depth shown stay */
@@ -422,8 +421,7 @@ svg.profile .pcursor { stroke: var(--magenta); stroke-width: 1; }
   .dock { position: absolute; z-index: 9; left: 0; right: 0; bottom: 0; height: var(--bar-h); display: flex; align-items: center; justify-content: space-evenly; gap: 2px; padding: 1px 6px 0;
     background: var(--bg2); box-shadow: inset 0 1px var(--line); }
   .dock > button:not(:has(svg)) { width: auto; padding: 0 12px; } /* Back, Done: words */
-  .dock > .kinds { left: 6px; right: 6px; bottom: calc(100% + 4px); overflow-x: auto; } /* one row, sideways */
-  .dock > .kinds button { flex: none; }
+  .dock > .drawsnow { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; } /* what is being drawn */
   .status { bottom: var(--bar-h); }
   .foot { bottom: calc(var(--bar-h) + var(--status-h)); }
   .side, .props { top: auto; bottom: var(--bar-h); left: 0; right: 0; width: auto; height: var(--sheet); border: 0; border-top: 1px solid var(--line); border-radius: 12px 12px 0 0; box-shadow: 0 -4px 16px rgba(20, 30, 40, .14); }

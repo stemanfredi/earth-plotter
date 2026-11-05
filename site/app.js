@@ -741,11 +741,12 @@ function itemStatus(id) {
 // ---- small builders ---------------------------------------------------------
 // the page's own buttons name their icon: <i data-icon="…">
 for (const el of document.querySelectorAll('[data-icon]')) el.replaceWith(icon(...UI_ICON[el.dataset.icon]));
-// the frame (frame.js): the bar, the left panel (Elements, Layers), the right one (Properties)
+// the frame (frame.js): the bar, the left panel (Layers, Elements, Library), the right one (Properties)
 let drawPanel = null; // the drawing's view (below): told when the frame changes
 const frame = createFrame({ left: $('#side'), right: $('#props'), onChange: () => drawPanel?.render('tool'),
   tabs: [{ id: 'layers', label: 'Layers', paths: UI_ICON.layers, badge: h('span', { class: 'spin', 'aria-hidden': 'true' }), body: $('#menu') },
-    { id: 'elements', label: 'Elements', paths: UI_ICON.elements, body: $('#dview') }] });
+    { id: 'elements', label: 'Elements', paths: UI_ICON.elements, body: $('#dview') },
+    { id: 'library', label: 'Library', hint: 'Library: what to draw', paths: UI_ICON.library, body: $('#lib') }] });
 // ---- layers panel -----------------------------------------------------------
 const menu = $('#menu');
 const rows = {};
@@ -972,7 +973,7 @@ const offline = offlineDialog({ map, fit: ([w, s, e, n]) => map.fitBounds([[w, s
 // ---- the drawing (draw/panel.js): its tools in the bar, the tree, its properties -------------------
 drawPanel = drawView($('#dview'), {
   drawing, display, setDisplay, map,
-  free: () => free(), bar: $('#bar'), props: $('#props'), foot: $('#footl'), dock: $('#dock'), frame,
+  free: () => free(), bar: $('#bar'), props: $('#props'), foot: $('#footl'), dock: $('#dock'), frame, lib: $('#lib'),
   // the bar's file group (draw/files.js): the view's outputs in Download, Copy link, About (a phone's ☰)
   outputs, offlineItem, copyLink: () => copyLink(), about: () => openAbout(),
   // a drawing imported, or one of the list, opened with its view: where it was, its layers, time,
@@ -1073,7 +1074,7 @@ window.addEventListener('keydown', (e) => {
   const k = keyEntry(e.key);
   if (!k?.open && !k?.tool) return;
   if (k.open === 'search') { e.preventDefault(); setFinding(true); }
-  else if (k.open === 'elements' || k.open === 'layers') frame.toggleTab(k.open);
+  else if (['layers', 'elements', 'library'].includes(k.open)) frame.toggleTab(k.open);
   else if (k.open === 'props') frame.setProps(!frame.props);
   else if (k.tool === 'box') drawing.boxSelect(!drawing.boxNext);
   else drawPanel.press(k.tool); // on, or off

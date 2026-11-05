@@ -13,6 +13,7 @@ export const KEYS = [ // exported for its test (no key twice)
   { line: 1, key: '/', show: '[/]', text: 'find a place', open: 'search' },
   { line: 1, key: 'l', text: 'layers', open: 'layers' },
   { line: 1, key: 'e', text: 'elements', open: 'elements' },
+  { line: 1, key: 'k', text: 'library', open: 'library' },
   { line: 1, key: 'i', text: 'properties', open: 'props' },
   { line: 3, key: 'b', show: '[B] or Shift-drag', text: 'box select', tool: 'box' },
   { line: 3, key: 'p', text: 'point', tool: 'point' },

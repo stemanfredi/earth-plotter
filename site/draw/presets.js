@@ -1,8 +1,8 @@
-// The user's own presets (docs/drawing-ui.md §9): a point kept under a name with its shapes (sizes
-// and bearings as they are about it), its symbol and its look, placed again from the Shape tool's kinds
-// (the Point tool's for a point without shapes). Each is a small drawing of its own ({ name, doc }),
+// The user's own presets (docs/drawing-ui.md §9): a point kept under a name ("Folder / Name") with its
+// shapes (sizes and bearings as they are about it, shown or hidden), its symbol and its look, placed
+// again from the Library (library.js) by the Shape tool. Each is a small drawing of its own ({ name, doc }),
 // kept as a drawing's file is. They live in this browser only, never in the app or a drawing's file; a
-// small file of their own moves them to another browser (Download › Presets, Open a file…). Local
+// small file of their own moves them to another browser (Download › Library, Open a file…). Local
 // storage may be missing or refuse: every access is guarded.
 
 import { parse, toFile } from './file.js';
@@ -38,5 +38,9 @@ function clean(list) {
   return list.filter((x) => x && typeof x.name === 'string' && x.name.trim() && !seen.has(x.name) && seen.add(x.name))
     .map((x) => ({ name: x.name, doc: parse(JSON.stringify(x.drawing ?? null)).doc })).filter((x) => x.doc?.points.length);
 }
-// where a preset is placed from: Shape when it has shapes, else Point
-export const presetTool = (x) => (x.doc.circles.length || x.doc.lines.length ? 'shape' : 'point');
+// whether a preset holds shapes (Distribute along repeats only those)
+export const hasShapes = (x) => !!(x.doc.circles.length || x.doc.lines.length);
+// a preset's folder: what its name says before its last " / " ("A / B / C": "A / B"), or ''
+export const folderOf = (name) => { const i = name.lastIndexOf(' / '); return i < 0 ? '' : name.slice(0, i).trim(); };
+// names in the order people read them: "70 kHz" before "100 kHz", case aside
+export const byName = (a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });

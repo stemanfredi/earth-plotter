@@ -1,5 +1,5 @@
 // The page's frame (drawing-ui.md §1): a bar across the top, and over the map a panel on each side,
-// the left one with tabs (Layers, Elements: each a button in the bar), the right one Properties.
+// the left one with tabs (Layers, Elements, Library: each a button in the bar), the right one Properties.
 // Each is as wide as dragged at its inner edge (double-click: the default), remembered in this browser. On a phone they are one
 // bottom sheet at a time, as tall as dragged at its grip (dragged down to the bottom: closed). Which tab is open (or none) and whether
 // Properties is on are the user's; Properties shows only while it has something to show (has()). On a phone, while it is off and the
@@ -16,8 +16,8 @@ const LEFT = { min: 200, max: 480, dflt: 260 }, RIGHT = { min: 260, max: 600, df
 const MIN_MAP = 480; // px of map kept between the two panels
 const clamp = (v, r) => (Number.isFinite(v) ? Math.round(Math.max(r.min, Math.min(r.max, v))) : r.dflt); // what was saved, or the default
 
-// left, right: the panels (empty asides); tabs: [{ id, label, paths, badge, body }] for the left (its
-// button's icon, and what it shows besides, if anything).
+// left, right: the panels (empty asides); tabs: [{ id, label, paths, badge, body, hint }] for the left (its
+// button's icon, and what it shows besides, if anything; hint: its tooltip, else its label).
 // onChange(): after any change of what is shown.
 export function createFrame({ left, right, tabs, onChange = () => {} }) {
   const saved = store.json(KEY) ?? {};
@@ -33,8 +33,8 @@ export function createFrame({ left, right, tabs, onChange = () => {} }) {
 
   // the bar's toggles: a button per left tab (the left panel open on it, or closed when it shows it; while
   // the left makes way for Properties, it back on that tab, Properties off), Properties' at the bar's end
-  const toggle = (cls, label, key, paths, onclick, badge = null) => h('button', { type: 'button', class: `ptoggle ${cls}`, 'aria-label': label, title: `${label} (${key})`, 'aria-pressed': 'false', onclick }, icon(...paths), badge);
-  const tabBtns = tabs.map((t) => toggle('ptab', t.label, openKey(t.id), t.paths, () => toggleTab(t.id), t.badge));
+  const toggle = (cls, label, key, paths, onclick, badge = null, hint = label) => h('button', { type: 'button', class: `ptoggle ${cls}`, 'aria-label': label, title: `${hint} (${key})`, 'aria-pressed': 'false', onclick }, icon(...paths), badge);
+  const tabBtns = tabs.map((t) => toggle('ptab', t.label, openKey(t.id), t.paths, () => toggleTab(t.id), t.badge, t.hint));
   tabs.forEach((t, i) => { tabBtns[i].dataset.tab = t.id; });
   const rightBtn = toggle('pright', 'Properties', openKey('props'), UI_ICON.properties, () => setProps(!st.props));
   // a grip (the sheet's, on a phone) and an edge to drag (the panel's width)
@@ -86,7 +86,7 @@ export function createFrame({ left, right, tabs, onChange = () => {} }) {
   function place() {
     const wantsRight = st.has && (st.props || NARROW.matches), both = !NARROW.matches && innerWidth - st.lw - st.rw >= MIN_MAP;
     const showLeft = !!st.tab && (both || !wantsRight || (NARROW.matches && !st.props)), showRight = wantsRight && !(NARROW.matches && showLeft);
-    if (!told && !left.hidden && !showLeft && st.tab && !NARROW.matches) { told = true; note('No room for both panels: Elements and Layers make way for Properties until it closes (or narrow either)'); }
+    if (!told && !left.hidden && !showLeft && st.tab && !NARROW.matches) { told = true; note('No room for both panels: the left one makes way for Properties until it closes (or narrow either)'); }
     left.hidden = !showLeft;
     right.hidden = !showRight;
     right.classList.toggle('peek', showRight && !st.props);

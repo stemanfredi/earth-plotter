@@ -44,38 +44,39 @@ await section('the drawing: the bar, the tools, the kinds, the inspector, its fi
     if (document.querySelector('#bar .ptab[data-tab=elements]').getAttribute('aria-pressed') !== 'true') document.querySelector('#bar .ptab[data-tab=elements]').click();
   });
   await dw.evaluate(async () => { const { addLine } = await import('./draw/document.js'); drawing.change((doc) => addLine(doc, [[12, 40.1], [12.05, 40.12]], { name: 'Distance 1', guide: true, measure: true, look: { text: { values: true } } })); });
-  await dw.keyboard.press('s'); // the Shape tool, a circle (its first kind), its kinds a row under its button
-  const sub = await dw.locator('#bar .kinds:not([hidden]) button').evaluateAll((bs) => bs.map((b) => b.getAttribute('aria-label')));
-  check(sub.join() === 'Circle,Rings,Sector,Rectangle,Ellipse,Triangle,Aerial vehicle,Surface vehicle,Underwater vehicle',
-    `tools: Shape's kinds a row under its button, round a centre first, then the outlines, then the vehicles (${sub})`);
-  // the bar across the top, the kind in use pressed in it; the left panel open on Elements, hidden by
-  // its button, back with E; Properties shows the drawing with nothing selected; the
-  // bar's order: the file group (Open, the title, Download, Copy link), Layers, Elements, Undo…
-  const layoutNow = () => dw.evaluate(() => [document.querySelector('#bar .kinds button[aria-pressed=true]')?.getAttribute('aria-label') ?? '', !!document.querySelector('#bar button[data-tool=shape]')?.offsetParent,
+  await dw.keyboard.press('s'); // the Shape tool, a circle (what it drew last: at first a circle)
+  // the bar across the top, no tool in it that makes elements (the Library has them), Measure; the
+  // left panel open on Elements, hidden by its button, back with E; Properties shows the drawing with
+  // nothing selected; the bar's order: the file group (Open, Download, Copy link), Layers, Elements, Library, Undo…
+  const layoutNow = () => dw.evaluate(() => [drawing.button ?? '', drawing.variant.shape, [...document.querySelectorAll('#bar [data-tool]')].map((b) => b.dataset.tool).join('+'),
     !document.querySelector('#side').hidden, Math.round(document.querySelector('#bar').getBoundingClientRect().top), document.querySelector('#props').hidden]);
   const onTool = await layoutNow();
-  const order = await dw.evaluate(() => [...document.querySelectorAll('#bar > button')].slice(0, 6).map((b) => b.getAttribute('aria-label')).join());
+  const order = await dw.evaluate(() => [...document.querySelectorAll('#bar > button')].slice(0, 7).map((b) => b.getAttribute('aria-label')).join());
   const longHints = await dw.evaluate(() => [...document.querySelectorAll('#bar button[title]')].map((b) => b.title).filter((t) => t.length > 30));
   check(!longHints.length, `tools: the bar's hints a name and its key, no more (${longHints.join(' | ') || 'none longer than 30'})`);
   await dw.click('#bar .ptab[data-tab=elements]');
   const hiddenE = await layoutNow();
   await dw.keyboard.press('e');
   const shownE = await layoutNow();
-  check(onTool.join() === 'Circle,true,true,0,false' && !hiddenE[2] && shownE[2] && order === 'Open,Download,Copy link,Layers,Elements,Undo',
-    `tools: the bar at the top (${order}), the kind in use pressed in it; the left panel open, hidden by its button, back with E; Properties shows the drawing with nothing selected (${onTool}; ${hiddenE[2]}; ${shownE[2]})`);
-  // a kind picked in the row: the tool on with it, the row shut; the key again: the tool off; a
-  // right-click on the button: on again, the row open
-  const shut = () => dw.evaluate(() => [!!document.querySelector('#bar .kinds')?.offsetParent, document.querySelector('#bar button[data-tool=shape]').dataset.shows]);
-  if (!(await shut())[0]) await dw.click('#bar button[data-tool=shape]'); // the row open (a click on a tab may have shut it)
-  await dw.click('#bar .kinds button[aria-label="Rings"]');
-  const picked = await shut();
+  check(onTool.join() === 'shape,circle,measure,true,0,false' && !hiddenE[3] && shownE[3] && order === 'Open,Download,Copy link,Layers,Elements,Library,Undo',
+    `tools: the bar at the top (${order}), Measure its only tool, S on with a circle; the left panel open, hidden by its button, back with E; Properties shows the drawing with nothing selected (${onTool}; ${hiddenE[3]}; ${shownE[3]})`);
+  // the Library: every kind there is to draw; a row clicked, drawing it, the row pressed; again: off; the
+  // key again: on with what it drew last
+  await dw.keyboard.press('k');
+  const builtIn = await dw.evaluate(() => [...document.querySelectorAll('#lib .drow.d1 .dname')].map((b) => b.textContent).join());
+  await dw.click('#lib .drow .dname:text-is("Rings")');
+  const picked = await layoutNow(), pressed = await dw.evaluate(() => document.querySelector('#lib .drow.sel .dname')?.textContent);
+  await dw.click('#lib .drow .dname:text-is("Rings")');
+  const off = await layoutNow();
   await dw.keyboard.press('s');
-  const off = [...await shut(), await dw.evaluate(() => drawing.button)];
-  await dw.click('#bar button[data-tool=shape]', { button: 'right' });
-  const reopened = [...await shut(), await dw.evaluate(() => drawing.button)];
-  await dw.click('#bar .kinds button[aria-label="Circle"]');
-  check(picked.join() === 'false,rings' && off.join() === 'false,rings,' && reopened.join() === 'true,rings,shape',
-    `tools: a kind picked in the row under the tool's button, the row shut (${picked}); the key again: off (${off}); a right-click on the button: on, the row again (${reopened})`);
+  const again = await layoutNow();
+  await dw.click('#lib .drow .dname:text-is("Area")');
+  const area = await dw.evaluate(() => [drawing.button, drawing.variant.line]);
+  await dw.click('#lib .drow .dname:text-is("Circle")');
+  await dw.keyboard.press('e'); // back on Elements
+  check(builtIn === 'Point,Line,Area,Label,Circle,Rings,Sector,Rectangle,Triangle,Ellipse,Aerial vehicle,Surface vehicle,Underwater vehicle' && picked.slice(0, 2).join() === 'shape,rings' && pressed === 'Rings'
+    && off[0] === '' && again.slice(0, 2).join() === 'shape,rings' && area.join() === 'line,area',
+    `library: every built-in kind (${builtIn}); a row clicked: drawing it, pressed (${picked.slice(0, 2)}, ${pressed}); again: off (${off[0]}); S: on with it (${again.slice(0, 2)}); Area: the Line tool closing (${area})`);
   await dw.mouse.click(DX + 500, 400);
   await dw.mouse.click(DX + 500, 400); // its centre again: the default size
   const made = await dw.evaluate(() => [drawing.doc.points.length, drawing.doc.circles.map((c) => [c.radius, c.groupId === drawing.doc.points[0].id]).join(), drawing.sel.has(drawing.doc.points[0].id)]);
@@ -930,6 +931,38 @@ await section('paging, Properties in place', async () => {
   check(!dw.errors.length, `drawing: no errors ${dw.errors.join(' | ')}`);
   await dw.close();
 });
+await section('the Library: folders, pictures, sizes, a filter; a row clicked or dragged places it', async () => {
+  // two presets of the user's in this browser: one in a folder (a point holding a circle, a shown and a hidden), one loose
+  const lctx = await offline({ viewport: { width: 1600, height: 800 } });
+  const fc = (name, feats) => ({ type: 'FeatureCollection', earthplotter: { format: 'earthplotter-drawing', version: 1 }, features: [
+    { type: 'Feature', id: 'p', geometry: { type: 'Point', coordinates: [0, 0] }, properties: { name, earthplotter: { kind: 'point', symbol: 'dot' } } }, ...feats] });
+  const ring = (id, r, extra = {}) => ({ type: 'Feature', id, geometry: { type: 'Point', coordinates: [0, 0] }, properties: { name: `Reach ${r}`, stroke: '#0b7285', earthplotter: { kind: 'circle', group: 'p', radius: r, ...extra } } });
+  await lctx.addInitScript((list) => localStorage.setItem('earthplotter.presets', JSON.stringify(list)), [
+    { name: 'Kit / A-10', drawing: fc('A-10', [ring('c1', 800), ring('c2', 2000, { visible: false })]) },
+    { name: 'Loose', drawing: fc('Loose', [ring('c3', 50)]) }]);
+  const lp = await openPage(lctx, `${base}#v=12/40.2/12.1/0&on=chart`, 'library');
+  const rows = () => lp.evaluate(() => [...document.querySelectorAll('#lib .drow')].map((r) => [r.classList.contains('dgroup') ? '#' : '', r.querySelector('.dname').textContent, r.querySelector('.val').textContent, !!r.querySelector('svg.thumb')].join(':')));
+  const all = await rows();
+  check(all[0] === '#:Built-in:13:false' && all.includes('#:Kit:1:false') && all.includes(':A-10:r 800 m:true') && all.at(-1) === ':Loose:r 50 m:true',
+    `library: the built-in kinds, then a folder, its preset named without it, its picture and size (its hidden circle left out), a loose one last (${all.join(' | ')})`);
+  await lp.fill('#lib input[type=search]', 'a-10');
+  const found = await rows();
+  check(found.join() === '#:Kit:1:false,:A-10:r 800 m:true', `library: the filter keeps the folder of what it finds (${found})`);
+  await lp.click('#lib .drow:has-text("A-10") .dname');
+  const armed = await lp.evaluate(() => [drawing.button, drawing.variant.shape, document.querySelector('#lib .drow.sel .dname')?.textContent]);
+  const box = await lp.locator('#map').boundingBox();
+  await lp.mouse.click(box.x + 900, box.y + 400);
+  const placed = await lp.evaluate(() => { const p = drawing.doc.points.at(-1); return [p.name, drawing.doc.circles.filter((c) => c.groupId === p.id).map((c) => `${c.name}/${c.visible}`).join()]; });
+  check(armed.join() === 'shape,preset:Kit / A-10,A-10' && placed.join() === 'A-10 1,Reach 800/true,Reach 2000/false',
+    `library: a row clicked, the Shape tool on with it (${armed}); placed, its point named after it, its shapes their names, hidden as saved (${placed})`);
+  await lp.keyboard.press('Escape');
+  await lp.fill('#lib input[type=search]', '');
+  await lp.dragAndDrop('#lib .drow:has-text("Loose") .dname', '#map', { targetPosition: { x: 1000, y: 300 } });
+  const dropped = await lp.evaluate(() => [drawing.doc.points.length, drawing.doc.points.at(-1).name]);
+  check(dropped.join() === '2,Loose 1', `library: a row dragged onto the map placed there (${dropped})`);
+  check(!lp.errors.length, `library: no errors ${lp.errors.join(' | ')}`);
+  await lctx.close();
+});
 await section('with a finger, on a phone', async () => {
   // with a finger, on a phone (drawing-ui.md §1): the sheet closed to start with, Elements and
   // Properties in it one at a time; the tools in the dock, Back there while one is on, Undo and Redo; what is
@@ -939,8 +972,9 @@ await section('with a finger, on a phone', async () => {
   const shown = () => fp.evaluate(() => [!document.querySelector('#side').hidden, !document.querySelector('#props').hidden]);
   const atStart = await shown();
   const dock = await fp.evaluate(() => [...document.querySelectorAll('#dock > button')].filter((b) => b.offsetParent).map((b) => b.getAttribute('aria-label') || b.textContent).join());
-  await fp.click('#dock [data-tool=shape]');
-  await fp.evaluate(() => drawing.setVariant('shape', 'circle')); // the tool stays on
+  await fp.click('#bar .ptab[data-tab=library]');
+  await fp.click('#lib .drow .dname:text-is("Circle")'); // the sheet folded away for drawing
+  const folded = await fp.evaluate(() => [document.querySelector('#side').hidden, document.querySelector('#dock .drawsnow').textContent]);
   await fp.touchscreen.tap(195, 300); // the centre…
   await fp.touchscreen.tap(195, 300); // …again: the default size
   const placed = await fp.evaluate(() => drawing.doc.points.length);
@@ -950,7 +984,8 @@ await section('with a finger, on a phone', async () => {
   await fp.click('#dock button[aria-label=Redo]');
   const redone = await fp.evaluate(() => drawing.doc.points.length);
   await fp.click('#dock button:has-text("Back")'); // the tool ends
-  const afterBack = await fp.evaluate(() => drawing.tool);
+  const afterBack = await fp.evaluate(() => [drawing.tool, !document.querySelector('#side').hidden].join()); // drawn: the Library's sheet back
+  await fp.click('#bar .ptab[data-tab=library]'); // closed
   await fp.evaluate(() => drawing.select([drawing.doc.points[0].id]));
   const peek = await fp.evaluate(() => [!document.querySelector('#props').hidden, document.querySelector('#props').classList.contains('peek'), document.querySelector('#props').offsetHeight]);
   await fp.click('#bar .ptab[data-tab=elements]');
@@ -987,8 +1022,8 @@ await section('with a finger, on a phone', async () => {
     window.dispatchEvent(ev('pointerup', 1));
   });
   const after = await fp.evaluate(() => [drawing.doc.circles[0].radius, !!drawing.drag]);
-  check(atStart.join() === 'false,false' && dock === 'Undo,Redo,Box select,Point,Line,Shape,Label,Measure' && placed === 1 && drawingDock === 'Back,Undo,Redo,Shape' && undone === 0 && redone === 1 && afterBack === null,
-    `finger: the sheet closed to start with; the dock Undo, Redo and the tools (${dock}); a circle placed by two taps, the dock then ${drawingDock}; Undo, Redo (${undone}, ${redone}); Back ends the tool (${atStart}; ${placed}; ${afterBack})`);
+  check(atStart.join() === 'false,false' && dock === 'Undo,Redo,Box select,Measure' && folded.join() === 'true,Circle' && placed === 1 && drawingDock === 'Back,Undo,Redo' && undone === 0 && redone === 1 && afterBack === ',true',
+    `finger: the sheet closed to start with; the dock Undo, Redo, Box select, Measure (${dock}); Circle picked in the Library: its sheet folded away, the dock naming it (${folded}); placed by two taps, the dock then ${drawingDock}; Undo, Redo (${undone}, ${redone}); Back ends the tool, the sheet back (${atStart}; ${placed}; ${afterBack})`);
   check(peek[0] && peek[1] && peek[2] < 120 && colOpen.join() === 'true,false' && propsOpen.join() === 'false,true,false' && boxed === 2,
     `finger: what is selected peeks (${peek}); Elements in its place (${colOpen}); the peek tapped: Properties (${propsOpen}); Box select then a drag selects ${boxed} (a point and its circle)`);
   check(handles === 1.75 && after[0] === rBefore && !after[1], `finger: handles drawn larger (${handles}); a second finger during a drag puts it back (${rBefore} → ${after[0]})`);

@@ -52,11 +52,11 @@ export class Drawing extends DrawStore {
     this.keepSel = false; // a form open: a click on the map changes nothing (the form is filled from what was selected)
     this.currentPlace = null; // the vertex current on the element selected (setPlace)
     this.marksOn = true;
-    // what each tool with kinds makes (its row of kinds; drawing-ui.md §2): Point a symbol or a preset
-    // of the user's without shapes; Shape a point holding a circle, rings, a sector (three clicks), an
-    // outline (a closed line) or a preset's shapes (a line is a line: Guide is its switch). Measure has none: a
-    // line, closed or not, a measurement
-    this.variant = { point: 'symbol', shape: 'circle' };
+    // what each tool makes, as the Library's item chosen last says (library.js; drawing-ui.md §2): Point a
+    // diamond; Line a line, or an area (closed as it ends); Shape a point holding a circle, rings, a sector
+    // (three clicks), an outline (a closed line) or a preset (any point of the user's, with its shapes).
+    // Measure has none: a line, closed or not, a measurement
+    this.variant = { point: 'symbol', line: 'line', shape: 'circle' };
     this.presets = []; // the user's points kept as presets (presets.js), for Point › preset:<name>
     // labels keep their place on screen next to what they point at: drawn again as the map moves
     let labelRaf = 0;

@@ -16,7 +16,9 @@ import { inverse, areaOf, moveAbout } from '../geodesy.js';
 import { norm180, norm360 } from '../geo.js';
 import { fields, choice, select, check } from '../fields.js';
 import { mac, MOD } from '../keys.js';
-import { loadPresets, savePresets, presetOf, presetTool } from './presets.js';
+import { loadPresets, savePresets, presetOf } from './presets.js';
+import { createLibrary, itemNow, itemName } from './library.js';
+import { presetBase } from './place.js';
 import { listGrid, forgetCurrent } from './grid.js';
 import { fmtArea, fmtDist, rowsText, plural } from '../format.js';
 import { fileGroup } from './files.js';
@@ -46,9 +48,12 @@ export function drawView(root, ctx) {
   const fx = () => facts || computeFacts();
 
   drawing.presets = loadPresets();
-  const files = fileGroup(drawing, ctx, () => renderTools());
-  const tools = createTools(drawing, ctx, { del, fileBtns: files.buttons });
+  const files = fileGroup(drawing, ctx, () => presetsChanged());
+  const tools = createTools(drawing, ctx, { del, fileBtns: files.buttons, drawsNow: () => presetBase(itemName(itemNow(drawing) ?? '')) }); // a preset without its folder
   const { renderTools } = tools;
+  // the Library (library.js), the left panel's third tab: everything there is to draw; built only while seen
+  const library = createLibrary(drawing, ctx.lib, { frame: ctx.frame, changed: () => renderTools() });
+  const presetsChanged = () => { renderTools(); library.render(true); };
 
   // ---- the tree (tree.js), its first row the drawing ------------------------------------------
   const tree = createTree(drawing, { facts: fx, drawingPicked: () => { if (NARROW.matches) ctx.frame.setProps(true); } }); // a phone: the drawing's row turns Properties on, showing it
@@ -249,7 +254,7 @@ export function drawView(root, ctx) {
   // a button selecting another element (a point, a line, a group)
   const link = (id, text) => h('button', { type: 'button', class: 'small link', onclick: () => drawing.select([id]) }, text ?? label(kindOf(id), now(id)));
 
-  // a point: its position and bearing (its shapes carried), its symbol, its shapes, its look, Save as preset…
+  // a point: its position and bearing (its shapes carried), its symbol, its shapes, its look, Add to library…
   function pointInspector(id) {
     const el = now(id), shapes = membersOf(drawing.doc, id);
     const [, lat, , lon] = F.position(() => now(id).position, (q) => carryAll([id], (p) => [q, p.bearing]), '', 6);
@@ -258,19 +263,16 @@ export function drawView(root, ctx) {
       row('Symbol', choice('Symbol (the same size on screen at every zoom)', SYMBOLS.map((sy) => [sy, sy === 'none' ? '∅' : icon(...SYMBOL_ICON[sy]), SYMBOL_TITLE[sy]]), el.symbol, (sy) => set(id, (x) => { x.symbol = sy; }))),
       shapes.length ? row('Shapes', h('span', {}, ...shapes.map((x) => link(x.el.id)))) : null];
     parts.push(actionsRow(ruleActs(id),
-      h('button', { type: 'button', class: 'small', title: 'Keep it, with its shapes, as a kind of the Shape tool',
+      h('button', { type: 'button', class: 'small', title: 'Keep it, with its shapes as they are (hidden ones too), in the Library: placed again by the Shape tool',
         onclick: async () => {
-          const name = (await askText('Save as preset', 'Name', el.name || 'Preset'))?.trim();
+          const name = (await askText('Add to library', 'Name (Folder / Name)', el.name || 'Preset'))?.trim();
           if (!name) return;
-          if (drawing.presets.some((x) => x.name === name) && !(await ask('Save as preset', `Replace the preset “${name}”?`, [[() => true, 'Replace']]))) return;
-          const p = presetOf(drawing.doc, id, name);
-          drawing.presets = [...drawing.presets.filter((x) => x.name !== name), p];
+          if (drawing.presets.some((x) => x.name === name) && !(await ask('Add to library', `Replace the preset “${name}”?`, [[() => true, 'Replace']]))) return;
+          drawing.presets = [...drawing.presets.filter((x) => x.name !== name), presetOf(drawing.doc, id, name)];
           savePresets(drawing.presets);
-          const tool = presetTool(p);
-          drawing.variant[tool] = `preset:${name}`;
-          renderTools();
-          note(`Preset “${name}” saved: a kind of ${tool === 'shape' ? 'Shape' : 'Point'}`);
-        } }, 'Save as preset…')), lookBlock([item(id)]));
+          presetsChanged();
+          note(`“${name}” added to the Library`);
+        } }, 'Add to library…')), lookBlock([item(id)]));
     return [...parts, ...commonBottom('point', id)];
   }
 
@@ -620,6 +622,7 @@ export function drawView(root, ctx) {
       if (what === 'tool') { // also after any change of the frame: what has just come into view built
         if (listStale && listSeen()) { listStale = false; tree.render(); }
         if (shows === null && !ctx.props.hidden) renderInspector();
+        library.render();
         return renderTools();
       }
       if (what === 'draft') return tools.renderTouch();
@@ -642,6 +645,7 @@ export function drawView(root, ctx) {
       renderInspector();
       if (forms.current() && what === 'doc') formPreview(); // the form's preview follows the drawing (an undo, its line edited)
       if (what === 'doc') lines.forgetGone(drawing.doc); // a line gone: its profile too
+      library.render(); // only if what it shows changed (the units)
       renderTools();
     },
     importFile: (f) => files.importFile(f), // a file dropped on the map (app.js)

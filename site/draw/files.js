@@ -50,11 +50,11 @@ export function fileGroup(drawing, ctx, presetsChanged) {
         h('button', { type: 'button', class: 'hact del', 'aria-label': `Delete ${x.title || 'Untitled'}`, title: 'Delete for good', onclick: () => del(x) }, icon(...UI_ICON.delete))))),
       sep(),
       // a file dropped on the map is opened too
-      item('Open a file…', 'A drawing\'s file, any GeoJSON, a presets file or an offline area: a drawing is added to these and opened; presets join the Point and Shape tools; an area to the offline areas', () => fileInput.click(), UI_ICON.open)];
+      item('Open a file…', 'A drawing\'s file, any GeoJSON, a library file or an offline area: a drawing is added to these and opened; a library\'s presets join the Library; an area to the offline areas', () => fileInput.click(), UI_ICON.open)];
   }
   // Download: the drawing, the view's outputs, the presets; apart, the offline areas
   const downloadItems = () => [item('Drawing (GeoJSON)', 'This drawing, with the view and layers, as a GeoJSON file to share or keep', exportFile, UI_ICON.file), sep(), ...ctx.outputs,
-    item('Presets (JSON)', 'Your presets (the Point and Shape tools\' own) as a small file, to import them in another browser', () => ctx.download(presetsFile(drawing.presets), 'presets.json'), UI_ICON.file), sep(), ctx.offlineItem];
+    item('Library (JSON)', 'Your presets (the Library\'s own) as a small file, to open them in another browser', () => ctx.download(presetsFile(drawing.presets), 'library.json'), UI_ICON.library), sep(), ctx.offlineItem];
   function toggle(b, items) {
     if (!menuEl.hidden && b.getAttribute('aria-expanded') === 'true') return close();
     menuEl.setAttribute('aria-label', b.getAttribute('aria-label'));
@@ -85,7 +85,7 @@ export function fileGroup(drawing, ctx, presetsChanged) {
       const names = new Set(presets.map((x) => x.name));
       drawing.presets = [...drawing.presets.filter((x) => !names.has(x.name)), ...presets];
       savePresets(drawing.presets);
-      note(`${plural(presets.length, 'preset')} added`); // the kinds' rows have no other sign
+      note(`${plural(presets.length, 'preset')} added to the Library`);
       return presetsChanged();
     }
     const { doc, view, report } = parse(text, drawing.known);

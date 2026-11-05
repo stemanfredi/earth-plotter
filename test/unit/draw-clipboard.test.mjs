@@ -113,3 +113,9 @@ test('pasted, a point and its shapes: the copy of the point holds the copies of 
   assert.deepEqual([doc.circles.length, pts.length, circles.length], [6, 2, 3]);
   assert.ok(circles.every((c) => c.el.groupId === pts[0].el.id && c.el.groupId !== point.id), 'held by the new point, not the old');
 });
+
+test('the Library\'s folders and order', async () => {
+  const { folderOf, byName } = await import('../../site/draw/presets.js');
+  assert.deepEqual(['Kit / A-10', 'A / B / C', 'Loose', 'EO/IR / X'].map(folderOf), ['Kit', 'A / B', '', 'EO/IR']);
+  assert.deepEqual(['x 100 kHz', 'x 70 kHz', 'X 400 kHz'].sort(byName), ['x 70 kHz', 'x 100 kHz', 'X 400 kHz']);
+});

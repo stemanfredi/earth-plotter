@@ -27,6 +27,7 @@ export const UI_ICON = {
   layers: ['m12 3 9 5-9 5-9-5z', 'm3 13 9 5 9-5'],
   elements: [['M4 5.2a.8.8 0 1 0 0 1.6a.8.8 0 1 0 0-1.6z', 'currentColor'], 'M8 6h13', 'M4 8v2a2 2 0 0 0 2 2h2', 'M4 10v6a2 2 0 0 0 2 2h2', ['M10 11.2a.8.8 0 1 0 0 1.6a.8.8 0 1 0 0-1.6z', 'currentColor'], ['M10 17.2a.8.8 0 1 0 0 1.6a.8.8 0 1 0 0-1.6z', 'currentColor'], 'M14 12h7', 'M14 18h7'],
   properties: ['M4 5h16v14H4z', 'M15 5v14'],
+  library: ['M4 4v16', 'M8 8v12', 'M12 6v14', 'm16 6 4 14'], // books on a shelf, one leaning (Lucide's)
   undo: ['M9 14 4 9l5-5', 'M4 9h10a6 6 0 0 1 0 12h-3'], redo: ['m15 14 5-5-5-5', 'M20 9H10a6 6 0 0 0 0 12h3'],
   file: PAGE,
   open: ['M3 6.5A1.5 1.5 0 0 1 4.5 5H9l2 2h8.5A1.5 1.5 0 0 1 21 8.5v9a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 17.5z'],

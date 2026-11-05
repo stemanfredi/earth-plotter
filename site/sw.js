@@ -36,6 +36,7 @@ const SHELL = [
   'draw/input.js',
   'draw/labels.js',
   'draw/layers.js',
+  'draw/library.js',
   'draw/lines.js',
   'draw/lineview.js',
   'draw/outlines.js',

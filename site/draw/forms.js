@@ -9,7 +9,7 @@ import { DISTRIBUTE_D, distribute, lines, planConnection, makeDistribution, edit
 import { BUILT_IN, builtInName } from './place.js';
 import { reachOf } from './features.js';
 import { choice, select } from '../fields.js';
-import { presetTool } from './presets.js';
+import { hasShapes } from './presets.js';
 import { listGrid } from './grid.js';
 import { fmtDist, plural } from '../format.js';
 import { groupPath } from './tree.js';
@@ -144,7 +144,7 @@ export function createForms(kit) {
     const differs = editing && points.length !== editing.pointIds.length;
     const connected = differs && connections(doc).some((c) => c.pointIds.some((n) => editing.pointIds.includes(n)));
     // what is repeated: a built-in kind (the circle to start with), or a preset of the user's (its size its own)
-    const mine = drawing.presets.filter((x) => presetTool(x) === 'shape');
+    const mine = drawing.presets.filter(hasShapes);
     const choose = (v) => {
       dform.preset = v;
       dform.copy = (v.startsWith('preset:') && mine.find((x) => `preset:${x.name}` === v)?.doc) || null; // its point and shapes, as placed by hand

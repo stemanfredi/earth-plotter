@@ -38,22 +38,20 @@ One layout at every width (`site/frame.js`).
 
 - **The bar**, across the top: the file group, **Open** (the drawings in this browser, + New, **Open
   a file…**), **Download** (the drawing's GeoJSON, a
-  picture, GIS data, the presets; apart, **Offline areas…**), **Copy link**; **Layers** and **Elements** (the left panel's
-  tabs); **Undo**, **Redo** (history, not tools); **Select** and **Box select**; **Point**, **Line**,
-  **Shape**, **Label**; **Measure**; at its end **find a place** (a field; / goes to it), **About**
+  picture, GIS data, the Library; apart, **Offline areas…**), **Copy link**; **Layers**, **Elements** and **Library** (the left panel's
+  tabs); **Undo**, **Redo** (history, not tools); **Select** and **Box select**; **Measure**; at its end **find a place** (a field; / goes to it), **About**
   and the **Properties** toggle. The drawing is named in Elements' first row and its Properties.
   With a finger under 1,280 px (a tablet), as on a phone: **☰** in place of Open holds the
-  file group and About, find a place is behind its lens with the map's controls. A tool with kinds
-  is one button showing the kind in use and a corner mark; its kinds are a row under it as it goes
-  on, and at a right-click on its button; shut once one is picked or the map is clicked. A tool's
-  button or key pressed again turns it off.
+  file group and About, find a place is behind its lens with the map's controls. The bar has no tool
+  that makes elements: what is drawn is chosen in the Library (§9), the bar acting on the map (a
+  measurement is a question asked of it).
 - **Box select** (B): the next drag on the map, a mouse's or a finger's, draws a box (even one starting
   on the selection); what lies inside is selected, then Select again. A drag with Select moves the map
   (or, on the selection, moves it); Shift-drag is the box too, but on a handle (its proportions, its
   15° steps). While a drag is under way, Undo, Redo, Delete and Paste wait: Esc puts the drag back.
   On a phone its button is in the dock.
-- **The left panel**: **Layers** or **Elements** (the tree, §4), as its
-  button in the bar (or **L**, **E**) chose: pressed again, it closes. At first it is open on Layers;
+- **The left panel**: **Layers**, **Elements** (the tree, §4) or **Library** (§9), as its
+  button in the bar (or **L**, **E**, **K**) chose: pressed again, it closes. At first it is open on Layers;
   Layers' button turns while the map's layers load.
 - **Properties** (the inspector, §5), on the right: a switch of the user's (its toggle, **I**, or a
   double-click on an element), off at first. While on, it shows what is selected, else the drawing (its title,
@@ -78,17 +76,17 @@ One layout at every width (`site/frame.js`).
 - **Copy link** carries the view, the layers and the display settings (`u=nm`, `brg=1`), never the
   drawing. The drawing goes out as a file (**Download** › **Drawing (GeoJSON)**, with the view) and
   comes in by **Open a file…** or a file dropped on the map, after a report (what it holds, what was skipped and
-  why); a presets file adds its presets (§9); an offline area's file (a zip) joins the offline areas.
+  why); a library file adds its presets (§9); an offline area's file (a zip) joins the offline areas.
 - **The note**, a chip under the bar at the centre, says for a few seconds what the screen cannot
   show: a value not applied and why, a file not read, what was copied, why a click or a box did
   nothing, a root not used, a panel that made way. What is visible (a deletion, a copy selected, a
   rule's result) is not said.
 
 **On a phone** (under 720 px) the top is for looking, the bottom for doing. The bar holds **☰**
-(Open's menu with Download's, Copy link and About), find a place (a field), Layers and Elements. The
-**dock**, a bar along the bottom, holds Undo, Redo, Box select and the tools; while one is on: **Back**, Undo,
-Redo, the tool (its kinds a row above the dock, sideways) and **Done** (a line or measurement being
-drawn).
+(Open's menu with Download's, Copy link and About), find a place (a field), Layers, Elements and
+Library. The **dock**, a bar along the bottom, holds Undo, Redo, Box select and Measure; while a tool is
+on: **Back**, Undo, Redo, what is being drawn (its name; Measure's button) and **Done** (a line or
+measurement being drawn). A row picked in the Library folds the sheet away; the tool off, it comes back.
 The panels are one bottom sheet at a time over the dock (half the screen; as tall as its grip is
 dragged, short of the bars, the map's foot and some map; closed when dragged to the bottom). What is
 selected, while Properties is off and the left panel closed, **peeks**: Properties' head alone (what it
@@ -109,18 +107,18 @@ finger every target is 44 px. Text: 11, 12, 13, 14, 16 px (a × glyph 18 or 20).
 
 ## 2. Tools
 
-One tool is on at a time, and stays on after each placement; its button again, or Select, turns it
-off. Its key works from anywhere but a panel's control (a button, a box: focus there keeps the letters
-for it): on, or off. A right-click on a tool with kinds (Shape; Point with
-presets) opens its kinds.
+One tool is on at a time, and stays on after each placement. A row of the Library (§9) turns on the
+tool that draws it; the row again, Esc or Select turns it off. A tool's key works from anywhere but a
+panel's control (a button, a box: focus there keeps the letters for it): on with what it drew last, or
+off. Measure is the bar's.
 
-| Tool | Kinds | Makes |
+| Tool (key) | The Library's | Makes |
 |---|---|---|
-| Point | symbol, the user's presets without shapes | a point: a marker, the same size at every zoom |
-| Line | none | a line; closed on its first vertex, a closed line (an area) |
-| Shape | circle, rings, sector, rectangle, ellipse, triangle, three vehicles, the user's presets with shapes | a point with no symbol holding its shapes (circles, a sector, or a closed line: the outline's vertices), the point named after its kind, its shapes nameless (the tree shows them by kind and size); a preset of the user's keeps its properties and names itself in the property `preset` |
-| Label | none | a label |
-| Measure | none | nothing, unless kept (§3) |
+| Point (P) | Point | a point: a marker, the same size at every zoom |
+| Line (G) | Line, Area | a line; closed on its first vertex (an Area: as it ends), a closed line (an area) |
+| Shape (S) | circle, rings, sector, rectangle, ellipse, triangle, three vehicles, the user's presets | a point with no symbol holding its shapes (circles, a sector, or a closed line: the outline's vertices), the point named after its kind, its shapes nameless (the tree shows them by kind and size); a preset of the user's keeps its properties and names itself in the property `preset` |
+| Label (T) | Label | a label |
+| Measure (M) | (the bar's) | nothing, unless kept (§3) |
 
 ### 2.1 Placing and drawing
 
@@ -222,7 +220,7 @@ Sector 3"; its outline not an area, its circles not circles).
 
 One grammar, top to bottom: what it is (the rule that made it, its name), its geometry, its lists,
 its **actions** (one row of buttons: Edit…, Update and Select all for what a rule made, Distribute along…,
-Save as preset…, Select members, Connect…), its **Look**, then its foot (a shape's **Point**, **In
+Add to library…, Select members, Connect…), its **Look**, then its foot (a shape's **Point**, **In
 group**, **Guide**, **Data**). Every number is 12 px, of one width; a unit stands beside its value in grey (a distance
 field shows its number, its unit next to it or in the column's head: typed with another unit, it is
 read in that one). One rule for every distance: metres below 1 km, else km; with NM, NM; shown to the
@@ -272,7 +270,7 @@ takes one unit by its largest value.
   CSV. When none could be read it says so, and reads again when next shown.
 - **A point**: its Position and, while it holds shapes, its **Bearing** (typed, or its stalk: its shapes move and turn with it,
   each keeping its distance and bearing from it; a symbol is never turned), its Symbol, its **Shapes** (each a link to it).
-  **Save as preset…**. Its **Look** sets its symbol's colour and its shapes' look (each field on
+  **Add to library…**. Its **Look** sets its symbol's colour and its shapes' look (each field on
   those that have it). **Data**: its properties as keys and values.
 - **A circle**: its centre, **Radius**, **Aperture** (a sector that wide, centred on its **Bearing**;
   empty or 360: the whole circle, as the file reads it), its **Area**; **Distribute along…**. Its look is its own, as any
@@ -396,16 +394,26 @@ puts its middle at the pointer, moved there as a drag moves (its size kept at an
 Duplicate 20 px beside. One undo step; the copy selected. The clipboard
 lives in this page, so it pastes into another drawing opened in it.
 
-## 9. Presets
+## 9. The Library
 
-**Save as preset…** (a point's Properties) keeps the point and its shapes as they are (their sizes,
-their places and bearings about it, their own looks) under a name, a small drawing of its own;
-Distribute along copies all of it. One with shapes joins Shape's kinds, one without Point's. Placing
-one makes a copy of it facing north about the place clicked, the point named after it (numbered, its
-folder left out), its shapes keeping their names, its properties kept with the preset's name as
-`preset`, the point shown, its shapes shown or hidden as saved, none a guide; pressed again while current among the kinds (or right-clicked), it is renamed or deleted. Saving one
-under a name in use asks before replacing it (a file's replaces). Presets
-live in this browser only; **Download** › **Presets (JSON)** and **Open a file…** move them.
+Everything there is to draw, in the left panel's **Library** tab (**K**), as a drawing tool's library
+of shapes or blocks: **Built-in** (Point, Line, Area, Label, then the Shape tool's kinds), then the
+user's **presets** in their folders, a name's part before its last " / " ("Folder / Name"); a folder's
+presets in the order people read ("70" before "100"), those in none last. Folders stay folded as left.
+Each row: a picture (a preset's: what is shown of it, in its own colours, north up); its name; a
+preset's size, to tell them apart (a largest circle's radius, else its sides, the larger first). A
+filter above. A row clicked: drawing it, the row pressed; again, no longer. One placed in a click (a
+point, a shape, a preset) dragged onto the map: placed there (its default size), selected.
+
+**Add to library…** (a point's Properties) keeps the point and its shapes as they are (their sizes,
+their places and bearings about it, their own looks, shown or hidden) under a name ("Folder / Name"),
+a small drawing of its own; Distribute along copies all of one that holds shapes. Placing one makes a
+copy of it facing north about the place clicked, at its own size (one click), the point named after it
+(numbered, its folder left out), its shapes keeping their names, its properties kept with the
+preset's name as `preset`, the point shown, its shapes shown or hidden as saved, none a guide. A
+preset's **⋯**: Rename… (its folder too), Duplicate, Delete. Adding one under a name in use asks
+before replacing it (a file's replaces). Presets live in this browser only; **Download** › **Library
+(JSON)** and **Open a file…** move them.
 
 ## 10. Deleting, and drawings in this browser
 

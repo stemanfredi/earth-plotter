@@ -159,8 +159,9 @@ export const DRAW_LAYERS = [
   nameLayer('draw-name-line', 'drawzoom', [['==', ['geometry-type'], 'LineString']], { 'symbol-placement': 'line', 'symbol-spacing': 300, 'text-max-angle': 40 }),
   { id: 'draw-name-vertex', type: 'circle', source: 'draw', filter: ['all', ofKind('name'), ['has', 'vx']],
     paint: { 'circle-radius': 2.5, 'circle-color': ['get', 'c'], 'circle-stroke-color': WHITE, 'circle-stroke-width': 1 } },
-  nameLayer('draw-name-point', 'draw', [['==', ['geometry-type'], 'Point'], ['!', ['has', 'ctr']], ['!', ['has', 'rim']]],
+  nameLayer('draw-name-point', 'draw', [['==', ['geometry-type'], 'Point'], ['!', ['has', 'ctr']], ['!', ['has', 'rim']], ['!', ['has', 'under']]],
     { 'text-variable-anchor': ['top', 'bottom', 'right', 'left'], 'text-radial-offset': 0.9, 'text-justify': 'center', 'text-max-width': 12 }), // centred below it (else above, right, left): the same however its shapes are turned
+  nameLayer('draw-name-under', 'draw', [['has', 'under']], { 'text-anchor': 'top', 'text-offset': [0, 0.3], 'text-max-width': 12 }), // a point's, just under its outlines
   nameLayer('draw-name-rim', 'draw', [['has', 'rim']], { 'text-anchor': 'top', 'text-offset': [0, 0.3], 'text-max-width': 24 }), // a circle's, just inside its rim
   nameLayer('draw-name-centre', 'drawzoom', [['has', 'ctr']], { 'text-max-width': 12 }),
   // labels (labels.js, their own source): leaders, their ends, the text (on a halo, or in a box);

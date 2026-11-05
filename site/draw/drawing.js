@@ -66,6 +66,8 @@ export class Drawing extends DrawStore {
       cancelAnimationFrame(labelRaf);
       labelRaf = requestAnimationFrame(() => this.renderLabels());
     });
+    // the map turned: names under shapes go under them again, on screen (drawParts' down)
+    map.on('rotateend', () => { if (this.doc.points.length) this.render({ base: true }); });
     // once a frame while zooming, the marks of what is selected (handles are thinned at the zoom)
     map.on('zoom', () => {
       if (!this.sel.size && !this.hover) return;
@@ -105,7 +107,7 @@ export class Drawing extends DrawStore {
   // forms' previews (Distribute, Connect). A change to the document draws all three; the selection,
   // the pointer, the Line tool's cursor and zooming only the marks.
   render(parts = ALL_PARTS) {
-    const p = drawParts(this.doc, this.sel, this.hover, { zoom: this.map.getZoom(), midPx: MID_PX }, parts);
+    const p = drawParts(this.doc, this.sel, this.hover, { zoom: this.map.getZoom(), bearing: this.map.getBearing(), midPx: MID_PX }, parts);
     const set = (id, features) => this.map.getSource(id)?.setData({ type: 'FeatureCollection', features });
     if (parts.base) { set('draw', p.base); this.values = null; this.labelTexts = null; }
     if (parts.zoom) set('drawzoom', p.zoom);

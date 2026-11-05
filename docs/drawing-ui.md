@@ -365,8 +365,9 @@ Copies) opens its form (a click on the map picks a root):
   every one. Its handles are where it is drawn and set its real size through it; its values, the
   totals, the file and what is attached to it keep the real one. A point's symbol keeps its shapes
   found at any zoom. A circle's name is on its rim, under its radius (a sector's: at its arc's middle),
-  so rings about one centre each show theirs. A point's name is centred below it (else above, right,
-  left), however its shapes are turned. Names collide away; labels are always drawn.
+  so rings about one centre each show theirs. A point holding outlines has its name centred just under
+  them as drawn, on screen (turned, scaled, the map turned: once it stops); another point's name is
+  centred below it (else above, right, left). Names collide away; labels are always drawn.
 
 ## 8. Keys
 

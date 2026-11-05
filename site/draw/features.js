@@ -17,6 +17,13 @@ export const drawable = (c, r = c.radius) => !reachesPole(c.position, r);
 export const drawnCircle = (doc, c) => { const t = drawnOf(doc, c); return t.k === 1 ? c : { ...c, position: t.f(c.position), radius: c.radius * t.k }; };
 // how far a point's shapes reach from it (m): their farthest vertex, or circle's rim
 // how far they reach along its bearing, as drawn (each its Scale): where its stalk starts
+// how far below a point (down: the screen's downward azimuth) its outlines reach, as drawn (their Scale's),
+// or null when it holds none shown: its name goes just under them (circles name themselves on their rims)
+const belowOf = (doc, p, down) => {
+  const outs = membersOf(doc, p.id).filter(({ kind, el }) => kind === 'line' && el.closed && isShown(doc, el));
+  if (!outs.length) return null;
+  return Math.max(0, ...outs.flatMap(({ el }) => { const t = drawnOf(doc, el); return el.points.map((q) => { const g = inverse(p.position, t.f(q)); return g.s * Math.cos((g.azi - down) * D2R); }); }));
+};
 const frontOf = (doc, p) => Math.max(0, ...membersOf(doc, p.id).flatMap(({ kind, el }) => { const t = drawnOf(doc, el); return positionsIn(kind, el).map(([o, k]) => { const g = inverse(p.position, t.f(o[k])); return g.s * Math.cos((g.azi - p.bearing) * D2R) + (el.radius ?? 0) * t.k; }); }));
 export const reachOf = (doc, p) => Math.max(0, ...membersOf(doc, p.id).flatMap(({ kind, el }) => positionsIn(kind, el).map(([o, k]) => inverse(p.position, o[k]).s + (el.radius ?? 0))));
 
@@ -65,6 +72,7 @@ function drawPartsIn(doc, sel = new Set(), hover = null, display = {}, want = { 
   // last point always (a line of hundreds of points would be a chain of squares)
   const mpp = display.zoom == null ? 0 : metresPerPixel(display.zoom);
   const midPx = display.midPx ?? 40; // a + halfway only along a leg this long on screen (80 with a finger)
+  const down = (display.bearing ?? 0) + 180; // the screen's downward azimuth: below, on screen, whatever the map's bearing
   // Each handle says what dragging it does: role and ref (an index, a sector's end, a point ID).
   // items: [{ p, role, ref, kind ('handle', 'mid') }]; thin: a line's vertices thinned.
   // positions thinned at the map's zoom: one at least gap px from the last kept, the last always
@@ -173,7 +181,10 @@ function drawPartsIn(doc, sel = new Set(), hover = null, display = {}, want = { 
     if (want.base) {
       const st = styleOf(doc, n);
       if (!bare) base.push({ type: 'Feature', properties: { id: n.id, kind: 'symbol', symbol: n.symbol === 'none' ? 'centre' : n.symbol, sc: st.stroke.color, so: st.stroke.opacity }, geometry: p });
-      if (named(n)) name(baseNames, n, p, st.stroke.color);
+      // its name: just under its outlines (centred on its vertical), else beside it (below first)
+      const below = named(n) ? belowOf(doc, n, down) : null;
+      if (below !== null) name(baseNames, n, { type: 'Point', coordinates: destination(n.position, down, below) }, st.stroke.color, { under: 1 });
+      else if (named(n)) name(baseNames, n, p, st.stroke.color);
     }
     if (!bare) mark(n, p);
     if (own.has(n.id) && holds) handles(n.id, stalk(n.id, n.position, n.bearing, frontOf(doc, n)));

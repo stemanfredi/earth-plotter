@@ -379,3 +379,20 @@ test('Scale: a point\'s shapes drawn about it, a circle its radius times it; a f
   const ln = lineFrom(doc, [15, 40], [], [15.1, 40]); ln.look.scale = 5;
   assert.deepEqual(drawFeatures(doc).features.find((f) => f.properties.id === ln.id && f.properties.kind === 'path').geometry.coordinates, lineTrace(doc, ln).coords);
 });
+
+test('a point\'s name: just under its outlines as drawn, on screen (the map turned too); a point holding only circles, beside it', async () => {
+  const { outlinePoints } = await import('../../site/draw/outlines.js');
+  const { addPoint: ap, addLine: al, addCircle: ac, emptyDoc: ed } = await import('../../site/draw/document.js');
+  const { inverse } = await import('../../site/geodesy.js');
+  const doc = ed(0), C = [12, 40], p = ap(doc, C, { name: 'Hull', symbol: 'none', look: { text: { name: true } } });
+  al(doc, outlinePoints(C, 0, 100, 20, 'rectangle'), { groupId: p.id, closed: true }); // 100 m long, north–south
+  const q = ap(doc, [12.1, 40], { name: 'Rings', symbol: 'none', look: { text: { name: true } } });
+  ac(doc, [12.1, 40], { groupId: q.id, radius: 5000 });
+  const nameOf = (id, bearing) => drawParts(doc, new Set(), null, { zoom: 15, bearing }).base.find((f) => f.properties.kind === 'name' && f.properties.id === id);
+  const under = nameOf(p.id, 0), g = inverse(C, under.geometry.coordinates);
+  assert.ok(under.properties.under && Math.abs(g.s - 50) < 0.01 && Math.abs(Math.abs(g.azi) - 180) < 1e-6, `50 m south: under its outline (${g.s}, ${g.azi})`);
+  const turned = inverse(C, nameOf(p.id, 90).geometry.coordinates); // the map turned 90°: down on screen is west
+  assert.ok(Math.abs(turned.s - 10) < 0.01 && Math.abs(turned.azi + 90) < 1e-6, `10 m west (${turned.s}, ${turned.azi})`);
+  const rings = nameOf(q.id, 0);
+  assert.deepEqual([rings.properties.under, rings.geometry.coordinates], [undefined, [12.1, 40]], 'circles name themselves: its name beside it');
+});

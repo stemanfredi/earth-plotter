@@ -33,9 +33,12 @@ export function build(doc, p, kind, d = 0, { aperture = 90, size = null } = {}) 
 }
 
 // A copy of the first point of tpl (a drawing: a preset's, or a rule's copy) and of its shapes, at p
-// facing bearing, in group groupId: pasted where it is, then carried there and turned. Returns the point.
+// facing bearing, in group groupId: pasted where it is, then carried there and turned; its shapes keep
+// their names (a point's shapes need not be told apart by name). Returns the point.
 export function placeCopy(doc, tpl, p, bearing = 0, groupId = null) {
-  const pt = paste(doc, clipOf(tpl, [tpl.points[0].id]), (q) => q)[0].el;
+  const clip = clipOf(tpl, [tpl.points[0].id]), made = paste(doc, clip, (q) => q);
+  made.forEach(({ kind, el }, i) => { if (kind !== 'point') el.name = clip.items[i].el.name; });
+  const pt = made[0].el;
   pt.groupId = groupId;
   carry(doc, pt, p, bearing);
   return pt;
@@ -47,6 +50,9 @@ export function presetProperty(pt, name) {
   pt.properties = [...pt.properties.filter((x) => x.key !== 'preset'), { key: 'preset', value: name }];
 }
 
+// what a point placed from a preset is named after: its name, without its folder ("Folder / Name")
+export const presetBase = (name) => name.split(' / ').at(-1).trim() || 'Point';
+
 // What the Point or the Shape tool places at p, by the tool's kind: a built-in kind (Shape), a preset
 // of the user's ('preset:<name>', which names itself in the property preset: a built-in sets none),
 // else a diamond (Point). Each faces north: its bearing is set afterwards (the stalk, the inspector),
@@ -55,8 +61,8 @@ export function presetProperty(pt, name) {
 export function placeKind(doc, p, kind, presets, d = 0) {
   const mine = kind?.startsWith('preset:') && presets.find((x) => x.name === kind.slice(7));
   if (mine) {
-    const pt = placeCopy(doc, mine.doc, p);
-    pt.name = nextName(doc, 'point', mine.name.replace(/[^\p{L}\p{N} ]+/gu, '').trim() || 'Point');
+    const name = nextName(doc, 'point', presetBase(mine.name)), pt = placeCopy(doc, mine.doc, p); // named before the copy takes a name
+    pt.name = name;
     presetProperty(pt, mine.name);
     return pt;
   }

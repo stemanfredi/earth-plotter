@@ -57,9 +57,13 @@ export function paste(doc, clip, mv) {
   return made;
 }
 // point id of doc and its shapes, as they are, in a drawing of their own (a preset; a rule's copy as its
-// template): every one shown and no guide, as a copy placed from it is
+// template): the point shown, its shapes shown or hidden as they are (a copy placed from it is so), and no
+// guide; each shape keeps its name
 export function alone(doc, id) {
-  const d = emptyDoc(0);
-  for (const { kind, el } of paste(d, clipOf(doc, [id]), (q) => q)) { el.visible = true; if (kind !== 'label') el.guide = false; }
+  const d = emptyDoc(0), clip = clipOf(doc, [id]);
+  paste(d, clip, (q) => q).forEach(({ kind, el }, i) => {
+    if (kind === 'point') el.visible = true; else el.name = clip.items[i].el.name;
+    if (kind !== 'label') el.guide = false;
+  });
   return d;
 }

@@ -401,8 +401,9 @@ lives in this page, so it pastes into another drawing opened in it.
 **Save as preset…** (a point's Properties) keeps the point and its shapes as they are (their sizes,
 their places and bearings about it, their own looks) under a name, a small drawing of its own;
 Distribute along copies all of it. One with shapes joins Shape's kinds, one without Point's. Placing
-one makes a copy of it facing north about the place clicked, the point named after it, its properties
-kept with the preset's name as `preset`, every element shown and none a guide; pressed again while current among the kinds (or right-clicked), it is renamed or deleted. Saving one
+one makes a copy of it facing north about the place clicked, the point named after it (numbered, its
+folder left out), its shapes keeping their names, its properties kept with the preset's name as
+`preset`, the point shown, its shapes shown or hidden as saved, none a guide; pressed again while current among the kinds (or right-clicked), it is renamed or deleted. Saving one
 under a name in use asks before replacing it (a file's replaces). Presets
 live in this browser only; **Download** › **Presets (JSON)** and **Open a file…** move them.
 

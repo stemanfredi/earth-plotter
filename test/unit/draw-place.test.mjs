@@ -67,13 +67,24 @@ test('a preset of the user\'s: its point and shapes copied at their own size, ab
   assert.deepEqual(shapes(doc, placeKind(doc, C, 'preset:Gone', [mine])), []);
 });
 
-test('a preset of the user\'s keeps its point\'s properties, preset replaced by its name; placed shown and no guide, whatever it was saved from', () => {
+test('a preset of the user\'s keeps its point\'s properties, preset replaced by its name; placed: the point shown, its shapes shown or hidden as saved, no guide', () => {
   const src = emptyDoc(0), p = addPoint(src, [5, 50], { properties: [{ key: 'a', value: '1' }, { key: 'preset', value: 'Old' }], visible: false, guide: true });
   addCircle(src, [5, 50], { groupId: p.id, radius: 20, visible: false, guide: true });
+  addCircle(src, [5, 50], { groupId: p.id, radius: 30 });
   const mine = presetOf(src, p.id, 'Mine'), doc = emptyDoc(0);
-  assert.deepEqual([mine.doc.points[0].visible, mine.doc.points[0].guide, mine.doc.circles[0].visible, mine.doc.circles[0].guide], [true, false, true, false]);
-  const q = placeKind(doc, C, 'preset:Mine', [mine]), [c] = shapes(doc, q);
-  assert.deepEqual([q.properties, q.visible, q.guide, c.visible, c.guide], [[{ key: 'a', value: '1' }, { key: 'preset', value: 'Mine' }], true, false, true, false]);
+  assert.deepEqual([mine.doc.points[0].visible, mine.doc.points[0].guide, mine.doc.circles.map((c) => [c.visible, c.guide])], [true, false, [[false, false], [true, false]]]);
+  const q = placeKind(doc, C, 'preset:Mine', [mine]), [c, d] = shapes(doc, q);
+  assert.deepEqual([q.properties, q.visible, q.guide, c.visible, c.guide, d.visible], [[{ key: 'a', value: '1' }, { key: 'preset', value: 'Mine' }], true, false, false, false, true]);
+});
+
+test('a preset of the user\'s placed: its point named after it (its folder left out, its punctuation kept), its shapes keep their names', () => {
+  const src = emptyDoc(0), p = addPoint(src, [5, 50], { name: 'X-10' });
+  addCircle(src, [5, 50], { groupId: p.id, radius: 20, name: 'Reach, 1.5 km' });
+  addCircle(src, [5, 50], { groupId: p.id, radius: 30, name: 'Reach, 1.5 km' });
+  const mine = presetOf(src, p.id, 'Craft / X-10'), doc = emptyDoc(0);
+  const a = placeKind(doc, C, 'preset:Craft / X-10', [mine]), b = placeKind(doc, C, 'preset:Craft / X-10', [mine]);
+  assert.deepEqual([a.name, b.name], ['X-10 1', 'X-10 2']);
+  assert.deepEqual([...shapes(doc, a), ...shapes(doc, b)].map((x) => x.name), Array(4).fill('Reach, 1.5 km'));
 });
 
 test('a point turned turns its shapes about it; moved, they move with it, each its distance and bearing from it kept', () => {

@@ -21,7 +21,8 @@ How the interface decides, when this file does not say. The model it shows is in
 - **One way back.** Esc (Back, a right-click) steps back one level, always in the same order; every
   action is one undo step.
 - **One grammar.** Every inspector runs in the same order; one kind of table, one unit rule, one
-  number style; one word for one thing (the model's words).
+  number style; one word for one thing (the model's words); whatever folds (a Layers group, a section
+  of Properties, a row of the tree or the Library) has one fold mark, before its name.
 - **What behaves differently looks different.** A shape (it moves with its point, rigid) and an
   area (edited vertex by vertex) differ in name and icon; a snap mark says what a click would attach
   to.
@@ -237,7 +238,7 @@ takes one unit by its largest value.
   gives every row, tab-separated, for a spreadsheet. Numbers are right-aligned, with fixed decimals:
   degrees to 6 (a decimetre), distances in the column's unit (in its head) to the metre, bearings
   to 1.
-- **Sections** have the heads of Layers' groups, and each folds, the arrow at its right: **Data**,
+- **Sections** have the heads of Layers' groups, and each folds, its fold mark first (as every fold): **Data**,
   open while it has properties of the user's; **Elevation profile**, read when opened; **Totals**,
   open to start with; the others (Look, Vertices…) open to start with, one folded staying folded from
   one element to the next.

@@ -77,15 +77,16 @@ body.loading .spin { visibility: visible; animation: spin .8s linear infinite; }
 /* a band's heading: a Layers group's, the inspector's sections', About's, the Totals' sections */
 :is(#menu summary, .dinspect h3, dialog h3, .lgrid.plain tr.sec td) { font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--soft); }
 
-/* a group's heading: a band, as the inspector's */
-#menu summary {
-  display: flex; align-items: center; gap: 8px; min-height: var(--row); padding: 0 8px 0 12px; cursor: pointer; user-select: none; background: var(--bg2); border-bottom: 1px solid var(--line2);
-  list-style: none;
-}
+/* a band, one for all: a Layers group's heading, a section's head in Properties: its fold mark first (where it
+   folds), its title, its buttons after it */
+:is(#menu summary, .dinspect h3) { display: flex; align-items: center; gap: 8px; margin: 0; min-height: var(--row); padding: 0 8px 0 12px; background: var(--bg2); border-bottom: 1px solid var(--line2); }
+#menu summary { cursor: pointer; user-select: none; list-style: none; }
 #menu summary::-webkit-details-marker { display: none; }
-/* the fold caret: a group of layers, a block of properties, a group's row */
-:is(#menu summary, .dinspect h3.folds, .dfold)::after { content: ""; width: 6px; height: 6px; border-right: 1.5px solid; border-bottom: 1.5px solid; transform: rotate(-45deg); transition: transform .15s; flex: none; }
-:is(#menu details[open] > summary, .dinspect h3.folds.open, .dfold[aria-expanded="true"])::after { transform: rotate(45deg); }
+.dinspect h3 { border-top: 1px solid var(--line2); }
+/* the fold mark, one for all, before what it folds: a Layers group, a section of Properties, a row of
+   the tree or the Library (a group, a point, a folder) */
+:is(#menu summary, .dinspect h3.folds, .dfold)::before { content: ""; width: 6px; height: 6px; border-right: 1.5px solid; border-bottom: 1.5px solid; transform: rotate(-45deg); transition: transform .15s; flex: none; }
+:is(#menu details[open] > summary, .dinspect h3.folds.open, .dfold[aria-expanded="true"])::before { transform: rotate(45deg); }
 #menu summary .gname { flex: 1; }
 #menu summary .count { font-weight: 600; font-size: 11px; letter-spacing: 0; color: var(--accent); background: var(--sel); border-radius: 9px; padding: 0 7px; line-height: 18px; }
 #menu summary .count:empty { display: none; }
@@ -170,9 +171,7 @@ body.loading .spin { visibility: visible; animation: spin .8s linear infinite; }
 .dinspect > :not(.vrow, h3, .lgridbox, .fblock) { margin-left: 12px; margin-right: 12px; }
 .dinspect > :is(.frow:not(.vrow), .note, .fbuttons) { padding: 4px 0; }
 .dinspect > * { flex-shrink: 0; } /* a row as tall as what it holds, the inspector scrolling */
-/* a section's head, as a group's in Layers (#menu summary): a band, its buttons after the title, and
-   where it folds the arrow at its right (the whole head the target, its title a button for keys) */
-.dinspect h3 { display: flex; align-items: center; gap: 8px; margin: 0; min-height: var(--row); padding: 0 8px 0 12px; background: var(--bg2); border-top: 1px solid var(--line2); border-bottom: 1px solid var(--line2); }
+/* a section's head: the band (above); where it folds, the whole head the target, its title a button for keys */
 .dinspect h3 .hbtns { display: flex; align-items: center; gap: 6px; margin-left: auto; text-transform: none; letter-spacing: 0; }
 .dinspect h3.folds { cursor: pointer; user-select: none; }
 .dinspect h3 .hfold { flex: 1; border: 0; background: none; padding: 0; min-height: var(--row); color: inherit; font: inherit; letter-spacing: inherit; text-transform: inherit; text-align: left; cursor: pointer; }
@@ -215,7 +214,7 @@ input.bad { border-color: var(--err) !important; background: #fdf3f2 !important;
 /* the box being dragged (Shift-drag), on the map */
 .dbox { position: absolute; border: 1.5px solid #ffc400; background: rgba(255, 196, 0, .1); /* the marks' yellow (draw/layers.js MARK) */ pointer-events: none; z-index: 2; }
 /* a group's row: a caret folds its members (an icon button, above) */
-.dfold.none::after { display: none; } /* the room of a fold, so that icons line up */
+.dfold.none::before { display: none; } /* the room of a fold, so that icons line up */
 .drow.dgroup { padding-left: 0; font-weight: 600; }
 /* how far in the tree a row is: what is in a group, one step further than the group */
 .drow.d1 { padding-left: 12px; }

@@ -176,7 +176,7 @@ export function drawView(root, ctx) {
   // Data, folded while it has nothing of the user's: the preset a point was placed from is said under
   // its heading (it is a property all the same, in the list once open)
   // A folding section's head (drawing-ui.md §5: every section folds), as a group's in Layers:
-  // the whole head folds it (its title a button, for keys), the arrow at its right; extras: buttons
+  // the whole head folds it (its title a button, for keys), its fold mark first (style.css); extras: buttons
   // after the title (Copy, +). data-key: its state, so that morph never keeps a head whose click
   // would toggle from the state it was made in
   const foldHead = (title, open, toggle, ...extras) => h('h3', { class: open ? 'folds open' : 'folds', 'data-key': open ? 'open' : 'folded', onclick: (e) => { if (!e.target.closest('.hbtns, .hfold')) toggle(); } },

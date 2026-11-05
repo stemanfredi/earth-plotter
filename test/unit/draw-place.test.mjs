@@ -6,10 +6,10 @@ const { placeKind, placeBox, BOX, BUILT_IN, builtInName } = await import('../../
 const { inverse } = await import('../../site/geodesy.js');
 const { emptyDoc, membersOf, addPoint, addCircle, addLine, carry } = await import('../../site/draw/document.js');
 const { OUTLINES, OUTLINE_NAME, outlinePoints } = await import('../../site/draw/outlines.js');
-const { presetOf } = await import('../../site/draw/presets.js');
+const { itemOf } = await import('../../site/draw/library.js');
 
 const C = [12, 40];
-const preset = (value) => [{ key: 'preset', value }];
+const fromLib = (value) => [{ key: 'library', value }];
 const shapes = (doc, p) => membersOf(doc, p.id).map((x) => x.el);
 // a circle's [radius, aperture, fill opacity] (its own: null where it takes the drawing's)
 const round = (c) => [c.radius, c.aperture, c.look.fill?.opacity ?? null];
@@ -49,40 +49,40 @@ test('the second click sizes it: the largest shape reaches it, every other one w
   sides(shapes(doc, placeKind(doc, C, 'rectangle', [], 100))[0]).forEach((v, k) => near(v, [200, 100][k], 1e-3, 'its own proportions'));
 });
 
-test('a preset of the user\'s: its point and shapes copied at their own size, about the place clicked, facing north; its name', () => {
+test('a Library item: its point and shapes copied at their own size, about the place clicked, facing north; its name', () => {
   const src = emptyDoc(0), p = addPoint(src, [5, 50], { symbol: 'square', bearing: 30, look: { stroke: { color: '#00ff00' } } });
   addCircle(src, [5, 50], { groupId: p.id, radius: 20, aperture: 60, bearing: 40 });
   addLine(src, outlinePoints([5, 50], 30, 30, 10), { groupId: p.id, closed: true });
-  const mine = presetOf(src, p.id, 'Mine');
+  const mine = itemOf(src, p.id, 'Mine');
   const doc = emptyDoc(0);
-  const q = placeKind(doc, C, 'preset:Mine', [mine], 5000), [c, l] = shapes(doc, q);
-  assert.deepEqual([q.bearing, q.symbol, q.name, q.properties, q.look, q.position], [0, 'square', 'Mine 1', preset('Mine'), { stroke: { color: '#00ff00' } }, C]);
+  const q = placeKind(doc, C, 'library:Mine', [mine], 5000), [c, l] = shapes(doc, q);
+  assert.deepEqual([q.bearing, q.symbol, q.name, q.properties, q.look, q.position], [0, 'square', 'Mine 1', fromLib('Mine'), { stroke: { color: '#00ff00' } }, C]);
   assert.deepEqual([c.radius, c.aperture, c.position], [20, 60, C]);
   near(c.bearing, 10, 1e-9, 'turned with its point: 40 − 30');
   sides(l).forEach((v, k) => near(v, [30, 10][k], 1e-6, 'its size'));
   near(inverse(C, l.points[0]).azi, Math.atan2(5, 15) * 180 / Math.PI, 1e-6, 'facing north');
-  assert.equal(placeKind(doc, C, 'preset:Mine', [mine]).name, 'Mine 2');
-  assert.deepEqual([src.circles[0].radius, mine.doc.circles[0].radius], [20, 20], 'the drawing and the preset untouched');
-  // a preset not there: a diamond
-  assert.deepEqual(shapes(doc, placeKind(doc, C, 'preset:Gone', [mine])), []);
+  assert.equal(placeKind(doc, C, 'library:Mine', [mine]).name, 'Mine 2');
+  assert.deepEqual([src.circles[0].radius, mine.doc.circles[0].radius], [20, 20], 'the drawing and the item untouched');
+  // an item not there: a diamond
+  assert.deepEqual(shapes(doc, placeKind(doc, C, 'library:Gone', [mine])), []);
 });
 
-test('a preset of the user\'s keeps its point\'s properties, preset replaced by its name; placed: the point shown, its shapes shown or hidden as saved, no guide', () => {
-  const src = emptyDoc(0), p = addPoint(src, [5, 50], { properties: [{ key: 'a', value: '1' }, { key: 'preset', value: 'Old' }], visible: false, guide: true });
+test('a Library item keeps its point\'s properties, library replaced by its name; placed: the point shown, its shapes shown or hidden as saved, no guide', () => {
+  const src = emptyDoc(0), p = addPoint(src, [5, 50], { properties: [{ key: 'a', value: '1' }, { key: 'library', value: 'Old' }], visible: false, guide: true });
   addCircle(src, [5, 50], { groupId: p.id, radius: 20, visible: false, guide: true });
   addCircle(src, [5, 50], { groupId: p.id, radius: 30 });
-  const mine = presetOf(src, p.id, 'Mine'), doc = emptyDoc(0);
+  const mine = itemOf(src, p.id, 'Mine'), doc = emptyDoc(0);
   assert.deepEqual([mine.doc.points[0].visible, mine.doc.points[0].guide, mine.doc.circles.map((c) => [c.visible, c.guide])], [true, false, [[false, false], [true, false]]]);
-  const q = placeKind(doc, C, 'preset:Mine', [mine]), [c, d] = shapes(doc, q);
-  assert.deepEqual([q.properties, q.visible, q.guide, c.visible, c.guide, d.visible], [[{ key: 'a', value: '1' }, { key: 'preset', value: 'Mine' }], true, false, false, false, true]);
+  const q = placeKind(doc, C, 'library:Mine', [mine]), [c, d] = shapes(doc, q);
+  assert.deepEqual([q.properties, q.visible, q.guide, c.visible, c.guide, d.visible], [[{ key: 'a', value: '1' }, { key: 'library', value: 'Mine' }], true, false, false, false, true]);
 });
 
-test('a preset of the user\'s placed: its point named after it (its folder left out, its punctuation kept), its shapes keep their names', () => {
+test('a Library item placed: its point named after it (its folder left out, its punctuation kept), its shapes keep their names', () => {
   const src = emptyDoc(0), p = addPoint(src, [5, 50], { name: 'X-10' });
   addCircle(src, [5, 50], { groupId: p.id, radius: 20, name: 'Reach, 1.5 km' });
   addCircle(src, [5, 50], { groupId: p.id, radius: 30, name: 'Reach, 1.5 km' });
-  const mine = presetOf(src, p.id, 'Craft / X-10'), doc = emptyDoc(0);
-  const a = placeKind(doc, C, 'preset:Craft / X-10', [mine]), b = placeKind(doc, C, 'preset:Craft / X-10', [mine]);
+  const mine = itemOf(src, p.id, 'Craft / X-10'), doc = emptyDoc(0);
+  const a = placeKind(doc, C, 'library:Craft / X-10', [mine]), b = placeKind(doc, C, 'library:Craft / X-10', [mine]);
   assert.deepEqual([a.name, b.name], ['X-10 1', 'X-10 2']);
   assert.deepEqual([...shapes(doc, a), ...shapes(doc, b)].map((x) => x.name), Array(4).fill('Reach, 1.5 km'));
 });

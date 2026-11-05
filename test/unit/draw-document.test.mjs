@@ -478,7 +478,7 @@ test('view: data is always written ({} when nothing is chosen), so that it is re
 
 test('rules (distribute, connect) are kept as records; defaults left out; an unknown kind or a distribution along nothing skipped', () => {
   const { doc, report } = read(collection([], { rules: [
-    { id: 'a1', kind: 'distribute', groupId: 'g1', copiesId: 'g2', along: { element: 's', part: 2 }, spacing: 1000, side: 'alternate', radius: 250, preset: 'preset:mine', copy: { symbol: 'square' },
+    { id: 'a1', kind: 'distribute', groupId: 'g1', copiesId: 'g2', along: { element: 's', part: 2 }, spacing: 1000, side: 'alternate', radius: 250, item: 'library:mine', copy: { symbol: 'square' },
       pointIds: ['n1', 'bad id!', 7] },
     { id: 'a2', kind: 'distribute' }, { id: 'a3', kind: 'distribute', along: { element: 's' } }, { id: 'a4', kind: 'distribute', along: { element: 's', part: 1.5 } },
     { id: 'a5', kind: 'distribute', along: {} },
@@ -489,16 +489,16 @@ test('rules (distribute, connect) are kept as records; defaults left out; an unk
   assert.deepEqual(distributions(doc).map((x) => x.id), ['a1', 'a3', 'a4']); // a2, a5 are along nothing
   assert.deepEqual(report.skipped.filter((x) => x.kind === 'rule').map((x) => x.id), ['a2', 'a5', 'c1', 'x1', 'x2']);
   assert.ok(report.skipped.some((x) => x.id === 'x1' && /unknown kind "spiral"/.test(x.reason)));
-  assert.deepEqual([a.kind, a.groupId, a.copiesId, a.along, a.spacing, a.side, a.offset, a.count, a.radius, a.aperture, a.preset, a.pointIds],
-    ['distribute', 'g1', 'g2', { element: 's' }, 1000, 'alternate', 0, null, 250, null, 'preset:mine', ['n1']]); // what it is along: an element, nothing else
+  assert.deepEqual([a.kind, a.groupId, a.copiesId, a.along, a.spacing, a.side, a.offset, a.count, a.radius, a.aperture, a.item, a.pointIds],
+    ['distribute', 'g1', 'g2', { element: 's' }, 1000, 'alternate', 0, null, 250, null, 'library:mine', ['n1']]); // what it is along: an element, nothing else
   assert.ok(!('copy' in a)); // its copies are in the drawing: no copy kept
-  assert.deepEqual(distributions(doc).slice(1).map((x) => [x.groupId, x.copiesId, x.preset]), [[null, null, null], [null, null, null]]);
+  assert.deepEqual(distributions(doc).slice(1).map((x) => [x.groupId, x.copiesId, x.item]), [[null, null, null], [null, null, null]]);
   assert.equal(connections(doc).length, 1); // the second c1: its ID used
   assert.deepEqual([c.kind, c.groupId, c.pattern, c.groupSize, c.created, 'hubs' in c, c.roots], ['connect', 'g3', 'tree', 3, ['gone'], false, [{ id: 'n9', weight: 1 }, { id: 'n8', weight: 2 }]]); // deleted since: not an error; a weight of 1 unless given
   const f = toFile(doc).earthplotter;
   assert.deepEqual(f.rules[3], { id: 'c1', kind: 'connect', groupId: 'g3', groupSize: 3, roots: [{ id: 'n9' }, { id: 'n8', weight: 2 }], pointIds: ['n1'], created: ['gone'] });
   assert.deepEqual(f.rules[0], { id: 'a1', kind: 'distribute', groupId: 'g1', copiesId: 'g2', along: { element: 's' }, spacing: 1000, side: 'alternate', radius: 250,
-    preset: 'preset:mine', pointIds: ['n1'] });
+    item: 'library:mine', pointIds: ['n1'] });
   assert.deepEqual(f.rules[1], { id: 'a3', kind: 'distribute', along: { element: 's' } });
   assert.deepEqual(again(doc).doc, doc);
 });

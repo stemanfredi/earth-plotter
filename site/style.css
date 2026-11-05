@@ -403,11 +403,11 @@ svg.profile .pcursor { stroke: var(--magenta); stroke-width: 1; }
 /* dividers between the tools' groups: short, centred */
 .tsep { width: 1px; height: 22px; background: var(--line); margin: 0 4px; flex: none; }
 .bar > .grow { flex: 1; }
-/* the Library (draw/library.js): a preset's picture larger than a row's icon, its own colours */
-.lib .drow .kind svg { width: 22px; height: 22px; }
-.lib .drow .kind { width: 26px; }
+/* the Library (draw/libraryview.js): an item's picture larger than a row's icon, its own colours */
+.drawtab .drow .kind svg { width: 22px; height: 22px; }
+.drawtab .drow .kind { width: 26px; }
 svg.thumb { overflow: visible; }
-.lib .drow .dname { white-space: normal; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-height: 1.25; padding-block: 3px; } /* a long name on two lines, not cut short */
+.drawtab .drow .dname { white-space: normal; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-height: 1.25; padding-block: 3px; } /* a long name on two lines, not cut short */
 /* a phone: the bar ☰, find a place, Layers, Elements, Library; the dock along the bottom, Undo, Redo, Box
    select and Measure (while drawing: Back, Undo, Redo, what is drawn, Done); the panels a bottom sheet over the dock, as
    tall as dragged at its grip, the map's foot above it; Properties, while off, its head alone (a peek) */

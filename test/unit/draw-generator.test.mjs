@@ -5,7 +5,7 @@ import { near, lineFrom, placeIn } from './helpers.mjs';
 const { distribute, alongTrace, hubFor, plan, lines, planConnection, makeDistribution, editDistribution, connect, unconnect, reconnect, pruneRules, updateRule, DISTRIBUTE_D,
   distributions, connections, ruleOf, MAX_COPIES, MAX_TREE } = await import('../../site/draw/generator.js');
 const { emptyDoc, addPoint, addLine, addCircle, find, remove, carry } = await import('../../site/draw/document.js');
-const { presetOf } = await import('../../site/draw/presets.js');
+const { itemOf } = await import('../../site/draw/library.js');
 const { outlinePoints } = await import('../../site/draw/outlines.js');
 const { lineTrace, nearestAlong, pointsAlong, totals, madeLines } = await import('../../site/draw/lines.js');
 const { settleGeometry, DrawStore } = await import('../../site/draw/store.js');
@@ -196,8 +196,8 @@ test('distribution: points along the line in a group of its own, its Copies, eac
   near(ns[1].bearing, 180, 1, 'the second south');
   // the rule: its settings and its copies, in their order along the line
   assert.deepEqual(doc.rules, [array]);
-  assert.deepEqual(Object.keys(array).sort(), ['along', 'aperture', 'copiesId', 'count', 'endMargin', 'groupId', 'id', 'kind', 'offset', 'pointIds', 'preset', 'radius', 'side', 'spacing', 'startMargin'].sort());
-  assert.deepEqual([array.kind, array.along, array.spacing, array.count, array.side, array.radius, array.preset],
+  assert.deepEqual(Object.keys(array).sort(), ['along', 'aperture', 'copiesId', 'count', 'endMargin', 'groupId', 'id', 'kind', 'offset', 'pointIds', 'item', 'radius', 'side', 'spacing', 'startMargin'].sort());
+  assert.deepEqual([array.kind, array.along, array.spacing, array.count, array.side, array.radius, array.item],
     ['distribute', { element: guide.id }, 3000, null, 'alternate', DISTRIBUTE_D.radius, null]);
   ns.forEach((n, k) => near(inverse(n.position, places[k].position).s, 0, 1e-6, `copy ${k} at its place`));
   assert.equal(doc.lines.length, 1, 'a distribution makes no line');
@@ -572,11 +572,11 @@ test('a distribution along a circle, updated: moved, turned, its radius changed 
   assert.equal(doc.points.length, 3);
 });
 
-test('copies: a built-in kind at the radius (its largest shape), a preset of the user\'s at its own size; each point with shapes of its own', () => {
+test('copies: a built-in kind at the radius (its largest shape), a Library item at its own size; each point with shapes of its own', () => {
   const { doc, guide } = scene();
-  const ringed = makeDistribution(doc, { along: { element: guide.id }, count: 3, preset: 'rings', radius: 1500 }).distribution;
+  const ringed = makeDistribution(doc, { along: { element: guide.id }, count: 3, item: 'rings', radius: 1500 }).distribution;
   for (const n of pointsOf(doc, ringed)) assert.deepEqual(shapesOf(doc, n).map((c) => [c.radius, c.look.fill?.opacity ?? null]), [[500, null], [1000, 0], [1500, 0]]);
-  const rect = makeDistribution(doc, { along: { element: guide.id }, count: 2, preset: 'rectangle', radius: 400, aperture: 90 }).distribution;
+  const rect = makeDistribution(doc, { along: { element: guide.id }, count: 2, item: 'rectangle', radius: 400, aperture: 90 }).distribution;
   for (const n of pointsOf(doc, rect)) {
     const [r] = shapesOf(doc, n);
     assert.deepEqual([r.closed, r.points.length], [true, 4]);
@@ -585,13 +585,13 @@ test('copies: a built-in kind at the radius (its largest shape), a preset of the
   // one of the user's: its point and shapes, as they are, each copy's own
   const src = emptyDoc(0), q = addPoint(src, [5, 50], { symbol: 'square', properties: [{ key: 'a', value: '1' }] });
   addCircle(src, [5, 50], { groupId: q.id, radius: 2000, name: 'outer' });
-  const copy = presetOf(src, q.id, 'mine').doc;
-  const mine = makeDistribution(doc, { along: { element: guide.id }, count: 3, preset: 'preset:mine', copy, radius: 10 }).distribution;
-  assert.equal(mine.preset, 'preset:mine');
+  const copy = itemOf(src, q.id, 'mine').doc;
+  const mine = makeDistribution(doc, { along: { element: guide.id }, count: 3, item: 'library:mine', copy, radius: 10 }).distribution;
+  assert.equal(mine.item, 'library:mine');
   const ns = pointsOf(doc, mine);
-  // each copy as one placed by hand: the preset's properties, the preset named (a built-in's copies have none)
-  for (const n of ns) assert.deepEqual([n.symbol, n.properties, shapesOf(doc, n).map((c) => [c.radius, c.position])], ['square', [{ key: 'a', value: '1' }, { key: 'preset', value: 'mine' }], [[2000, n.position]]]);
-  assert.deepEqual(copy.points[0].properties, [{ key: 'a', value: '1' }], 'the preset untouched');
+  // each copy as one placed by hand: the item's properties, the item named (a built-in's copies have none)
+  for (const n of ns) assert.deepEqual([n.symbol, n.properties, shapesOf(doc, n).map((c) => [c.radius, c.position])], ['square', [{ key: 'a', value: '1' }, { key: 'library', value: 'mine' }], [[2000, n.position]]]);
+  assert.deepEqual(copy.points[0].properties, [{ key: 'a', value: '1' }], 'the item untouched');
   assert.notEqual(shapesOf(doc, ns[0])[0], shapesOf(doc, ns[1])[0]);
   // a copy deleted: its shapes with it
   remove(doc, [ns[0].id]);
@@ -658,7 +658,7 @@ test('hubFor: the median; with a shortest branch, at least that far from every p
 test('rules read back from the file: a distribution round a circle, a connection in its group', () => {
   const doc = emptyDoc(0);
   const c = addCircle(doc, [12, 40], { radius: 8000, aperture: 120 });
-  const { distribution: array } = makeDistribution(doc, { along: { element: c.id }, count: 4, preset: 'rings', radius: 900 });
+  const { distribution: array } = makeDistribution(doc, { along: { element: c.id }, count: 4, item: 'rings', radius: 900 });
   const o = addPoint(doc, [12, 39.8]);
   connect(doc, { pointIds: array.pointIds, roots: roots(o.id), pattern: 'tree', groupSize: 2 });
   const back = parse(serialise(doc), null, 0).doc;
@@ -711,7 +711,7 @@ test('a distribution deleted with its line and its copies takes the empty groups
 
 test('a copy changed by hand keeps its change when the rule is edited with the same count and copy; moved with the others', () => {
   const { doc, guide } = scene();
-  const { distribution: a } = makeDistribution(doc, { along: { element: guide.id }, count: 3, preset: 'rings', radius: 1500 });
+  const { distribution: a } = makeDistribution(doc, { along: { element: guide.id }, count: 3, item: 'rings', radius: 1500 });
   const mine = pointsOf(doc, a)[1], [inner] = shapesOf(doc, mine);
   inner.radius = 321; mine.symbol = 'square'; inner.name = 'mine';
   const before = mine.position;

@@ -9,7 +9,7 @@ import { DISTRIBUTE_D, distribute, lines, planConnection, makeDistribution, edit
 import { BUILT_IN, builtInName } from './place.js';
 import { reachOf } from './features.js';
 import { choice, select } from '../fields.js';
-import { hasShapes } from './presets.js';
+import { hasShapes, itemFor, itemKey, keyName } from './library.js';
 import { listGrid } from './grid.js';
 import { fmtDist, plural } from '../format.js';
 import { groupPath } from './tree.js';
@@ -51,10 +51,10 @@ export function createForms(kit) {
   // { kind: 'connect', pointIds, connectionId } (an id: the one edited or made again, or null), and the
   // selection it was opened with (another closes it)
   let form = null;
-  const DFORM = { by: 'spacing', spacing: 1000, count: 10, startMargin: 0, endMargin: 0, offset: 0, side: 'left', radius: DISTRIBUTE_D.radius, aperture: null, preset: 'circle', copy: null, groupId: null };
+  const DFORM = { by: 'spacing', spacing: 1000, count: 10, startMargin: 0, endMargin: 0, offset: 0, side: 'left', radius: DISTRIBUTE_D.radius, aperture: null, item: 'circle', copy: null, groupId: null };
   const CON = { pattern: 'tree', groupSize: 'auto', minBranch: 0, roots: [], newRoots: [] };
   const dform = { ...DFORM }, con = { ...CON }; // a new form starts from these; one edited, from its rule's
-  const dformParams = () => ({ spacing: dform.spacing, count: dform.by === 'count' ? dform.count : null, startMargin: dform.startMargin, endMargin: dform.endMargin, offset: dform.offset, side: dform.side, radius: dform.radius, aperture: dform.aperture, preset: dform.preset, copy: dform.copy, groupId: dform.groupId,
+  const dformParams = () => ({ spacing: dform.spacing, count: dform.by === 'count' ? dform.count : null, startMargin: dform.startMargin, endMargin: dform.endMargin, offset: dform.offset, side: dform.side, radius: dform.radius, aperture: dform.aperture, item: dform.item, copy: dform.copy, groupId: dform.groupId,
     along: form && { element: form.along.element } });
   const conParams = () => ({ pattern: con.pattern, groupSize: con.groupSize, minBranch: con.minBranch, roots: con.roots.map((r) => ({ ...r })), newRoots: con.newRoots.map((q) => [...q]) });
   function openForm(f) {
@@ -68,7 +68,7 @@ export function createForms(kit) {
   function openDistribution(along, a = null) {
     Object.assign(dform, DFORM); // a new one: the defaults
     if (a) Object.assign(dform, { by: a.count ? 'count' : 'spacing', spacing: a.spacing || dform.spacing, count: a.count || a.pointIds.length, startMargin: a.startMargin, endMargin: a.endMargin,
-      offset: a.offset, side: a.side, radius: a.radius, aperture: a.aperture, preset: a.preset ?? 'circle' });
+      offset: a.offset, side: a.side, radius: a.radius, aperture: a.aperture, item: a.item ?? 'circle' });
     openForm({ kind: 'distribute', along: { element: along.element }, distributionId: a?.id ?? null });
   }
   function openConnect(pointIds, c = null) {
@@ -143,11 +143,11 @@ export function createForms(kit) {
     const dist = (key, aria, zero) => withUnit(F.dist(() => dform[key], (m) => { dform[key] = m; redo(); }, aria, { zero }));
     const differs = editing && points.length !== editing.pointIds.length;
     const connected = differs && connections(doc).some((c) => c.pointIds.some((n) => editing.pointIds.includes(n)));
-    // what is repeated: a built-in kind (the circle to start with), or a preset of the user's (its size its own)
-    const mine = drawing.presets.filter(hasShapes);
+    // what is repeated: a built-in kind (the circle to start with), or a Library item (its size its own)
+    const mine = drawing.library.filter(hasShapes);
     const choose = (v) => {
-      dform.preset = v;
-      dform.copy = (v.startsWith('preset:') && mine.find((x) => `preset:${x.name}` === v)?.doc) || null; // its point and shapes, as placed by hand
+      dform.item = v;
+      dform.copy = itemFor(mine, v)?.doc ?? null; // its point and shapes, as placed by hand
       redo();
     };
     const reach = dform.copy ? reachOf(dform.copy, dform.copy.points[0]) : null;
@@ -159,11 +159,11 @@ export function createForms(kit) {
       run.capped ? h('p', { class: 'note warn' }, `At most ${MAX_COPIES.toLocaleString('en')} copies: the spacing would give more`) : null,
       closed ? null : row('Margins', pair(dist('startMargin', 'Start margin', true), '·', dist('endMargin', 'End margin', true))),
       row('Offset', pair(dist('offset', 'Offset', true), '·', select('Side', [['left', arc ? 'Out' : 'Left'], ['right', arc ? 'In' : 'Right'], ['alternate', 'Alternate']], dform.side, (v) => { dform.side = v; redo(); }))),
-      row('Copy', select('Copy', [...BUILT_IN.map((k) => [k, builtInName(k)]), ...mine.map((x) => [`preset:${x.name}`, x.name]),
-        ...(dform.copy && !mine.some((x) => `preset:${x.name}` === dform.preset) ? [[dform.preset, `${dform.preset.slice(7)} (as copied)`]] : [])], dform.preset, choose, { title: 'What each copy is' })), // a preset renamed or deleted since: its copy is kept
-      dform.copy ? row('Radius', distValue(reach, { title: 'The preset\'s own' }))
-        : row('Radius', withUnit(F.dist(() => dform.radius, (m) => { dform.radius = m; redo(); }, 'Radius', { check: radiusCheck, title: dform.preset === 'circle' ? 'Each circle\'s, whatever the spacing' : 'Its largest shape\'s reach, whatever the spacing' }))),
-      dform.preset === 'circle' ? row('Aperture', F.angle(() => dform.aperture, (v) => { dform.aperture = v; redo(); }, `Aperture (degrees): a sector ${arc ? 'facing outwards' : 'facing away from the line'}; empty or 360: a circle`, { wrap: false, none: true }), funit('°')) : null,
+      row('Copy', select('Copy', [...BUILT_IN.map((k) => [k, builtInName(k)]), ...mine.map((x) => [itemKey(x.name), x.name]),
+        ...(dform.copy && !itemFor(mine, dform.item) ? [[dform.item, `${keyName(dform.item)} (as copied)`]] : [])], dform.item, choose, { title: 'What each copy is' })), // an item renamed or deleted since: its copy is kept
+      dform.copy ? row('Radius', distValue(reach, { title: 'The item\'s own' }))
+        : row('Radius', withUnit(F.dist(() => dform.radius, (m) => { dform.radius = m; redo(); }, 'Radius', { check: radiusCheck, title: dform.item === 'circle' ? 'Each circle\'s, whatever the spacing' : 'Its largest shape\'s reach, whatever the spacing' }))),
+      dform.item === 'circle' ? row('Aperture', F.angle(() => dform.aperture, (v) => { dform.aperture = v; redo(); }, `Aperture (degrees): a sector ${arc ? 'facing outwards' : 'facing away from the line'}; empty or 360: a circle`, { wrap: false, none: true }), funit('°')) : null,
       editing ? null : row('In group', select('Group', [['', 'none (at the top)'], ...doc.groups.map((g) => [g.id, groupPath(drawing.doc, g)])], dform.groupId ?? '', (v) => { dform.groupId = v || null; }, { title: 'Where its group goes' })),
       h('p', { class: 'note fsummary' }, points.length ? `${copies(points.length)}.` : `No copy fits: ${arc ? 'the circle' : 'the line'} is shorter than the margins, or the spacing too long.`),
       differs ? h('p', { class: 'note warn' }, `Another number of points (${editing.pointIds.length} now): they are made anew${connected ? ', and connected again' : ''}. Changes made to those by hand are lost; Undo brings them back.`) : null,

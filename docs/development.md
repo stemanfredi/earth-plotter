@@ -38,7 +38,7 @@ rule in the code are in a comment next to it, not here.
 
 - **Unit** (`test/unit/`, `npm test`): a file per module that runs without a
   browser: the drawing (model, file, attachments, rules, labels, values,
-  clipboard, presets, saving, undo; the format doc's example among them),
+  clipboard, the Library, saving, undo; the format doc's example among them),
   geodesy, the readers and writers (Zarr, GeoTIFF, zip), the clipping cache,
   net, search, keys, formats, the data builds' maths (GEBCO, seagrass), the
   catalogue's consistency, and the vendored libraries and the security policy

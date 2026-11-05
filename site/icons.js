@@ -7,7 +7,8 @@ export const icon = (...paths) => svg('svg', { viewBox: '0 0 24 24', width: 20, 
   paths.map((d) => (Array.isArray(d) ? svg('path', { d: d[0], fill: d[1], stroke: d[1] }) : svg('path', { d }))));
 
 export const KIND_ICON = {
-  point: ['m12 4 8 8-8 8-8-8z'], shape: ['M4 8h16v8H4z'], polygon: ['M5 7l7-4 7 5-2 11H7z'], line: ['M4 18 20 6'], group: ['M3 7h7l2 2h9v10H3z'],
+  point: [['m12 7.5 4.5 4.5-4.5 4.5-4.5-4.5z', 'currentColor']], shape: ['M4 8h16v8H4z'], // a point: a marker, small and filled (not a shape's outline)
+  polygon: ['M5 7l7-4 7 5-2 11H7z'], line: ['M4 18 20 6'], group: ['M3 7h7l2 2h9v10H3z'],
   label: ['M10 4h10v7H10z', 'M10 11 4 19'], // a text box and its leader
 };
 // the bar's, the panels' and the actions' icons (most as Lucide's)
@@ -27,7 +28,7 @@ export const UI_ICON = {
   layers: ['m12 3 9 5-9 5-9-5z', 'm3 13 9 5 9-5'],
   elements: [['M4 5.2a.8.8 0 1 0 0 1.6a.8.8 0 1 0 0-1.6z', 'currentColor'], 'M8 6h13', 'M4 8v2a2 2 0 0 0 2 2h2', 'M4 10v6a2 2 0 0 0 2 2h2', ['M10 11.2a.8.8 0 1 0 0 1.6a.8.8 0 1 0 0-1.6z', 'currentColor'], ['M10 17.2a.8.8 0 1 0 0 1.6a.8.8 0 1 0 0-1.6z', 'currentColor'], 'M14 12h7', 'M14 18h7'],
   properties: ['M4 5h16v14H4z', 'M15 5v14'],
-  library: ['M4 4v16', 'M8 8v12', 'M12 6v14', 'm16 6 4 14'], // books on a shelf, one leaning (Lucide's)
+  draw: ['M18 3.5a2.1 2.1 0 0 1 3 3L7.5 20l-4 1 1-4z', 'm15 6 3 3'], // a pencil (as Lucide's): the Draw tab
   undo: ['M9 14 4 9l5-5', 'M4 9h10a6 6 0 0 1 0 12h-3'], redo: ['m15 14 5-5-5-5', 'M20 9H10a6 6 0 0 0 0 12h3'],
   file: PAGE,
   open: ['M3 6.5A1.5 1.5 0 0 1 4.5 5H9l2 2h8.5A1.5 1.5 0 0 1 21 8.5v9a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 17.5z'],
@@ -57,4 +58,5 @@ export const SELECT_ICON = ['M5 3l14 8-6 2-2 6z']; // an arrow
 // Box select: a dashed square
 export const BOX_ICON = ['M4 8V4h4', 'M11 4h2', 'M16 4h4v4', 'M20 11v2', 'M20 16v4h-4', 'M13 20h-2', 'M8 20H4v-4', 'M4 13v-2'];
 // a point's symbols, in its Symbol control
-export const SYMBOL_ICON = { diamond: KIND_ICON.point, square: ['M6 6h12v12H6z'], triangle: POINT_ICON.triangle, dot: ['M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z'], none: [] };
+export const SYMBOL_ICON = { diamond: ['m12 4 8 8-8 8-8-8z'], // as the other symbols in the picker: an outline
+  square: ['M6 6h12v12H6z'], triangle: POINT_ICON.triangle, dot: ['M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z'], none: [] };

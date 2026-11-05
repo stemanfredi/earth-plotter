@@ -16,8 +16,8 @@ const LEFT = { min: 200, max: 480, dflt: 260 }, RIGHT = { min: 260, max: 600, df
 const MIN_MAP = 480; // px of map kept between the two panels
 const clamp = (v, r) => (Number.isFinite(v) ? Math.round(Math.max(r.min, Math.min(r.max, v))) : r.dflt); // what was saved, or the default
 
-// left, right: the panels (empty asides); tabs: [{ id, label, paths, badge, body, hint }] for the left (its
-// button's icon, and what it shows besides, if anything; hint: its tooltip, else its label).
+// left, right: the panels (empty asides); tabs: [{ id, label, paths, badge, body }] for the left (its
+// button's icon, and what it shows besides, if anything).
 // onChange(): after any change of what is shown.
 export function createFrame({ left, right, tabs, onChange = () => {} }) {
   const saved = store.json(KEY) ?? {};
@@ -33,8 +33,8 @@ export function createFrame({ left, right, tabs, onChange = () => {} }) {
 
   // the bar's toggles: a button per left tab (the left panel open on it, or closed when it shows it; while
   // the left makes way for Properties, it back on that tab, Properties off), Properties' at the bar's end
-  const toggle = (cls, label, key, paths, onclick, badge = null, hint = label) => h('button', { type: 'button', class: `ptoggle ${cls}`, 'aria-label': label, title: `${hint} (${key})`, 'aria-pressed': 'false', onclick }, icon(...paths), badge);
-  const tabBtns = tabs.map((t) => toggle('ptab', t.label, openKey(t.id), t.paths, () => toggleTab(t.id), t.badge, t.hint));
+  const toggle = (cls, label, key, paths, onclick, badge = null) => h('button', { type: 'button', class: `ptoggle ${cls}`, 'aria-label': label, title: `${label} (${key})`, 'aria-pressed': 'false', onclick }, icon(...paths), badge);
+  const tabBtns = tabs.map((t) => toggle('ptab', t.label, openKey(t.id), t.paths, () => toggleTab(t.id), t.badge));
   tabs.forEach((t, i) => { tabBtns[i].dataset.tab = t.id; });
   const rightBtn = toggle('pright', 'Properties', openKey('props'), UI_ICON.properties, () => setProps(!st.props));
   // a grip (the sheet's, on a phone) and an edge to drag (the panel's width)

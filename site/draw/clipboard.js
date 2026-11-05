@@ -56,7 +56,7 @@ export function paste(doc, clip, mv) {
   }
   return made;
 }
-// point id of doc and its shapes, as they are, in a drawing of their own (a preset; a rule's copy as its
+// point id of doc and its shapes, as they are, in a drawing of their own (a Library item; a rule's copy as its
 // template): the point shown, its shapes shown or hidden as they are (a copy placed from it is so), and no
 // guide; each shape keeps its name
 export function alone(doc, id) {

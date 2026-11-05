@@ -24,7 +24,8 @@ import { inverse, destination, localFrame, lengthOf } from '../geodesy.js';
 import { norm360 } from '../geo.js';
 import { lineTrace, pointsAlong } from './lines.js';
 import { addPoint, addDot, addLine, addGroup, elements, newId, idsOf, label, remove, setLink, carry, emptyDoc } from './document.js';
-import { BUILT_IN, build, placeCopy, presetProperty } from './place.js';
+import { BUILT_IN, build, placeCopy, fromLibrary } from './place.js';
+import { keyName } from './library.js';
 import { alone } from './clipboard.js';
 
 // a drawing's rules of each kind
@@ -237,7 +238,7 @@ export function planConnection(doc, { pointIds, roots = [], newRoots = [], patte
 // ---- making ----------------------------------------------------------------------------------------
 
 // the rules' fields when nothing says otherwise (the file leaves these out: file.js); radius in m
-export const DISTRIBUTE_D = { groupId: null, copiesId: null, spacing: null, count: null, startMargin: 0, endMargin: 0, offset: 0, side: 'left', radius: 500, aperture: null, preset: null, pointIds: [] };
+export const DISTRIBUTE_D = { groupId: null, copiesId: null, spacing: null, count: null, startMargin: 0, endMargin: 0, offset: 0, side: 'left', radius: 500, aperture: null, item: null, pointIds: [] };
 export const CONNECT_D = { groupId: null, pattern: 'tree', groupSize: 'auto', minBranch: 0, roots: [], pointIds: [], created: [] };
 const patternOf = (v) => (v === 'chain' ? 'chain' : 'tree');
 const DISTRIBUTE_KEYS = Object.keys(DISTRIBUTE_D).filter((k) => !['groupId', 'copiesId', 'pointIds'].includes(k)); // its settings: what the form sets
@@ -249,7 +250,7 @@ export function settings(p) {
   return { spacing: !count && fin(p.spacing) && p.spacing > 0 ? p.spacing : D.spacing, count, startMargin: m('startMargin'), endMargin: m('endMargin'), offset: m('offset'),
     side: SIDES.includes(p.side) ? p.side : D.side, radius: fin(p.radius) && p.radius > 0 ? p.radius : D.radius,
     aperture: fin(p.aperture) && p.aperture > 0 && p.aperture < 360 ? p.aperture : D.aperture,
-    preset: typeof p.preset === 'string' ? p.preset : D.preset };
+    item: typeof p.item === 'string' ? p.item : D.item };
 }
 // A connection's settings as taken, from the form or a file: its pattern, its group size, a tree's
 // shortest branch (a chain has none), each of its kind and range, else its default; its roots (as
@@ -260,12 +261,12 @@ export function connectSettings(p) {
     roots: (p.roots || []).map((r) => ({ id: r.id, weight: fin(r.weight) && r.weight > 0 ? r.weight : 1 })) };
 }
 // What a distribution's copies are: a drawing whose first point (with its shapes) each copies. copy:
-// one of the user's presets, as chosen (its drawing: the point named after it in the property
-// preset, as one placed by hand); else its preset, a built-in kind (null: 'circle', a sector with
+// a Library item, as chosen (its drawing: the point named after it in the property library, as one
+// placed by hand); else its item, a built-in kind (null: 'circle', a sector with
 // its aperture) its largest shape reaching its radius, no property
 function templateOf(a, copy = null) {
-  if (copy) { const doc = alone(copy, copy.points[0].id); presetProperty(doc.points[0], a.preset.slice(7)); return doc; }
-  const doc = emptyDoc(0), kind = BUILT_IN.includes(a.preset) ? a.preset : 'circle';
+  if (copy) { const doc = alone(copy, copy.points[0].id); fromLibrary(doc.points[0], keyName(a.item)); return doc; }
+  const doc = emptyDoc(0), kind = BUILT_IN.includes(a.item) ? a.item : 'circle';
   build(doc, [0, 0], kind === 'circle' && a.aperture ? 'sector' : kind, a.radius, { aperture: a.aperture });
   return doc;
 }
@@ -279,7 +280,7 @@ function place(doc, a, points, tpl, groupId = a.copiesId) {
 // caller). params: along ({ element }: the line or the circle), spacing or count, startMargin,
 // endMargin, offset, side ('left', 'right', 'alternate'), radius (the copies', apart from the
 // spacing), aperture (the circle's as a sector, facing away from what it follows; null: circles),
-// preset and copy (templateOf; copy is not kept), groupId (the group its own group goes in; null: at
+// item and copy (templateOf; copy is not kept), groupId (the group its own group goes in; null: at
 // the top).
 // Returns { distribution (its rule), group (its own: "Distribute along X", with "Copies" in it) }.
 export function makeDistribution(doc, params) {
@@ -296,16 +297,16 @@ export function makeDistribution(doc, params) {
 }
 
 // A distribution with new settings (none: Update, along what it follows as it is now). The same copy
-// (preset, radius, aperture) and number of them: they move (one moved by hand too), as they are; else
+// (item, radius, aperture) and number of them: they move (one moved by hand too), as they are; else
 // they are made anew (another copy: from it; another number: as the first copy left is), and each
 // connection built on them is made again with its settings. Returns { distribution, remade }, or null
 // (the rule or what it follows gone).
 export function editDistribution(doc, id, params) {
   const a = doc.rules.find((x) => x.id === id), along = a && alongOf(doc, a.along.element);
   if (!along) return null;
-  const was = JSON.stringify([a.preset, a.radius, a.aperture]);
+  const was = JSON.stringify([a.item, a.radius, a.aperture]);
   Object.assign(a, settings({ ...Object.fromEntries(DISTRIBUTE_KEYS.map((k) => [k, a[k]])), ...params }));
-  const same = was === JSON.stringify([a.preset, a.radius, a.aperture]);
+  const same = was === JSON.stringify([a.item, a.radius, a.aperture]);
   const { points } = distribute(doc, along, a);
   const byId = new Map(doc.points.map((n) => [n.id, n]));
   if (same && points.length === a.pointIds.length && a.pointIds.every((id) => byId.has(id))) {

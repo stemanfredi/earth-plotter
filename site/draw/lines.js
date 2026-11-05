@@ -140,9 +140,9 @@ export function nearestAlong(coords, p) {
   return at;
 }
 
-// A point holding shapes is one thing placed (a vehicle, a sector, a preset of the user's): what
-// it is, its preset's name, else its own less its number ("Aerial vehicle 3": "Aerial vehicle")
-const shapeKind = (p) => p.properties.find((x) => x.key === 'preset')?.value || p.name.replace(/\s+\d+$/, '').trim() || 'Shape';
+// A point holding shapes is one thing placed (a vehicle, a sector, a Library item): what it is, its
+// item's name, else its own less its number ("Aerial vehicle 3": "Aerial vehicle")
+const shapeKind = (p) => p.properties.find((x) => x.key === 'library')?.value || p.name.replace(/\s+\d+$/, '').trim() || 'Shape';
 // held: a shape a point holds (a circle, a closed line), counted with its point, not on its own; holds:
 // a point holding shapes (one thing placed). Read in an indexed pass (totals, breakdown: reading())
 const held = (doc, el) => !!holderOf(doc, el);

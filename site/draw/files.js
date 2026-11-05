@@ -1,20 +1,20 @@
 // The bar's file group (docs/drawing-ui.md §1, §10): Open (the drawings in this browser, the one open
 // marked, each opened where it was drawn or deleted for good, asked first; + New; a file from the
-// computer), Download (the drawing's GeoJSON, the view's outputs, the presets) and Copy link. Where the bar has no room for them (COMPACT: a phone, a tablet),
+// computer), Download (the drawing's GeoJSON, the view's outputs, the Library) and Copy link. Where the bar has no room for them (COMPACT: a phone, a tablet),
 // Open's menu holds them all, and About. An imported file gets a report first.
 
 import { h, COMPACT } from '../dom.js';
 import { popup, dialog, ask, note } from '../menu.js';
 import { parse } from './file.js';
 import { elements, isMeasurement } from './document.js';
-import { presetsFile, readPresets, savePresets } from './presets.js';
+import { libraryFile, readLibrary, saveLibrary } from './library.js';
 import { plural, slug } from '../format.js';
 import { icon, UI_ICON } from '../icons.js';
 
 // drawing (drawing.js); ctx: { download(text, name), openDrawing(id), onImport(doc, view), openArea(file) (an offline area's zip),
-// outputs (the view's, menu items), offlineItem (Offline areas…, a menu item), copyLink(), about() }; presetsChanged(): the tools' kinds shown again. Returns { buttons (the bar's),
+// outputs (the view's, menu items), offlineItem (Offline areas…, a menu item), copyLink(), about() }; libraryChanged(): the tools' kinds shown again. Returns { buttons (the bar's),
 // importFile(file) }.
-export function fileGroup(drawing, ctx, presetsChanged) {
+export function fileGroup(drawing, ctx, libraryChanged) {
   const fileInput = h('input', { type: 'file', accept: '.geojson,.json,.zip,application/geo+json,application/json,application/zip', hidden: true, onchange: (e) => { const f = e.target.files[0]; e.target.value = ''; if (f) importFile(f); } });
   // the file: the drawing (its measurements too) and the view, as GeoJSON
   function exportFile() {
@@ -50,11 +50,11 @@ export function fileGroup(drawing, ctx, presetsChanged) {
         h('button', { type: 'button', class: 'hact del', 'aria-label': `Delete ${x.title || 'Untitled'}`, title: 'Delete for good', onclick: () => del(x) }, icon(...UI_ICON.delete))))),
       sep(),
       // a file dropped on the map is opened too
-      item('Open a file…', 'A drawing\'s file, any GeoJSON, a library file or an offline area: a drawing is added to these and opened; a library\'s presets join the Library; an area to the offline areas', () => fileInput.click(), UI_ICON.open)];
+      item('Open a file…', 'A drawing\'s file, any GeoJSON, a library file or an offline area: a drawing is added to these and opened; a library\'s items join the Library; an area to the offline areas', () => fileInput.click(), UI_ICON.open)];
   }
-  // Download: the drawing, the view's outputs, the presets; apart, the offline areas
+  // Download: the drawing, the view's outputs, the Library; apart, the offline areas
   const downloadItems = () => [item('Drawing (GeoJSON)', 'This drawing, with the view and layers, as a GeoJSON file to share or keep', exportFile, UI_ICON.file), sep(), ...ctx.outputs,
-    item('Library (JSON)', 'Your presets (the Library\'s own) as a small file, to open them in another browser', () => ctx.download(presetsFile(drawing.presets), 'library.json'), UI_ICON.library), sep(), ctx.offlineItem];
+    item('Library (JSON)', 'Your own items in the Library as a small file, to open them in another browser', () => ctx.download(libraryFile(drawing.library), 'library.json'), UI_ICON.library), sep(), ctx.offlineItem];
   function toggle(b, items) {
     if (!menuEl.hidden && b.getAttribute('aria-expanded') === 'true') return close();
     menuEl.setAttribute('aria-label', b.getAttribute('aria-label'));
@@ -79,14 +79,14 @@ export function fileGroup(drawing, ctx, presetsChanged) {
     if (f.size > 64e6) return note('The file is larger than 64 MB: not read'); // read whole before anything is checked: a mistaken drop would stall the page
     let text;
     try { text = await f.text(); } catch (e) { return note(`The file could not be read: ${e.message}`); }
-    const presets = readPresets(text);
-    // a file of presets: added to the user's (one of the same name replaced)
-    if (presets) {
-      const names = new Set(presets.map((x) => x.name));
-      drawing.presets = [...drawing.presets.filter((x) => !names.has(x.name)), ...presets];
-      savePresets(drawing.presets);
-      note(`${plural(presets.length, 'preset')} added to the Library`);
-      return presetsChanged();
+    const items = readLibrary(text);
+    // a library's file: its items added to the user's (one of the same name replaced)
+    if (items) {
+      const names = new Set(items.map((x) => x.name));
+      drawing.library = [...drawing.library.filter((x) => !names.has(x.name)), ...items];
+      saveLibrary(drawing.library);
+      note(`${plural(items.length, 'item')} added to the Library`);
+      return libraryChanged();
     }
     const { doc, view, report } = parse(text, drawing.known);
     const list = (items) => h('ul', {}, items.map((t) => h('li', {}, t)));

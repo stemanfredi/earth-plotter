@@ -16,9 +16,9 @@ import { inverse, areaOf, moveAbout } from '../geodesy.js';
 import { norm180, norm360 } from '../geo.js';
 import { fields, choice, select, check } from '../fields.js';
 import { mac, MOD } from '../keys.js';
-import { loadPresets, savePresets, presetOf } from './presets.js';
-import { createLibrary, itemNow, itemName } from './library.js';
-import { presetBase } from './place.js';
+import { loadLibrary, saveLibrary, itemOf } from './library.js';
+import { createDrawTab, itemNow, itemName } from './drawtab.js';
+import { itemBase } from './place.js';
 import { listGrid, forgetCurrent } from './grid.js';
 import { fmtArea, fmtDist, rowsText, plural } from '../format.js';
 import { fileGroup } from './files.js';
@@ -47,13 +47,13 @@ export function drawView(root, ctx) {
   const computeFacts = () => (facts = { totals: totals(drawing.doc), breakdown: breakdown(drawing.doc, totalsBy || null) });
   const fx = () => facts || computeFacts();
 
-  drawing.presets = loadPresets();
-  const files = fileGroup(drawing, ctx, () => presetsChanged());
-  const tools = createTools(drawing, ctx, { del, fileBtns: files.buttons, drawsNow: () => presetBase(itemName(itemNow(drawing) ?? '')) }); // a preset without its folder
+  drawing.library = loadLibrary();
+  const files = fileGroup(drawing, ctx, () => libraryChanged());
+  const tools = createTools(drawing, ctx, { del, fileBtns: files.buttons, drawsNow: () => itemBase(itemName(itemNow(drawing) ?? '')) }); // an item without its folder
   const { renderTools } = tools;
-  // the Library (library.js), the left panel's third tab: everything there is to draw; built only while seen
-  const library = createLibrary(drawing, ctx.lib, { frame: ctx.frame, changed: () => renderTools() });
-  const presetsChanged = () => { renderTools(); library.render(true); };
+  // Draw (drawtab.js), the left panel's third tab: everything there is to draw, the Library's items among it; built only while seen
+  const library = createDrawTab(drawing, ctx.drawTab, { frame: ctx.frame, changed: () => renderTools() });
+  const libraryChanged = () => { renderTools(); library.render(true); };
 
   // ---- the tree (tree.js), its first row the drawing ------------------------------------------
   const tree = createTree(drawing, { facts: fx, drawingPicked: () => { if (NARROW.matches) ctx.frame.setProps(true); } }); // a phone: the drawing's row turns Properties on, showing it
@@ -173,7 +173,7 @@ export function drawView(root, ctx) {
 
   // its data, near the foot: its properties, keys and values of the user's own (a description, a
   // category: properties like any other)
-  // Data, folded while it has nothing of the user's: the preset a point was placed from is said under
+  // Data, folded while it has nothing of the user's: the Library item it was placed from is said under
   // its heading (it is a property all the same, in the list once open)
   // A folding section's head (drawing-ui.md §5: every section folds), as a group's in Layers:
   // the whole head folds it (its title a button, for keys), its fold mark first (style.css); extras: buttons
@@ -198,8 +198,8 @@ export function drawView(root, ctx) {
     const el = now(id);
     const put = (fn) => set(id, (x) => fn(x.properties));
     const removeAt = (i) => put((ps) => ps.splice(i, 1));
-    const preset = el.properties.find((p) => p.key === 'preset');
-    const open = el.properties.some((p) => p.key !== 'preset') || dataOpen.has(id);
+    const from = el.properties.find((p) => p.key === 'library');
+    const open = el.properties.some((p) => p.key !== 'library') || dataOpen.has(id);
     const toggle = () => { if (open) dataOpen.delete(id); else dataOpen.add(id); renderInspector(); };
     // the empty last row: a key typed there adds a property
     const addKey = field(() => '', (t) => (t.trim() ? t : undefined), (v) => { dataOpen.add(id); put((ps) => ps.push({ key: v, value: '' })); }, { 'aria-label': 'Add a key', placeholder: 'add a key…', bad: 'a key cannot be empty' });
@@ -207,7 +207,7 @@ export function drawView(root, ctx) {
       foldHead('Data', open, toggle,
         FINGER ? h('button', { type: 'button', class: 'small', title: 'Add a property', onclick: () => { dataOpen.add(id); put((p) => p.push({ key: 'key', value: '' })); } }, '+') : null,
         open && el.properties.length ? copyBtn(() => [['Key', 'Value'], now(id).properties.map((p) => [p.key, p.value])]) : null),
-      !open && preset ? h('p', { class: 'note' }, `from preset ${preset.value}`) : null,
+      !open && from ? h('p', { class: 'note' }, `from the library: ${from.value}`) : null,
       open ? listGrid({ name: `${id}:data`,
         columns: [{ head: 'Key', width: 120 }, { head: 'Value', width: 180 }],
         rows: el.properties.map((p, i) => ({ cells: [
@@ -258,12 +258,12 @@ export function drawView(root, ctx) {
   // area or a label for its look and properties (a label's text), kept under a name ("Folder / Name")
   const libraryBtn = (id, name) => h('button', { type: 'button', class: 'small', title: 'Keep it in the Library, to draw again',
     onclick: async () => {
-      const to = (await askText('Add to library', 'Name (Folder / Name)', name || 'Preset'))?.trim();
+      const to = (await askText('Add to library', 'Name (Folder / Name)', name || 'Item'))?.trim();
       if (!to) return;
-      if (drawing.presets.some((x) => x.name === to) && !(await ask('Add to library', `Replace the preset “${to}”?`, [[() => true, 'Replace']]))) return;
-      drawing.presets = [...drawing.presets.filter((x) => x.name !== to), presetOf(drawing.doc, id, to)];
-      savePresets(drawing.presets);
-      presetsChanged();
+      if (drawing.library.some((x) => x.name === to) && !(await ask('Add to library', `Replace “${to}” in the library?`, [[() => true, 'Replace']]))) return;
+      drawing.library = [...drawing.library.filter((x) => x.name !== to), itemOf(drawing.doc, id, to)];
+      saveLibrary(drawing.library);
+      libraryChanged();
       note(`“${to}” added to the Library`);
     } }, 'Add to library…');
   // a point: its position and bearing (its shapes carried), its symbol, its shapes, its look, Add to library…

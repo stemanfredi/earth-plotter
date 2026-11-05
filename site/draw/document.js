@@ -59,7 +59,7 @@ export const LEADERS = ['arrow', 'none']; // a line to what it points at, an arr
 export const TEXT_SIZE = [8, 48]; // px: a label's text size, least and most
 export const BACKGROUNDS = ['halo', 'box'];
 export const LABEL_OFFSET = Object.freeze([40, -40]); // px: a new label's text, up and to the right of what it points at
-const NEW_RADIUS = 1000; // a new circle's radius: a neutral starting value, not a preset
+const NEW_RADIUS = 1000; // a new circle's radius: a neutral starting value
 export const MAX_RADIUS = 1e7;
 
 export const isoNow = (now) => new Date(now).toISOString().replace(/\.\d{3}Z$/, 'Z');

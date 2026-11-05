@@ -13,7 +13,7 @@ import { icon, KIND_ICON, UI_ICON, POINT_ICON } from '../icons.js';
 
 const FILTER_FROM = 30; // the filter field appears past this many elements
 // what a total counts: "15 points · 10 circles · 4 shapes · 3 lines, 12.4 km · 2 areas" (closed lines;
-// placed: a point with what it holds (the Shape tool's, a preset's), counted once)
+// placed: a point with what it holds (the Shape tool's, a Library item's), counted once)
 const countOf = (b, u) => [b.points ? plural(b.points, 'point') : '', b.circles ? plural(b.circles, 'circle') : '',
   b.placed ? `${b.placed} placed` : '', b.lines ? `${plural(b.lines, 'line')}, ${fmtDist(b.length, u)}` : '', b.areas ? plural(b.areas, 'area') : '', b.hidden ? 'incl. hidden' : ''].filter(Boolean).join(' · ');
 // an element's icon and what the panel calls its kind: a circle or a sector; a closed line a point's

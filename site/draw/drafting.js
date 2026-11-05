@@ -5,7 +5,7 @@
 
 import { emptyDoc, addLine, addLabel, find, nextName, KIND, lookOf, setLook, setLink, carry, ringOf } from './document.js';
 import { placeKind, placeBox, build, BOX, styleLike } from './place.js';
-import { presetKind } from './presets.js';
+import { itemKind, itemFor, keyName } from './library.js';
 import { norm360 } from '../geo.js';
 import { valueFeatures } from './features.js';
 import { lineTrace, nearestAlong } from './lines.js';
@@ -32,13 +32,13 @@ export class Drafting {
   // the line made (closed: "Area n"; a measurement "Distance n"): each vertex attached to
   // the points they snapped to (on another line, a point shared there: attach.js attachAt), one undo
   // step; the tool stays on for the next
-  // the preset of the user's a tool's variant names ('preset:<name>'), or null
-  presetOf(v) { return (v?.startsWith('preset:') && this.presets.find((x) => x.name === v.slice(7))) || null; }
+  // the Library item a tool's variant names ('library:<name>'), or null
+  libraryItem(v) { return itemFor(this.library, v); }
   finishLine(closed = false) {
     const d = this.draft, measured = this.tool === 'measure';
     if (!(d?.pts.length > 1)) return; // no second point: nothing to make yet
-    const mine = this.tool === 'line' ? this.presetOf(this.variant.line) : null; // a preset's line or area: its look and properties
-    if (this.tool === 'line' && (this.variant.line === 'area' || (mine && presetKind(mine) === 'area'))) { if (d.pts.length < 3) return; closed = true; } // an area: closed as it ends, three vertices at least
+    const mine = this.tool === 'line' ? this.libraryItem(this.variant.line) : null; // an item's line or area: its look and properties
+    if (this.tool === 'line' && (this.variant.line === 'area' || (mine && itemKind(mine) === 'area'))) { if (d.pts.length < 3) return; closed = true; } // an area: closed as it ends, three vertices at least
     this.draft = null;
     let seg;
     this.change((doc) => {
@@ -79,7 +79,7 @@ export class Drafting {
   // Shape, in two clicks: the centre; then the size, the pointer showing it (a
   // circle's radius, an outline's front): a point and its shapes; a rectangle or an ellipse (place.js BOX) corner to corner
   // instead (Shift: a square, a circle). A second click on the first: the default size, centred there.
-  // Facing north always (the bearing is set afterwards); a preset of the user's, which has its size, in
+  // Facing north always (the bearing is set afterwards); a Library item, which has its size, in
   // one click.
   boxing() { return BOX.has(this.variant.shape); }
   shapeClick(point, e) {
@@ -87,7 +87,7 @@ export class Drafting {
       const r = this.snapFor(point, e);
       this.draft = { pts: [r.position] };
       this.cursor = { point, p: r.position, snap: r, shift: !!e?.shiftKey }; // its preview from here, until the pointer moves
-      if (this.variant.shape?.startsWith('preset:')) return this.finishShape(null); // a preset of the user's has its size: one click
+      if (keyName(this.variant.shape) !== null) return this.finishShape(null); // a Library item has its size: one click
       this.renderMarks();
       return this.onChange('draft');
     }
@@ -112,7 +112,7 @@ export class Drafting {
     this.draft = null;
     let el;
     this.change((doc) => {
-      el = placeKind(doc, c, this.variant.shape, this.presets, d);
+      el = placeKind(doc, c, this.variant.shape, this.library, d);
     });
     this.select([el.id]);
     this.onChange('draft');
@@ -123,7 +123,7 @@ export class Drafting {
     const d = this.draft, q = this.cursor?.p;
     if (this.tool !== 'shape' || !d || !q) return null;
     const doc = emptyDoc(0);
-    const el = this.boxing() ? placeBox(doc, d.pts[0], q, this.variant.shape, !!this.cursor.shift) : placeKind(doc, d.pts[0], this.variant.shape, this.presets, inverse(d.pts[0], q).s);
+    const el = this.boxing() ? placeBox(doc, d.pts[0], q, this.variant.shape, !!this.cursor.shift) : placeKind(doc, d.pts[0], this.variant.shape, this.library, inverse(d.pts[0], q).s);
     for (const c of doc.circles) setLook(c, 'text.values', true);
     return { doc, el, centre: el.position, to: q };
   }
@@ -204,7 +204,7 @@ export class Drafting {
   // Point tool's click)
   place(p) {
     let el;
-    this.change((doc) => { el = placeKind(doc, p, this.variant.point, this.presets); });
+    this.change((doc) => { el = placeKind(doc, p, this.variant.point, this.library); });
     this.select([el.id]);
     return el;
   }
@@ -213,7 +213,7 @@ export class Drafting {
   // at that distance along it; elsewhere, free text there. Selected, for its text to be typed.
   placeLabel(point, p) {
     let el;
-    const mine = this.presetOf(this.variant.label); // a preset's label: its text and look
+    const mine = this.libraryItem(this.variant.label); // an item's label: its text and look
     this.change((doc) => { const r = this.anchorFor(point, p); el = addLabel(doc, r.position, r.to); if (mine) styleLike(doc, el, 'label', mine); });
     this.snapMark = null; // placed: its mark gone with the click (drawn again as the pointer moves)
     this.select([el.id]);

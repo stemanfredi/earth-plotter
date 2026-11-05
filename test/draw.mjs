@@ -58,21 +58,21 @@ await section('the drawing: the bar, the tools, the kinds, the inspector, its fi
   const hiddenE = await layoutNow();
   await dw.keyboard.press('e');
   const shownE = await layoutNow();
-  check(onTool.join() === 'shape,circle,measure,true,0,false' && !hiddenE[3] && shownE[3] && order === 'Open,Download,Copy link,Layers,Elements,Library,Undo',
+  check(onTool.join() === 'shape,circle,measure,true,0,false' && !hiddenE[3] && shownE[3] && order === 'Open,Download,Copy link,Layers,Elements,Draw,Undo',
     `tools: the bar at the top (${order}), Measure its only tool, S on with a circle; the left panel open, hidden by its button, back with E; Properties shows the drawing with nothing selected (${onTool}; ${hiddenE[3]}; ${shownE[3]})`);
   // the Library: every kind there is to draw; a row clicked, drawing it, the row pressed; again: off; the
   // key again: on with what it drew last
-  await dw.keyboard.press('k');
-  const builtIn = await dw.evaluate(() => [...document.querySelectorAll('#lib .drow.d1 .dname')].map((b) => b.textContent).join());
-  await dw.click('#lib .drow .dname:text-is("Rings")');
-  const picked = await layoutNow(), pressed = await dw.evaluate(() => document.querySelector('#lib .drow.sel .dname')?.textContent);
-  await dw.click('#lib .drow .dname:text-is("Rings")');
+  await dw.keyboard.press('d');
+  const builtIn = await dw.evaluate(() => [...document.querySelectorAll('#drawtab .drow.d1 .dname')].map((b) => b.textContent).join());
+  await dw.click('#drawtab .drow .dname:text-is("Rings")');
+  const picked = await layoutNow(), pressed = await dw.evaluate(() => document.querySelector('#drawtab .drow.sel .dname')?.textContent);
+  await dw.click('#drawtab .drow .dname:text-is("Rings")');
   const off = await layoutNow();
   await dw.keyboard.press('s');
   const again = await layoutNow();
-  await dw.click('#lib .drow .dname:text-is("Area")');
+  await dw.click('#drawtab .drow .dname:text-is("Area")');
   const area = await dw.evaluate(() => [drawing.button, drawing.variant.line]);
-  await dw.click('#lib .drow .dname:text-is("Circle")');
+  await dw.click('#drawtab .drow .dname:text-is("Circle")');
   await dw.keyboard.press('e'); // back on Elements
   check(builtIn === 'Point,Line,Area,Label,Circle,Rings,Sector,Rectangle,Triangle,Ellipse,Aerial vehicle,Surface vehicle,Underwater vehicle' && picked.slice(0, 2).join() === 'shape,rings' && pressed === 'Rings'
     && off[0] === '' && again.slice(0, 2).join() === 'shape,rings' && area.join() === 'line,area',
@@ -445,7 +445,7 @@ await section('dragging, shapes, attaching', async () => {
   await dw.mouse.click(DX + 300, 200); // its centre again: the default size
   await dw.keyboard.press('Escape');
   const ringOf = () => dw.evaluate(async () => { const { inverse } = await import('./geodesy.js'); const x = drawing.doc.points.at(-1), r = drawing.doc.lines.find((l) => l.groupId === x.id);
-    return { sel: drawing.sel.has(x.id), n: r?.points.length, closed: r?.closed, preset: x.properties.find((q) => q.key === 'preset')?.value, azi: inverse(x.position, r.points[0]).azi, s: inverse(x.position, r.points[0]).s,
+    return { sel: drawing.sel.has(x.id), n: r?.points.length, closed: r?.closed, from: x.properties.find((q) => q.key === 'library')?.value, azi: inverse(x.position, r.points[0]).azi, s: inverse(x.position, r.points[0]).s,
       drawn: map.querySourceFeatures('drawzoom').some((f) => f.properties.id === r.id && f.properties.kind === 'path') }; });
   await settled(dw);
   const rect = await ringOf();
@@ -453,7 +453,7 @@ await section('dragging, shapes, attaching', async () => {
   await turnTo.fill('45');
   await turnTo.press('Enter');
   const turned = await ringOf();
-  check(rect.sel && rect.n === 4 && rect.closed && rect.preset === undefined && rect.drawn && Math.abs(turned.azi - rect.azi - 45) < 1e-6 && Math.abs(turned.s - rect.s) < 1e-6,
+  check(rect.sel && rect.n === 4 && rect.closed && rect.from === undefined && rect.drawn && Math.abs(turned.azi - rect.azi - 45) < 1e-6 && Math.abs(turned.s - rect.s) < 1e-6,
     `shapes: the Shape tool's rectangle a point holding a closed line, drawn; the point turned, its rectangle with it (${JSON.stringify(rect)}; ${turned.azi.toFixed(2)}°)`);
   await dw.locator('.dinsphead .ititle').click(); // out of the field: the keys are the drawing's
   // a rectangle corner to corner: its box from the first click to the second, facing north; Shift: a
@@ -687,9 +687,9 @@ await section('labels, names, data and totals', async () => {
   check(byDefault[0] === true && byDefault[1] === undefined && named > 0, `drawing: names on in the drawing's Display, shown for a point with none of its own (${named})`);
   // a property added in its Data; the drawing's totals by that key
   await dw.evaluate((id) => drawing.select([id]), nid);
-  // Data: folded while it has nothing of the user's (a built-in kind names no preset under it); opened, its empty row
+  // Data: folded while it has nothing of the user's (a built-in kind names no library item under it); opened, its empty row
   const folded = await dw.evaluate(() => [!document.querySelector('.dinspect input[aria-label="Add a key"]'), document.querySelector('.dinspect .fblock:has(.hfold) .note')?.textContent ?? '']);
-  check(folded[0] && folded[1] === '', `data: folded while it has nothing of the user's, no preset said for a built-in kind (${folded[1]})`);
+  check(folded[0] && folded[1] === '', `data: folded while it has nothing of the user's, no library item said for a built-in kind (${folded[1]})`);
   await dw.click('.dinspect button[aria-label="Open Data"]');
   const addKey = dw.locator('.dinspect input[aria-label="Add a key"]'); // Data's empty last row: a key typed there adds one
   await addKey.fill('kind');
@@ -932,56 +932,56 @@ await section('paging, Properties in place', async () => {
   await dw.close();
 });
 await section('the Library: folders, pictures, sizes, a filter; a row clicked or dragged places it', async () => {
-  // two presets of the user's in this browser: one in a folder (a point holding a circle, a shown and a hidden), one loose
+  // the user's own items in this browser: one in a folder (a point holding a circle, a shown and a hidden), one loose
   const lctx = await offline({ viewport: { width: 1600, height: 800 } });
   const fc = (name, feats) => ({ type: 'FeatureCollection', earthplotter: { format: 'earthplotter-drawing', version: 1 }, features: [
     { type: 'Feature', id: 'p', geometry: { type: 'Point', coordinates: [0, 0] }, properties: { name, earthplotter: { kind: 'point', symbol: 'dot' } } }, ...feats] });
   const ring = (id, r, extra = {}) => ({ type: 'Feature', id, geometry: { type: 'Point', coordinates: [0, 0] }, properties: { name: `Reach ${r}`, stroke: '#0b7285', earthplotter: { kind: 'circle', group: 'p', radius: r, ...extra } } });
   const lineFc = { type: 'FeatureCollection', earthplotter: { format: 'earthplotter-drawing', version: 1 }, features: [
     { type: 'Feature', id: 'l', geometry: { type: 'LineString', coordinates: [[0, 0], [0.01, 0]] }, properties: { name: 'Route', stroke: '#e03131', kind: 'b', earthplotter: { kind: 'line', look: { stroke: { dash: 'dashed' } } } } }] };
-  await lctx.addInitScript((list) => localStorage.setItem('earthplotter.presets', JSON.stringify(list)), [
+  await lctx.addInitScript((list) => localStorage.setItem('earthplotter.library', JSON.stringify(list)), [
     { name: 'Kit / A-10', drawing: fc('A-10', [ring('c1', 800), ring('c2', 2000, { visible: false })]) },
     { name: 'Kit / Route', drawing: lineFc },
     { name: 'Loose', drawing: fc('Loose', [ring('c3', 50)]) }]);
-  const lp = await openPage(lctx, `${base}#v=12/40.2/12.1/0&on=chart`, 'library');
-  const rows = () => lp.evaluate(() => [...document.querySelectorAll('#lib .drow')].map((r) => [r.classList.contains('dgroup') ? '#' : '', r.querySelector('.dname').textContent, r.querySelector('.val').textContent, !!r.querySelector('svg.thumb')].join(':')));
+  const lp = await openPage(lctx, `${base}#v=12/40.2/12.1/0&on=chart`, 'draw');
+  const rows = () => lp.evaluate(() => [...document.querySelectorAll('#drawtab .drow')].map((r) => [r.classList.contains('dgroup') ? '#' : '', r.querySelector('.dname').textContent, r.querySelector('.val').textContent, !!r.querySelector('svg.thumb')].join(':')));
   const all = await rows();
   check(all[0] === '#:Built-in:13:false' && all.includes('#:Kit:2:false') && all.includes(':A-10:r 800 m:true') && all.includes(':Route::true') && all.at(-1) === ':Loose:r 50 m:true',
-    `library: the built-in kinds, then a folder, its preset named without it, its picture and size (its hidden circle left out), a loose one last (${all.join(' | ')})`);
-  await lp.fill('#lib input[type=search]', 'a-10');
+    `library: the built-in kinds, then a folder, its item named without it, its picture and size (its hidden circle left out), a loose one last (${all.join(' | ')})`);
+  await lp.fill('#drawtab input[type=search]', 'a-10');
   const found = await rows();
   check(found.join() === '#:Kit:1:false,:A-10:r 800 m:true', `library: the filter keeps the folder of what it finds (${found})`);
-  await lp.click('#lib .drow:has-text("A-10") .dname');
-  const armed = await lp.evaluate(() => [drawing.button, drawing.variant.shape, document.querySelector('#lib .drow.sel .dname')?.textContent]);
+  await lp.click('#drawtab .drow:has-text("A-10") .dname');
+  const armed = await lp.evaluate(() => [drawing.button, drawing.variant.shape, document.querySelector('#drawtab .drow.sel .dname')?.textContent]);
   const box = await lp.locator('#map').boundingBox();
   await lp.mouse.click(box.x + 900, box.y + 400);
   const placed = await lp.evaluate(() => { const p = drawing.doc.points.at(-1); return [p.name, drawing.doc.circles.filter((c) => c.groupId === p.id).map((c) => `${c.name}/${c.visible}`).join()]; });
-  check(armed.join() === 'shape,preset:Kit / A-10,A-10' && placed.join() === 'A-10 1,Reach 800/true,Reach 2000/false',
+  check(armed.join() === 'shape,library:Kit / A-10,A-10' && placed.join() === 'A-10 1,Reach 800/true,Reach 2000/false',
     `library: a row clicked, the Shape tool on with it (${armed}); placed, its point named after it, its shapes their names, hidden as saved (${placed})`);
   await lp.keyboard.press('Escape');
-  await lp.fill('#lib input[type=search]', '');
-  await lp.dragAndDrop('#lib .drow:has-text("Loose") .dname', '#map', { targetPosition: { x: 1000, y: 300 } });
+  await lp.fill('#drawtab input[type=search]', '');
+  await lp.dragAndDrop('#drawtab .drow:has-text("Loose") .dname', '#map', { targetPosition: { x: 1000, y: 300 } });
   const dropped = await lp.evaluate(() => [drawing.doc.points.length, drawing.doc.points.at(-1).name]);
   check(dropped.join() === '2,Loose 1', `library: a row dragged onto the map placed there (${dropped})`);
-  // a line preset: the Line tool drawing lines like it (its look, properties, named after it); a line's
+  // a line item: the Line tool drawing lines like it (its look, properties, named after it); a line's
   // Properties: Add to library…, a new item
-  await lp.click('#lib .drow .dname:text-is("Route")');
+  await lp.click('#drawtab .drow .dname:text-is("Route")');
   const lineTool = await lp.evaluate(() => [drawing.button, drawing.variant.line]);
   await lp.mouse.click(box.x + 700, box.y + 500);
   await lp.mouse.click(box.x + 800, box.y + 520);
   await lp.keyboard.press('Enter');
   const drawn = await lp.evaluate(() => { const l = drawing.doc.lines.at(-1); return [l.name, l.look.stroke?.color, l.look.stroke?.dash, l.properties.map((p) => `${p.key}=${p.value}`).join(' ')]; });
-  check(lineTool.join() === 'line,preset:Kit / Route' && drawn.join() === 'Route 1,#e03131,dashed,kind=b preset=Kit / Route',
-    `library: a line's preset draws lines like it (${lineTool}; ${drawn})`);
+  check(lineTool.join() === 'line,library:Kit / Route' && drawn.join() === 'Route 1,#e03131,dashed,kind=b library=Kit / Route',
+    `library: a line's item draws lines like it (${lineTool}; ${drawn})`);
   await lp.keyboard.press('Escape');
   await lp.evaluate(() => { if (document.querySelector('#props').hidden) document.querySelector('#bar .pright').click(); drawing.select([drawing.doc.lines.at(-1).id]); });
   lp.once('dialog', () => {}); // none expected: the app's own dialogs are <dialog>s
   await lp.click('#props button:has-text("Add to library…")');
   await lp.fill('dialog[open] input', 'Kit / Route 2');
   await lp.keyboard.press('Enter');
-  await untilOn(lp, () => !document.querySelector('dialog[open]') && drawing.presets.length === 4); // the dialog's close: a moment after
-  await lp.keyboard.press('k');
-  const added = await lp.evaluate(() => [drawing.presets.map((x) => x.name).join(), !!document.querySelector('#lib .drow:has(.dname) svg.thumb path')]);
+  await untilOn(lp, () => !document.querySelector('dialog[open]') && drawing.library.length === 4); // the dialog's close: a moment after
+  await lp.keyboard.press('d');
+  const added = await lp.evaluate(() => [drawing.library.map((x) => x.name).join(), !!document.querySelector('#drawtab .drow:has(.dname) svg.thumb path')]);
   check(added[0].includes('Kit / Route 2') && added[1], `library: a line's Properties › Add to library…: a new item, its stroke for a picture (${added})`);
   check(!lp.errors.length, `library: no errors ${lp.errors.join(' | ')}`);
   await lctx.close();
@@ -995,8 +995,8 @@ await section('with a finger, on a phone', async () => {
   const shown = () => fp.evaluate(() => [!document.querySelector('#side').hidden, !document.querySelector('#props').hidden]);
   const atStart = await shown();
   const dock = await fp.evaluate(() => [...document.querySelectorAll('#dock > button')].filter((b) => b.offsetParent).map((b) => b.getAttribute('aria-label') || b.textContent).join());
-  await fp.click('#bar .ptab[data-tab=library]');
-  await fp.click('#lib .drow .dname:text-is("Circle")'); // the sheet folded away for drawing
+  await fp.click('#bar .ptab[data-tab=draw]');
+  await fp.click('#drawtab .drow .dname:text-is("Circle")'); // the sheet folded away for drawing
   const folded = await fp.evaluate(() => [document.querySelector('#side').hidden, document.querySelector('#dock .drawsnow').textContent]);
   await fp.touchscreen.tap(195, 300); // the centre…
   await fp.touchscreen.tap(195, 300); // …again: the default size
@@ -1008,7 +1008,7 @@ await section('with a finger, on a phone', async () => {
   const redone = await fp.evaluate(() => drawing.doc.points.length);
   await fp.click('#dock button:has-text("Back")'); // the tool ends
   const afterBack = await fp.evaluate(() => [drawing.tool, !document.querySelector('#side').hidden].join()); // drawn: the Library's sheet back
-  await fp.click('#bar .ptab[data-tab=library]'); // closed
+  await fp.click('#bar .ptab[data-tab=draw]'); // closed
   await fp.evaluate(() => drawing.select([drawing.doc.points[0].id]));
   const peek = await fp.evaluate(() => [!document.querySelector('#props').hidden, document.querySelector('#props').classList.contains('peek'), document.querySelector('#props').offsetHeight]);
   await fp.click('#bar .ptab[data-tab=elements]');
@@ -1046,7 +1046,7 @@ await section('with a finger, on a phone', async () => {
   });
   const after = await fp.evaluate(() => [drawing.doc.circles[0].radius, !!drawing.drag]);
   check(atStart.join() === 'false,false' && dock === 'Undo,Redo,Box select,Measure' && folded.join() === 'true,Circle' && placed === 1 && drawingDock === 'Back,Undo,Redo' && undone === 0 && redone === 1 && afterBack === ',true',
-    `finger: the sheet closed to start with; the dock Undo, Redo, Box select, Measure (${dock}); Circle picked in the Library: its sheet folded away, the dock naming it (${folded}); placed by two taps, the dock then ${drawingDock}; Undo, Redo (${undone}, ${redone}); Back ends the tool, the sheet back (${atStart}; ${placed}; ${afterBack})`);
+    `finger: the sheet closed to start with; the dock Undo, Redo, Box select, Measure (${dock}); Circle picked in Draw: its sheet folded away, the dock naming it (${folded}); placed by two taps, the dock then ${drawingDock}; Undo, Redo (${undone}, ${redone}); Back ends the tool, the sheet back (${atStart}; ${placed}; ${afterBack})`);
   check(peek[0] && peek[1] && peek[2] < 120 && colOpen.join() === 'true,false' && propsOpen.join() === 'false,true,false' && boxed === 2,
     `finger: what is selected peeks (${peek}); Elements in its place (${colOpen}); the peek tapped: Properties (${propsOpen}); Box select then a drag selects ${boxed} (a point and its circle)`);
   check(handles === 1.75 && after[0] === rBefore && !after[1], `finger: handles drawn larger (${handles}); a second finger during a drag puts it back (${rBefore} → ${after[0]})`);

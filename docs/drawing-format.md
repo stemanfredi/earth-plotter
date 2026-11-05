@@ -171,7 +171,7 @@ A `Point` geometry: `"earthplotter": { "kind": "point", "bearing": 45, "symbol":
 |---|---|
 | `bearing` | turning it turns the shapes it holds |
 | `symbol` | `diamond`, `square`, `triangle`, `dot`, `none` (the default; a feature without `earthplotter`: `diamond`); a fixed screen size, never turned |
-| properties | one placed from a user's preset keeps its properties, and `preset` names it |
+| properties | one placed from a Library item keeps its properties, and `library` names the item |
 
 **Its shapes.** A circle or a closed line whose `group` is a point's ID is **held** by it: listed
 under it, hidden, deleted and copied with it; in the point's group through it. A point holds nothing
@@ -308,7 +308,7 @@ stays.
 | `spacing` or `count` | a copy every so many metres from the start margin, or so many evenly between the margins (round a whole circle: no margins) |
 | `startMargin`, `endMargin`, `offset` | metres |
 | `side` | `left`, `right`, `alternate`, facing along it (round a circle, left is outwards) |
-| `preset` | each copy: `circle` (default: a circle of `radius`, a sector of `aperture`), another built-in kind scaled to `radius`, or `preset:<name>` (a user's, its own size) |
+| `item` | each copy: `circle` (default: a circle of `radius`, a sector of `aperture`), another built-in kind scaled to `radius`, or `library:<name>` (a Library item, its own size) |
 | `radius`, `aperture` | metres (default 500); degrees (none: circles) |
 | `pointIds` | its copies, in order along it: plain points holding their shapes, facing away |
 
@@ -484,7 +484,7 @@ What a value is when the file leaves it out; writing it with this value means th
 | line | `names`; `smooth`; `reversed` | each `""`; `false`; `false` |
 | label | `text`; `offset`; `leader` | `""`; `[40, -40]`; `arrow` |
 | link target | `at` | `0` |
-| distribute | `groupId`, `copiesId`, `spacing`, `count`, `aperture`, `preset` | `null` (`preset`: a circle) |
+| distribute | `groupId`, `copiesId`, `spacing`, `count`, `aperture`, `item` | `null` (`item`: a circle) |
 | distribute | `startMargin`, `endMargin`, `offset`; `side`; `radius`; `pointIds` | `0`; `left`; `500`; `[]` |
 | connect | `groupId`; `pattern`; `groupSize`; `minBranch` | `null`; `tree`; `auto`; `0` |
 | connect | `roots`, `pointIds`, `created`; a root's `weight` | `[]`; `1` |

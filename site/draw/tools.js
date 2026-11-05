@@ -1,5 +1,5 @@
-// The drawing's tools (docs/drawing-ui.md §1, §2): what makes elements is chosen in the Library
-// (library.js); the bar holds Undo, Redo, Select, Box select and Measure; the touch row over the map's
+// The drawing's tools (docs/drawing-ui.md §1, §2): what makes elements is chosen in Draw
+// (drawtab.js); the bar holds Undo, Redo, Select, Box select and Measure; the touch row over the map's
 // foot (with a finger). On a phone Undo, Redo, Box select and Measure are the dock, the bar along the
 // bottom, with Back, what is being drawn and Done while a tool is on. A tool's key (P, G, S, T, M)
 // turns it on with what it drew last, or off (app.js).
@@ -54,7 +54,7 @@ export function createTools(drawing, ctx, { del, fileBtns, drawsNow }) {
     measureBtn.hidden = phone && tool && !measuring;
     touchbar.hidden = phone || [touch.done, touch.back, touch.del, touch.dup].every((b) => b.hidden);
   }
-  // The bar (drawing-ui.md §1): the file group (files.js); Layers, Elements and Library (the left
+  // The bar (drawing-ui.md §1): the file group (files.js); Layers, Elements and Draw (the left
   // panel's tabs); Undo, Redo (history); Select and Box select; Measure; at its end Properties' toggle
   // (app.js puts find a place before it)
   const historySep = sep(), measureSep = sep();

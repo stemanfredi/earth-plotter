@@ -937,13 +937,16 @@ await section('the Library: folders, pictures, sizes, a filter; a row clicked or
   const fc = (name, feats) => ({ type: 'FeatureCollection', earthplotter: { format: 'earthplotter-drawing', version: 1 }, features: [
     { type: 'Feature', id: 'p', geometry: { type: 'Point', coordinates: [0, 0] }, properties: { name, earthplotter: { kind: 'point', symbol: 'dot' } } }, ...feats] });
   const ring = (id, r, extra = {}) => ({ type: 'Feature', id, geometry: { type: 'Point', coordinates: [0, 0] }, properties: { name: `Reach ${r}`, stroke: '#0b7285', earthplotter: { kind: 'circle', group: 'p', radius: r, ...extra } } });
+  const lineFc = { type: 'FeatureCollection', earthplotter: { format: 'earthplotter-drawing', version: 1 }, features: [
+    { type: 'Feature', id: 'l', geometry: { type: 'LineString', coordinates: [[0, 0], [0.01, 0]] }, properties: { name: 'Route', stroke: '#e03131', kind: 'b', earthplotter: { kind: 'line', look: { stroke: { dash: 'dashed' } } } } }] };
   await lctx.addInitScript((list) => localStorage.setItem('earthplotter.presets', JSON.stringify(list)), [
     { name: 'Kit / A-10', drawing: fc('A-10', [ring('c1', 800), ring('c2', 2000, { visible: false })]) },
+    { name: 'Kit / Route', drawing: lineFc },
     { name: 'Loose', drawing: fc('Loose', [ring('c3', 50)]) }]);
   const lp = await openPage(lctx, `${base}#v=12/40.2/12.1/0&on=chart`, 'library');
   const rows = () => lp.evaluate(() => [...document.querySelectorAll('#lib .drow')].map((r) => [r.classList.contains('dgroup') ? '#' : '', r.querySelector('.dname').textContent, r.querySelector('.val').textContent, !!r.querySelector('svg.thumb')].join(':')));
   const all = await rows();
-  check(all[0] === '#:Built-in:13:false' && all.includes('#:Kit:1:false') && all.includes(':A-10:r 800 m:true') && all.at(-1) === ':Loose:r 50 m:true',
+  check(all[0] === '#:Built-in:13:false' && all.includes('#:Kit:2:false') && all.includes(':A-10:r 800 m:true') && all.includes(':Route::true') && all.at(-1) === ':Loose:r 50 m:true',
     `library: the built-in kinds, then a folder, its preset named without it, its picture and size (its hidden circle left out), a loose one last (${all.join(' | ')})`);
   await lp.fill('#lib input[type=search]', 'a-10');
   const found = await rows();
@@ -960,6 +963,26 @@ await section('the Library: folders, pictures, sizes, a filter; a row clicked or
   await lp.dragAndDrop('#lib .drow:has-text("Loose") .dname', '#map', { targetPosition: { x: 1000, y: 300 } });
   const dropped = await lp.evaluate(() => [drawing.doc.points.length, drawing.doc.points.at(-1).name]);
   check(dropped.join() === '2,Loose 1', `library: a row dragged onto the map placed there (${dropped})`);
+  // a line preset: the Line tool drawing lines like it (its look, properties, named after it); a line's
+  // Properties: Add to library…, a new item
+  await lp.click('#lib .drow .dname:text-is("Route")');
+  const lineTool = await lp.evaluate(() => [drawing.button, drawing.variant.line]);
+  await lp.mouse.click(box.x + 700, box.y + 500);
+  await lp.mouse.click(box.x + 800, box.y + 520);
+  await lp.keyboard.press('Enter');
+  const drawn = await lp.evaluate(() => { const l = drawing.doc.lines.at(-1); return [l.name, l.look.stroke?.color, l.look.stroke?.dash, l.properties.map((p) => `${p.key}=${p.value}`).join(' ')]; });
+  check(lineTool.join() === 'line,preset:Kit / Route' && drawn.join() === 'Route 1,#e03131,dashed,kind=b preset=Kit / Route',
+    `library: a line's preset draws lines like it (${lineTool}; ${drawn})`);
+  await lp.keyboard.press('Escape');
+  await lp.evaluate(() => { if (document.querySelector('#props').hidden) document.querySelector('#bar .pright').click(); drawing.select([drawing.doc.lines.at(-1).id]); });
+  lp.once('dialog', () => {}); // none expected: the app's own dialogs are <dialog>s
+  await lp.click('#props button:has-text("Add to library…")');
+  await lp.fill('dialog[open] input', 'Kit / Route 2');
+  await lp.keyboard.press('Enter');
+  await untilOn(lp, () => !document.querySelector('dialog[open]') && drawing.presets.length === 4); // the dialog's close: a moment after
+  await lp.keyboard.press('k');
+  const added = await lp.evaluate(() => [drawing.presets.map((x) => x.name).join(), !!document.querySelector('#lib .drow:has(.dname) svg.thumb path')]);
+  check(added[0].includes('Kit / Route 2') && added[1], `library: a line's Properties › Add to library…: a new item, its stroke for a picture (${added})`);
   check(!lp.errors.length, `library: no errors ${lp.errors.join(' | ')}`);
   await lctx.close();
 });

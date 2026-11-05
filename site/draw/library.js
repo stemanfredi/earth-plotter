@@ -7,8 +7,8 @@
 import { h, svg, store, NARROW } from '../dom.js';
 import { ask, askText, note } from '../menu.js';
 import { BUILT_IN, builtInName, placeKind, presetBase } from './place.js';
-import { emptyDoc, styleOf } from './document.js';
-import { savePresets, folderOf, byName } from './presets.js';
+import { emptyDoc, styleOf, lookOf } from './document.js';
+import { savePresets, folderOf, byName, presetKind } from './presets.js';
 import { icon, KIND_ICON, POINT_ICON, SYMBOL_ICON } from '../icons.js';
 
 const KIND_TYPE = 'application/x-earthplotter-kind'; // a row dragged: the kind it places
@@ -40,6 +40,7 @@ const short = (m, units) => (m < 1000 ? `${figure(m)} m` : units === 'nm' ? `${f
 // what a preset measures: its largest circle's radius, else its outline's extent, the larger side first
 // (as placed, facing north), in the larger's unit
 export function sizeOf(x, units) {
+  if (presetKind(x) !== 'point') return ''; // a line's, an area's, a label's: a look, no size
   const { circles, box } = layout(x);
   if (circles.length) return `r ${short(Math.max(...circles.map((c) => c.r)), units)}`;
   if (!box) return '';
@@ -50,6 +51,8 @@ export function sizeOf(x, units) {
 // A preset's picture (24 × 24, as the icons): its shapes shown, in their own colours, fitted; a point
 // alone its symbol
 export function thumbOf(x) {
+  const kind = presetKind(x);
+  if (kind !== 'point') return lookThumb(x, kind);
   const { symbol, circles, lines, box } = layout(x);
   if (!box) return icon(...(SYMBOL_ICON[symbol]?.length ? SYMBOL_ICON[symbol] : KIND_ICON.point));
   const span = Math.max(box[2] - box[0], box[3] - box[1]) || 1, k = 20 / span;
@@ -73,17 +76,36 @@ export function thumbOf(x) {
 // The Library's items: what a row draws, as [tool, its variant]: a point, a line, an area (a line
 // closed as it ends), a label, else a shape (a built-in kind or a preset: the Shape tool's)
 const BASIC = { 'tool:point': ['point', 'symbol', 'Point', KIND_ICON.point], 'tool:line': ['line', 'line', 'Line', KIND_ICON.line],
-  'tool:area': ['line', 'area', 'Area', KIND_ICON.polygon], 'tool:label': ['label', null, 'Label', KIND_ICON.label] };
-export const itemTool = (v) => (BASIC[v] ? BASIC[v].slice(0, 2) : ['shape', v]);
+  'tool:area': ['line', 'area', 'Area', KIND_ICON.polygon], 'tool:label': ['label', 'label', 'Label', KIND_ICON.label] };
+const TOOL_OF = { point: 'shape', line: 'line', area: 'line', label: 'label' }; // a preset's kind: the tool drawing it
+export function itemTool(v, presets) {
+  if (BASIC[v]) return BASIC[v].slice(0, 2);
+  const mine = v.startsWith('preset:') && presets.find((x) => x.name === v.slice(7));
+  return [mine ? TOOL_OF[presetKind(mine)] : 'shape', v];
+}
 // the item being drawn now (from the tool on and its variant), or null
 export function itemNow(drawing) {
-  const t = drawing.button;
-  if (t === 'shape') return drawing.variant.shape;
-  if (t === 'line') return drawing.variant.line === 'area' ? 'tool:area' : 'tool:line';
-  return t === 'point' || t === 'label' ? `tool:${t}` : null;
+  const t = drawing.button, v = drawing.variant[t];
+  if (t === 'shape' || v?.startsWith('preset:')) return v;
+  return { point: 'tool:point', label: 'tool:label', line: v === 'area' ? 'tool:area' : 'tool:line' }[t] ?? null;
 }
 // what an item is called: a preset by its full name ("Folder / Name"), a built-in by its own
 export const itemName = (v) => (v.startsWith('preset:') ? v.slice(7) : BASIC[v]?.[2] ?? builtInName(v) ?? v);
+// a line's, an area's or a label's picture: a stroke as it draws one, a swatch, "Aa" in its colour
+const stroke = (st) => ({ stroke: st.stroke.color, 'stroke-opacity': st.stroke.opacity, 'stroke-width': Math.min(Math.max(st.stroke.width, 1), 4),
+  ...(st.stroke.dash === 'dashed' ? { 'stroke-dasharray': '4 2.5' } : st.stroke.dash === 'dotted' ? { 'stroke-dasharray': '0.1 3', 'stroke-linecap': 'round' } : {}) });
+function lookThumb(x, kind) {
+  const box = (...kids) => svg('svg', { viewBox: '0 0 24 24', width: 20, height: 20, 'aria-hidden': 'true', class: 'thumb' }, ...kids);
+  if (kind === 'label') {
+    const t = lookOf(x.doc, x.doc.labels[0]).text;
+    return box(...(t.background === 'box' ? [svg('rect', { x: 2, y: 5, width: 20, height: 14, rx: 2, fill: '#fff', stroke: t.color })] : []),
+      svg('text', { x: 12, y: 16.5, 'text-anchor': 'middle', 'font-size': 12, 'font-weight': 600, fill: t.color }, 'Aa'));
+  }
+  const st = styleOf(x.doc, x.doc.lines[0]);
+  if (kind === 'area') return box(svg('rect', { x: 3, y: 5, width: 18, height: 14, rx: 1, fill: st.fill.opacity > 0 ? st.fill.color : 'none', 'fill-opacity': Math.max(st.fill.opacity, 0.15), ...stroke(st) }));
+  return box(svg('path', { d: 'M2 17 8 9l6 6 8-9', fill: 'none', 'stroke-linejoin': 'round', ...stroke(st) }));
+}
+
 // an item's picture: a built-in's icon, a preset's own
 const itemPicture = (v, presets) => {
   const mine = v.startsWith('preset:') && presets.find((x) => x.name === v.slice(7));
@@ -107,8 +129,8 @@ export function createLibrary(drawing, root, { frame, changed }) {
   // while it is drawn
   const choose = (v) => {
     if (itemNow(drawing) === v) return drawing.stop();
-    const [tool, variant] = itemTool(v);
-    if (variant) drawing.variant[tool] = variant;
+    const [tool, variant] = itemTool(v, drawing.presets);
+    drawing.variant[tool] = variant;
     drawing.start(tool);
     if (NARROW.matches && frame.tab === 'library') { folding = true; frame.toggleTab('library'); }
   };
@@ -122,7 +144,7 @@ export function createLibrary(drawing, root, { frame, changed }) {
   // an item's row: its picture, its name, its size; pressed while it is being drawn; one placed in a
   // click (a point, a shape) dragged onto the map, placed there
   const row = (v, name, size, more = null) => {
-    const drags = itemTool(v)[0] === 'shape' || v === 'tool:point', on = itemNow(drawing) === v;
+    const drags = itemTool(v, drawing.presets)[0] === 'shape' || v === 'tool:point', on = itemNow(drawing) === v;
     return h('li', { class: `drow d1${on ? ' sel' : ''}`, draggable: String(drags),
       ondragstart: drags ? (e) => { e.dataTransfer.setData(KIND_TYPE, v); e.dataTransfer.effectAllowed = 'copy'; } : null },
     h('span', { class: 'dfold none', 'aria-hidden': 'true' }),
@@ -154,7 +176,7 @@ export function createLibrary(drawing, root, { frame, changed }) {
       if (fo) section(`f:${fo}`, fo, items);
       else rows.push(...items.map((x) => row(...x))); // loose: at the end, no head
     }
-    if (!drawing.presets.length && !f) rows.push(h('li', { class: 'empty' }, 'Add your own from a point\'s Properties.'));
+    if (!drawing.presets.length && !f) rows.push(h('li', { class: 'empty' }, 'Add your own from an element\'s Properties.'));
     else if (!rows.length) rows.push(h('li', { class: 'empty' }, 'Nothing matches the filter.'));
     list.replaceChildren(...rows);
   }
@@ -166,7 +188,7 @@ export function createLibrary(drawing, root, { frame, changed }) {
     const v = `preset:${name}`;
     if (a === 'delete') {
       drawing.presets = drawing.presets.filter((x) => x.name !== name);
-      if (drawing.variant.shape === v) drawing.variant.shape = 'circle';
+      for (const [t, d] of [['shape', 'circle'], ['line', 'line'], ['label', 'label']]) if (drawing.variant[t] === v) drawing.variant[t] = d; // its tool back on its own
     }
     if (a === 'rename' || a === 'duplicate') {
       const start = a === 'rename' ? name : `${name} copy`;
@@ -175,7 +197,7 @@ export function createLibrary(drawing, root, { frame, changed }) {
       if (drawing.presets.some((x) => x.name === to)) return note(`A preset is already named “${to}”`);
       const x = drawing.presets.find((p) => p.name === name);
       drawing.presets = a === 'rename' ? drawing.presets.map((p) => (p === x ? { ...p, name: to } : p)) : [...drawing.presets, { ...x, name: to }];
-      if (a === 'rename' && drawing.variant.shape === v) drawing.variant.shape = `preset:${to}`;
+      if (a === 'rename') for (const t of ['shape', 'line', 'label']) if (drawing.variant[t] === v) drawing.variant[t] = `preset:${to}`;
     }
     if (!a) return;
     savePresets(drawing.presets);
@@ -192,7 +214,7 @@ export function createLibrary(drawing, root, { frame, changed }) {
     e.preventDefault();
     const r = box.getBoundingClientRect(), p = drawing.map.unproject([e.clientX - r.left, e.clientY - r.top]);
     let el;
-    if (!drawing.change((doc) => { el = placeKind(doc, [p.lng, p.lat], itemTool(v)[1] === 'symbol' ? 'symbol' : v, drawing.presets); })) return;
+    if (!drawing.change((doc) => { el = placeKind(doc, [p.lng, p.lat], itemTool(v, drawing.presets)[1], drawing.presets); })) return;
     drawing.select([el.id]);
     changed();
   });

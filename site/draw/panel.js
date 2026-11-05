@@ -254,6 +254,18 @@ export function drawView(root, ctx) {
   // a button selecting another element (a point, a line, a group)
   const link = (id, text) => h('button', { type: 'button', class: 'small link', onclick: () => drawing.select([id]) }, text ?? label(kindOf(id), now(id)));
 
+  // Add to library… (drawing-ui.md §9): a point with its shapes as they are (hidden ones too), a line, an
+  // area or a label for its look and properties (a label's text), kept under a name ("Folder / Name")
+  const libraryBtn = (id, name) => h('button', { type: 'button', class: 'small', title: 'Keep it in the Library, to draw again',
+    onclick: async () => {
+      const to = (await askText('Add to library', 'Name (Folder / Name)', name || 'Preset'))?.trim();
+      if (!to) return;
+      if (drawing.presets.some((x) => x.name === to) && !(await ask('Add to library', `Replace the preset “${to}”?`, [[() => true, 'Replace']]))) return;
+      drawing.presets = [...drawing.presets.filter((x) => x.name !== to), presetOf(drawing.doc, id, to)];
+      savePresets(drawing.presets);
+      presetsChanged();
+      note(`“${to}” added to the Library`);
+    } }, 'Add to library…');
   // a point: its position and bearing (its shapes carried), its symbol, its shapes, its look, Add to library…
   function pointInspector(id) {
     const el = now(id), shapes = membersOf(drawing.doc, id);
@@ -262,17 +274,7 @@ export function drawView(root, ctx) {
       shapes.length ? row('Bearing', F.angle(() => now(id).bearing, (v) => carryAll([id], (p) => [p.position, v]), 'Bearing (degrees true): its shapes turn with it'), funit('°T')) : null, // as its stalk: only while it holds shapes (a symbol is never turned)
       row('Symbol', choice('Symbol (the same size on screen at every zoom)', SYMBOLS.map((sy) => [sy, sy === 'none' ? '∅' : icon(...SYMBOL_ICON[sy]), SYMBOL_TITLE[sy]]), el.symbol, (sy) => set(id, (x) => { x.symbol = sy; }))),
       shapes.length ? row('Shapes', h('span', {}, ...shapes.map((x) => link(x.el.id)))) : null];
-    parts.push(actionsRow(ruleActs(id),
-      h('button', { type: 'button', class: 'small', title: 'Keep it, with its shapes as they are (hidden ones too), in the Library: placed again by the Shape tool',
-        onclick: async () => {
-          const name = (await askText('Add to library', 'Name (Folder / Name)', el.name || 'Preset'))?.trim();
-          if (!name) return;
-          if (drawing.presets.some((x) => x.name === name) && !(await ask('Add to library', `Replace the preset “${name}”?`, [[() => true, 'Replace']]))) return;
-          drawing.presets = [...drawing.presets.filter((x) => x.name !== name), presetOf(drawing.doc, id, name)];
-          savePresets(drawing.presets);
-          presetsChanged();
-          note(`“${name}” added to the Library`);
-        } }, 'Add to library…')), lookBlock([item(id)]));
+    parts.push(actionsRow(ruleActs(id), libraryBtn(id, el.name)), lookBlock([item(id)]));
     return [...parts, ...commonBottom('point', id)];
   }
 
@@ -323,7 +325,7 @@ export function drawView(root, ctx) {
       row('Text offset', fvalue(`${el.offset[0]}, ${el.offset[1]}`.replace(/-/g, '−'), { title: 'Drag its text on the map' }), funit('px'),
         moved ? h('button', { type: 'button', class: 'x', title: 'Back to the default', 'aria-label': 'Text offset back to where a new label puts it', onclick: () => set(id, (x) => { x.offset = to ? [...LABEL_OFFSET] : [0, 0]; }) }, '↺') : null),
       leaderRow([item(id)]),
-      actionsRow(ruleActs(id)), lookBlock([item(id)]),
+      actionsRow(ruleActs(id), libraryBtn(id, labelText(drawing.doc, el, drawing.units()).split('\n')[0])), lookBlock([item(id)]),
       ...commonBottom('label', id)];
   }
 
@@ -358,7 +360,7 @@ export function drawView(root, ctx) {
 
   // a line: its table of vertices, its profile, its inspector (lineview.js)
   const lines = createLineView({ drawing, map, ctx, F, field, row, funit, fvalue, valued, distValue, link, now, set, item, foldHead, section, actionsRow, act, copyBtn, paged, PAGE, pageAt,
-    attachBtn, detach, commonTop, commonBottom, lookBlock, ruleActs, openDistribution: (...a) => openDistribution(...a), inspector, render: () => renderInspector() });
+    attachBtn, detach, commonTop, commonBottom, lookBlock, ruleActs, libraryBtn, openDistribution: (...a) => openDistribution(...a), inspector, render: () => renderInspector() });
   const { lineInspector, pickPlace, dropProfileCursor } = lines;
   const radiusCheck = (m) => (m < MAX_RADIUS ? null : 'a distance under 10 000 km');
   // a circle (a sector: with an aperture): its centre, radius, aperture and bearing, its area,

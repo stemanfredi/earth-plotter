@@ -50,6 +50,20 @@ export function presetProperty(pt, name) {
   pt.properties = [...pt.properties.filter((x) => x.key !== 'preset'), { key: 'preset', value: name }];
 }
 
+// A line or a label drawn with a preset of the user's (a line's, an area's, a label's): its look, its
+// properties with the property preset naming it, a line's guide and curve, a label's text; a line named
+// after it
+export function styleLike(doc, el, kind, mine) {
+  const tpl = kind === 'label' ? mine.doc.labels[0] : mine.doc.lines[0];
+  if (!tpl) return;
+  el.look = structuredClone(tpl.look ?? {});
+  el.properties = structuredClone(tpl.properties ?? []);
+  presetProperty(el, mine.name);
+  if (kind === 'label') { el.text = tpl.text; return; }
+  el.guide = tpl.guide; el.smooth = tpl.smooth;
+  el.name = nextName(doc, 'line', presetBase(mine.name));
+}
+
 // what a point placed from a preset is named after: its name, without its folder ("Folder / Name")
 export const presetBase = (name) => name.split(' / ').at(-1).trim() || 'Point';
 

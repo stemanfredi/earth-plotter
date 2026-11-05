@@ -400,18 +400,25 @@ Everything there is to draw, in the left panel's **Library** tab (**K**), as a d
 of shapes or blocks: **Built-in** (Point, Line, Area, Label, then the Shape tool's kinds), then the
 user's **presets** in their folders, a name's part before its last " / " ("Folder / Name"); a folder's
 presets in the order people read ("70" before "100"), those in none last. Folders stay folded as left.
-Each row: a picture (a preset's: what is shown of it, in its own colours, north up); its name; a
-preset's size, to tell them apart (a largest circle's radius, else its sides, the larger first). A
-filter above. A row clicked: drawing it, the row pressed; again, no longer. One placed in a click (a
-point, a shape, a preset) dragged onto the map: placed there (its default size), selected.
+Each row: a picture (a point preset's: what is shown of it, in its own colours, north up; a line's: a
+stroke as it draws; an area's: a swatch; a label's: "Aa" in its colour); its name; a point preset's
+size, to tell them apart (a largest circle's radius, else its sides, the larger first). A filter above.
+A row clicked: drawing it, the row pressed; again, no longer. One placed in a click (a point, a shape,
+a point preset) dragged onto the map: placed there (its default size), selected.
 
-**Add to library…** (a point's Properties) keeps the point and its shapes as they are (their sizes,
-their places and bearings about it, their own looks, shown or hidden) under a name ("Folder / Name"),
-a small drawing of its own; Distribute along copies all of one that holds shapes. Placing one makes a
-copy of it facing north about the place clicked, at its own size (one click), the point named after it
-(numbered, its folder left out), its shapes keeping their names, its properties kept with the
-preset's name as `preset`, the point shown, its shapes shown or hidden as saved, none a guide. A
-preset's **⋯**: Rename… (its folder too), Duplicate, Delete. Adding one under a name in use asks
+**Add to library…** (the Properties of a point, a line, an area or a label: not of a point's shape,
+which goes with its point) keeps it under a name ("Folder / Name"), a small drawing of its own.
+
+- **A point** keeps its shapes as they are (their sizes, their places and bearings about it, their own
+  looks, shown or hidden); Distribute along copies all of one that holds shapes. Placing one makes a
+  copy of it facing north about the place clicked, at its own size (one click), the point named after
+  it (numbered, its folder left out), its shapes keeping their names, its properties kept with the
+  preset's name as `preset`, the point shown, its shapes shown or hidden as saved, none a guide.
+- **A line or an area** keeps its look, its properties, whether it is a guide or curved. The Line tool
+  then draws each one so (an area's closed as it ends), named after it, its properties with `preset`.
+- **A label** keeps its look, its properties and its text (its live values too): each placed so.
+
+A preset's **⋯**: Rename… (its folder too), Duplicate, Delete. Adding one under a name in use asks
 before replacing it (a file's replaces). Presets live in this browser only; **Download** › **Library
 (JSON)** and **Open a file…** move them.
 

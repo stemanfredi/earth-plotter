@@ -4,7 +4,8 @@
 // drawing (its map, document, draft and cursor).
 
 import { emptyDoc, addLine, addLabel, find, nextName, KIND, lookOf, setLook, setLink, carry, ringOf } from './document.js';
-import { placeKind, placeBox, build, BOX } from './place.js';
+import { placeKind, placeBox, build, BOX, styleLike } from './place.js';
+import { presetKind } from './presets.js';
 import { norm360 } from '../geo.js';
 import { valueFeatures } from './features.js';
 import { lineTrace, nearestAlong } from './lines.js';
@@ -31,15 +32,19 @@ export class Drafting {
   // the line made (closed: "Area n"; a measurement "Distance n"): each vertex attached to
   // the points they snapped to (on another line, a point shared there: attach.js attachAt), one undo
   // step; the tool stays on for the next
+  // the preset of the user's a tool's variant names ('preset:<name>'), or null
+  presetOf(v) { return (v?.startsWith('preset:') && this.presets.find((x) => x.name === v.slice(7))) || null; }
   finishLine(closed = false) {
     const d = this.draft, measured = this.tool === 'measure';
     if (!(d?.pts.length > 1)) return; // no second point: nothing to make yet
-    if (this.tool === 'line' && this.variant.line === 'area') { if (d.pts.length < 3) return; closed = true; } // an area: closed as it ends, three vertices at least
+    const mine = this.tool === 'line' ? this.presetOf(this.variant.line) : null; // a preset's line or area: its look and properties
+    if (this.tool === 'line' && (this.variant.line === 'area' || (mine && presetKind(mine) === 'area'))) { if (d.pts.length < 3) return; closed = true; } // an area: closed as it ends, three vertices at least
     this.draft = null;
     let seg;
     this.change((doc) => {
       const name = closed ? 'Area' : measured ? 'Distance' : null;
       seg = addLine(doc, d.pts, { closed, ...(name ? { name: nextName(doc, 'line', name) } : {}), ...(measured ? guideWithValues() : {}) });
+      if (mine) styleLike(doc, seg, 'line', mine);
       d.pts.forEach((position, i) => setLink(doc, seg.id, i, attachAt(doc, { position, to: d.tos[i] }))); // each vertex where it snapped, as its mark said
     });
     this.select([seg.id]);
@@ -208,7 +213,8 @@ export class Drafting {
   // at that distance along it; elsewhere, free text there. Selected, for its text to be typed.
   placeLabel(point, p) {
     let el;
-    this.change((doc) => { const r = this.anchorFor(point, p); el = addLabel(doc, r.position, r.to); });
+    const mine = this.presetOf(this.variant.label); // a preset's label: its text and look
+    this.change((doc) => { const r = this.anchorFor(point, p); el = addLabel(doc, r.position, r.to); if (mine) styleLike(doc, el, 'label', mine); });
     this.snapMark = null; // placed: its mark gone with the click (drawn again as the pointer moves)
     this.select([el.id]);
     this.onChange('placed'); // the panel puts the cursor in its text

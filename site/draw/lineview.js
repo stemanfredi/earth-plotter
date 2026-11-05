@@ -15,7 +15,7 @@ import { fmtArea, fmtDist, fmtElevation, distText, UNIT_TEXT, inUnit } from '../
 
 export function createLineView(kit) {
   const { drawing, map, ctx, F, field, row, funit, fvalue, valued, distValue, link, now, set, item, foldHead, section, actionsRow, act, copyBtn, paged, PAGE, pageAt,
-    attachBtn, detach, commonTop, commonBottom, lookBlock, ruleActs, openDistribution, inspector, render: renderInspector } = kit;
+    attachBtn, detach, commonTop, commonBottom, lookBlock, ruleActs, libraryBtn, openDistribution, inspector, render: renderInspector } = kit;
   // Legs typed (the line's table of vertices): the straight leg arriving at a vertex from the one before
   // (a closed line's first: from its last), its length and its bearing. A value typed moves that
   // vertex alone (the leg after it changes with it); a vertex attached is where it is attached, its leg not
@@ -169,7 +169,8 @@ export function createLineView(kit) {
               attachBtn(id, k, { class: 'small', 'aria-label': `Attach vertex ${k + 1} to…` }, 'Attach to…'), attached(k) ? act('Detach', 'Free, where it is', () => detach(id, k)) : null].filter(Boolean) }),
         insert: (k) => { if (!held && (k < N - 1 || closed)) insertAfter(id, k); }, remove: (k) => { if (!held) removeAt(id, k); } }),
       profileBlock(id),
-      actionsRow(ruleActs(id), h('button', { type: 'button', class: 'small', title: 'Copies along this line', onclick: () => openDistribution({ element: id }) }, 'Distribute along…')),
+      actionsRow(ruleActs(id), h('button', { type: 'button', class: 'small', title: 'Copies along this line', onclick: () => openDistribution({ element: id }) }, 'Distribute along…'),
+        held ? null : libraryBtn(id, el.name)), // a point's shape: the point is kept, with it
       lookBlock([item(id)]), ...commonBottom('line', id)];
   }
 

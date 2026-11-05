@@ -119,3 +119,23 @@ test('the Library\'s folders and order', async () => {
   assert.deepEqual(['Kit / A-10', 'A / B / C', 'Loose', 'EO/IR / X'].map(folderOf), ['Kit', 'A / B', '', 'EO/IR']);
   assert.deepEqual(['x 100 kHz', 'x 70 kHz', 'X 400 kHz'].sort(byName), ['x 70 kHz', 'x 100 kHz', 'X 400 kHz']);
 });
+
+test('a line, an area or a label as a preset: kept alone, its look and properties given to one drawn with it', async () => {
+  const { presetKind, hasShapes } = await import('../../site/draw/presets.js');
+  const { styleLike } = await import('../../site/draw/place.js');
+  const doc = emptyDoc(0), p = addPoint(doc, [5, 50]);
+  addCircle(doc, [5, 50], { groupId: p.id, radius: 10 });
+  const l = addLine(doc, [[5, 50], [5.1, 50]], { name: 'Route', guide: true, look: { stroke: { color: '#e03131', dash: 'dashed' } }, properties: [{ key: 'kind', value: 'b' }] });
+  const a = addLine(doc, [[5, 50], [5.1, 50], [5.1, 50.1]], { closed: true, name: 'Zone' });
+  const t = addLabel(doc, [5, 50]); t.text = 'Here'; t.look = { text: { color: '#2b8a3e' } };
+  const [pp, lp, ap, tp] = [[p.id, 'P'], [l.id, 'Kit / Route'], [a.id, 'Z'], [t.id, 'T']].map(([id, n]) => presetOf(doc, id, n));
+  assert.deepEqual([pp, lp, ap, tp].map(presetKind), ['point', 'line', 'area', 'label']);
+  assert.deepEqual([pp, lp, ap, tp].map(hasShapes), [true, false, false, false], 'Distribute along repeats a point holding shapes, only');
+  assert.deepEqual([lp.doc.lines.length, lp.doc.lines[0].name, lp.doc.points.length], [1, 'Route', 0], 'the line alone, its name kept');
+  const back = readPresets(presetsFile([pp, lp, ap, tp]));
+  assert.deepEqual(back.map((x) => x.name), ['P', 'Kit / Route', 'Z', 'T'], 'every kind read back from its file');
+  const d = emptyDoc(0), m = addLine(d, [[1, 1], [2, 2]]), n = addLabel(d, [1, 1]);
+  styleLike(d, m, 'line', lp); styleLike(d, n, 'label', tp);
+  assert.deepEqual([m.name, m.guide, m.look.stroke, m.properties], ['Route 1', true, { color: '#e03131', dash: 'dashed' }, [{ key: 'kind', value: 'b' }, { key: 'preset', value: 'Kit / Route' }]]);
+  assert.deepEqual([n.text, n.look.text.color], ['Here', '#2b8a3e']);
+});

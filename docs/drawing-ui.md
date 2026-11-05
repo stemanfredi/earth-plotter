@@ -365,8 +365,8 @@ Copies) opens its form (a click on the map picks a root):
   point, so that they stay seen zoomed out (an area drawn is never drawn larger): set on one, on several at once, or in Display for
   every one. Its handles are where it is drawn and set its real size through it; its values, the
   totals, the file and what is attached to it keep the real one. A point's symbol keeps its shapes
-  found at any zoom. Names collide
-  away; labels are always drawn.
+  found at any zoom. A circle's name is on its rim, under its radius (a sector's: at its arc's middle),
+  so rings about one centre each show theirs. Names collide away; labels are always drawn.
 
 ## 8. Keys
 

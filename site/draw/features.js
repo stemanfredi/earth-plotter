@@ -29,7 +29,7 @@ const lineProps = (s) => ({ sc: s.color, so: s.opacity, sw: s.width, dash: s.das
 // The features drawn, in three parts, each its own map source so that only what changed is drawn
 // again (drawing.js):
 // - base: each shown circle (a polygon, its fill and stroke its own), each closed line's fill, each
-//   point's symbol, the names of points, circles and of lines' vertices;
+//   point's symbol, the names of points, circles (on their rims) and of lines' vertices;
 // - zoom: each visible line, and its names;
 // - marks: those of the selected elements (sel: Set of IDs; a point's shapes with it) and of the one
 //   under the pointer (hover).
@@ -120,7 +120,8 @@ function drawPartsIn(doc, sel = new Set(), hover = null, display = {}, want = { 
     const st = styleOf(doc, c), rg = ringOf(c);
     if (want.base) {
       base.push({ type: 'Feature', properties: { id: c.id, kind: 'ring', z: Z.get(c.id), fill: st.fill.opacity > 0 ? 1 : 0, fc: st.fill.color, fo: st.fill.opacity, ...lineProps(st.stroke) }, geometry: { type: 'Polygon', coordinates: [rg] } });
-      if (named(c)) name(baseNames, c, { type: 'Point', coordinates: c.position }, st.stroke.color);
+      // its name on its rim, under the radius (valueFeatures), where a sector's arc is: rings about one centre each have their own
+      if (named(c)) name(baseNames, c, { type: 'Point', coordinates: destination(c.position, c.aperture ? c.bearing : 0, c.radius) }, st.stroke.color, { rim: 1 });
     }
     const items = [...(c.aperture ? [c.bearing] : [0, 90, 180, 270]).map((az) => ({ p: destination(c.position, az, c.radius), role: 'radius' })),
       ...(c.aperture ? [-0.5, 0.5].map((k) => ({ p: destination(c.position, c.bearing + k * c.aperture, c.radius), role: 'aperture', ref: k })) : [])];

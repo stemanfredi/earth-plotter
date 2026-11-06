@@ -1117,6 +1117,13 @@ test('a value made to break text (an object whose toString is not a function) is
   const r = read(link);
   assert.equal(r.report.refused, null);
   warned(r.report, /link from \{"toString":0\} \{"toStri, which/);
+  // the view: a layer's variant and a data entry's variant are warned, never thrown
+  const view = base();
+  view.earthplotter.view = { center: [10, 40], zoom: 5, layers: [{ id: 'chart', variant: bad }], data: { colour: { id: 'waves', variant: bad } } };
+  const v = read(view);
+  assert.equal(v.report.refused, null);
+  warned(v.report, /layer chart: variant "\{"toString":0\}" not known here/);
+  warned(v.report, /data colour: "waves" not known here/);
 });
 
 test('a bearing just under 360° is kept and written as 0, never 360', () => {

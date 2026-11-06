@@ -169,8 +169,8 @@ export function readView(v, known, c) {
       const out = { id: l.id };
       for (const [key, list] of [['variant', k?.[l.id]?.variants], ['period', k?.[l.id]?.periods]]) {
         if (l[key] === undefined || l[key] === null) continue;
-        if (k && !list?.includes(l[key])) c.warn(`layer ${l.id}: ${key} "${String(l[key]).slice(0, 40)}" not known here; default used`);
-        else out[key] = String(l[key]);
+        if (typeof l[key] !== 'string' || (k && !list?.includes(l[key]))) c.warn(`layer ${l.id}: ${key} "${shown(l[key], 40)}" not known here; default used`);
+        else out[key] = l[key];
       }
       const opacity = clamp(l.opacity, 0, 1, undefined, c, `layer ${l.id} opacity`); // not a number: left out, as a missing one (the layer's default)
       if (opacity !== undefined) out.opacity = opacity;
@@ -183,7 +183,7 @@ export function readView(v, known, c) {
       const e = v.data[slot];
       if (e === undefined || e === null) continue;
       if (!isObj(e) || typeof e.id !== 'string') { c.warn(`data ${slot}: not {id, variant}, ignored`); continue; }
-      const variant = e.variant == null ? null : String(e.variant); // an entry is an item at a variant: without one it names nothing
+      const variant = typeof e.variant === 'string' ? e.variant : null; // an entry is an item at a variant: without one it names nothing
       if (variant === null || (known && !(Object.hasOwn(known.data, e.id) && known.data[e.id].includes(variant)))) { c.warn(`data ${slot}: "${e.id}${variant ? `:${variant}` : ''}" not known here; skipped`); continue; }
       const opacity = clamp(e.opacity, 0, 1, undefined, c, `data ${slot} opacity`); // missing or not a number: the layer's default
       d[slot] = { id: e.id, variant, ...(opacity !== undefined && { opacity }) };

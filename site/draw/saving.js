@@ -97,15 +97,18 @@ export class Saving {
     this.now();
     return this.load(id)?.view ?? null;
   }
-  // the drawing id read and opened: { doc, view }, or null (not there, not readable). What it holds
-  // that could not be read is said: it is not in the drawing from now on
+  // the drawing id read and opened: { doc, view }, or null (not there, not readable). One read only in
+  // part (elements left out, past the limit, groups moved for depth) opens as a new drawing, said, so
+  // that its next save never writes over the one kept, which stays as it was
   load(id, read) {
     const text = read ? null : store.get(KEY(id));
     const { doc, view, report } = read ?? (text ? parse(text, this.d.known) : { doc: null, report: { refused: 'This drawing is no longer in this browser' } });
     if (!doc) { this.say(report.refused); return null; }
-    if (report.skipped.length) {
-      console.warn('drawing opened without:', report.skipped);
-      this.say(`${plural(report.skipped.length, 'element')} of this drawing could not be read: left out`);
+    const lost = report.skipped.length + (report.cut ?? 0);
+    if (lost) {
+      console.warn('drawing read in part:', report.skipped, report.warnings);
+      this.say(`${plural(lost, 'element')} of this drawing could not be read: opened as a new drawing, the one kept left as it was`);
+      id = newKey();
     }
     this.id = id;
     store.set(CURRENT, id);

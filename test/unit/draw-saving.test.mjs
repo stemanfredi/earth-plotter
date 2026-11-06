@@ -56,7 +56,13 @@ test('a kept drawing near a pole reads back whole; what could not be read is sai
   console.warn = () => {};
   try { f.saving.restore(); } finally { console.warn = warn; }
   assert.equal(f.doc.points.length, 1);
-  assert.match(said.join(), /1 element of this drawing could not be read/);
+  assert.match(said.join(), /1 element of this drawing could not be read: opened as a new drawing/);
+  // opened as a new drawing: its next save never writes over the one kept, which still holds both
+  const kept = localStorage.getItem(key);
+  addPoint(f.doc, [11, 42]);
+  f.saving.now();
+  assert.notEqual(f.saving.id, e.saving.id);
+  assert.equal(localStorage.getItem(key), kept);
 });
 
 test('a drawing of the list of another format version is not read: a new one opens, its text never saved over', () => {

@@ -434,6 +434,7 @@ before replacing it (a file's replaces). The user's items live in this browser o
 - Each drawing is saved as it changes, never sent anywhere; the open one comes back with the page.
   **Open** lists the drawings in this browser (last change, size): a click opens one with its view (where
   it was drawn, its layers, time, depth and units, as an import does), a bin deletes it for good
-  (asked first); **+ New drawing** adds one.
+  (asked first); **+ New drawing** adds one. One that can be read only in part (elements left out,
+  past the limit, groups moved for depth) opens as a new drawing, said: the one kept stays as it was.
 - When the browser refuses to save, Properties says so (Download › Drawing keeps it as a file); when
   another tab saved the same drawing, it says so, with **Reload**.

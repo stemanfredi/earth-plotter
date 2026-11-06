@@ -32,7 +32,7 @@ const GEOMETRIES = ['Point', 'MultiPoint', 'LineString', 'MultiLineString', 'Pol
 // { layers: { id: { variants, periods } }, data: { id: [variants] }, depths: [metres] }. now: the time
 // to give a file without one.
 export function parse(text, known = null, now = Date.now()) {
-  const report = { refused: null, skipped: [], warnings: [] };
+  const report = { refused: null, skipped: [], warnings: [], cut: 0 }; // cut: what the reader changed beyond a value (elements past the limit, groups moved to the top for depth)
   const refuse = (why) => { report.refused = why; return { doc: null, view: null, report }; };
   let raw;
   try { raw = JSON.parse(text); } catch { return refuse('This is not a drawing file: it is not JSON.'); }
@@ -112,7 +112,7 @@ function read(raw, app, known, now, report) {
       if (up && on.has(up)) top(path.at(-1), 'in a group inside itself'); // the loop cut where it closes
       for (let i = path.length - 1; i >= 0; i--) {
         const x = path[i], d = x.groupId == null ? 0 : depth.get(byId.get(x.groupId)) + 1;
-        if (d > MAX_DEPTH) top(x, `more than ${MAX_DEPTH} groups deep`);
+        if (d > MAX_DEPTH) { top(x, `more than ${MAX_DEPTH} groups deep`); report.cut++; }
         depth.set(x, d > MAX_DEPTH ? 0 : d);
       }
     }
@@ -154,7 +154,7 @@ function read(raw, app, known, now, report) {
     });
   }); } catch (e) { if (!(e instanceof Refused)) throw e; report.refused = e.message; return { doc: null, view: null }; }
 
-  if (over) report.warnings.push(`${over} past the first ${MAX_FEATURES} elements and groups: skipped`);
+  if (over) { report.warnings.push(`${over} past the first ${MAX_FEATURES} elements and groups: skipped`); report.cut += over; }
   // the elements all in: indexed while what holds each, then the links, are read (none
   // is added or taken away; reading() looks each up by ID, not along every list)
   reading(doc, () => {

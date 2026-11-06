@@ -41,7 +41,7 @@ jobs:
       - if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
         run: npm outdated || true    # newer library versions, in the log
       - if: github.event_name == 'schedule'   # live data: never in a manual run, a redeploy an outage must not block
-        run: npm run data-check      # newer density data shows as a notice
+        run: npm run data-check      # newer density data: a notice; a layer or dataset no longer offered: a failure
 
   browser:                           # headless Chrome against the live tile providers (draw: without them)
     runs-on: ubuntu-24.04

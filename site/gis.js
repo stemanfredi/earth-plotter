@@ -17,7 +17,7 @@ import { chartCanvas, chartPng, pngOf } from './png.js';
 // deps: map, layersOf (item → its style layers), layerDrawn(l, z) (a style layer drawn at zoom z),
 // kindOf (item → its kind, with values()), drawing,
 // display, profiled (the elevation profiles read, by trace), clips { sea, land } (the clippers, for the
-// elevation grids), cmemsDrawn(id, at) (a Copernicus layer's time and level as drawn), snapshot(src),
+// elevation grids), cmemsDrawn(id, at) (a Copernicus layer's time and level as drawn; a normal's month), snapshot(src),
 // onFrame(button, fn, before), download(blob, name). Returns exportZip(button).
 export function gisExport({ map, layersOf, layerDrawn, kindOf, drawing, display, profiled, clips, cmemsDrawn, snapshot, onFrame, download }) {
   // what the item's vector layers draw, as pieces for vector.js: one query per source layer and
@@ -102,8 +102,8 @@ export function gisExport({ map, layersOf, layerDrawn, kindOf, drawing, display,
         .then((rs) => { l.assets.push(...rs.map((r) => r.key)); return rs; }, (e) => { console.warn(`${l.label} values:`, e.message); left.push(`${l.label} values (${e.message})`); return []; })))).flat();
       // a Copernicus layer's time and level as drawn (the part on top in the view: its own step and level)
       for (const l of layers.filter((l) => l.kind === 'cmems')) {
-        const { time, level } = await cmemsDrawn(l.id, l.at, box); // the part drawn over the view
-        Object.assign(l, { time: time == null ? undefined : new Date(time).toISOString(), depth: level == null ? undefined : +Math.abs(+level).toFixed(2) });
+        const { time, level, month } = await cmemsDrawn(l.id, l.at, box); // the part drawn over the view
+        Object.assign(l, { time: time == null ? undefined : new Date(time).toISOString(), depth: level == null ? undefined : +Math.abs(+level).toFixed(2), month: month ?? undefined });
       }
       // a line's length along the surface, seabed and ground (profile.js; a lower bound, the data's
       // relief), where its elevation profile was read as it was drawn

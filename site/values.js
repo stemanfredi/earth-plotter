@@ -7,6 +7,7 @@ import { openStore, timeScale, nearest, cellsOf, readCells } from './zarr.js';
 import { geotiff } from './geotiff.js';
 import { gebcoStore } from './gebco.js';
 import { fetchOk, fetchBytes, lru } from './net.js';
+import { normalWords } from './format.js';
 
 // One raster record of the export: the cells' grid (cellsOf) as a GeoTIFF of planes, EPSG:4326
 function rasterOf(cells, key, { title, description, names, units, planes, bands }) {
@@ -49,8 +50,8 @@ export async function cmemsValues(id, at, box) {
     const planes = await Promise.all(names.map((n) => readCells(store, n, ti, zi, cells)));
     const region = regionOf(part)?.name || (v.parts.length > 1 ? 'Global' : ''), key = `raster/${id}${region ? `-${region.toLowerCase()}` : ''}`;
     // a climatology's time is a month of its stand-in year: said as the month, not as that year's date
-    const when = v.month ? `the normal of ${new Date(ts[ti]).toLocaleDateString('en', { month: 'long', timeZone: 'UTC' })}` : new Date(ts[ti]).toISOString(), level = elevation ? +Math.abs(elevation[zi]).toFixed(2) : null;
-    const description = `${partOf(part).id.replace('/', ' / ')}: ${names.join(', ')} (${[...new Set(units)].join(', ')}) at ${when}${level != null ? `, ${level} m deep` : ''}; its own grid, EPSG:4326${cells.step > 1 ? `, every ${cells.step}th cell` : ''}, over the view's bounding box. No data: NaN`;
+    const when = v.month ? normalWords(ts[ti], 'en') : new Date(ts[ti]).toISOString(), level = elevation ? +Math.abs(elevation[zi]).toFixed(2) : null;
+    const description = `${partOf(part).id.replace('/', ' / ')}: ${names.join(', ')} (${[...new Set(units)].join(', ')})${v.month ? ',' : ' at'} ${when}${level != null ? `, ${level} m deep` : ''}; its own grid, EPSG:4326${cells.step > 1 ? `, every ${cells.step}th cell` : ''}, over the view's bounding box. No data: NaN`;
     return rasterOf(cells, key, { title: `${v.label}${region ? `, ${region}` : ''}: values`, description, names, units, planes,
       bands: names.map((n, k) => ({ description: `${n}, ${when}${level != null ? `, ${level} m` : ''}`, unit: units[k] })) });
   }))).filter(Boolean);

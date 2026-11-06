@@ -5,7 +5,7 @@ import { buildStyle, depthRamp, OPACITY_PROP, SEA_PICTURES, LOCATION_LAYERS, INK
 import { cmemsTile, partTimes, partLevels, domainOf, cmemsLegend, partIn } from './cmems.js';
 import { workerClipper } from './clip.js';
 import { drawRamp, drawColormap, drawClasses, wmsClasses } from './legend.js';
-import { fmtAngle, fmtPos, fmtDepth, mercatorVariation, NOTE_AT, exportName } from './format.js';
+import { fmtAngle, fmtPos, fmtDepth, mercatorVariation, NOTE_AT, exportName, monthOf, normalWords } from './format.js';
 import { Drawing } from './draw/drawing.js';
 import { isoNow } from './draw/document.js';
 import { DRAW_LAYERS } from './draw/layers.js';
@@ -467,10 +467,11 @@ const cmemsUrl = {}; // item → the tiles' address its source has now
 // said for it, rather than another part's
 async function cmemsDrawn(id, at, box) {
   const [times, levels] = await Promise.all([partTimes(id, at.variant, at.t), partLevels(id, at.variant, at.depth)]);
-  const parts = CMEMS[id][at.variant].parts;
+  const v = CMEMS[id][at.variant], parts = v.parts;
   const k = parts.map((p, i) => i).reverse().find((i) => times[i] !== null && partIn(parts[i], box)) ?? -1;
-  // a climatology's step is a month of its stand-in year, not a time: none said
-  return k < 0 ? { time: null, level: null } : { time: CMEMS[id][at.variant].month ? null : times[k], level: levels[k] };
+  if (k < 0) return { time: null, level: null, month: null };
+  // a climatology's step is a month of its stand-in year, not a time: said as its month
+  return v.month ? { time: null, level: levels[k], month: times[k] == null ? null : monthOf(times[k], 'en') } : { time: times[k], level: levels[k], month: null };
 }
 
 // a classed layer's classes, from its services' JSON legends (legend.js wmsClasses): a class drawn
@@ -596,7 +597,9 @@ function applyData() {
   const { id: ci, variant: cv } = entryOf(state.colour) ?? {}, { variant: av } = entryOf(state.arrows) ?? {};
   for (const it of DATA) {
     const look = drawnAs(it.id);
-    if (look) { state.on.add(it.id); state.variant[it.id] = it.id === ci ? cv : av; } else state.on.delete(it.id);
+    // switched off: its tiles' address forgotten, so that switching it on again asks its tiles anew
+    // (tiles that failed are asked again)
+    if (look) { state.on.add(it.id); state.variant[it.id] = it.id === ci ? cv : av; } else { state.on.delete(it.id); delete cmemsUrl[it.id]; }
     const key = look && `${look}:${state.variant[it.id]}`;
     if (key !== (dataShown[it.id] ?? '')) { dataShown[it.id] = key; refresh(it.id); }
   }
@@ -671,7 +674,7 @@ function renderWhen() {
   // beside the coordinates: "Today 18:00", or "Wed 21 Oct" when only daily layers are on: their day,
   // in UTC as the products have it (the depth: its own chip)
   if (monthly()) { // normals alone: their month, of no year (the products' months are UTC)
-    shownText.textContent = d.toLocaleDateString([], { month: 'long', timeZone: 'UTC' });
+    shownText.textContent = monthOf(state.time);
     shownEl.title = `Normals shown: ${shownText.textContent}. A click: the calendar`;
     return;
   }
@@ -1283,12 +1286,12 @@ function snapshot(src) {
     corners: [[0, 0], [W, 0], [W, H], [0, H]].map((p) => { const ll = map.unproject(p); return [ll.lng, ll.lat]; }),
     time: timed && !mo ? (hr ? { at: t } : { day: dayOf(t) }) : null, depth, // normals alone: a month of no year, no time
     // in words: as the reading gives them, with the date and time zone (a daily product's day in UTC)
-    timeText: !timed ? '' : mo ? `normal for ${new Date(t).toLocaleDateString([], { month: 'long', timeZone: 'UTC' })}` : hr ? new Date(t).toLocaleString([], { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', timeZoneName: 'short' })
+    timeText: !timed ? '' : mo ? normalWords(t) : hr ? new Date(t).toLocaleString([], { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', timeZoneName: 'short' })
       : new Date(t).toLocaleDateString([], { dateStyle: 'medium', timeZone: 'UTC' }),
     depthText: depth == null ? '' : depthWords(depth),
     drawText: [drawing.offset().length ? 'lines drawn offset' : '', drawing.scaled().length ? 'shapes drawn at another size' : ''].filter(Boolean).join(', ').replace(/.+/, '$&, not to scale'), // what the picture shows not where it is
     // for files read elsewhere: in UTC
-    dataText: !timed ? '' : mo ? `normals for ${new Date(t).toLocaleDateString('en', { month: 'long', timeZone: 'UTC' })}${depth == null ? '' : `, ${depthWords(depth)}`}` : `data ${hr ? `at ${new Date(t).toISOString().slice(0, 16).replace('T', ' ')} UTC` : `of ${dayOf(t)} (UTC)`}${depth == null ? '' : `, ${depthWords(depth)}`}`,
+    dataText: !timed ? '' : mo ? `${normalWords(t, 'en')}${depth == null ? '' : `, ${depthWords(depth)}`}` : `data ${hr ? `at ${new Date(t).toISOString().slice(0, 16).replace('T', ' ')} UTC` : `of ${dayOf(t)} (UTC)`}${depth == null ? '' : `, ${depthWords(depth)}`}`,
   };
 }
 function exportPng(b) {

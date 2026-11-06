@@ -78,8 +78,8 @@ export function stacItem({ id, title, when, data, corners, zoom, bearing, layers
       'earthplotter:zoom': +zoom.toFixed(2),
       'earthplotter:bearing': +bearing.toFixed(1),
       // assets: the files that hold the layer as data (absent: it is only in the pictures)
-      // draws: what a layer of the Ocean data draws, 'colour', 'arrows' or 'both'
-      'earthplotter:layers': layers.map(({ id: lid, label, variant, draws, date, period, time, depth, assets: a }) => ({ id: lid, title: label, ...(variant && { variant }), ...(draws && { draws }), ...(date && { date }), ...(period && { period }), ...(time && { time }), ...(depth != null && { depth_m: depth }), ...(a?.length && { assets: a }) })),
+      // draws: what a layer of the Ocean data draws, 'colour', 'arrows' or 'both'; month: a normal's (its time: none)
+      'earthplotter:layers': layers.map(({ id: lid, label, variant, draws, date, period, time, month, depth, assets: a }) => ({ id: lid, title: label, ...(variant && { variant }), ...(draws && { draws }), ...(date && { date }), ...(period && { period }), ...(time && { time }), ...(month && { month }), ...(depth != null && { depth_m: depth }), ...(a?.length && { assets: a }) })),
     },
     links: link ? [{ rel: 'via', href: link, type: 'text/html', title: 'This view in Earth Plotter' }] : [],
     assets,

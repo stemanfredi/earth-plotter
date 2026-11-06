@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { fmtAngle, dm, fmtPos, mercatorVariation, niceLen, parseLatLon, parseCoord, parseDist, distText, exportName, rowsText } from '../../site/format.js';
+import { fmtAngle, dm, fmtPos, mercatorVariation, niceLen, parseLatLon, parseCoord, parseDist, distText, exportName, rowsText, monthOf, normalWords } from '../../site/format.js';
 import { near } from './helpers.mjs';
 
 test('fmtAngle: degrees, minutes, hemispheres, carry', () => {
@@ -112,4 +112,10 @@ test('distText: as read (to the metre, 2 m), in the unit the mode reads, as the 
 
 test('rowsText: tab-separated, a header first, tabs and line breaks in a cell made spaces', () => {
   assert.equal(rowsText(['Key', 'Value'], [['a', 'one\ttwo'], ['b', 'x\ny']]), 'Key\tValue\na\tone two\nb\tx y\n');
+});
+
+test('monthOf and normalWords: a normal\'s month in UTC, of no year', () => {
+  assert.equal(monthOf(Date.UTC(1993, 0, 1), 'en'), 'January');
+  assert.equal(monthOf(Date.UTC(2026, 6, 31, 23, 30), 'en'), 'July', 'UTC, not the local day');
+  assert.equal(normalWords(Date.UTC(2004, 7, 1), 'en'), 'the August normal');
 });

@@ -6,6 +6,10 @@ import { norm360, norm180, NM, D2R } from './geo.js';
 export const escapeHtml = (t) => String(t).replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`); // text set as markup (HTML or XML)
 
 // a length, an area, a bearing as read (in the display's units: 'km' or 'nm')
+// a normal's month (Copernicus's climatologies: a month of no year, in UTC), on screen in the page's
+// language (locale []) or in English for files; a normal said in words: "the January normal"
+export const monthOf = (t, locale = []) => new Date(t).toLocaleDateString(locale, { month: 'long', timeZone: 'UTC' });
+export const normalWords = (t, locale = []) => `the ${monthOf(t, locale)} normal`;
 export function fmtDist(m, units) {
   if (units === 'nm') return `${(m / NM).toFixed(3)} NM`; // to a thousandth (about 2 m)
   return m < 1000 ? `${Math.round(m)} m` : `${(m / 1000).toFixed(3)} km`; // to the metre

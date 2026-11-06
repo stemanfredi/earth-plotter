@@ -596,6 +596,10 @@ test('copies: a built-in kind at the radius (its largest shape), a Library item 
   // a copy deleted: its shapes with it
   remove(doc, [ns[0].id]);
   assert.equal(doc.circles.filter((c) => c.name.startsWith('outer')).length, 2);
+  // edited without the item at hand (a radius typed, another count): its copies stay its, never circles
+  editDistribution(doc, mine.id, { radius: 99 });
+  editDistribution(doc, mine.id, { count: 4 });
+  assert.deepEqual(pointsOf(doc, mine).map((n) => [n.symbol, shapesOf(doc, n).map((c) => c.radius)]), Array(4).fill(['square', [2000]]));
 });
 
 test('rule groups: Connection in the points\' group (a distribution\'s copies: beside Copies) or one given; gone with unconnect when empty', () => {

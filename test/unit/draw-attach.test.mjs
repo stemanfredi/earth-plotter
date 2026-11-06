@@ -100,6 +100,19 @@ test('vertices added, taken away, a line split: labels on its vertices stay on t
   assert.deepEqual([ref(doc, b).position, ref(doc, c).position], [[10.015, 40], [10.03, 40]]);
 });
 
+test('a line split at a vertex keeps the vertex\'s name: the dot made takes it, else the first half\'s end', () => {
+  const doc = emptyDoc(0);
+  const l = lineFrom(doc, [10, 40], [[10.01, 40], [10.02, 40]], [10.03, 40], { id: 'l' });
+  l.names = ['', 'Free', 'Held', ''];
+  const p = addPoint(doc, [10.02, 40]);
+  setLink(doc, 'l', 2, { element: p.id });
+  splitLine(doc, 'l', 2);
+  assert.equal(l.names.at(-1), 'Held', 'on a point already: the half keeps it');
+  const dot = splitLine(doc, 'l', 1);
+  assert.equal(dot.name, 'Free');
+  assert.equal(l.names.at(-1), '');
+});
+
 test('an area\'s corners added and taken away, an outline changed: labels on corners and edges stay where they were', () => {
   const doc = emptyDoc(0);
   const a = addRing(doc, [[10, 40], [10.02, 40], [10.02, 40.02], [10, 40.02]], { id: 'a' });

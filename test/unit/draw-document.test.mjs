@@ -230,6 +230,16 @@ test('IDs: a malformed, repeated or missing one is replaced with a warning; a nu
   assert.deepEqual(report.skipped.map((s) => [s.kind, s.reason]), [['group', 'no valid ID'], ['group', 'no valid ID']]);
 });
 
+test('IDs as numbers everywhere a file names one: groups, what is in them, links', () => {
+  const { doc, report } = read(collection([
+    F(1, 'Point', [0, 0], { kind: 'point', group: 20 }), F(2, 'LineString', [[1, 0], [0, 0]], { kind: 'line' }),
+  ], { format: FORMAT, version: VERSION, groups: [{ id: 10 }, { id: 20, groupId: 10 }], links: [{ from: [2, 1], to: 1 }, { from: [2, 0], to: { element: 1 } }] }));
+  assert.deepEqual(doc.groups.map((g) => [g.id, g.groupId]), [['10', null], ['20', '10']]);
+  assert.equal(doc.points[0].groupId, '20');
+  assert.deepEqual(doc.links.map((l) => [l.from, l.to]), [[['2', 1], { element: '1' }], [['2', 0], { element: '1' }]]);
+  assert.deepEqual(report.warnings.filter((w) => /^link|group/.test(w)), []);
+});
+
 test('skipped: latitudes out of range, positions missing, too few positions, what is not a feature, geometry collections; a longitude past ±180 brought back', () => {
   const { doc, report } = read(collection([
     F('ok', 'Point', [0, 0]), F('far', 'Point', [0, 91]), F('polar', 'Point', [0, 86]), F('west', 'Point', [-181, 0]), F('nopos', 'Point', null), F('short', 'Point', [1]),
@@ -302,6 +312,10 @@ test('circles in the file: a Point with kind circle, its radius always, aperture
   const f = toFile(doc).features[0];
   assert.deepEqual([f.geometry, f.properties], [{ type: 'Point', coordinates: [0, 0] }, { name: 'b', earthplotter: { kind: 'circle', visible: false, guide: true, radius: 100, aperture: 33.3333, bearing: 10 } }]);
   assert.deepEqual(again(doc).doc.circles, rounded(doc.circles));
+  // rounded within what the reader takes: still a circle under 10 000 km, still a sector
+  const edge = emptyDoc(NOW);
+  addCircle(edge, [0, 0], { radius: 9999999.9996, aperture: 359.99996 });
+  assert.deepEqual(again(edge).doc.circles.map((c) => [c.radius, c.aperture]), [[9999999.999, 359.9999]]);
 });
 
 test('any GeoJSON: Multi geometries split, holes dropped, foreign points diamonds, names and columns read', () => {

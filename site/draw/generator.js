@@ -23,7 +23,7 @@
 import { inverse, destination, localFrame, lengthOf } from '../geodesy.js';
 import { norm360 } from '../geo.js';
 import { lineTrace, pointsAlong } from './lines.js';
-import { addPoint, addDot, addLine, addGroup, elements, newId, idsOf, label, remove, setLink, carry, emptyDoc } from './document.js';
+import { addPoint, addDot, addLine, addGroup, elements, newId, idsOf, label, remove, setLink, carry, emptyDoc, MAX_RADIUS } from './document.js';
 import { BUILT_IN, build, placeCopy, fromLibrary } from './place.js';
 import { keyName } from './library.js';
 import { alone } from './clipboard.js';
@@ -244,11 +244,11 @@ const patternOf = (v) => (v === 'chain' ? 'chain' : 'tree');
 const DISTRIBUTE_KEYS = Object.keys(DISTRIBUTE_D).filter((k) => !['groupId', 'copiesId', 'pointIds'].includes(k)); // its settings: what the form sets
 const D = DISTRIBUTE_D, SIDES = ['left', 'right', 'alternate'];
 // A distribution's settings as taken, from the form or a file: each value of its kind and range,
-// else its default (a count: the spacing goes).
+// else its default (a count: the spacing goes); a radius and an offset below a circle's MAX_RADIUS.
 export function settings(p) {
   const fin = Number.isFinite, count = Number.isInteger(p.count) && p.count > 0 ? p.count : D.count, m = (k) => (fin(p[k]) && p[k] >= 0 ? p[k] : D[k]);
-  return { spacing: !count && fin(p.spacing) && p.spacing > 0 ? p.spacing : D.spacing, count, startMargin: m('startMargin'), endMargin: m('endMargin'), offset: m('offset'),
-    side: SIDES.includes(p.side) ? p.side : D.side, radius: fin(p.radius) && p.radius > 0 ? p.radius : D.radius,
+  return { spacing: !count && fin(p.spacing) && p.spacing > 0 ? p.spacing : D.spacing, count, startMargin: m('startMargin'), endMargin: m('endMargin'), offset: Math.min(m('offset'), MAX_RADIUS - 1),
+    side: SIDES.includes(p.side) ? p.side : D.side, radius: fin(p.radius) && p.radius > 0 ? Math.min(p.radius, MAX_RADIUS - 1) : D.radius,
     aperture: fin(p.aperture) && p.aperture > 0 && p.aperture < 360 ? p.aperture : D.aperture,
     item: typeof p.item === 'string' ? p.item : D.item };
 }
@@ -304,9 +304,10 @@ export function makeDistribution(doc, params) {
 export function editDistribution(doc, id, params) {
   const a = doc.rules.find((x) => x.id === id), along = a && alongOf(doc, a.along.element);
   if (!along) return null;
-  const was = JSON.stringify([a.item, a.radius, a.aperture]);
+  const copyOf = (x) => JSON.stringify(keyName(x.item) != null ? [x.item] : [x.item, x.radius, x.aperture]); // a Library item keeps its size: no radius of its own
+  const was = copyOf(a);
   Object.assign(a, settings({ ...Object.fromEntries(DISTRIBUTE_KEYS.map((k) => [k, a[k]])), ...params }));
-  const same = was === JSON.stringify([a.item, a.radius, a.aperture]);
+  const same = was === copyOf(a);
   const { points } = distribute(doc, along, a);
   const byId = new Map(doc.points.map((n) => [n.id, n]));
   if (same && points.length === a.pointIds.length && a.pointIds.every((id) => byId.has(id))) {
@@ -314,7 +315,8 @@ export function editDistribution(doc, id, params) {
     return { distribution: a, remade: false };
   }
   const first = byId.get(a.pointIds.find((id) => byId.has(id)));
-  const tpl = same && first ? alone(doc, first.id) : templateOf(a, params.copy);
+  // a Library item not given again (only the Library holds it): as the first copy left is
+  const tpl = (same || (keyName(a.item) != null && !params.copy)) && first ? alone(doc, first.id) : templateOf(a, params.copy);
   const old = new Set(a.pointIds);
   const built = connections(doc).filter((c) => c.pointIds.some((n) => old.has(n))).map((c) => unconnect(doc, c.id, true));
   // its Copies deleted: the new copies go where the old ones were

@@ -45,6 +45,8 @@ export function parse(text, known = null, now = Date.now()) {
 }
 
 // a value a GIS may have written back as text (a nested value): read again
+// an ID as the file has it: text, or a number read as text (spec §2)
+const idIn = (v) => (fin(v) ? String(v) : v);
 const unpack = (v) => { if (typeof v !== 'string' || !/^\s*[[{]/.test(v)) return v; try { return JSON.parse(v); } catch { return v; } };
 
 function read(raw, app, known, now, report) {
@@ -64,7 +66,7 @@ function read(raw, app, known, now, report) {
   };
   // an element's ID: its own, if valid and not used yet; else a new one (warned when it had one)
   const idOf = (v, c) => {
-    const id = typeof v === 'number' ? String(v) : v;
+    const id = idIn(v);
     if (typeof id === 'string' && ID.test(id) && !taken.has(id)) { taken.add(id); return id; }
     if (id != null) c.warn(id && taken.has(id) ? 'ID already used; a new one given' : 'malformed ID; a new one given');
     return newId(doc, taken);
@@ -83,9 +85,10 @@ function read(raw, app, known, now, report) {
     for (const x of Array.isArray(app.groups) ? app.groups : []) {
       const g = attempt('group', x?.id, (c) => {
         if (!isObj(x)) c.skip('not an object');
-        const id = typeof x.id === 'string' && ID.test(x.id) && !taken.has(x.id) ? x.id : c.skip('no valid ID');
+        const id = idIn(x.id), up = idIn(x.groupId);
+        if (typeof id !== 'string' || !ID.test(id) || taken.has(id)) c.skip('no valid ID');
         taken.add(id);
-        return { ...commonOf(x, c), id, groupId: typeof x.groupId === 'string' ? x.groupId : null }; // a group has no look: its members' own
+        return { ...commonOf(x, c), id, groupId: typeof up === 'string' ? up : null }; // a group has no look: its members' own
       });
       if (g && doc.groups.length >= MAX_FEATURES) over++;
       else if (g) doc.groups.push(g);
@@ -137,7 +140,7 @@ function read(raw, app, known, now, report) {
       if (!kind) { skip(`geometry ${String(part.type).slice(0, 20)}: not read`); return; }
       const el = attempt(kind, fid, (c) => {
         const id = idOf(k ? null : f.id, c);
-        const x = { ...commonOf({ ...propertiesFrom(props, mine, c), visible: mine?.visible }, c), id, groupId: typeof mine?.group === 'string' ? mine.group : null }; // checked once all are read
+        const x = { ...commonOf({ ...propertiesFrom(props, mine, c), visible: mine?.visible }, c), id, groupId: typeof idIn(mine?.group) === 'string' ? idIn(mine.group) : null }; // checked once all are read
         x.look = look(mine?.look, c, kind, kind === 'label' ? null : styleFrom(props)); // its colours, opacities and width: the common style names, checked and filtered with its look
         if (kind !== 'label') x.guide = flag(mine?.guide, c, 'guide');
         if (kind !== 'label' && flag(mine?.measure, c, 'measure')) Object.assign(x, { guide: true, measure: true }); // a measurement: a guide of its own
@@ -188,7 +191,7 @@ function read(raw, app, known, now, report) {
     const was = [];
     const linked = new Set(); // the places linked so far (one link a place)
     for (const v of Array.isArray(app?.links) ? app.links : []) {
-      const f = isObj(v) && Array.isArray(v.from) ? v.from : [], to = refIn(unpack(v?.to)), x = typeof f[0] === 'string' && find(doc, f[0]);
+      const f = isObj(v) && Array.isArray(v.from) ? [idIn(v.from[0]), v.from[1]] : [], to = refIn(unpack(v?.to)), x = typeof f[0] === 'string' && find(doc, f[0]);
       const place = x && ((x.kind === 'line' && !holderOf(doc, x.el)) || x.kind === 'label') && Number.isInteger(f[1]) && placeAt(doc, f);
 
       const what = !place ? `from ${String(f[0]).slice(0, 64)} ${String(f[1]).slice(0, 8)}, which is not a line's or a label's place here`
@@ -259,8 +262,9 @@ const coord = (p, c, what) => position(Array.isArray(p) ? p.slice(0, 2) : p, c, 
 // a link's target as the file says it ({ element, vertex | edge and at }; a bare ID: an element's
 // centre), or null
 function refIn(v) {
-  if (typeof v === 'string') return { element: v };
-  if (!isObj(v) || typeof v.element !== 'string') return null;
+  if (typeof idIn(v) === 'string') return { element: idIn(v) };
+  if (!isObj(v) || typeof idIn(v.element) !== 'string') return null;
+  v = { ...v, element: idIn(v.element) };
   const n = (k) => (Number.isInteger(v[k]) && v[k] >= 0 ? v[k] : undefined);
   return n('vertex') === undefined && n('edge') === undefined ? { element: v.element }
     : targetOf({ element: v.element, vertex: n('vertex'), edge: n('edge'), at: fin(v.at) ? Math.min(1, Math.max(0, v.at)) : 0 });
@@ -371,7 +375,7 @@ function feature(kind, el, doc) {
     Object.assign(mine, lean({ symbol: el.symbol, bearing: r4(el.bearing) }, { symbol: 'none', bearing: 0 }));
   } else if (kind === 'circle') {
     geometry = { type: 'Point', coordinates: pos(el.position) };
-    Object.assign(mine, { radius: r3(el.radius) }, lean({ aperture: el.aperture && r4(el.aperture), bearing: r4(el.bearing) }, { aperture: null, bearing: 0 }));
+    Object.assign(mine, { radius: Math.min(r3(el.radius), MAX_RADIUS - 0.001) }, lean({ aperture: el.aperture && Math.min(r4(el.aperture), 359.9999), bearing: r4(el.bearing) }, { aperture: null, bearing: 0 }));
   } else if (kind === 'line') {
     // closed: a Polygon, counter-clockwise as RFC 7946 asks; a ring stored clockwise is written
     // reversed, and says so (its names stay in its own order)
@@ -401,7 +405,7 @@ export function toFile(doc, v = null) {
       { groupId: null, name: '', properties: [], visible: true })),
     rules: doc.rules.map((a) => (a.kind === 'distribute'
       ? lean({ ...a, along: { element: a.along.element }, spacing: a.spacing == null ? null : r3(a.spacing), radius: a.radius == null ? null : r3(a.radius),
-        aperture: a.aperture == null ? null : r4(a.aperture), startMargin: r3(a.startMargin), endMargin: r3(a.endMargin), offset: r3(a.offset), pointIds: [...a.pointIds] }, DISTRIBUTE_D)
+        aperture: a.aperture == null ? null : Math.min(r4(a.aperture), 359.9999), startMargin: r3(a.startMargin), endMargin: r3(a.endMargin), offset: r3(a.offset), pointIds: [...a.pointIds] }, DISTRIBUTE_D)
       : lean({ ...a, roots: a.roots.map((r) => (r.weight === 1 ? { id: r.id } : { id: r.id, weight: +r.weight.toPrecision(6) })), pointIds: [...a.pointIds], created: [...a.created] }, CONNECT_D))),
     links: doc.links.map((l) => ({ from: [...l.from], to: refOut(l.to) })),
   }, { meta: {}, view: null, look: {}, groups: [], rules: [], links: [] });

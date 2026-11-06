@@ -164,11 +164,9 @@ function drawPartsIn(doc, sel = new Set(), hover = null, display = {}, want = { 
       // a + halfway along each leg long enough on screen, on the line as drawn (a smooth line's curve):
       // dragging it adds a point there
       if (mpp) {
-        const mids = [];
-        for (let i = 0; i < line.legs.length; i++) {
-          if (line.legs[i] / ground(ps[i][1]) > midPx) mids.push({ p: pointsAlong(lineTrace(doc, sg).coords, [(line.at[i] + line.at[i + 1]) / 2])[0].position, role: 'mid', ref: i, kind: 'mid' }); // a line no point holds: drawn at its size
-        }
-        handles(sg.id, mids);
+        const legs = line.legs.map((_, i) => i).filter((i) => line.legs[i] / ground(ps[i][1]) > midPx); // a line no point holds: drawn at its size (line, as traced)
+        const at = pointsAlong(line.coords, legs.map((i) => (line.at[i] + line.at[i + 1]) / 2)); // in one pass along it
+        handles(sg.id, legs.map((i, k) => ({ p: at[k].position, role: 'mid', ref: i, kind: 'mid' })));
       }
     }
   }

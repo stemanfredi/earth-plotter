@@ -41,14 +41,15 @@ export function snapAt(doc, p, view, { ids = null, exclude = new Set(), radius =
     const A = px(a), B = px(b), n = nearestOnSegment(A, B, p);
     if (n.d <= radius) edges.push({ d: n.d, A, B, q: n.q, t: n.t, to, id });
   };
+  const linked = new Set(doc.links.map((l) => `${l.from[0]} ${l.from[1]}`)); // the places linked, once
   for (const kind of ['point', 'circle', 'line']) { // what has positions to snap to (a point first: on its circle's centre, the point)
     for (const el of doc[KIND[kind].list]) {
       if (!want(el)) continue;
       const f = drawnOf(doc, el).f; // where it is drawn: a point's shape as its Scale draws it
       if (kind !== 'line') { vertex(f(el.position), { element: el.id }); continue; }
       // its vertices not linked (one linked is on what it is linked to); a free end, to be joined at a point
-      const last = el.points.length - 1, linked = new Set(doc.links.filter((l) => l.from[0] === el.id).map((l) => l.from[1]));
-      el.points.forEach((q, i) => { if (!linked.has(i)) vertex(f(q), !el.closed && (i === 0 || i === last) ? { end: [el.id, i] } : { element: el.id, vertex: i }); });
+      const last = el.points.length - 1;
+      el.points.forEach((q, i) => { if (!linked.has(`${el.id} ${i}`)) vertex(f(q), !el.closed && (i === 0 || i === last) ? { end: [el.id, i] } : { element: el.id, vertex: i }); });
       // its legs, as drawn (a curve's samples), each sample segment knowing its leg and how far along it
       if (!edgesOf(el)) continue;
       const tr = lineTrace(doc, el), { from } = steps(tr.coords);

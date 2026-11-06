@@ -9,7 +9,7 @@
 
 import { FORMAT, VERSION, KINDS, KIND, SYMBOLS, LEADERS, LABEL_OFFSET, META_D, MAX_RADIUS, MAX_LABEL_OFFSET,
   emptyDoc, newId, columnsOf, find, targetOf, elements, canHold, holderOf, reading } from './document.js';
-import { ID, isObj, fin, oneOf, Skip, time, text, properties, flag, position, angle, look, aperture, readView, VIEW_D, VIEW_DATA_D } from './check.js';
+import { ID, isObj, fin, oneOf, shown, Skip, time, text, properties, flag, position, angle, look, aperture, readView, VIEW_D, VIEW_DATA_D } from './check.js';
 import { targetPosition, refreshAttached, placeAt, lineTarget } from './attach.js';
 import { settings, connectSettings, DISTRIBUTE_D, CONNECT_D } from './generator.js';
 import { norm180, samePosition, lonLatArea2 } from '../geo.js';
@@ -39,8 +39,11 @@ export function parse(text, known = null, now = Date.now()) {
   if (!isObj(raw)) return refuse('This is not a drawing file: it holds no document.');
   if (raw.type !== 'FeatureCollection' && raw.type !== 'Feature' && !GEOMETRIES.includes(raw.type)) return refuse('This is neither a drawing file nor GeoJSON.');
   const app = isObj(unpack(raw.earthplotter)) ? unpack(raw.earthplotter) : null; // as text: a GIS may write it so
-  if (app && app.version !== undefined && app.version !== VERSION) return refuse(`This drawing is of format version ${String(app.version).slice(0, 20)}; this app reads version ${VERSION}.`); // missing: this one
-  const { doc, view } = read(raw, app, known, now, report);
+  if (app && app.version !== undefined && app.version !== VERSION) return refuse(`This drawing is of format version ${shown(app.version)}; this app reads version ${VERSION}.`); // missing: this one
+  let got;
+  // a value no check foresaw (a file is anyone's text): the file refused with the reason, not a page error
+  try { got = read(raw, app, known, now, report); } catch (e) { console.warn('drawing file:', e); return refuse(`This drawing file could not be read: ${e.message}.`); }
+  const { doc, view } = got;
   return report.refused ? { doc: null, view: null, report } : { doc, view, report };
 }
 
@@ -103,7 +106,7 @@ function read(raw, app, known, now, report) {
       while (up && !depth.has(up) && !on.has(up)) {
         on.add(up); path.push(up);
         const next = up.groupId == null ? null : byId.get(up.groupId);
-        if (up.groupId != null && !next) top(up, `group ${String(up.groupId).slice(0, 64)} not found`);
+        if (up.groupId != null && !next) top(up, `group ${shown(up.groupId, 64)} not found`);
         up = next;
       }
       if (up && on.has(up)) top(path.at(-1), 'in a group inside itself'); // the loop cut where it closes
@@ -136,7 +139,7 @@ function read(raw, app, known, now, report) {
     parts.forEach((part, k) => {
       if (doc.groups.length + doc.points.length + doc.circles.length + doc.lines.length + doc.labels.length >= MAX_FEATURES) { over++; return; } // a Multi geometry: each part an element
       const kind = (mine?.kind === 'label' || mine?.kind === 'circle') && part.type === 'Point' ? mine.kind : { Point: 'point', LineString: 'line', Polygon: 'line' }[part.type];
-      if (!kind) { skip(`geometry ${String(part.type).slice(0, 20)}: not read`); return; }
+      if (!kind) { skip(`geometry ${shown(part.type)}: not read`); return; }
       const el = attempt(kind, fid, (c) => {
         const id = idOf(k ? null : f.id, c);
         const x = { ...commonOf({ ...propertiesFrom(props, mine, c), visible: mine?.visible }, c), id, groupId: typeof idIn(mine?.group) === 'string' ? idIn(mine.group) : null }; // checked once all are read
@@ -173,10 +176,10 @@ function read(raw, app, known, now, report) {
       const f = isObj(v) && Array.isArray(v.from) ? [idIn(v.from[0]), v.from[1]] : [], to = refIn(unpack(v?.to)), x = typeof f[0] === 'string' && find(doc, f[0]);
       const place = x && ((x.kind === 'line' && !holderOf(doc, x.el)) || x.kind === 'label') && Number.isInteger(f[1]) && placeAt(doc, f);
 
-      const what = !place ? `from ${String(f[0]).slice(0, 64)} ${String(f[1]).slice(0, 8)}, which is not a line's or a label's place here`
+      const what = !place ? `from ${shown(f[0], 64)} ${shown(f[1], 8)}, which is not a line's or a label's place here`
         : !to ? 'to nothing it can point at' : to.element === f[0] ? 'to its own element' : linked.has(`${f[0]} ${f[1]}`) ? 'from a place already linked'
-          : !targetPosition(doc, to) ? `to ${String(to.element).slice(0, 64)}, which is not here (or has no such vertex or edge)`
-            : x.kind === 'line' && !lineTarget(doc, to) && `from a line's place to ${String(to.element).slice(0, 64)}, which is neither a point nor a point's shape`;
+          : !targetPosition(doc, to) ? `to ${shown(to.element, 64)}, which is not here (or has no such vertex or edge)`
+            : x.kind === 'line' && !lineTarget(doc, to) && `from a line's place to ${shown(to.element, 64)}, which is neither a point nor a point's shape`;
       if (what) { report.warnings.push(`link ${what}: dropped`); continue; }
       doc.links.push({ from: [f[0], f[1]], to });
       linked.add(`${f[0]} ${f[1]}`);
@@ -194,7 +197,7 @@ function read(raw, app, known, now, report) {
   for (const x of Array.isArray(app?.rules) ? app.rules : []) {
     const r = attempt('rule', x?.id, (c) => {
       if (!isObj(x) || !ref(x.id) || taken.has(x.id)) c.skip('no valid ID');
-      if (x.kind !== 'distribute' && x.kind !== 'connect') c.skip(`unknown kind "${String(x.kind).slice(0, 20)}"`);
+      if (x.kind !== 'distribute' && x.kind !== 'connect') c.skip(`unknown kind "${shown(x.kind)}"`);
       if (x.kind === 'distribute') {
         const along = isObj(x.along) ? ref(x.along.element) : null;
         if (!along) c.skip('nothing it is along');

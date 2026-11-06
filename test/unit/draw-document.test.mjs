@@ -1093,3 +1093,28 @@ test('a shape freed from its point (Detach, a drop in the tree: setGroup) is an 
   d.setGroup(doc, c.id, null);
   assert.deepEqual([r.name, 'scale' in r.look, c.name, 'scale' in c.look], ['Area 1', false, 'Sector 1', false]);
 });
+
+test('a value made to break text (an object whose toString is not a function) is said, never thrown', () => {
+  const doc = emptyDoc(), line = addLine(doc, [[10, 40], [10.1, 40]]);
+  addPoint(doc, [10, 40]);
+  addLabel(doc, [10.05, 40.01], { element: line.id });
+  const base = () => JSON.parse(serialise(doc, null)), bad = { toString: 0 };
+  const point = (o) => o.features.find((x) => x.properties.earthplotter.kind === 'point').properties.earthplotter;
+  const f = base();
+  f.earthplotter.version = bad;
+  assert.match(read(f).report.refused, /format version \{"toString":0\}/);
+  const pt = base();
+  point(pt).symbol = bad;
+  warned(read(pt).report, /unknown "\{"toString":0\}"/);
+  const size = base();
+  point(size).look = { text: { size: bad } };
+  warned(read(size).report, /text size "\{"toString":0\}"/);
+  const rule = base();
+  rule.earthplotter.rules = [{ id: 'r1', kind: bad }];
+  assert.ok(read(rule).report.skipped.some((s) => /unknown kind "\{"toString":0\}"/.test(s.reason)));
+  const link = base();
+  link.earthplotter.links[0].from = [bad, bad];
+  const r = read(link);
+  assert.equal(r.report.refused, null);
+  warned(r.report, /link from \{"toString":0\} \{"toStri, which/);
+});

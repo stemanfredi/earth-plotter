@@ -9,9 +9,16 @@ export const ID = /^[A-Za-z0-9_-]{1,64}$/;
 const COLOUR = /^#[0-9a-fA-F]{6}$/;
 export const isObj = (x) => x !== null && typeof x === 'object' && !Array.isArray(x);
 export const fin = (x) => typeof x === 'number' && Number.isFinite(x);
+// a file's value as text for a message, at most n characters: a string as it is, anything else as JSON
+// (never String(v), which throws on an object whose toString is not a function)
+export function shown(v, n = 20) {
+  let s;
+  try { s = typeof v === 'string' ? v : JSON.stringify(v); } catch { s = typeof v; }
+  return String(s ?? typeof v).slice(0, n);
+}
 // a value one of list, else dflt (warned: what it is, the value; undefined: ignored); missing: dflt
 export const oneOf = (v, list, dflt, c, what) => (v === undefined || list.includes(v) ? v ?? dflt
-  : (c.warn(`${what}: unknown "${String(v).slice(0, 20)}", ${dflt === undefined ? 'ignored' : `${dflt} used`}`), dflt));
+  : (c.warn(`${what}: unknown "${shown(v)}", ${dflt === undefined ? 'ignored' : `${dflt} used`}`), dflt));
 
 export class Skip extends Error {}
 
@@ -120,7 +127,7 @@ export function look(l, c, kind, style = null) {
       else if (t[k] !== undefined) c.warn(`look text ${k}: not true or false, ignored`);
     }
     if (fin(t.size)) o.size = Math.max(TEXT_SIZE[0], Math.min(TEXT_SIZE[1], t.size)); // px
-    else if (t.size !== undefined) c.warn(`look text size "${String(t.size).slice(0, 20)}": not a number of pixels, ignored`);
+    else if (t.size !== undefined) c.warn(`look text size "${shown(t.size)}": not a number of pixels, ignored`);
     const bg = oneOf(t.background, BACKGROUNDS, undefined, c, 'look text background');
     if (bg !== undefined) o.background = bg;
     if (t.color != null) { const v = colour(t.color, undefined, c, 'look text colour'); if (v !== undefined) o.color = v; }

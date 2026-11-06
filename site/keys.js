@@ -2,6 +2,8 @@
 // opens what it names, from anywhere), the tooltips say a tool's key, and About lists them all.
 // Keys acting on what is under way (finishing, taking back a point, deleting) are handled where it
 // is (draw/drawing.js, draw/panel.js), and listed here. show: the keys as About shows them, [x] a key cap.
+// Each handler leaves a key a control has taken (defaultPrevented: a table's Ctrl Delete, a menu's ↑ ↓);
+// during a drag the edits (undo, redo, delete, paste, duplicate) wait for it to end (Drawing.moving()).
 
 import { h } from './dom.js';
 

@@ -415,7 +415,7 @@ export class Drawing extends DrawStore {
     map.on('contextmenu', (e) => { if (right && Math.hypot(e.point.x - right.x, e.point.y - right.y) <= 3) { if (this.finishesOnDoubleClick() && this.pathPoints().length >= 2) this.finish(); else escape(); } });
     map.on('dblclick', (e) => { if (this.finishesOnDoubleClick()) { e.preventDefault(); this.finish(); } });
     window.addEventListener('keydown', (e) => {
-      if (typing(e.target) || document.querySelector('dialog[open]')) return;
+      if (e.defaultPrevented || typing(e.target) || document.querySelector('dialog[open]')) return;
       if (e.key === 'Escape') escape(); // with Alt held too: Alt is the key for dragging free of snapping
       else if (e.ctrlKey || e.metaKey || e.altKey || !this.tool) return;
       else if (e.key === 'Enter' && !e.target.closest('button')) { e.preventDefault(); this.finish(); } // Enter on a focused button is that button's own click

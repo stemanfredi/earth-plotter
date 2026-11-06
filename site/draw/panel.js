@@ -581,7 +581,7 @@ export function drawView(root, ctx) {
 
   // ---- keys ----------------------------------------------------------------------------------
   window.addEventListener('keydown', (e) => {
-    if (document.querySelector('dialog[open]')) return;
+    if (e.defaultPrevented || document.querySelector('dialog[open]')) return; // a control's own key (a table's Ctrl Delete, a menu's ↓)
     const typed = typing(e.target); // a box ticked is no typing: the keys stay the drawing's
     const mod = e.ctrlKey || e.metaKey;
     if (mod && !e.altKey && (e.key === 'z' || e.key === 'Z')) {
@@ -609,7 +609,7 @@ export function drawView(root, ctx) {
     // deleting: Delete; on a Mac, whose delete key is Backspace, ⌘-Backspace as in the Finder. Never
     // Backspace alone, which takes back a point while drawing (here and in Measure)
     // a vertex current (pressed on the map or its row): it, else the selection
-    if (!typed && (e.key === 'Delete' || (mac && e.metaKey && e.key === 'Backspace')) && drawing.sel.size) { e.preventDefault(); if (!drawing.removePlace()) del([...drawing.sel]); return; }
+    if (!typed && ((e.key === 'Delete' && !mod) || (mac && e.metaKey && e.key === 'Backspace')) && drawing.sel.size) { e.preventDefault(); if (!drawing.removePlace()) del([...drawing.sel]); return; }
     if (typed || mod || e.altKey) return;
     // the tools' keys: app.js, from anywhere
     // ↑ ↓ step the tree, unless what has the focus takes them itself (a slider, a radio card, the map)

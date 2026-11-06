@@ -89,7 +89,7 @@ Without `earthplotter` the file is plain GeoJSON, read as such.
 |---|---|
 | `center`, `zoom`, `bearing` | the map's view; `zoom` 0–24; `bearing` its rotation |
 | `layers` | the layers shown, by the app's ID; `variant`, `period`, `opacity` only where they differ from the layer's default |
-| `data` | the data layers chosen (colours, arrows: `{ id, variant }` or `null`), the hour and the depth (m), each only while a layer shown uses it. The app always writes it (`{}`: none), so opening the file clears the map's; missing, they stay. |
+| `data` | the data layers chosen (colours, arrows: `{ id, variant }`, with `opacity` 0–1 where not the layer's default, or `null`), the hour and the depth (m), each only while a layer shown uses it. The app always writes it (`{}`: none), so opening the file clears the map's; missing, they stay. |
 | `units` | `"km"` or `"nm"` |
 | `bearings` | each leg's bearing shown with its length |
 

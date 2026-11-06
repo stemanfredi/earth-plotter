@@ -11,6 +11,7 @@ const VERSION = 'dev';
 // the preview picture and version.json, which only a deployed copy has: kept apart, below)
 const SHELL = [
   // shell:start (written by tools/deps.mjs --write; do not edit by hand)
+  'address.js',
   'app.js',
   'apple-touch-icon.png',
   'catalog.js',

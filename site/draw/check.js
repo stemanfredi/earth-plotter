@@ -178,7 +178,8 @@ export function readView(v, known, c) {
       if (!isObj(e) || typeof e.id !== 'string') { c.warn(`data ${slot}: not {id, variant}, ignored`); continue; }
       const variant = e.variant == null ? null : String(e.variant); // an entry is an item at a variant: without one it names nothing
       if (variant === null || (known && !(Object.hasOwn(known.data, e.id) && known.data[e.id].includes(variant)))) { c.warn(`data ${slot}: "${e.id}${variant ? `:${variant}` : ''}" not known here; skipped`); continue; }
-      d[slot] = { id: e.id, variant };
+      const opacity = clamp(e.opacity, 0, 1, undefined, c, `data ${slot} opacity`); // missing or not a number: the layer's default
+      d[slot] = { id: e.id, variant, ...(opacity !== undefined && { opacity }) };
     }
     if (v.data.depth !== undefined && v.data.depth !== null) {
       if (fin(v.data.depth) && (!known || known.depths.includes(v.data.depth))) d.depth = v.data.depth;

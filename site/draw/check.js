@@ -2,7 +2,7 @@
 // default with a warning (c.warn), or skips the element (c.skip throws Skip), for the file's reader
 // (file.js). Pure: no map, no DOM.
 
-import { MAX_LAT, norm360, norm180 } from '../geo.js';
+import { norm360, norm180 } from '../geo.js';
 import { DEFAULT_STYLE, MAX_OFFSET, STROKE_WIDTH, DASHES, TEXT_SIZE, SCALE, BACKGROUNDS, LOOK_FIELDS, isoNow } from './document.js';
 
 export const ID = /^[A-Za-z0-9_-]{1,64}$/;
@@ -50,7 +50,7 @@ export function flag(v, c, what) {
 }
 export function position(p, c, what) {
   if (!Array.isArray(p) || p.length < 2 || !fin(p[0]) || !fin(p[1])) c.skip(`${what}: not [longitude, latitude]`);
-  if (Math.abs(p[1]) > MAX_LAT) c.skip(`${what}: [${p[0]}, ${p[1]}] is out of range (latitude ±${MAX_LAT})`);
+  if (Math.abs(p[1]) > 90) c.skip(`${what}: [${p[0]}, ${p[1]}] is out of range (latitude ±90)`);
   // a longitude past ±180 (placed on a copy of the world beside the first): the same place, brought back
   return [Math.abs(p[0]) > 180 ? norm180(p[0]) : p[0], p[1]];
 }

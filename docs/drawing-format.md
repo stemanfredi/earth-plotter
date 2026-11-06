@@ -41,7 +41,7 @@ attachment as a **link** (§7.6).
 
 | What | How |
 |---|---|
-| Position | `[longitude, latitude]`, WGS 84 degrees; −180 ≤ lon ≤ 180, \|lat\| ≤ 85.05112878 (the map's limit). A third value is dropped. |
+| Position | `[longitude, latitude]`, WGS 84 degrees; −180 ≤ lon ≤ 180, \|lat\| ≤ 90 (the map shows to ±85.05°; what lies beyond is kept, unseen). A third value is dropped. |
 | Distance | metres |
 | Angle | degrees clockwise from **true** north, 0 ≤ a < 360 (read: any finite value, normalised with a warning) |
 | Colour | `"#rrggbb"`, read in either case, written in lower case; opacity apart, 0–1 |

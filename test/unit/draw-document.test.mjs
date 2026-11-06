@@ -232,20 +232,20 @@ test('IDs: a malformed, repeated or missing one is replaced with a warning; a nu
 
 test('skipped: latitudes out of range, positions missing, too few positions, what is not a feature, geometry collections; a longitude past ±180 brought back', () => {
   const { doc, report } = read(collection([
-    F('ok', 'Point', [0, 0]), F('far', 'Point', [0, 86]), F('west', 'Point', [-181, 0]), F('nopos', 'Point', null), F('short', 'Point', [1]),
+    F('ok', 'Point', [0, 0]), F('far', 'Point', [0, 91]), F('polar', 'Point', [0, 86]), F('west', 'Point', [-181, 0]), F('nopos', 'Point', null), F('short', 'Point', [1]),
     F('one', 'LineString', [[0, 0]]), F('badvertex', 'LineString', [[0, 0], [1, 'x']]), F('two', 'Polygon', [[[0, 0], [1, 0], [0, 0]]]), F('noring', 'Polygon', [1, 2]),
     'junk', { type: 'Feature', id: 'nogeo', properties: {} }, F('gc', 'GeometryCollection', undefined), F('odd', 'Curve', [0, 0]),
   ]));
-  assert.deepEqual(doc.points.map((p) => [p.id, p.position]), [['ok', [0, 0]], ['west', [179, 0]]]);
+  assert.deepEqual(doc.points.map((p) => [p.id, p.position]), [['ok', [0, 0]], ['polar', [0, 86]], ['west', [179, 0]]]);
   assert.deepEqual(doc.lines, []);
-  assert.deepEqual(skippedIds(report), ['far', 'nopos', 'short', 'one', 'badvertex', 'two', 'noring', '10', 'nogeo', 'gc', 'odd']);
+  assert.deepEqual(skippedIds(report), ['far', 'nopos', 'short', 'one', 'badvertex', 'two', 'noring', '11', 'nogeo', 'gc', 'odd']);
   const why = Object.fromEntries(report.skipped.map((s) => [s.id, s.reason]));
   assert.match(why.far, /out of range/);
   assert.match(why.nopos, /not \[longitude, latitude\]/);
   assert.match(why.one, /two positions/);
   assert.match(why.badvertex, /position 2/);
   assert.match(why.two, /a ring needs three positions/);
-  assert.match(why['10'], /not a Feature/);
+  assert.match(why['11'], /not a Feature/);
   assert.match(why.nogeo, /no geometry/);
   assert.match(why.gc, /geometry collection/);
   assert.match(why.odd, /Curve: not read/);

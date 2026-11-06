@@ -8,6 +8,7 @@ import { emptyDoc } from './document.js';
 import { parse } from './file.js';
 import { store } from '../dom.js';
 import { note } from '../menu.js';
+import { plural } from '../format.js';
 
 const INDEX = 'earthplotter.drawings', CURRENT = 'earthplotter.drawings.current', OPENING = 'earthplotter.drawings.opening';
 const KEY = (id) => `earthplotter.drawing.${id}`;
@@ -36,6 +37,7 @@ export function savedView(known) {
 export class Saving {
   constructor(drawing) {
     this.d = drawing;
+    this.say = note; // what is said to the user (a test listens)
     this.timer = 0;
     this.failed = false;
     this.viewMoved = false; // the view moved since the last save
@@ -54,21 +56,20 @@ export class Saving {
     if (!index.some((x) => x.id === this.id)) index.push({ id: this.id, title: this.d.doc.meta.title, modified: this.d.doc.modified, size: 0 }); // open, not saved yet
     return latestFirst(index.map((x) => ({ ...x, open: x.id === this.id })));
   }
-  // the drawing open, read back at load
+  // the drawing open, read back at load. One that stalled the page while it was drawn last time (the
+  // page closed before OPENING was cleared), or that this app cannot read (another format version):
+  // left as it is, never saved over; a new one opens, so the page always comes up
   restore() {
     const text = store.get(KEY(this.id));
     if (!text) return;
-    const { doc, report } = readKept(text, this.d.known);
-    lastRead = null; // the document is the drawing's own from now on
-    // one this app cannot read (another format version): left as it is, never saved over; a new one opens
-    if (!doc) { console.error('saved drawing not read:', report.refused); this.id = newKey(); store.set(CURRENT, this.id); return; }
-    // one that stalled the page while it was drawn last time (the page closed before OPENING was
-    // cleared): left as it is, a new one opens, so the page always comes up
-    if (store.get(OPENING) === this.id) { console.error('saved drawing not opened: the page did not finish drawing it last time'); store.remove(OPENING); this.id = newKey(); store.set(CURRENT, this.id); return; }
+    if (store.get(OPENING) === this.id) { console.error('saved drawing not opened: the page did not finish drawing it last time'); store.remove(OPENING); this.fresh(); return; }
     store.set(OPENING, this.id);
-    this.d.adopt(doc);
+    const opened = this.load(this.id, readKept(text, this.d.known));
+    lastRead = null; // the document is the drawing's own from now on
     store.remove(OPENING);
+    if (!opened) this.fresh();
   }
+  fresh() { this.id = newKey(); store.set(CURRENT, this.id); }
   soon() { clearTimeout(this.timer); this.timer = setTimeout(() => this.now(), 400); }
   now() {
     clearTimeout(this.timer);
@@ -84,7 +85,7 @@ export class Saving {
     }
     if (ok === !this.failed) return; // as it was: nothing to say
     this.failed = !ok;
-    if (!ok) note('The drawing could not be saved in this browser (storage full or turned off)');
+    if (!ok) this.say('The drawing could not be saved in this browser (storage full or turned off)');
     this.d.onChange('storage');
   }
   // the view only changed: kept with the drawing at its next save, or when the page goes; never by a
@@ -96,11 +97,16 @@ export class Saving {
     this.now();
     return this.load(id)?.view ?? null;
   }
-  // the drawing id read and opened: { doc, view }, or null (not there, not readable)
-  load(id) {
-    const text = store.get(KEY(id));
-    const { doc, view, report } = text ? parse(text, this.d.known) : { doc: null, report: { refused: 'This drawing is no longer in this browser' } };
-    if (!doc) { note(report.refused); return null; }
+  // the drawing id read and opened: { doc, view }, or null (not there, not readable). What it holds
+  // that could not be read is said: it is not in the drawing from now on
+  load(id, read) {
+    const text = read ? null : store.get(KEY(id));
+    const { doc, view, report } = read ?? (text ? parse(text, this.d.known) : { doc: null, report: { refused: 'This drawing is no longer in this browser' } });
+    if (!doc) { this.say(report.refused); return null; }
+    if (report.skipped.length) {
+      console.warn('drawing opened without:', report.skipped);
+      this.say(`${plural(report.skipped.length, 'element')} of this drawing could not be read: left out`);
+    }
     this.id = id;
     store.set(CURRENT, id);
     this.otherTab = false;

@@ -412,3 +412,11 @@ test('a point\'s name: just under its outlines as drawn, on screen (the map turn
   const rings = nameOf(q.id, 0);
   assert.deepEqual([rings.properties.under, rings.geometry.coordinates], [undefined, [12.1, 40]], 'circles name themselves: its name beside it');
 });
+
+test('a point holding a shape of many vertices is drawn and measured (no spread into Math.max)', () => {
+  const doc = emptyDoc(), { point, shapes } = addShape(doc, [12, 40]);
+  const ring = shapes.find((x) => x.points);
+  ring.points = Array.from({ length: 200000 }, (_, i) => destination([12, 40], (i * 360) / 200000, 50));
+  near(reachOf(doc, point), 50, 0.01, 'its reach');
+  assert.ok(drawFeatures(doc, new Set([point.id])).features.length > 0);
+});

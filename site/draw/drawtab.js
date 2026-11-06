@@ -10,6 +10,7 @@ import { BUILT_IN, builtInName, placeKind, itemBase, itemKind, itemFor, itemKey,
 import { emptyDoc, styleOf, lookOf } from './document.js';
 import { folderOf, byName } from './library.js';
 import { icon, KIND_ICON, POINT_ICON, SYMBOL_ICON } from '../icons.js';
+import { NM } from '../geo.js';
 
 const KIND_TYPE = 'application/x-earthplotter-kind'; // a row dragged: the kind it places
 const M = 111320; // metres to a degree, at the equator (where an item is laid out to be measured)
@@ -26,7 +27,8 @@ function layout(x) {
   circles = circles.filter((c) => c.visible).map((c) => ({ c: xy(c.position), r: c.radius, aperture: c.aperture, bearing: c.bearing, st: styleOf(doc, c) }));
   lines = lines.filter((l) => l.visible).map((l) => ({ pts: l.points.map(xy), st: styleOf(doc, l) }));
   const ext = [...circles.flatMap(({ c, r }) => [[c[0] - r, c[1] - r], [c[0] + r, c[1] + r]]), ...lines.flatMap((l) => l.pts)];
-  const box = ext.length ? [Math.min(...ext.map((p) => p[0])), Math.min(...ext.map((p) => p[1])), Math.max(...ext.map((p) => p[0])), Math.max(...ext.map((p) => p[1]))] : null;
+  let box = null; // a loop: an outline's vertices can be more than Math.min(...) takes (metres here: no antimeridian, so not extentOf)
+  for (const [x, y] of ext) box = box ? [Math.min(box[0], x), Math.min(box[1], y), Math.max(box[2], x), Math.max(box[3], y)] : [x, y, x, y];
   const out = { symbol: pt.symbol, circles, lines, box };
   laid.set(x, out);
   return out;
@@ -34,7 +36,6 @@ function layout(x) {
 
 // a size to tell items apart, not to measure by (Properties has the exact one): two figures at most
 // ("0.8", "6.1", "14", "30"), then its unit: metres, then km or NM as the drawing's units say
-const NM = 1852;
 const figure = (v) => +v.toFixed(v < 10 ? 1 : 0);
 const short = (m, units) => (m < 1000 ? `${figure(m)} m` : units === 'nm' ? `${figure(m / NM)} NM` : `${figure(m / 1000)} km`);
 // what a point item measures: its largest circle's radius, else its outline's extent, the larger side first

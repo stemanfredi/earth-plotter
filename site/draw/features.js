@@ -23,9 +23,20 @@ const rimOf = (c, up = 0) => {
 export const drawnCircle = (doc, c) => { const t = drawnOf(doc, c); return t.k === 1 ? c : { ...c, position: t.f(c.position), radius: c.radius * t.k }; };
 // how far a point's shapes (members: some of them) reach from it along azimuth azi, as drawn (each at
 // its Scale): along its bearing, where its stalk starts; along the screen's down, where its name goes
-const reachAlong = (doc, p, azi, members = membersOf(doc, p.id)) => Math.max(0, ...members.flatMap(({ kind, el }) => { const t = drawnOf(doc, el); return positionsIn(kind, el).map(([o, k]) => { const g = inverse(p.position, t.f(o[k])); return g.s * Math.cos((g.azi - azi) * D2R) + (el.radius ?? 0) * t.k; }); }));
+function reachAlong(doc, p, azi, members = membersOf(doc, p.id)) {
+  let m = 0; // a loop: a shape's vertices can be more than Math.max(...) takes
+  for (const { kind, el } of members) {
+    const t = drawnOf(doc, el);
+    for (const [o, k] of positionsIn(kind, el)) { const g = inverse(p.position, t.f(o[k])); m = Math.max(m, g.s * Math.cos((g.azi - azi) * D2R) + (el.radius ?? 0) * t.k); }
+  }
+  return m;
+}
 // how far a point's shapes reach from it (m): their farthest vertex, or circle's rim
-export const reachOf = (doc, p) => Math.max(0, ...membersOf(doc, p.id).flatMap(({ kind, el }) => positionsIn(kind, el).map(([o, k]) => inverse(p.position, o[k]).s + (el.radius ?? 0))));
+export function reachOf(doc, p) {
+  let m = 0;
+  for (const { kind, el } of membersOf(doc, p.id)) for (const [o, k] of positionsIn(kind, el)) m = Math.max(m, inverse(p.position, o[k]).s + (el.radius ?? 0));
+  return m;
+}
 
 const HANDLE_GAP = 12; // px
 const BAND_GAP = 2; // px: the hover band's points, at least this far apart on screen

@@ -153,7 +153,7 @@ export function createTree(drawing, { facts, drawingPicked = () => {} }) {
   // group. One undo step.
   let dragged = null;
   const dropOn = (e) => { const r = e.target.closest?.('.drow[data-id]'); return r && dragged && r.dataset.id !== dragged ? r : null; };
-  list.addEventListener('dragstart', (e) => { dragged = e.target.closest?.('.drow')?.dataset.id ?? null; if (dragged) e.dataTransfer.effectAllowed = 'move'; });
+  list.addEventListener('dragstart', (e) => { dragged = e.target.closest?.('.drow')?.dataset.id ?? null; if (dragged) { e.dataTransfer.setData('application/x-earthplotter-row', dragged); e.dataTransfer.effectAllowed = 'move'; } }); // some data, or Firefox starts no drag
   list.addEventListener('dragover', (e) => { const r = dropOn(e); if (!r) return; e.preventDefault(); for (const x of list.querySelectorAll('.drop')) if (x !== r) x.classList.remove('drop'); r.classList.add('drop'); });
   list.addEventListener('dragleave', (e) => e.target.closest?.('.drow')?.classList.remove('drop'));
   list.addEventListener('dragend', () => { dragged = null; for (const x of list.querySelectorAll('.drop')) x.classList.remove('drop'); });

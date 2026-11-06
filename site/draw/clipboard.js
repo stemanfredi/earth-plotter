@@ -30,14 +30,15 @@ const baseOf = (name) => /^(.*\S) \d+$/.exec(name)?.[1] ?? name;
 const nameOn = (doc, kind, base) => (base ? nextName(doc, kind, base) : '');
 
 // The clipboard pasted into doc, each position moved by mv(position): the new elements, in order.
-export function paste(doc, clip, mv) {
+// Each gets a numbered name, but those whose kind keep(kind) says: their names as copied.
+export function paste(doc, clip, mv, keep = () => false) {
   const taken = idsOf(doc), ids = new Map(), groups = new Set(doc.groups.map((g) => g.id));
   for (const { el } of clip.items) ids.set(el.id, newId(doc, taken));
   const made = [];
   for (const { kind, el: src } of clip.items) {
     const el = clone(src);
     el.id = ids.get(src.id);
-    el.name = nameOn(doc, kind, baseOf(src.name));
+    el.name = keep(kind) ? src.name : nameOn(doc, kind, baseOf(src.name));
     if (!ids.has(el.groupId)) delete el.frame; // a shape copied without its point: free
     el.groupId = ids.get(el.groupId) ?? (groups.has(el.groupId) ? el.groupId : null); // a shape in the copy of its point
     for (const [o, k] of positionsIn(kind, el)) o[k] = mv(o[k]);
@@ -56,14 +57,16 @@ export function paste(doc, clip, mv) {
   }
   return made;
 }
+// paste's keep for a point and its shapes: the shapes keep their names (its point names them)
+export const shapesKeep = (kind) => kind !== 'point';
 // point id of doc and its shapes, as they are, in a drawing of their own (a Library item; a rule's copy as its
 // template): the point shown, its shapes shown or hidden as they are (a copy placed from it is so), and no
 // guide; each shape keeps its name
 export function alone(doc, id) {
-  const d = emptyDoc(0), clip = clipOf(doc, [id]);
-  paste(d, clip, (q) => q).forEach(({ kind, el }, i) => {
-    if (kind === 'point') el.visible = true; else el.name = clip.items[i].el.name;
+  const d = emptyDoc(0);
+  for (const { kind, el } of paste(d, clipOf(doc, [id]), (q) => q, shapesKeep)) {
+    if (kind === 'point') el.visible = true;
     if (kind !== 'label') el.guide = false;
-  });
+  }
   return d;
 }

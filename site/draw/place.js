@@ -7,7 +7,7 @@ import { addPoint, addCircle, addLine, nextName, carry } from './document.js';
 import { OUTLINES, OUTLINE_NAME, outlinePoints } from './outlines.js';
 import { inverse } from '../geodesy.js';
 import { unrollTo } from '../geo.js';
-import { clipOf, paste } from './clipboard.js';
+import { clipOf, paste, shapesKeep } from './clipboard.js';
 
 // A Library item (library.js) as a tool's variant and a rule's copy say it: 'library:<name>'
 const PREFIX = 'library:';
@@ -51,9 +51,7 @@ export function build(doc, p, kind, d = 0, { aperture = 90, size = null } = {}) 
 // facing bearing, in group groupId: pasted where it is, then carried there and turned; its shapes keep
 // their names (a point's shapes need not be told apart by name). Returns the point.
 export function placeCopy(doc, tpl, p, bearing = 0, groupId = null) {
-  const clip = clipOf(tpl, [tpl.points[0].id]), made = paste(doc, clip, (q) => q);
-  made.forEach(({ kind, el }, i) => { if (kind !== 'point') el.name = clip.items[i].el.name; });
-  const pt = made[0].el;
+  const pt = paste(doc, clipOf(tpl, [tpl.points[0].id]), (q) => q, shapesKeep)[0].el;
   pt.groupId = groupId;
   carry(doc, pt, p, bearing);
   return pt;

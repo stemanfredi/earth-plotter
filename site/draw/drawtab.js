@@ -48,8 +48,10 @@ function sizeOf(x, units) {
   return `${num} × ${figure(small * (num / big))} ${unit}`;
 }
 
-// An item's picture (24 × 24, as the icons): its shapes shown, in their own colours, fitted; a point
-// alone its symbol
+// a picture's frame (24 × 24, as the icons), and a shape's fill in it (a faint one when it has none)
+const thumb = (...kids) => svg('svg', { viewBox: '0 0 24 24', width: 20, height: 20, 'aria-hidden': 'true', class: 'thumb' }, ...kids);
+const fillOf = (st) => ({ fill: st.fill.opacity > 0 ? st.fill.color : 'none', 'fill-opacity': Math.max(st.fill.opacity, 0.15) });
+// An item's picture: its shapes shown, in their own colours, fitted; a point alone its symbol
 function thumbOf(x) {
   const kind = itemKind(x);
   if (kind !== 'point') return lookThumb(x, kind);
@@ -58,8 +60,7 @@ function thumbOf(x) {
   const span = Math.max(box[2] - box[0], box[3] - box[1]) || 1, k = 20 / span;
   const cx = (box[0] + box[2]) / 2, cy = (box[1] + box[3]) / 2;
   const at = ([e, n]) => [12 + (e - cx) * k, 12 - (n - cy) * k]; // north up
-  const paint = (st) => ({ stroke: st.stroke.color, 'stroke-opacity': st.stroke.opacity, fill: st.fill.opacity > 0 ? st.fill.color : 'none', 'fill-opacity': Math.max(st.fill.opacity, 0.15),
-    'stroke-width': 1.5, 'vector-effect': 'non-scaling-stroke', ...(st.stroke.dash === 'dashed' ? { 'stroke-dasharray': '3 2' } : {}) });
+  const paint = (st) => ({ stroke: st.stroke.color, 'stroke-opacity': st.stroke.opacity, ...fillOf(st), 'stroke-width': 1.5, 'vector-effect': 'non-scaling-stroke', ...(st.stroke.dash === 'dashed' ? { 'stroke-dasharray': '3 2' } : {}) });
   const shapes = [
     ...[...circles].sort((a, b) => b.r - a.r).map(({ c, r, aperture, bearing, st }) => {
       const [x0, y0] = at(c), rr = Math.max(r * k, 0.75);
@@ -70,7 +71,7 @@ function thumbOf(x) {
     }),
     ...lines.map(({ pts, st }) => svg('polygon', { points: pts.map(at).map((p) => p.join(',')).join(' '), ...paint(st) })),
   ];
-  return svg('svg', { viewBox: '0 0 24 24', width: 20, height: 20, 'aria-hidden': 'true', class: 'thumb' }, ...shapes);
+  return thumb(...shapes);
 }
 
 // The Library's items: what a row draws, as [tool, its variant]: a point, a line, an area (a line
@@ -96,15 +97,14 @@ export const drawsNow = (drawing) => itemBase(itemName(itemNow(drawing) ?? ''));
 const stroke = (st) => ({ stroke: st.stroke.color, 'stroke-opacity': st.stroke.opacity, 'stroke-width': Math.min(Math.max(st.stroke.width, 1), 4),
   ...(st.stroke.dash === 'dashed' ? { 'stroke-dasharray': '4 2.5' } : st.stroke.dash === 'dotted' ? { 'stroke-dasharray': '0.1 3', 'stroke-linecap': 'round' } : {}) });
 function lookThumb(x, kind) {
-  const box = (...kids) => svg('svg', { viewBox: '0 0 24 24', width: 20, height: 20, 'aria-hidden': 'true', class: 'thumb' }, ...kids);
   if (kind === 'label') {
     const t = lookOf(x.doc, x.doc.labels[0]).text;
-    return box(...(t.background === 'box' ? [svg('rect', { x: 2, y: 5, width: 20, height: 14, rx: 2, fill: '#fff', stroke: t.color })] : []),
+    return thumb(...(t.background === 'box' ? [svg('rect', { x: 2, y: 5, width: 20, height: 14, rx: 2, fill: '#fff', stroke: t.color })] : []),
       svg('text', { x: 12, y: 16.5, 'text-anchor': 'middle', 'font-size': 12, 'font-weight': 600, fill: t.color }, 'Aa'));
   }
   const st = styleOf(x.doc, x.doc.lines[0]);
-  if (kind === 'area') return box(svg('rect', { x: 3, y: 5, width: 18, height: 14, rx: 1, fill: st.fill.opacity > 0 ? st.fill.color : 'none', 'fill-opacity': Math.max(st.fill.opacity, 0.15), ...stroke(st) }));
-  return box(svg('path', { d: 'M2 17 8 9l6 6 8-9', fill: 'none', 'stroke-linejoin': 'round', ...stroke(st) }));
+  if (kind === 'area') return thumb(svg('rect', { x: 3, y: 5, width: 18, height: 14, rx: 1, ...fillOf(st), ...stroke(st) }));
+  return thumb(svg('path', { d: 'M2 17 8 9l6 6 8-9', fill: 'none', 'stroke-linejoin': 'round', ...stroke(st) }));
 }
 
 // an item's picture: a built-in's icon, the user's own its own

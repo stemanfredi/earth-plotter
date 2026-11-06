@@ -29,8 +29,8 @@ export function saveLibrary(list) {
 // line or a label alone, shown, its name kept, not a measurement)
 export function itemOf(doc, id, name) {
   if (find(doc, id)?.kind === 'point') return { name, doc: alone(doc, id) };
-  const d = emptyDoc(0), clip = clipOf(doc, [id]);
-  for (const [i, { el }] of paste(d, clip, (q) => q).entries()) { el.name = clip.items[i].el.name; el.visible = true; el.measure = false; }
+  const d = emptyDoc(0);
+  for (const { el } of paste(d, clipOf(doc, [id]), (q) => q, () => true)) { el.visible = true; el.measure = false; }
   return { name, doc: d };
 }
 // the library as a file, and back (what is not an item left out); null: not a library's file

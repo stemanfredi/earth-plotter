@@ -14,9 +14,10 @@ import { hasShapes } from './library.js';
 import { listGrid } from './grid.js';
 import { fmtDist, plural } from '../format.js';
 import { groupPath } from './tree.js';
+import { row, pair, funit, fvalue, withUnit } from './rows.js';
 
 export function createForms(kit) {
-  const { drawing, map, F, row, section, pair, funit, fvalue, withUnit, distValue, link, now, tops, radiusCheck, selKey, setTitle, render: renderInspector } = kit;
+  const { drawing, map, F, section, distValue, link, now, tops, radiusCheck, selKey, setTitle, render: renderInspector } = kit;
   const connectBtn = (xs) => { const ids = xs.filter((x) => x.kind === 'point').map((x) => x.el.id); return ids.length > 1 ? h('button', { type: 'button', class: 'small', title: 'Lines from roots to these points', onclick: () => openConnect(ids) }, 'Connect…') : null; };
   const copies = (n) => `${n} ${n === 1 ? 'copy' : 'copies'}`;
   // a root no group is cheapest from, once made: said, as the form said it before

@@ -4,6 +4,7 @@
 //  - nothing on screen leaves the viewport;
 //  - every visible control is a ≥ 44 × 44 px target (labels count for their checkbox).
 //   CHROME=/path/to/chrome npm run ui        Screenshots go to $UI_SHOTS if set.
+import { readFileSync } from 'node:fs';
 import { start, frames, until, openPage, addDistance } from './browser.mjs';
 
 // phone and tablet are touch devices (pointer: coarse, 44 px targets); desktop has a mouse (36 px; 24
@@ -31,6 +32,20 @@ const DRAWING = JSON.stringify({ type: 'FeatureCollection', earthplotter: { form
 // put where the app keeps its drawings (draw/saving.js): the list, the one open, its text
 const SEED = (d) => { localStorage.setItem('earthplotter.drawings', JSON.stringify([{ id: 'ui', title: '', modified: '2026-10-24T00:00:00Z', size: d.length }])); localStorage.setItem('earthplotter.drawings.current', 'ui'); localStorage.setItem('earthplotter.drawing.ui', d); };
 
+// Without the network, as draw.mjs: what is checked is the page's layout, not a provider's day (the
+// map's tiles and glyphs fail; the layout does not depend on them). Two of the legends are drawn from
+// what Copernicus says of its colours: its answers for the two layers on, as fixtures (test/fixtures)
+const LEGENDS = { VHM0: 'legend-VHM0.json', sea_water_velocity: 'legend-sea_water_velocity.json' };
+const offline = async (opts) => {
+  const c = await browser.newContext({ serviceWorkers: 'block', ...opts });
+  await c.route(/^https?:\/\/(?!127\.0\.0\.1|localhost)/, (r) => {
+    const layer = /[?&]REQUEST=GetLegend&/.test(r.request().url()) && new URL(r.request().url()).searchParams.get('LAYER')?.split('/').at(-1);
+    if (!LEGENDS[layer]) return r.abort();
+    return r.fulfill({ contentType: 'application/json', body: readFileSync(new URL(`./fixtures/${LEGENDS[layer]}`, import.meta.url)) });
+  });
+  return c;
+};
+
 const { browser, base, check, section, finish } = await start();
 
 for (const [name, width, height, touch] of VIEWPORTS) {
@@ -38,8 +53,7 @@ for (const [name, width, height, touch] of VIEWPORTS) {
   // Layers; then the Elements tab four times: the drawing's inspector, a node's, a line's, a label's
   for (const view of ['map', 'layers', 'drawing', 'draw', 'line', 'label']) {
     await section(`${name} ${width}px, ${view}`, async () => {
-      // the live providers: two of the legends are drawn from what they say (ci.yml retries a bad day)
-      const ctx = await browser.newContext({ viewport: { width, height }, hasTouch: touch, isMobile: touch });
+      const ctx = await offline({ viewport: { width, height }, hasTouch: touch, isMobile: touch });
       // the Elements tab with a drawing: a point with two sectors (its inspector shown) and a shape
       const inspect = !['map', 'layers'].includes(view);
       if (inspect) await ctx.addInitScript(SEED, DRAWING);

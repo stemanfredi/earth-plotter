@@ -43,7 +43,7 @@ jobs:
       - if: github.event_name == 'schedule'   # live data: never in a manual run, a redeploy an outage must not block
         run: npm run data-check      # newer density data: a notice; a layer or dataset no longer offered: a failure
 
-  browser:                           # headless Chrome against the live tile providers (draw: without them)
+  browser:                           # headless Chrome: smoke against the live providers; draw and ui without them
     runs-on: ubuntu-24.04
     timeout-minutes: 40              # smoke waits up to 10 min for an area save, and may run twice (its retry sleeps a minute), then draw and ui
     steps:
@@ -57,15 +57,13 @@ jobs:
       - run: |
           npx playwright-core install chromium
           echo "CHROME=$(node -e "import('playwright-core').then((m) => console.log(m.chromium.executablePath()))")" >> "$GITHUB_ENV"
-      # one retry each: a provider hiccup should not block a deploy, a real failure still does. On a push,
-      # what a provider served (tiles, legends, places found) is checked but not held against the page:
-      # said as warnings; the weekly run is strict, so a provider down for a week is a failed run (mailed)
-      # a pass only on the retry is a warning on the run, so a check that fails now and then is seen
+      # smoke: one retry, a pass only on it a warning on the run (a check that fails now and then is
+      # seen); what providers served counts as test/browser.mjs says (warnings on a push, strict weekly)
       - run: npm run smoke || (echo "::warning title=Retry::smoke passed only on its retry"; sleep 60; npm run smoke)
         env:
           STRICT: ${{ github.event_name == 'schedule' && '1' || '' }} # a run by hand is a redeploy: a provider's outage must not block it
       - run: npm run draw            # the drawing tools, every request but the site's own aborted: no retry
-      - run: npm run ui || (echo "::warning title=Retry::ui passed only on its retry"; sleep 60; npm run ui) # no overlaps, 44 px targets, 390/820/1280 px
+      - run: npm run ui              # no overlaps, 44 px targets, 390/820/1280 px; without the network: no retry
       - if: github.event_name == 'schedule'   # live data, weekly only (a manual run is a redeploy)
         run: npm run tiles-check     # known trouble spots: seams, zooms, lakes (live data, weekly)
 

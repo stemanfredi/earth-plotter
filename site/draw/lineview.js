@@ -8,13 +8,14 @@ import { lineTrace, nearestAlong } from './lines.js';
 import { profileCsv } from './profile.js';
 import { inverse, destination } from '../geodesy.js';
 import { norm360 } from '../geo.js';
-import { choice, check } from '../fields.js';
+import { check } from '../fields.js';
+import { row, funit, fvalue, valued, actionsRow, act, copyBtn } from './rows.js';
 import { MOD } from '../keys.js';
 import { listGrid, setCurrent } from './grid.js';
 import { fmtArea, fmtDist, fmtElevation, distText, UNIT_TEXT, inUnit } from '../format.js';
 
 export function createLineView(kit) {
-  const { drawing, map, ctx, F, field, row, funit, fvalue, valued, distValue, link, now, set, item, foldHead, section, actionsRow, act, copyBtn, paged, PAGE, pageAt,
+  const { drawing, map, ctx, F, field, pathRow, distValue, link, now, set, item, foldHead, section, paged, PAGE, pageAt,
     attachBtn, detach, commonTop, commonBottom, lookBlock, ruleActs, libraryBtn, openDistribution, inspector, render: renderInspector } = kit;
   // Legs typed (the line's table of vertices): the straight leg arriving at a vertex from the one before
   // (a closed line's first: from its last), its length and its bearing. A value typed moves that
@@ -157,7 +158,7 @@ export function createLineView(kit) {
       return [['#', 'Lat', 'Lon', 'Leg m', 'Brg °', 'Along m', 'Name'], qs.map((q, k) => { const g = legged(k) ? legOf(qs, k) : null; return [k + 1, q[1], q[0], g ? +g.s.toFixed(3) : '', g ? +g.azi.toFixed(1) : '', +(t[k] || 0).toFixed(3), x.names[k]]; })]; };
     return [...commonTop('line', id),
       ...(closed ? [row('Area', valued(fmtArea(line.area, u))), row('Perimeter', distValue(line.length))] : [row('Length', distValue(line.length))]),
-      row('Path', choice('Path', [[false, 'Straight', 'Geodesics'], [true, 'Smooth', 'A curve through its bends']], !!el.smooth, (v) => set(id, (x) => { x.smooth = v; }))),
+      pathRow(!!el.smooth, (v) => set(id, (x) => { x.smooth = v; })),
       // closed (three vertices or more) and opened again; what is linked to its legs stays where it is
       held ? null : row('Closed', check(closed, (v) => set(id, (x, d) => { x.closed = v; reattach(d, id); }), { 'aria-label': 'Closed', title: 'Its last vertex joined to its first: an area', disabled: !closed && N < 3 })),
       placesTable(id, N, { unit: lu, copy: pointRows, rowAt,

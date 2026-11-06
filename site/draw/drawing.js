@@ -19,6 +19,11 @@ import { SNAP_PX, MID_PX } from './input.js';
 import { Drafting } from './drafting.js';
 import { Dragging } from './dragging.js';
 import { Boxing } from './boxing.js';
+import { saveLibrary } from './library.js';
+import { itemKey, keyName, itemFor, itemKind } from './place.js';
+
+// what each tool draws when no Library item is chosen (the Point tool: a symbol, no variant)
+const DEFAULT_VARIANT = { line: 'line', shape: 'circle', label: 'label' };
 
 export class Drawing extends DrawStore {
   // onChange(what): 'doc' (the document changed), 'sel' (the selection), 'tool', 'draft' (what is
@@ -31,7 +36,6 @@ export class Drawing extends DrawStore {
     super();
     Object.assign(this, { map, onChange, known, getView, units, bearings });
     this.saving = new Saving(this);
-    this.tool = null;
     this.last = null; // the last click: its point and what was under it, for clicking through
     this.zoomRaf = 0;
     // what is being drawn: a line { pts, tos (what each snapped to) }; a sector { pts }; a shape
@@ -57,7 +61,7 @@ export class Drawing extends DrawStore {
     // holding a circle, rings, a sector (three clicks), an outline (a closed line) or a Library item (a
     // point of the user's, with its shapes); Label a label, or one like a Library item's. Measure has none: a line, closed or
     // not, a measurement
-    this.variant = { point: 'symbol', line: 'line', shape: 'circle', label: 'label' };
+    this.variant = { ...DEFAULT_VARIANT };
     this.library = []; // the user's own items in the Library (library.js), by the tools' variants 'library:<name>'
     // labels keep their place on screen next to what they point at: drawn again as the map moves
     let labelRaf = 0;
@@ -276,8 +280,7 @@ export class Drawing extends DrawStore {
   // what the next click on the map attaches (Attach to…): vertex index of element id (a label's 0, a
   // line's vertex; null: a shape as a whole, to a point); or nothing
   startRepoint(id, index = 0) {
-    this.stop(); // a click on the map now attaches, not a tool's next point
-    this.boxSelect(false);
+    this.leave(); // a click on the map now attaches, not a tool's next point
     this.repointing = { id, index };
     this.map.getCanvas().style.cursor = 'crosshair';
   }
@@ -287,22 +290,40 @@ export class Drawing extends DrawStore {
   giveUpRepoint() { if (!this.repointing) return; this.cancelRepoint(); this.renderMarks(); this.onChange('sel'); }
   // what a click on the map picks while the generator's form is open (fn(nodeId, position)), or null
   setPicking(fn, keepSel = !!fn) { this.picking = fn; this.keepSel = keepSel; if (!fn && !this.tool) this.map.getCanvas().style.cursor = ''; }
-  // a tool's variant chosen (its row of kinds): the tool on with it
-  setVariant(button, v) {
-    this.variant[button] = v;
-    this.start(button);
+  // The Library's items replaced (one added, renamed, deleted, read from a file): kept in this browser.
+  // A tool's variant naming an item renamed follows it; one gone, or replaced by another kind, is the
+  // tool's own again (an area's: Area), and the tool, if on with it, stops. renamed: [from, to]
+  setLibrary(list, renamed = null) {
+    const before = this.library;
+    this.library = list;
+    saveLibrary(list);
+    for (const t of Object.keys(DEFAULT_VARIANT)) {
+      const n = keyName(this.variant[t]);
+      if (n === null) continue;
+      if (renamed && n === renamed[0]) { this.variant[t] = itemKey(renamed[1]); continue; }
+      if (itemFor(list, this.variant[t], t)) continue;
+      const was = itemFor(before, this.variant[t]);
+      this.variant[t] = t === 'line' && was && itemKind(was) === 'area' ? 'area' : DEFAULT_VARIANT[t];
+      if (this.button === t) this.stop();
+    }
   }
 
   // ---- tools -----------------------------------------------------------------------------
+  // What the map's next click or drag is for: one thing at a time. Each of a tool, Box select, Attach
+  // to… and a form (Distribute, Connect) starts by leaving whatever else was under way: the form closed
+  // (as Esc closes it), Attach to… given up, the tool stopped, Box select off
+  leave() {
+    if (this.keepSel) this.onChange('cancel');
+    this.giveUpRepoint();
+    this.stop();
+    if (this.boxNext) this.boxSelect(false);
+  }
+  // the tool on: its button's, Shape with Sector drawing as 'sector' (three clicks); or null
+  get tool() { return this.button === 'shape' && this.variant.shape === 'sector' ? 'sector' : this.button; }
   start(tool) {
-    if (this.keepSel) this.onChange('cancel'); // a form open (Distribute, Connect): closed, as Esc closes it
-    this.giveUpRepoint(); // Attach to… waiting: given up (the next click is the tool's)
-    if (this.tool) this.stop();
-    this.boxNext = false;
+    this.leave();
     clearTimeout(this.dblZoom); // stop()'s, which would turn it on again after this
-    const v = this.variant[tool];
     this.button = tool;
-    this.tool = tool === 'shape' && v === 'sector' ? v : tool;
     this.map.doubleClickZoom.disable();
     this.map.getCanvas().style.cursor = 'crosshair';
     this.onChange('tool');
@@ -310,7 +331,6 @@ export class Drawing extends DrawStore {
   stop() {
     if (!this.tool) return;
     this.snapMark = null;
-    this.tool = null;
     this.button = null;
     this.draft = null;
     this.renderMarks();
@@ -415,7 +435,7 @@ export class Drawing extends DrawStore {
     map.on('contextmenu', (e) => { if (right && Math.hypot(e.point.x - right.x, e.point.y - right.y) <= 3) { if (this.finishesOnDoubleClick() && this.pathPoints().length >= 2) this.finish(); else escape(); } });
     map.on('dblclick', (e) => { if (this.finishesOnDoubleClick()) { e.preventDefault(); this.finish(); } });
     window.addEventListener('keydown', (e) => {
-      if (typing(e.target) || document.querySelector('dialog[open]')) return;
+      if (e.defaultPrevented || typing(e.target) || document.querySelector('dialog[open]')) return;
       if (e.key === 'Escape') escape(); // with Alt held too: Alt is the key for dragging free of snapping
       else if (e.ctrlKey || e.metaKey || e.altKey || !this.tool) return;
       else if (e.key === 'Enter' && !e.target.closest('button')) { e.preventDefault(); this.finish(); } // Enter on a focused button is that button's own click

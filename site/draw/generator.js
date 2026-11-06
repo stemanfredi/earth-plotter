@@ -24,8 +24,7 @@ import { inverse, destination, localFrame, lengthOf } from '../geodesy.js';
 import { norm360 } from '../geo.js';
 import { lineTrace, pointsAlong } from './lines.js';
 import { addPoint, addDot, addLine, addGroup, elements, newId, idsOf, label, remove, setLink, carry, emptyDoc } from './document.js';
-import { BUILT_IN, build, placeCopy, fromLibrary } from './place.js';
-import { keyName } from './library.js';
+import { BUILT_IN, build, placeCopy, fromLibrary, keyName } from './place.js';
 import { alone } from './clipboard.js';
 
 // a drawing's rules of each kind

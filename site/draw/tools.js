@@ -10,11 +10,11 @@ import { icon, SELECT_ICON, BOX_ICON, UI_ICON } from '../icons.js';
 
 // drawing (drawing.js); ctx: { bar, frame, props, foot (the map's foot's left stack: the touch row goes
 // there), dock (a phone's bar along the bottom) }; del(ids): delete, asked first (the touch row's);
-// fileBtns: the bar's file group (files.js); drawsNow(): the name of what is being drawn (library.js),
+// fileBtns: the bar's file group (files.js); drawsNow(): the name of what is being drawn (drawtab.js),
 // or ''. Returns { press, renderTools, renderTouch }.
 export function createTools(drawing, ctx, { del, fileBtns, drawsNow }) {
-  // a tool's key: on (with what it drew last), or off
-  const press = (tool) => (drawing.button === tool ? drawing.stop() : drawing.start(tool));
+  // a tool's key: on (with what it drew last), or off; Box select's too
+  const press = (tool) => (tool === 'box' ? drawing.boxSelect(!drawing.boxNext) : drawing.button === tool ? drawing.stop() : drawing.start(tool));
   // Measure: a question asked of the map, not a thing drawn: the bar's
   const measureBtn = h('button', { type: 'button', 'data-tool': 'measure', 'aria-pressed': 'false', 'aria-label': 'Measure', title: `Measure (${keyOf('measure')})`, onclick: () => press('measure') }, icon(...UI_ICON.ruler));
   const undoBtn = h('button', { type: 'button', class: 'urbtn', 'aria-label': 'Undo', title: `Undo (${MOD} Z)`, onclick: () => drawing.undo() }, icon(...UI_ICON.undo));
@@ -22,10 +22,10 @@ export function createTools(drawing, ctx, { del, fileBtns, drawsNow }) {
   const sep = () => h('span', { class: 'tsep', 'aria-hidden': 'true' });
   // Select
   const selectBtn = h('button', { type: 'button', class: 'selbtn', 'aria-label': 'Select', title: 'Select',
-    onclick: () => { drawing.stop(); drawing.boxSelect(false); } }, icon(...SELECT_ICON));
+    onclick: () => drawing.leave() }, icon(...SELECT_ICON));
   // Select's other kind: the next drag on the map draws a box, what lies inside selected; then Select
   const boxBtn = h('button', { type: 'button', class: 'boxbtn', 'aria-label': 'Box select', 'aria-pressed': 'false', title: `Box select (${keyOf('box')})`,
-    onclick: () => drawing.boxSelect(!drawing.boxNext) }, icon(...BOX_ICON));
+    onclick: () => press('box') }, icon(...BOX_ICON));
   // With a finger (drawing-ui.md §1): what keys and a mouse do on a computer, each shown when it
   // applies. Back steps back one level (what is half drawn, else the tool, else the selection). On a
   // phone Back and Done are the dock's, what is being drawn between them; the selection's actions are
@@ -53,6 +53,8 @@ export function createTools(drawing, ctx, { del, fileBtns, drawsNow }) {
     boxBtn.hidden = phone && tool; // a phone, while drawing: Back, Undo, Redo, what is drawn (Measure's own button), Done
     measureBtn.hidden = phone && tool && !measuring;
     touchbar.hidden = phone || [touch.done, touch.back, touch.del, touch.dup].every((b) => b.hidden);
+    undoBtn.disabled = !drawing.undos.length && !drawing.draft; // half drawn: Undo takes back a point (a phone has no Backspace)
+    redoBtn.disabled = !drawing.redos.length;
   }
   // The bar (drawing-ui.md §1): the file group (files.js); Layers, Elements and Draw (the left
   // panel's tabs); Undo, Redo (history); Select and Box select; Measure; at its end Properties' toggle
@@ -77,8 +79,6 @@ export function createTools(drawing, ctx, { del, fileBtns, drawsNow }) {
     selectBtn.setAttribute('aria-pressed', String(!on && !drawing.boxNext));
     boxBtn.setAttribute('aria-pressed', String(!!drawing.boxNext));
     measureBtn.setAttribute('aria-pressed', String(on === 'measure'));
-    undoBtn.disabled = !drawing.undos.length;
-    redoBtn.disabled = !drawing.redos.length;
     renderTouch();
   }
   return { press, renderTools, renderTouch };

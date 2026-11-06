@@ -7,12 +7,12 @@ import { h, COMPACT } from '../dom.js';
 import { popup, dialog, ask, note } from '../menu.js';
 import { parse } from './file.js';
 import { elements, isMeasurement } from './document.js';
-import { libraryFile, readLibrary, saveLibrary } from './library.js';
+import { libraryFile, readLibrary } from './library.js';
 import { plural, slug } from '../format.js';
 import { icon, UI_ICON } from '../icons.js';
 
 // drawing (drawing.js); ctx: { download(text, name), openDrawing(id), onImport(doc, view), openArea(file) (an offline area's zip),
-// outputs (the view's, menu items), offlineItem (Offline areas…, a menu item), copyLink(), about() }; libraryChanged(): the tools' kinds shown again. Returns { buttons (the bar's),
+// outputs (the view's, menu items), offlineItem (Offline areas…, a menu item), copyLink(), about() }; libraryChanged(): the Library's items shown again. Returns { buttons (the bar's),
 // importFile(file) }.
 export function fileGroup(drawing, ctx, libraryChanged) {
   const fileInput = h('input', { type: 'file', accept: '.geojson,.json,.zip,application/geo+json,application/json,application/zip', hidden: true, onchange: (e) => { const f = e.target.files[0]; e.target.value = ''; if (f) importFile(f); } });
@@ -54,7 +54,7 @@ export function fileGroup(drawing, ctx, libraryChanged) {
   }
   // Download: the drawing, the view's outputs, the Library; apart, the offline areas
   const downloadItems = () => [item('Drawing (GeoJSON)', 'This drawing, with the view and layers, as a GeoJSON file to share or keep', exportFile, UI_ICON.file), sep(), ...ctx.outputs,
-    item('Library (JSON)', 'Your own items in the Library as a small file, to open them in another browser', () => ctx.download(libraryFile(drawing.library), 'library.json'), UI_ICON.library), sep(), ctx.offlineItem];
+    item('Library (JSON)', 'Your own items in the Library as a small file, to open them in another browser', () => ctx.download(libraryFile(drawing.library), 'library.json'), UI_ICON.file), sep(), ctx.offlineItem];
   function toggle(b, items) {
     if (!menuEl.hidden && b.getAttribute('aria-expanded') === 'true') return close();
     menuEl.setAttribute('aria-label', b.getAttribute('aria-label'));
@@ -83,8 +83,7 @@ export function fileGroup(drawing, ctx, libraryChanged) {
     // a library's file: its items added to the user's (one of the same name replaced)
     if (items) {
       const names = new Set(items.map((x) => x.name));
-      drawing.library = [...drawing.library.filter((x) => !names.has(x.name)), ...items];
-      saveLibrary(drawing.library);
+      drawing.setLibrary([...drawing.library.filter((x) => !names.has(x.name)), ...items]);
       note(`${plural(items.length, 'item')} added to the Library`);
       return libraryChanged();
     }

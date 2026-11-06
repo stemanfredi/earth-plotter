@@ -9,8 +9,7 @@ export class Boxing {
   // Box select (Select's other kind, B): the next drag on the map, a mouse's or a finger's, draws the
   // box (as Shift-drag does), then back to Select; on: false puts it off
   boxSelect(on) {
-    if (on && this.tool) this.stop();
-    if (on) this.giveUpRepoint(); // Attach to… waiting: given up (the next drag is the box's)
+    if (on) this.leave(); // a tool, Attach to…, a form: given up (the next drag is the box's)
     this.boxNext = on;
     this.map.getCanvas().style.cursor = on ? 'crosshair' : '';
     this.onChange('tool');

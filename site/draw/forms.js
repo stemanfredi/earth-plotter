@@ -6,16 +6,18 @@ import { h } from '../dom.js';
 import { note, ask } from '../menu.js';
 import { find, leavesOf, label } from './document.js';
 import { DISTRIBUTE_D, distribute, lines, planConnection, makeDistribution, editDistribution, connect, reconnect, alongTrace, alongOf, distributions, connections, ruleOf, updateRule, MAX_COPIES, MAX_TREE } from './generator.js';
-import { BUILT_IN, builtInName } from './place.js';
+import { BUILT_IN, builtInName, itemFor, itemKey, keyName } from './place.js';
+import { alone } from './clipboard.js';
 import { reachOf } from './features.js';
 import { choice, select } from '../fields.js';
-import { hasShapes, itemFor, itemKey, keyName } from './library.js';
+import { hasShapes } from './library.js';
 import { listGrid } from './grid.js';
 import { fmtDist, plural } from '../format.js';
 import { groupPath } from './tree.js';
+import { row, pair, funit, fvalue, withUnit } from './rows.js';
 
 export function createForms(kit) {
-  const { drawing, map, F, row, section, pair, funit, fvalue, withUnit, distValue, link, now, tops, radiusCheck, selKey, setTitle, render: renderInspector } = kit;
+  const { drawing, map, F, section, distValue, link, now, tops, radiusCheck, selKey, setTitle, render: renderInspector } = kit;
   const connectBtn = (xs) => { const ids = xs.filter((x) => x.kind === 'point').map((x) => x.el.id); return ids.length > 1 ? h('button', { type: 'button', class: 'small', title: 'Lines from roots to these points', onclick: () => openConnect(ids) }, 'Connect…') : null; };
   const copies = (n) => `${n} ${n === 1 ? 'copy' : 'copies'}`;
   // a root no group is cheapest from, once made: said, as the form said it before
@@ -58,8 +60,7 @@ export function createForms(kit) {
     along: form && { element: form.along.element } });
   const conParams = () => ({ pattern: con.pattern, groupSize: con.groupSize, minBranch: con.minBranch, roots: con.roots.map((r) => ({ ...r })), newRoots: con.newRoots.map((q) => [...q]) });
   function openForm(f) {
-    drawing.stop(); // a click on the map now picks a root, not a tool's next point
-    drawing.boxSelect(false);
+    drawing.leave(); // a click on the map now picks a root, not a tool's next point (another form closed)
     form = { ...f, sel: selKey() };
     drawing.setPicking(form.kind === 'connect' ? pick : null, true); // roots are picked on the map while Connect's is open
     formPreview();
@@ -69,6 +70,10 @@ export function createForms(kit) {
     Object.assign(dform, DFORM); // a new one: the defaults
     if (a) Object.assign(dform, { by: a.count ? 'count' : 'spacing', spacing: a.spacing || dform.spacing, count: a.count || a.pointIds.length, startMargin: a.startMargin, endMargin: a.endMargin,
       offset: a.offset, side: a.side, radius: a.radius, aperture: a.aperture, item: a.item ?? 'circle' });
+    // a Library item's copies: its drawing (renamed or deleted since: a copy as placed), its size its own
+    // (never a radius, which would make them circles)
+    const first = a?.pointIds.find((id) => find(drawing.doc, id));
+    if (a && keyName(a.item) !== null) dform.copy = itemFor(drawing.library.filter(hasShapes), a.item)?.doc ?? (first ? alone(drawing.doc, first) : null);
     openForm({ kind: 'distribute', along: { element: along.element }, distributionId: a?.id ?? null });
   }
   function openConnect(pointIds, c = null) {

@@ -117,7 +117,7 @@ off. Measure is the bar's.
 |---|---|---|
 | Point (P) | Point | a point: a marker, the same size at every zoom |
 | Line (G) | Line, Area | a line; closed on its first vertex (an Area: as it ends), a closed line (an area) |
-| Shape (S) | circle, rings, sector, rectangle, ellipse, triangle, three vehicles, the user's own points | a point with no symbol holding its shapes (circles, a sector, or a closed line: the outline's vertices), the point named after its kind, its shapes nameless (the tree shows them by kind and size); one of the user's keeps its properties and names itself in the property `library` |
+| Shape (S) | circle, rings, sector, rectangle, triangle, ellipse, three vehicles, the user's own points | a point with no symbol holding its shapes (circles, a sector, or a closed line: the outline's vertices), the point named after its kind, its shapes nameless (the tree shows them by kind and size); one of the user's keeps its properties and names itself in the property `library` |
 | Label (T) | Label | a label |
 | Measure (M) | (the bar's) | nothing, unless kept (§3) |
 
@@ -374,7 +374,7 @@ Copies) opens its form (a click on the map picks a root):
 | Key | Does |
 |---|---|
 | / | search |
-| L, E | the left panel on Layers, on Elements, or closed |
+| L, E, D | the left panel on Layers, on Elements, on Draw, or closed |
 | I | Properties on or off |
 | P, G, S, T, M | point, line, shape, label, measure; again: off |
 | B, Shift-drag | Box select: a box, what lies inside added to the selection |
@@ -388,7 +388,7 @@ Copies) opens its form (a click on the map picks a root):
 | Ctrl/⌘ C, V, D | copy, paste, duplicate |
 | Ctrl/⌘ ], [ | the selection up or down in the drawing order |
 
-None act while typing in a field, except Esc and Enter. About lists them from `site/keys.js`.
+None act while typing in a field, except Esc and Enter, nor on a key a control has taken (a menu's ↑ ↓, a table's Ctrl Delete); edits wait for a drag to end. About lists them from `site/keys.js`.
 
 **Copy, paste, duplicate:** a copy keeps its group, look and properties, gets new numbered names and
 keeps the attachments between the elements copied together (a line's vertex on one left behind is

@@ -1072,13 +1072,12 @@ about.querySelector('[data-close]').addEventListener('click', () => about.close(
 // the single keys (keys.js), from anywhere: search, the panels, or a tool
 // (draw/drawing.js handles the keys of what is being drawn; draw/panel.js the drawing's own)
 window.addEventListener('keydown', (e) => {
-  if (e.ctrlKey || e.metaKey || e.altKey || document.querySelector('dialog[open]') || typing(e.target) || e.target.closest?.('#side, #props')) return; // from a panel's control (a button, a box ticked): its own (WCAG 2.1.4)
+  if (e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey || document.querySelector('dialog[open]') || typing(e.target) || e.target.closest?.('#side, #props')) return; // from a panel's control (a button, a box ticked): its own (WCAG 2.1.4)
   const k = keyEntry(e.key);
   if (!k?.open && !k?.tool) return;
   if (k.open === 'search') { e.preventDefault(); setFinding(true); }
   else if (['layers', 'elements', 'draw'].includes(k.open)) frame.toggleTab(k.open);
   else if (k.open === 'props') frame.setProps(!frame.props);
-  else if (k.tool === 'box') drawing.boxSelect(!drawing.boxNext);
   else drawPanel.press(k.tool); // on, or off
 });
 // the tooltips and About say the keys

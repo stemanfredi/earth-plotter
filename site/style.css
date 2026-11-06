@@ -85,8 +85,8 @@ body.loading .spin { visibility: visible; animation: spin .8s linear infinite; }
 .dinspect h3 { border-top: 1px solid var(--line2); }
 /* the fold mark, one for all, before what it folds: a Layers group, a section of Properties, a row of
    the tree or the Library (a group, a point, a folder) */
-:is(#menu summary, .dinspect h3.folds, .dfold)::before { content: ""; width: 6px; height: 6px; border-right: 1.5px solid; border-bottom: 1.5px solid; transform: rotate(-45deg); transition: transform .15s; flex: none; }
-:is(#menu details[open] > summary, .dinspect h3.folds.open, .dfold[aria-expanded="true"])::before { transform: rotate(45deg); }
+:is(#menu summary, .dinspect h3.folds, .dfold, .tfold)::before { content: ""; width: 6px; height: 6px; border-right: 1.5px solid; border-bottom: 1.5px solid; transform: rotate(-45deg); transition: transform .15s; flex: none; }
+:is(#menu details[open] > summary, .dinspect h3.folds.open, .dfold[aria-expanded="true"], .tfold[aria-expanded="true"])::before { transform: rotate(45deg); }
 #menu summary .gname { flex: 1; }
 #menu summary .count { font-weight: 600; font-size: 11px; letter-spacing: 0; color: var(--accent); background: var(--sel); border-radius: 9px; padding: 0 7px; line-height: 18px; }
 #menu summary .count:empty { display: none; }
@@ -256,7 +256,7 @@ button.small.link:hover { border-color: var(--line); }
 .lgrid.plain tr.top td:first-child { padding-left: 12px; }
 .lgrid.plain tr.all td { font-weight: 600; border-bottom: 2px solid var(--line); }
 .lgrid.plain .link { padding: 0; margin: 0; min-height: var(--row); }
-.lgrid.plain .tfold { text-decoration: none; color: var(--ink); }
+.lgrid.plain .tfold { text-decoration: none; color: var(--ink); display: inline-flex; align-items: center; gap: 8px; }
 .lgrid .fcheck { justify-content: center; padding: 0; min-width: var(--row); }
 .lbar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 4px 0; } /* the current row's actions (its name, how far along); hidden while no row is */
 .lbar > input { flex: 1 1 80px; min-width: 60px; width: auto; }
@@ -403,12 +403,12 @@ svg.profile .pcursor { stroke: var(--magenta); stroke-width: 1; }
 /* dividers between the tools' groups: short, centred */
 .tsep { width: 1px; height: 22px; background: var(--line); margin: 0 4px; flex: none; }
 .bar > .grow { flex: 1; }
-/* the Library (draw/libraryview.js): an item's picture larger than a row's icon, its own colours */
+/* the Draw tab (draw/drawtab.js): an item's picture larger than a row's icon, its own colours */
 .drawtab .drow .kind svg { width: 22px; height: 22px; }
 .drawtab .drow .kind { width: 26px; }
 svg.thumb { overflow: visible; }
 .drawtab .drow .dname { white-space: normal; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-height: 1.25; padding-block: 3px; } /* a long name on two lines, not cut short */
-/* a phone: the bar ☰, find a place, Layers, Elements, Library; the dock along the bottom, Undo, Redo, Box
+/* a phone: the bar ☰, find a place, Layers, Elements, Draw; the dock along the bottom, Undo, Redo, Box
    select and Measure (while drawing: Back, Undo, Redo, what is drawn, Done); the panels a bottom sheet over the dock, as
    tall as dragged at its grip, the map's foot above it; Properties, while off, its head alone (a peek) */
 @media (max-width: 719px) {

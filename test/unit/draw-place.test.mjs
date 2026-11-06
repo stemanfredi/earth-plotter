@@ -117,3 +117,14 @@ test('corner to corner: a rectangle or an ellipse, its box from one corner to th
   near(reach(0), reach(90), 0.05, 'as long as wide');
   near(2 * reach(90), wid, 0.05, 'the larger side');
 });
+
+test('a key kept by a tool names an item of its own kind only: one replaced by a line places no copy', async () => {
+  const { itemFor, itemKey } = await import('../../site/draw/place.js');
+  const doc = emptyDoc(0), p = addPoint(doc, C), l = addLine(doc, [C, [12.1, 40]]);
+  const pointItem = itemOf(doc, p.id, 'X'), lineItem = itemOf(doc, l.id, 'X');
+  assert.equal(itemFor([pointItem], itemKey('X'), 'shape'), pointItem);
+  assert.equal(itemFor([lineItem], itemKey('X'), 'shape'), null);
+  assert.equal(itemFor([lineItem], itemKey('X'), 'line'), lineItem);
+  const d = emptyDoc(0), placed = placeKind(d, C, itemKey('X'), [lineItem]); // no item for Shape: a point, no TypeError
+  assert.deepEqual([d.points.length, d.lines.length, placed.kind ?? 'point'], [1, 0, 'point']);
+});

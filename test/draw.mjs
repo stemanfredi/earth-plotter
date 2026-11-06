@@ -139,9 +139,11 @@ await section('the drawing: the bar, the tools, the kinds, the inspector, its fi
     let n = 0;
     const o = new MutationObserver(() => { if (document.body.classList.contains('loading')) n++; });
     o.observe(document.body, { attributes: true, attributeFilter: ['class'] });
-    for (const x of [...drawing.doc.points, ...drawing.doc.lines, ...drawing.doc.points]) { drawing.setHover(x.id); await new Promise((r) => setTimeout(r, 120)); }
+    // each hover drawn and the map at rest (two frames, then idle): a blink it causes, however late, is seen
+    const rest = () => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => { const t = setTimeout(r, 5000); map.once('idle', () => { clearTimeout(t); r(); }); map.triggerRepaint(); })));
+    for (const x of [...drawing.doc.points, ...drawing.doc.lines, ...drawing.doc.points]) { drawing.setHover(x.id); await rest(); }
     drawing.setHover(null);
-    await new Promise((r) => setTimeout(r, 500));
+    await rest();
     o.disconnect();
     return n;
   });
@@ -690,7 +692,7 @@ await section('labels, names, data and totals', async () => {
   // Data: folded while it has nothing of the user's (a built-in kind names no library item under it); opened, its empty row
   const folded = await dw.evaluate(() => [!document.querySelector('.dinspect input[aria-label="Add a key"]'), document.querySelector('.dinspect .fblock:has(.hfold) .note')?.textContent ?? '']);
   check(folded[0] && folded[1] === '', `data: folded while it has nothing of the user's, no library item said for a built-in kind (${folded[1]})`);
-  await dw.click('.dinspect button[aria-label="Open Data"]');
+  await dw.click('.dinspect h3 .hfold[aria-expanded="false"]:text-is("Data")');
   const addKey = dw.locator('.dinspect input[aria-label="Add a key"]'); // Data's empty last row: a key typed there adds one
   await addKey.fill('kind');
   await addKey.press('Enter');

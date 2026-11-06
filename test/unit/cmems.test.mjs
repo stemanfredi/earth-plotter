@@ -10,12 +10,11 @@ test('regionOf: Mediterranean products by name, whatever their family; global on
   for (const p of ['GLOBAL_ANALYSISFORECAST_PHY_001_024/x/zos', 'SST_GLO_SST_L4_NRT_OBSERVATIONS_010_001/x/analysed_sst', 'WIND_GLO_PHY_L4_NRT_012_004/x/wind']) {
     assert.equal(regionOf(p), null, p);
   }
-  // every variant with two parts draws a global one first and the regional one over it
+  // a variant's parts after its first are regional, drawn over it in their area
   for (const [id, vs] of Object.entries(CMEMS)) {
-    for (const [k, v] of Object.entries(vs)) {
-      if (v.parts.length > 1) assert.deepEqual(v.parts.map((p) => !!regionOf(p)), [false, true], `${id}/${k}`);
-    }
+    for (const [k, v] of Object.entries(vs)) assert.ok(v.parts.slice(1).every((p) => regionOf(p)), `${id}/${k}`);
   }
+  assert.equal(regionOf('IBI_OMI_SEASTATE_extreme_var_swh_mean_and_anomaly/x/swh_percentile99_mean')?.name, 'Iberia-Biscay-Ireland');
 });
 
 test('Copernicus time: durations, a dataset\'s domain from its capabilities, snapping', () => {
@@ -57,8 +56,7 @@ test('cmemsValues: a dataset whose time steps could not be read is said, not lef
   const was = globalThis.fetch;
   globalThis.fetch = async () => { throw new TypeError('offline'); }; // its capabilities: not had (partTimes: undefined)
   try {
-    const [id, variant] = [Object.keys(CMEMS)[0], Object.keys(CMEMS[Object.keys(CMEMS)[0]])[0]];
-    await assert.rejects(cmemsValues(id, { variant, t: Date.UTC(2026, 9, 1), depth: 0 }, [0, 40, 1, 41]), /time steps could not be read/);
+    await assert.rejects(cmemsValues('waves', { variant: 'height', t: Date.UTC(2026, 9, 1), depth: 0 }, [0, 40, 1, 41]), /time steps could not be read/);
   } finally { globalThis.fetch = was; }
 });
 
@@ -74,21 +72,21 @@ test('partIn: a global part covers every view; a regional one only views meeting
 test('normals: a climatology drawn at the calendar month of its stand-in year; a still map at no time', async () => {
   const { monthIn, partTimes, storedVariables, isoTime } = await import('../../site/cmems.js');
   assert.equal(isoTime(Date.UTC(1993, 0, 1)), '1993-01-01T00:00:00Z');
-  const domain = Array.from({ length: 12 }, (_, m) => ({ start: Date.UTC(1993, m, 1), end: Date.UTC(1993, m, 1), step: 0 }));
+  // the Mediterranean wave climatology's time dimension, as its capabilities give it (2026-11-06)
+  const xml = `<Layer><ows:Identifier>MEDSEA_MULTIYEAR_WAV_006_012/cmems_mod_med_wav_my_4.2km-climatology_P1M-m_202311/VHM0</ows:Identifier>
+    <Dimension><ows:Identifier>time</ows:Identifier><ows:UOM>ISO8601</ows:UOM><Default>1993-12-01T00:00:00Z</Default>${
+  Array.from({ length: 12 }, (_, m) => `<Value>1993-${String(m + 1).padStart(2, '0')}-01T00:00:00Z</Value>`).join('')}</Dimension></Layer>`;
+  const domain = timeDomain(xml, 'VHM0');
+  assert.equal(domain.length, 12);
   assert.equal(monthIn(domain, Date.UTC(2026, 7, 15, 13)), Date.UTC(1993, 7, 1));
-  assert.equal(snapTime(domain, monthIn(domain, Date.UTC(2026, 11, 31, 23))), Date.UTC(1993, 11, 1));
+  assert.equal(monthIn(domain, Date.UTC(2026, 0, 1)), Date.UTC(1993, 0, 1));
+  assert.equal(monthIn(domain.slice(1), Date.UTC(2026, 0, 1)), null, 'a month it does not have');
   assert.deepEqual(await partTimes('normalwaves', 'severe', Date.UTC(2026, 0, 1)), [null, null]); // no capabilities asked
   assert.deepEqual(storedVariables('MEDSEA_MULTIYEAR_PHY_006_004/cmems_mod_med_phy_my_4.2km-climatology_P1M-m_202211/sea_water_velocity'), ['uo_avg', 'vo_avg']);
   assert.deepEqual(storedVariables('GLOBAL_MULTIYEAR_PHY_001_030/cmems_mod_glo_phy_my_0.083deg-climatology_P1M-m_202311/sea_water_velocity'), ['uo', 'vo']);
-  // every normal is one or the other, and takes the colour range of the layer it is the normal of
   for (const [id, vs] of Object.entries(CMEMS).filter(([id]) => id.startsWith('normal'))) {
-    for (const [k, v] of Object.entries(vs)) assert.ok(!!v.month !== !!v.still, `${id}/${k}`);
+    for (const [k, v] of Object.entries(vs)) assert.ok(!!v.month !== !!v.still, `${id}/${k}: a month or still`);
   }
-  assert.deepEqual(CMEMS.normalwaves.height.range, CMEMS.waves.height.range);
-  assert.deepEqual(CMEMS.normalwater.temperature.range, CMEMS.temperature.depth.range);
-  assert.deepEqual(CMEMS.normalwater.salinity.range, CMEMS.salinity.depth.range);
-  assert.deepEqual(CMEMS.normalwater.mld.range, CMEMS.mld.depth.range);
-  assert.deepEqual(CMEMS.normalcurrents.current.range, CMEMS.currents.surface.range);
 });
 
 test('cmemsValues: a still map is said to have no data, not read', async () => {

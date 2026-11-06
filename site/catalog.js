@@ -183,9 +183,8 @@ const MED_NUT = 'MEDSEA_ANALYSISFORECAST_BGC_006_014/cmems_mod_med_bgc-nut_anfc_
 // normals: what the hindcasts (multi-year reanalyses) say a place is like, by calendar month or
 // over all years. Each monthly climatology holds 12 maps in one stand-in year of its own (1993 in
 // the Mediterranean, 2004 or 2006 in the world's): drawn at the month of the map's time (month).
-// The 99th percentiles of wave height are one map each, with no time (still): the IBI one (Iberia,
-// Biscay, Ireland: 1980–2023) is drawn first, as a global one would be (its tiles are empty outside
-// its area), the Mediterranean's (1993–2019) over it in the Mediterranean.
+// The 99th percentiles of wave height are one map each, with no time (still), regional both: the IBI
+// one (Iberia, Biscay, Ireland: 1980–2023) first, the Mediterranean's (1993–2019) over it.
 const GLO_WAV_CLIM = 'GLOBAL_MULTIYEAR_WAV_001_032/cmems_mod_glo_wav_my_0.2deg-climatology_P1M-m_202311';
 const MED_WAV_CLIM = 'MEDSEA_MULTIYEAR_WAV_006_012/cmems_mod_med_wav_my_4.2km-climatology_P1M-m_202311';
 const GLO_PHY_CLIM = 'GLOBAL_MULTIYEAR_PHY_001_030/cmems_mod_glo_phy_my_0.083deg-climatology_P1M-m_202311';
@@ -203,12 +202,17 @@ const MED_WAV_P99 = 'MEDSEA_OMI_SEASTATE_extreme_var_swh_mean_and_anomaly/medsea
 // No sea level: the models' sea surface height (zos) carries each model's own mean offset (the
 // Mediterranean model reads −0.4 m in the Mediterranean and +0.8 m in its Atlantic box beside it),
 // which the tile service cannot subtract, so its colours changed at model edges for no physical reason.
+// colour scales shared by a layer and its normal, so that a colour means the same in both
+const SCALE = {
+  waveHeight: { unit: 'm', range: [0, 6], cmap: 'amp' }, temperature: { unit: '°C', range: [0, 30], cmap: 'thermal' },
+  salinity: { unit: 'PSU', range: [32, 40], cmap: 'haline' }, mld: { unit: 'm', range: [0, 200], cmap: 'plasma' }, current: { unit: 'm/s', range: [0, 1.5], cmap: 'speed' },
+};
 export const CMEMS = {
   waves: {
-    height: { label: 'Significant wave height', unit: 'm', range: [0, 6], cmap: 'amp', parts: [`${GLO_WAV}/VHM0`, `${MED_WAV}/VHM0`] },
+    height: { label: 'Significant wave height', ...SCALE.waveHeight, parts: [`${GLO_WAV}/VHM0`, `${MED_WAV}/VHM0`] },
     period: { label: 'Peak wave period', unit: 's', range: [0, 16], cmap: 'tempo', parts: [`${GLO_WAV}/VTPK`, `${MED_WAV}/VTPK`] },
   },
-  currents: { surface: { label: 'Surface current', labels: { colour: 'Current speed', arrows: 'Currents' }, unit: 'm/s', range: [0, 1.5], cmap: 'speed', vector: 'solidAndVector', parts: [`${GLO_CUR}/sea_water_velocity`, `${MED_CUR}/sea_water_velocity`] } },
+  currents: { surface: { label: 'Surface current', labels: { colour: 'Current speed', arrows: 'Currents' }, ...SCALE.current, vector: 'solidAndVector', parts: [`${GLO_CUR}/sea_water_velocity`, `${MED_CUR}/sea_water_velocity`] } },
   sst: {
     measured: { label: 'Sea surface temperature', unit: '°C', range: [273.15, 303.15], offset: -273.15, cmap: 'thermal', daily: true, parts: [`${GLO_SST}/analysed_sst`, `${MED_SST}/analysed_sst`] },
     anomaly: { label: 'Sea surface temperature anomaly', unit: '°C', range: [-3, 3], cmap: 'balance', daily: true, parts: [`${MED_SSTA}/sst_anomaly`] },
@@ -222,24 +226,24 @@ export const CMEMS = {
     nppv: { label: 'Primary production', unit: 'mg C/m³/day', range: [0, 10], cmap: 'algae', daily: true, depth: true, parts: [`${GLO_BIO}/nppv`, `${MED_BIO}/nppv`] },
   },
   temperature: {
-    depth: { label: 'Temperature', unit: '°C', range: [0, 30], cmap: 'thermal', daily: true, depth: true, parts: [`${GLO_TEM}/thetao`, `${MED_TEM}/thetao`] },
-    bottom: { label: 'Bottom temperature', unit: '°C', range: [0, 30], cmap: 'thermal', daily: true, parts: [`${GLO_2D}/tob`, `${MED_TEM}/bottomT`] },
+    depth: { label: 'Temperature', ...SCALE.temperature, daily: true, depth: true, parts: [`${GLO_TEM}/thetao`, `${MED_TEM}/thetao`] },
+    bottom: { label: 'Bottom temperature', ...SCALE.temperature, daily: true, parts: [`${GLO_2D}/tob`, `${MED_TEM}/bottomT`] },
   },
-  salinity: { depth: { label: 'Salinity', unit: 'PSU', range: [32, 40], cmap: 'haline', daily: true, depth: true, parts: [`${GLO_SAL}/so`, `${MED_SAL}/so`] } },
-  mld: { depth: { label: 'Mixed layer depth', unit: 'm', range: [0, 200], cmap: 'plasma', daily: true, parts: [`${GLO_2D}/mlotst`, `${MED_MLD}/mlotst`] } },
+  salinity: { depth: { label: 'Salinity', ...SCALE.salinity, daily: true, depth: true, parts: [`${GLO_SAL}/so`, `${MED_SAL}/so`] } },
+  mld: { depth: { label: 'Mixed layer depth', ...SCALE.mld, daily: true, parts: [`${GLO_2D}/mlotst`, `${MED_MLD}/mlotst`] } },
   // normals: the same colour ranges as the layers they are the normal of, so that a colour means the same
   normalwaves: {
-    height: { label: 'Normal wave height', unit: 'm', range: [0, 6], cmap: 'amp', month: true, parts: [`${GLO_WAV_CLIM}/VHM0`, `${MED_WAV_CLIM}/VHM0`] },
+    height: { label: 'Normal wave height', ...SCALE.waveHeight, month: true, parts: [`${GLO_WAV_CLIM}/VHM0`, `${MED_WAV_CLIM}/VHM0`] },
     severe: { label: 'Severe wave height (99th percentile)', unit: 'm', range: [0, 8], cmap: 'amp', still: true, parts: [`${IBI_WAV_P99}/swh_percentile99_mean`, `${MED_WAV_P99}/swh_percentile99_mean`] },
   },
   normalwater: {
-    temperature: { label: 'Normal temperature', unit: '°C', range: [0, 30], cmap: 'thermal', month: true, depth: true, parts: [`${GLO_PHY_CLIM}/thetao`, `${MED_PHY_CLIM}/thetao_avg`] },
-    bottom: { label: 'Normal bottom temperature', unit: '°C', range: [0, 30], cmap: 'thermal', month: true, parts: [`${GLO_PHY_CLIM}/bottomT`, `${MED_PHY_CLIM}/bottomT_avg`] },
-    salinity: { label: 'Normal salinity', unit: 'PSU', range: [32, 40], cmap: 'haline', month: true, depth: true, parts: [`${GLO_PHY_CLIM}/so`, `${MED_PHY_CLIM}/so_avg`] },
-    mld: { label: 'Normal mixed layer depth', unit: 'm', range: [0, 200], cmap: 'plasma', month: true, parts: [`${GLO_PHY_CLIM}/mlotst`, `${MED_PHY_CLIM}/mlotst_avg`] },
+    temperature: { label: 'Normal temperature', ...SCALE.temperature, month: true, depth: true, parts: [`${GLO_PHY_CLIM}/thetao`, `${MED_PHY_CLIM}/thetao_avg`] },
+    bottom: { label: 'Normal bottom temperature', ...SCALE.temperature, month: true, parts: [`${GLO_PHY_CLIM}/bottomT`, `${MED_PHY_CLIM}/bottomT_avg`] },
+    salinity: { label: 'Normal salinity', ...SCALE.salinity, month: true, depth: true, parts: [`${GLO_PHY_CLIM}/so`, `${MED_PHY_CLIM}/so_avg`] },
+    mld: { label: 'Normal mixed layer depth', ...SCALE.mld, month: true, parts: [`${GLO_PHY_CLIM}/mlotst`, `${MED_PHY_CLIM}/mlotst_avg`] },
   },
   normalcurrents: {
-    current: { label: 'Normal current', labels: { colour: 'Normal current speed', arrows: 'Normal currents' }, unit: 'm/s', range: [0, 1.5], cmap: 'speed', vector: 'solidAndVector', month: true, depth: true,
+    current: { label: 'Normal current', labels: { colour: 'Normal current speed', arrows: 'Normal currents' }, ...SCALE.current, vector: 'solidAndVector', month: true, depth: true,
       parts: [`${GLO_PHY_CLIM}/sea_water_velocity`, `${MED_PHY_CLIM}/sea_water_velocity`] },
   },
   // wind as arrows alone, over the chart and the waves: thermal starts dark, so light winds stay visible

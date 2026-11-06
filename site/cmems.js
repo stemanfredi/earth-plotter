@@ -39,8 +39,12 @@ const cmemsCapsUrl = (part) => `${CMEMS_WMTS}/${partOf(part).id}?SERVICE=WMTS&RE
 // Mediterranean products' own box (18°W–36°E, 30–46°N) also holds part of the Atlantic, the Bay of
 // Biscay and the Black Sea, where their values do not match the global ones (straight seams): the
 // area is the Mediterranean only, from the Strait of Gibraltar (5.6°W), north of 40.9°N between 1°W
-// and 27°E (Gulf of Lion, Adriatic, northern Aegean); the global products draw the rest.
-const REGIONS = [{ name: 'Mediterranean', test: /^MEDSEA_|_MED_/, area: [[-5.6, 30.1, 36.3, 40.9], [-1, 40.9, 27, 46]] }];
+// and 27°E (Gulf of Lion, Adriatic, northern Aegean); the global products draw the rest. Iberia,
+// Biscay and Ireland (IBI_…): its own box, so that it is not asked for the world's tiles.
+const REGIONS = [
+  { name: 'Mediterranean', test: /^MEDSEA_|_MED_/, area: [[-5.6, 30.1, 36.3, 40.9], [-1, 40.9, 27, 46]] },
+  { name: 'Iberia-Biscay-Ireland', test: /^IBI_/, area: [[-19, 26, 5, 56]] },
+];
 export const regionOf = (part) => REGIONS.find((r) => r.test.test(partOf(part).product)) || null;
 
 // ---- what a dataset's own capabilities say: its time steps, its depth levels ------------------
@@ -98,16 +102,16 @@ export function domainOf(part) {
 // a time as the service takes it: ISO 8601 to the second (with milliseconds, it answers 400 for the
 // first step of a climatology, January, and takes the other eleven: seen 2026-11-06)
 export const isoTime = (t) => new Date(t).toISOString().replace(/\.\d{3}Z$/, 'Z');
-// a climatology's step for the calendar month (UTC) of t: its 12 months are in one stand-in year of
-// its own (its first step's)
-export const monthIn = (domain, t) => Date.UTC(new Date(domain[0].start).getUTCFullYear(), new Date(t).getUTCMonth(), 1);
+// a climatology's step for the calendar month (UTC) of t: its 12 months are steps of a stand-in year
+// of its own; null if it has none for that month
+export const monthIn = (domain, t) => domain.find((r) => new Date(r.start).getUTCMonth() === new Date(t).getUTCMonth())?.start ?? null;
 // for each part of item/variant: the time it draws for t (ms), its step holding t (a climatology:
 // its month of t); null outside its range, or undefined if its range is not known; a still map: null
 // for every part, which has no time and is drawn whatever the time (still: drawn without one)
 export function partTimes(item, variant, t) {
   const v = CMEMS[item][variant];
   if (v.still) return Promise.resolve(v.parts.map(() => null));
-  return Promise.all(v.parts.map((p) => domainOf(p).then(({ time }) => snapTime(time, v.month ? monthIn(time, t) : t), () => undefined)));
+  return Promise.all(v.parts.map((p) => domainOf(p).then(({ time }) => (v.month ? monthIn(time, t) : snapTime(time, t)), () => undefined)));
 }
 // for each part: the depth level drawn for depth (m), as the service lists it; null for a variable
 // without depth (or if its levels are not known: the service then draws its default, the top)
@@ -122,18 +126,32 @@ export function partIn(part, [w, s, e, n]) {
   return !area || area.some((a) => e > a[0] && w < a[2] && s < a[3] && n > a[1]);
 }
 // MapLibre protocol handler for cmems://item/variant/look/t/depth/z/x/y (look: what it draws,
-// 'colour', 'arrows' or 'both'; t: the hour, ms since the epoch; depth: m below the surface, used
-// by variables with depth)
+// 'colour', 'arrows' or 'both'; t: ms since the epoch, the hour shown (a normal: its month's first
+// hour; a still map: 0); depth: m below the surface, used by variables with depth). A part that fails
+// is left out of the tile, the others drawn; the tile fails only if every part asked failed (or it
+// was cancelled), so that the Layers tab marks the source.
 export async function cmemsTile({ url }, abortController) {
   const [, item, variant, look, t, depth, z, x, y] = /^cmems:\/\/(\w+)\/(\w+)\/(\w+)\/(\d+)\/(\d+)\/(\d+)\/(\d+)\/(\d+)$/.exec(url).map((v, i) => (i > 3 ? +v : v));
   const v = CMEMS[item][variant], style = cmemsStyle(v, look);
   const [times, levels] = await Promise.all([partTimes(item, variant, t), partLevels(item, variant, depth)]);
-  const images = await Promise.all(v.parts.map(async (part, i) => {
+  const settled = await Promise.allSettled(v.parts.map(async (part, i) => {
     if ((times[i] === null && !v.still) || !partIn(part, tileBounds(z, x, y))) return null; // no data at this hour, or not here
+    if (v.month && times[i] === undefined) return null; // a climatology's months not known: no time of its own to ask
     const when = v.still ? null : isoTime(times[i] === undefined ? t : times[i]); // range unknown: ask anyway
     const r = await fetchOk(cmemsTileUrl(part, style, when, z, x, y, levels[i]), { signal: abortController?.signal });
     return createImageBitmap(await r.blob());
   }));
+  const images = settled.map((s) => (s.status === 'fulfilled' ? s.value : null));
+  try {
+    const failed = settled.find((s) => s.status === 'rejected');
+    if (failed && (abortController?.signal.aborted || images.every((im) => !im))) throw failed.reason;
+    return { data: drawParts(v, images, z, x, y) };
+  } finally {
+    for (const im of images) im?.close(); // drawn or not: freed now, not when collected
+  }
+}
+// the parts' images into one tile, each regional one clipped to its area
+function drawParts(v, images, z, x, y) {
   const c = new OffscreenCanvas(512, 512), g = c.getContext('2d');
   images.forEach((im, i) => {
     if (!im) return;
@@ -149,8 +167,7 @@ export async function cmemsTile({ url }, abortController) {
     g.drawImage(im, 0, 0);
     g.restore();
   });
-  for (const im of images) im?.close(); // drawn: freed now, not when collected
-  return { data: c.transferToImageBitmap() };
+  return c.transferToImageBitmap();
 }
 
 // legend of item/variant: the service's colour map over the fixed range, as entries for

@@ -1,7 +1,7 @@
 # Test on pushes to main and on pull requests; publish main to GitHub Pages when tests pass.
 # Weekly: the same tests against the live tile providers (the page depends on them) plus a
 # report of newer library versions and data. Repo setting needed once: Pages → Source: GitHub Actions.
-# Actions are pinned to commits (tag in the comment); bump them deliberately.
+# Actions are pinned to commits (tag in the comment), the runner to its image; bump them deliberately.
 name: ci
 
 on:
@@ -18,14 +18,16 @@ permissions:
   contents: read
 
 # one run per branch at a time: a newer push cancels the older run, so an older commit never deploys
-# over a newer one (the pages group below only queues). The weekly run is never cancelled
+# over a newer one (the pages group below only queues). The weekly run has a group of its own, so a
+# push during it neither cancels it nor replaces it while it waits (it never deploys: running beside
+# a push is harmless)
 concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name != 'schedule' }}
+  group: ci-${{ github.ref }}${{ github.event_name == 'schedule' && '-weekly' || '' }}
+  cancel-in-progress: true
 
 jobs:
   test:                              # offline: fast and deterministic
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1   # v7.0.1
@@ -42,7 +44,7 @@ jobs:
         run: npm run data-check      # newer density data shows as a notice
 
   browser:                           # headless Chrome against the live tile providers (draw: without them)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 40              # smoke waits up to 10 min for an area save, and may run twice (its retry sleeps a minute), then draw and ui
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1   # v7.0.1
@@ -70,7 +72,7 @@ jobs:
   deploy:
     needs: [test, browser]
     if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:                     # a job's own list replaces the workflow's
       contents: read
       pages: write

@@ -546,6 +546,24 @@ await section('dragging, shapes, attaching', async () => {
   const shapeBar = await dw.evaluate(() => [...document.querySelectorAll('.dinspect .lbar button')].map((b) => b.textContent));
   check(!shapeBar.some((b) => ['Attach to…', 'Insert after', 'Delete', 'Split'].includes(b)), `attaching: a point's shape is rigid: no Attach to…, Insert, Delete or Split on its places (${shapeBar})`);
   await dw.keyboard.press('Escape');
+  // the vertices' bar after a Delete: the last vertex deleted, the one now last is current with its
+  // buttons; another row picked then shows its own (the table built anew takes its bar with it)
+  const five = await dw.evaluate(async () => {
+    const { addLine } = await import('./draw/document.js'), at = (x, y) => { const c = map.unproject([x, y]); return [c.lng, c.lat]; };
+    let s;
+    drawing.change((d) => { s = addLine(d, [at(200, 500), at(260, 520), at(320, 500), at(380, 520), at(440, 500)]); });
+    drawing.select([s.id]);
+    return s.id;
+  });
+  const barNow = () => dw.evaluate(() => { const b = document.querySelector('.dinspect .lbar'); return b && !b.hidden ? b.textContent.split(':')[0] : null; });
+  await dw.click('.dinspect [data-grid*=":points"] tbody tr[data-r="4"] td:first-child');
+  await dw.click('.dinspect .lbar button:text-is("Delete")');
+  const afterLast = await barNow();
+  await dw.click('.dinspect [data-grid*=":points"] tbody tr[data-r="1"] td:first-child');
+  const picked = await barNow();
+  check(/^Vertex 4/.test(afterLast ?? '') && picked === 'Vertex 2', `vertices: after deleting the last, the new last is current with its buttons; another row picked shows its own (${afterLast} · ${picked})`);
+  await dw.evaluate(async (id) => { const { remove } = await import('./draw/document.js'); drawing.change((d) => remove(d, [id])); }, five); // gone: what follows counts lines
+  await dw.keyboard.press('Escape');
   // a line drawn onto another line's leg: a point shared there, a place put in that line; then moved
   // by its inspector's Attach to… onto the shape's corner
   const host = await dw.evaluate(async () => {

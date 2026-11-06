@@ -39,7 +39,7 @@ export function forgetCurrent() { for (const st of state.values()) st.current = 
 // say what they are.
 export function listGrid({ name, columns, rows, add = null, actions = null, keys = {}, current = () => {}, plain = false, head = !plain }) {
   const st = stateOf(name);
-  if (st.current != null && st.current >= rows.length) st.current = null;
+  if (st.current != null && st.current >= rows.length) st.current = rows.length ? rows.length - 1 : null; // its last row gone (deleted): the one now last
   const cell = (tag, k, kids, attrs = {}) => h(tag, { class: columns[k].cls || null, ...attrs }, ...[kids].flat().filter((x) => x != null));
   // over the grid, while a row is current: the row's actions (nothing otherwise: no room taken)
   const bar = h('div', { class: 'lbar' });
@@ -88,5 +88,7 @@ export function listGrid({ name, columns, rows, add = null, actions = null, keys
   });
   showBar();
   if (st.current != null) current(st.current);
-  return h('div', { class: 'lgridbox' }, actions ? bar : null, h('div', { class: 'lscroll' }, table));
+  // named as its table: a table built anew (another row count, another page) takes its bar with it, the bar
+  // its rows show their actions in (morph would keep the old bar and leave the new rows writing to one never shown)
+  return h('div', { class: 'lgridbox', 'data-grid': name, 'data-rows': rows.length }, actions ? bar : null, h('div', { class: 'lscroll' }, table));
 }

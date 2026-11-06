@@ -13,18 +13,18 @@ import { fmtArea, fmtBrg, fmtDist } from '../format.js';
 
 // whether a circle can be drawn: one reaching a pole cannot be a polygon
 export const drawable = (c, r = c.radius) => !reachesPole(c.position, r);
+// where a circle's name and radius go: on its rim at the top of the screen (up: the map's bearing), a
+// sector's at its arc's middle; anchored so that the name is inside, the value outside
+const rimOf = (c, up = 0) => {
+  const az = c.aperture ? c.bearing : up, top = Math.cos((az - up) * D2R) >= 0; // in the upper half on screen
+  return { at: destination(c.position, az, c.radius), inside: top ? 'top' : 'bottom', outside: top ? 'bottom' : 'top' };
+};
 // a circle as drawn: its Scale's (its centre carried about its point, its radius times it); itself at 1
 export const drawnCircle = (doc, c) => { const t = drawnOf(doc, c); return t.k === 1 ? c : { ...c, position: t.f(c.position), radius: c.radius * t.k }; };
+// how far a point's shapes (members: some of them) reach from it along azimuth azi, as drawn (each at
+// its Scale): along its bearing, where its stalk starts; along the screen's down, where its name goes
+const reachAlong = (doc, p, azi, members = membersOf(doc, p.id)) => Math.max(0, ...members.flatMap(({ kind, el }) => { const t = drawnOf(doc, el); return positionsIn(kind, el).map(([o, k]) => { const g = inverse(p.position, t.f(o[k])); return g.s * Math.cos((g.azi - azi) * D2R) + (el.radius ?? 0) * t.k; }); }));
 // how far a point's shapes reach from it (m): their farthest vertex, or circle's rim
-// how far they reach along its bearing, as drawn (each its Scale): where its stalk starts
-// how far below a point (down: the screen's downward azimuth) its outlines reach, as drawn (their Scale's),
-// or null when it holds none shown: its name goes just under them (circles name themselves on their rims)
-const belowOf = (doc, p, down) => {
-  const outs = membersOf(doc, p.id).filter(({ kind, el }) => kind === 'line' && el.closed && isShown(doc, el));
-  if (!outs.length) return null;
-  return Math.max(0, ...outs.flatMap(({ el }) => { const t = drawnOf(doc, el); return el.points.map((q) => { const g = inverse(p.position, t.f(q)); return g.s * Math.cos((g.azi - down) * D2R); }); }));
-};
-const frontOf = (doc, p) => Math.max(0, ...membersOf(doc, p.id).flatMap(({ kind, el }) => { const t = drawnOf(doc, el); return positionsIn(kind, el).map(([o, k]) => { const g = inverse(p.position, t.f(o[k])); return g.s * Math.cos((g.azi - p.bearing) * D2R) + (el.radius ?? 0) * t.k; }); }));
 export const reachOf = (doc, p) => Math.max(0, ...membersOf(doc, p.id).flatMap(({ kind, el }) => positionsIn(kind, el).map(([o, k]) => inverse(p.position, o[k]).s + (el.radius ?? 0))));
 
 const HANDLE_GAP = 12; // px
@@ -129,7 +129,7 @@ function drawPartsIn(doc, sel = new Set(), hover = null, display = {}, want = { 
     if (want.base) {
       base.push({ type: 'Feature', properties: { id: c.id, kind: 'ring', z: Z.get(c.id), fill: st.fill.opacity > 0 ? 1 : 0, fc: st.fill.color, fo: st.fill.opacity, ...lineProps(st.stroke) }, geometry: { type: 'Polygon', coordinates: [rg] } });
       // its name on its rim, under the radius (valueFeatures), where a sector's arc is: rings about one centre each have their own
-      if (named(c)) name(baseNames, c, { type: 'Point', coordinates: destination(c.position, c.aperture ? c.bearing : 0, c.radius) }, st.stroke.color, { rim: 1 });
+      if (named(c)) { const rim = rimOf(c, down - 180); name(baseNames, c, { type: 'Point', coordinates: rim.at }, st.stroke.color, { rim: 1, anchor: rim.inside }); }
     }
     const items = [...(c.aperture ? [c.bearing] : [0, 90, 180, 270]).map((az) => ({ p: destination(c.position, az, c.radius), role: 'radius' })),
       ...(c.aperture ? [-0.5, 0.5].map((k) => ({ p: destination(c.position, c.bearing + k * c.aperture, c.radius), role: 'aperture', ref: k })) : [])];
@@ -180,12 +180,12 @@ function drawPartsIn(doc, sel = new Set(), hover = null, display = {}, want = { 
       const st = styleOf(doc, n);
       if (!bare) base.push({ type: 'Feature', properties: { id: n.id, kind: 'symbol', symbol: n.symbol === 'none' ? 'centre' : n.symbol, sc: st.stroke.color, so: st.stroke.opacity }, geometry: p });
       // its name: just under its outlines (centred on its vertical), else beside it (below first)
-      const below = named(n) ? belowOf(doc, n, down) : null;
-      if (below !== null) name(baseNames, n, { type: 'Point', coordinates: destination(n.position, down, below) }, st.stroke.color, { under: 1 });
+      const outs = named(n) ? membersOf(doc, n.id).filter(({ kind, el }) => kind === 'line' && el.closed && isShown(doc, el)) : []; // circles name themselves on their rims
+      if (outs.length) name(baseNames, n, { type: 'Point', coordinates: destination(n.position, down, reachAlong(doc, n, down, outs)) }, st.stroke.color, { under: 1 });
       else if (named(n)) name(baseNames, n, p, st.stroke.color);
     }
     if (!bare) mark(n, p);
-    if (own.has(n.id) && holds) handles(n.id, stalk(n.id, n.position, n.bearing, frontOf(doc, n)));
+    if (own.has(n.id) && holds) handles(n.id, stalk(n.id, n.position, n.bearing, reachAlong(doc, n, n.bearing)));
   }
   return { base: [...base, ...baseNames], zoom: [...zoomed, ...zoomNames], marks };
 }
@@ -196,9 +196,10 @@ const showsValues = (doc, el) => lookOf(doc, el).text.values;
 
 // The values of the elements showing them, as label features (the draw-value layer draws them): each leg
 // of a line its length (and its bearing, when bearings are on and the leg is straight), the total at
-// its end; a closed line its area and perimeter; a circle its radius. units: 'km' | 'nm'.
+// its end; a closed line its area and perimeter; a circle its radius (on its rim: rimOf, up the map's
+// bearing). units: 'km' | 'nm'.
 export const valueFeatures = (doc, ...rest) => reading(doc, () => valueFeaturesIn(doc, ...rest)); // indexed while it reads
-function valueFeaturesIn(doc, units = 'km', bearings = false) {
+function valueFeaturesIn(doc, units = 'km', bearings = false, up = 0) {
   const out = [];
   const label = (id, coord, text, anchor = 'center') => out.push({ type: 'Feature', properties: { id, label: text, anchor }, geometry: { type: 'Point', coordinates: coord } });
   for (const s of doc.lines) {
@@ -212,7 +213,7 @@ function valueFeaturesIn(doc, units = 'km', bearings = false) {
     });
     if (tr.legs.length > 1) label(s.id, s.points.at(-1), `Σ ${fmtDist(tr.length, units)}`, 'top');
   }
-  for (const c of doc.circles) { const d = drawnCircle(doc, c); if (showsValues(doc, c) && isShown(doc, c) && drawable(d)) label(c.id, destination(d.position, c.aperture ? c.bearing : 0, d.radius), `r ${fmtDist(c.radius, units)}`, 'bottom'); }
+  for (const c of doc.circles) { const d = drawnCircle(doc, c); if (showsValues(doc, c) && isShown(doc, c) && drawable(d)) { const rim = rimOf(d, up); label(c.id, rim.at, `r ${fmtDist(c.radius, units)}`, rim.outside); } }
   return out;
 }
 

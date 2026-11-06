@@ -67,7 +67,7 @@ export class Drawing extends DrawStore {
       labelRaf = requestAnimationFrame(() => this.renderLabels());
     });
     // the map turned: names under shapes go under them again, on screen (drawParts' down)
-    map.on('rotateend', () => { if (this.doc.points.length) this.render({ base: true }); });
+    map.on('rotateend', () => { if (this.doc.points.length || this.doc.circles.length) this.render({ base: true }); }); // names and radii placed by the screen (features.js)
     // once a frame while zooming, the marks of what is selected (handles are thinned at the zoom)
     map.on('zoom', () => {
       if (!this.sel.size && !this.hover) return;
@@ -114,7 +114,7 @@ export class Drawing extends DrawStore {
     // the values: again when the drawing changed, or while what is drawn or dragged shows its own (not
     // at every move of the pointer otherwise: a drawing's values are many)
     const draft = parts.base || parts.marks ? this.draftValues() : [];
-    if (parts.base || draft.length || this.draftShown) set('drawvalue', [...(this.values ??= valueFeatures(this.doc, this.units(), this.bearings())), ...draft]);
+    if (parts.base || draft.length || this.draftShown) set('drawvalue', [...(this.values ??= valueFeatures(this.doc, this.units(), this.bearings(), this.map.getBearing())), ...draft]);
     this.draftShown = draft.length > 0;
     if (parts.marks) {
       let over = [...p.marks, ...this.draftFeatures()];

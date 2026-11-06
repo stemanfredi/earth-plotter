@@ -7,13 +7,21 @@ name: ci
 on:
   push:
     branches: [main]
+    paths-ignore: ['docs/**', '*.md']   # the site is unchanged: no tests, no deploy
   pull_request:
+    paths-ignore: ['docs/**', '*.md']
   schedule:
     - cron: '17 6 * * 1'   # Mondays 06:17 UTC
   workflow_dispatch:
 
 permissions:
   contents: read
+
+# one run per branch at a time: a newer push cancels the older run, so an older commit never deploys
+# over a newer one (the pages group below only queues). The weekly run is never cancelled
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name != 'schedule' }}
 
 jobs:
   test:                              # offline: fast and deterministic
@@ -36,8 +44,6 @@ jobs:
   browser:                           # headless Chrome against the live tile providers (draw: without them)
     runs-on: ubuntu-latest
     timeout-minutes: 40              # smoke waits up to 10 min for an area save, and may run twice (its retry sleeps a minute), then draw and ui
-    env:
-      CHROME: /usr/bin/google-chrome
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1   # v7.0.1
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
@@ -45,6 +51,10 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
       - run: npm ci
+      # the Chromium playwright-core is pinned to, not the runner's Chrome (which moves with each image)
+      - run: |
+          npx playwright-core install chromium
+          echo "CHROME=$(node -e "import('playwright-core').then((m) => console.log(m.chromium.executablePath()))")" >> "$GITHUB_ENV"
       # one retry each: a provider hiccup should not block a deploy, a real failure still does. On a push,
       # what a provider served (tiles, legends, places found) is checked but not held against the page:
       # said as warnings; the weekly run is strict, so a provider down for a week is a failed run (mailed)
@@ -61,7 +71,8 @@ jobs:
     needs: [test, browser]
     if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
-    permissions:
+    permissions:                     # a job's own list replaces the workflow's
+      contents: read
       pages: write
       id-token: write
     environment:

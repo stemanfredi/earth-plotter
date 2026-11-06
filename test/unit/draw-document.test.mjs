@@ -300,8 +300,8 @@ test('repairs: symbol, angles, sizes, Offset, style values, circles, flags', () 
   assert.match(report.skipped[0].reason, /radius not between 0 and 10 000 km/);
   assert.deepEqual([s1.look.offset, s1.smooth], [-d.MAX_OFFSET, false]); // clamped either side
   assert.deepEqual([s2.look.offset, s3.look.offset], [d.MAX_OFFSET, undefined]); // true or false is not a number of pixels
-  for (const re of [/unknown symbol "star"/, /bearing -90 read as 270/, /aperture 400 read as a full circle/, /aperture: not an angle above 0; a circle/, /bearing 370 read as 10/,
-    /unknown dash "wavy"/, /look text name: not true or false, ignored/, /stroke width 99 clamped to 20/, /stroke opacity 2 clamped to 1/, /fill colour: not a #rrggbb/,
+  for (const re of [/symbol: unknown "star"/, /bearing -90 read as 270/, /aperture 400 read as a full circle/, /aperture: not an angle above 0; a circle/, /bearing 370 read as 10/,
+    /stroke dash: unknown "wavy"/, /look text name: not true or false, ignored/, /stroke width 99 clamped to 20/, /stroke opacity 2 clamped to 1/, /fill colour: not a #rrggbb/,
     /Offset: not a number/, /smooth is not true or false/]) warned(report, re);
   assert.equal(report.warnings.filter((w) => /aperture/.test(w)).length, 2); // those two; a sector of exactly 360°: a circle, quietly
 });

@@ -9,7 +9,7 @@
 
 import { FORMAT, VERSION, KINDS, KIND, SYMBOLS, LEADERS, LABEL_OFFSET, META_D, MAX_RADIUS, MAX_LABEL_OFFSET,
   emptyDoc, newId, columnsOf, find, targetOf, elements, canHold, holderOf, positionsIn, adopt, framed, reading } from './document.js';
-import { ID, isObj, fin, Skip, time, text, properties, flag, position, angle, look, aperture, readView, VIEW_D, VIEW_DATA_D } from './check.js';
+import { ID, isObj, fin, oneOf, Skip, time, text, properties, flag, position, angle, look, aperture, readView, VIEW_D, VIEW_DATA_D } from './check.js';
 import { targetPosition, refreshAttached, placeAt, lineTarget } from './attach.js';
 import { settings, connectSettings, DISTRIBUTE_D, CONNECT_D } from './generator.js';
 import { norm180, norm360, samePosition, lonLatArea2 } from '../geo.js';
@@ -274,7 +274,7 @@ const READ = {
   point(coords, mine, x, c, { foreign }) {
     const p = { ...x, position: coord(coords, c, 'position'), bearing: angle(mine.bearing, c, 'bearing') };
     const dflt = foreign ? 'diamond' : 'none'; // a point from another tool: a diamond, to be seen
-    p.symbol = SYMBOLS.includes(mine.symbol) ? mine.symbol : (mine.symbol !== undefined && c.warn(`unknown symbol "${String(mine.symbol).slice(0, 20)}", default used`), dflt);
+    p.symbol = oneOf(mine.symbol, SYMBOLS, dflt, c, 'symbol');
     return p;
   },
   // a circle (a sector with an aperture): its radius above 0 and below 10 000 km, or it is skipped
@@ -304,9 +304,8 @@ const READ = {
     const o = mine.offset;
     const offset = Array.isArray(o) && o.length >= 2 && fin(o[0]) && fin(o[1]) ? [Math.max(-MAX_LABEL_OFFSET, Math.min(MAX_LABEL_OFFSET, o[0])), Math.max(-MAX_LABEL_OFFSET, Math.min(MAX_LABEL_OFFSET, o[1]))]
       : (o !== undefined && c.warn('offset: not [x, y] pixels, the default used'), [...LABEL_OFFSET]);
-    const one = (v, list, d, what) => (v === undefined ? d : list.includes(v) ? v : (c.warn(`${what}: unknown "${String(v).slice(0, 20)}", ${d} used`), d));
     // a label has no name: it goes by its text (one in the file is dropped, as its guide is)
-    return { ...x, name: '', text: text(mine.text, c, 'text'), position: coord(coords, c, 'position'), offset, leader: one(mine.leader, LEADERS, 'arrow', 'leader') };
+    return { ...x, name: '', text: text(mine.text, c, 'text'), position: coord(coords, c, 'position'), offset, leader: oneOf(mine.leader, LEADERS, 'arrow', c, 'leader') };
   },
 };
 

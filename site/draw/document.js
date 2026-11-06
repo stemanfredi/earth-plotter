@@ -196,14 +196,12 @@ export const isMeasurement = (el) => !!el.measure;
 // how far a line is drawn from where it is (Offset: px, positive to the right of its direction, 0: on it)
 export const offsetOf = (doc, el) => lookOf(doc, el).offset;
 // A shape's drawing scale (Look's Scale: a circle's or a closed line's a point holds; any other 1)
-// and what it does to a position: { k, o (its point), f (a real position as drawn), back (a drawn
-// position as real) }. Display only: a drawn area is real geography, never drawn larger.
+// and what it does to a position: { k, f (a real position as drawn) }. Display only: a drawn area is real geography, never drawn larger.
 export function drawnOf(doc, el) {
   const n = (el.radius != null || el.closed) && holderOf(doc, el), k = n ? lookOf(doc, el).scale : 1;
-  if (k === 1) return { k, o: null, f: (q) => q, back: (q) => q };
+  if (k === 1) return { k, f: (q) => q };
   const o = n.position;
-  const by = (m) => (q) => { const g = inverse(o, q); return g.s ? destination(o, g.azi, g.s * m) : [...o]; };
-  return { k, o, f: by(k), back: by(1 / k) };
+  return { k, f: (q) => { const g = inverse(o, q); return g.s ? destination(o, g.azi, g.s * k) : [...o]; } };
 }
 // Set one field of x's own look (path: 'offset', 'fill.color', 'text.name'…); undefined takes it back
 // (the value then comes from the drawing, or the defaults).

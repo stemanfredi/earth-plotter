@@ -35,7 +35,6 @@ const SHELL = [
   'draw/forms.js',
   'draw/generator.js',
   'draw/grid.js',
-  'draw/input.js',
   'draw/labels.js',
   'draw/layers.js',
   'draw/library.js',

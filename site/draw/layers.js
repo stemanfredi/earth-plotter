@@ -2,6 +2,7 @@
 // features.js and labels.js make their features), the symbols as signed distance fields, and which
 // layers a click hits, a press grabs, the PNG export hides.
 import { INK } from './document.js';
+import { RADIUS as SNAP_RADIUS } from './snap.js';
 
 // The marks of interaction (drawing-ui.md §7): yellow cased in white (seen on the sea's blue, the chart's
 // white, satellite) for the bands, the targets and the + marks, hovered at half strength, selected and
@@ -99,6 +100,12 @@ const haloLayers = (geom, sides, parts) => sides.flatMap((side) => parts.map(([p
     'line-offset': ['+', OFF, ['*', side, ['+', ['/', ['get', 'sw'], 2], 3, BAND / 2]]] } })));
 // a finger (a coarse pointer): handles drawn larger (14 px from 8), as drawing.js grabs them farther
 export const FINGER = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
+// what the drawing's pointer shares (drawing.js, drafting.js, dragging.js, boxing.js): with a finger
+// (drawing-ui.md §1), snapping reaches farther, handles are grabbed farther, a + is added only along
+// longer legs
+export const SNAP_PX = FINGER ? 16 : SNAP_RADIUS, GRAB_PX = FINGER ? 22 : 5, MID_PX = FINGER ? 80 : 40;
+// a pointer event's place on the map's canvas (px)
+export const canvasPoint = (map, e) => { const r = map.getCanvasContainer().getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; };
 const HANDLE_SIZE = FINGER ? 1.75 : 1;
 // handles at an outline's key points: small squares, white with a dark edge
 const handleLayer = (id, source, kind) => ({ id, type: 'symbol', source, filter: ofKind(kind),

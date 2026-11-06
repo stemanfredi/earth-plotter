@@ -4,14 +4,13 @@
 
 import { find, elements, positionsIn, MAX_LABEL_OFFSET, MAX_RADIUS, linkFrom, setLink, carry, holderOf, moveElements, drawnOf } from './document.js';
 import { settleGeometry } from './store.js';
-import { HANDLE_LAYERS } from './layers.js';
+import { HANDLE_LAYERS, GRAB_PX, canvasPoint } from './layers.js';
 import { drawnCircle } from './features.js';
 import { inverse, destination, moveAbout } from '../geodesy.js';
 import { clamp } from '../geo.js';
 import { stepped, neighbours } from './snap.js';
 import { attachAt, insertVertex, refNear } from './attach.js';
 import { radiusTo, bearingTo, sectorEdgeTo, scaledPlaces } from './drag.js';
-import { GRAB_PX, canvasPoint } from './input.js';
 
 export class Dragging {
   // ---- dragging (drawing-ui.md §5): selected elements and their handles ------------------------

@@ -11,7 +11,13 @@ import { lineTrace, nearestAlong } from './lines.js';
 import { inverse } from '../geodesy.js';
 import { snapAt } from './snap.js';
 import { attachAt, lineRef, resolve } from './attach.js';
-import { SNAP_PX, guideWithValues, DRAFT_ID } from './input.js';
+import { SNAP_PX } from './layers.js';
+
+// what Measure makes (a measurement: a guide of its own colour, its values shown); how what is drawn shows its values
+const guideWithValues = () => ({ guide: true, measure: true, look: { text: { values: true } } });
+// the ID of the line being drawn, as measured for its values: always the same, so the traces cached by
+// ID (lines.js) keep one entry for it, not one for each move of the pointer
+const DRAFT_ID = '~draft';
 
 export class Drafting {
   // ---- the Line tool: its vertices, by clicks (drawing-ui.md §2.1) ----------

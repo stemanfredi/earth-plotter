@@ -3,7 +3,7 @@
 
 import { elements, isShown, reading } from './document.js';
 import { GEOMETRY } from './features.js';
-import { canvasPoint } from './input.js';
+import { canvasPoint } from './layers.js';
 
 export class Boxing {
   // Box select (Select's other kind, B): the next drag on the map, a mouse's or a finger's, draws the

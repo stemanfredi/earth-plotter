@@ -110,10 +110,6 @@ export function partIn(part, [w, s, e, n]) {
   const area = regionOf(part)?.area;
   return !area || area.some((a) => e > a[0] && w < a[2] && s < a[3] && n > a[1]);
 }
-function inArea(part, z, x, y) {
-  return partIn(part, tileBounds(z, x, y));
-}
-
 // MapLibre protocol handler for cmems://item/variant/look/t/depth/z/x/y (look: what it draws,
 // 'colour', 'arrows' or 'both'; t: the hour, ms since the epoch; depth: m below the surface, used
 // by variables with depth)
@@ -122,7 +118,7 @@ export async function cmemsTile({ url }, abortController) {
   const v = CMEMS[item][variant], style = cmemsStyle(v, look);
   const [times, levels] = await Promise.all([partTimes(item, variant, t), partLevels(item, variant, depth)]);
   const images = await Promise.all(v.parts.map(async (part, i) => {
-    if (times[i] === null || !inArea(part, z, x, y)) return null; // no data at this hour, or not here
+    if (times[i] === null || !partIn(part, tileBounds(z, x, y))) return null; // no data at this hour, or not here
     const when = times[i] === undefined ? new Date(t) : new Date(times[i]); // range unknown: ask anyway
     const r = await fetchOk(cmemsTileUrl(part, style, when.toISOString(), z, x, y, levels[i]), { signal: abortController?.signal });
     return createImageBitmap(await r.blob());

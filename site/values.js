@@ -57,6 +57,8 @@ export async function cmemsValues(id, at, box) {
 // raster/emodnet-depth.tif: EMODnet Bathymetry's elevation over the view's bounding box, in its own
 // grid; a view needing more than 16 of its ~2 MB chunks (wider than about 4° × 4°) is left out:
 // zoom in to export it
+// how many of a store's chunks (meta m) the cells read
+const chunksOf = (cells, m) => new Set(cells.rows.map((r) => Math.floor(r / m.chunks[0]))).size * new Set(cells.cols.map((c) => Math.floor(c / m.chunks[1]))).size;
 const dtmStore = () => stores(EMODNET_DTM, async () => {
   const store = await openStore(EMODNET_DTM, fetchBytes);
   const [lat, lon] = await Promise.all([store.coord('latitude'), store.coord('longitude')]);
@@ -65,7 +67,7 @@ const dtmStore = () => stores(EMODNET_DTM, async () => {
 export async function emodnetValues(box) {
   const { store, lat, lon } = await dtmStore(), m = store.meta('elevation'), cells = cellsOf(lat, lon, box);
   if (!cells.rows.length) return [];
-  const blocks = new Set(cells.rows.map((r) => Math.floor(r / m.chunks[0]))).size * new Set(cells.cols.map((c) => Math.floor(c / m.chunks[1]))).size;
+  const blocks = chunksOf(cells, m);
   if (blocks > 16) throw new Error(`${blocks} chunks of about 2 MB for this view: zoom in to export them`);
   const description = `EMODnet Bathymetry DTM 2024: elevation (m, negative below the sea surface; vertical reference lowest astronomical tide), its own grid (1/16 arc-minute), EPSG:4326${cells.step > 1 ? `, every ${cells.step}th cell` : ''}, over the view's bounding box. No data: NaN. Not for navigation`;
   return [rasterOf(cells, 'raster/emodnet-depth', { title: 'EMODnet depth: values', description, names: ['elevation'], units: ['m'],
@@ -92,7 +94,7 @@ export async function gebcoValues(box, variable = 'elevation') {
     const [H, W] = m.shape, cs = 180 / H;
     const cells = cellsOf(Float64Array.from({ length: H }, (_, i) => 90 - (i + 0.5) * cs), Float64Array.from({ length: W }, (_, i) => -180 + (i + 0.5) * cs), box);
     if (!cells.rows.length) return [];
-    const blocks = new Set(cells.rows.map((r) => Math.floor(r / m.chunks[0]))).size * new Set(cells.cols.map((c) => Math.floor(c / m.chunks[1]))).size;
+    const blocks = chunksOf(cells, m);
     if (blocks > 16 || cells.step > 1) continue;
     const grid = !k ? 'its own grid (15″ cells)' : variable === 'tid' ? `level ${k} of its grid (the most common code of ${2 ** k} × ${2 ** k} of its 15″ cells)` : `level ${k} of its grid (means of ${2 ** k} × ${2 ** k} of its 15″ cells)`;
     const description = `GEBCO 2026 Grid (GEBCO Compilation Group): ${g.what(grid)}, EPSG:4326, over the view's bounding box. No data: NaN. Not for navigation`;

@@ -6,7 +6,7 @@
 import { norm180, lonLatArea2 } from './geo.js';
 
 // GeographicLib is a classic script on the page (window.geodesic); tests set globalThis.geodesic
-export const G = globalThis.geodesic.Geodesic.WGS84;
+const G = globalThis.geodesic.Geodesic.WGS84;
 const { STANDARD, DISTANCE_IN, LONG_UNROLL } = globalThis.geodesic.Geodesic;
 const MASK = STANDARD | DISTANCE_IN | LONG_UNROLL; // DISTANCE_IN: positions along a line by distance
 // p → q: { s: length, azi: azimuth at p }

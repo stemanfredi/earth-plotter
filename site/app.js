@@ -1099,7 +1099,7 @@ const profileFor = (trace) => profiled(JSON.stringify(trace.coords), () => profi
 // What a clipper's tiles say at p ([lng, lat]), read at zoom z (at most its last, maxZoom): metres;
 // NaN where its shading shows nothing of its own. Many places of few tiles: each tile read once.
 function metresOf(clip, maxZoom) {
-  const tiles = lru(64);
+  const tiles = lru(16); // a profile reads along its line: few tiles at a time (the worker keeps its own)
   return async ([lng, lat], zoom) => {
     const z = Math.min(zoom, maxZoom), { x: X, y: Y } = tileXY(lng, lat, z), tx = Math.floor(X), ty = Math.floor(Y);
     const m = await tiles(`${z}/${tx}/${ty}`, () => clip.metres(z, tx, ty));

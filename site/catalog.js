@@ -394,7 +394,7 @@ export const DEPTH_SCHEMES = {
 // place them (an error of 10 m in depth on a 0.1% slope moves a line 10 km).
 // From it: what each zoom traces (ISOBATH_STEPS, maplibre-contour in app.js) and draws (style.js).
 // [depth m, from zoom]
-export const ISOBATHS = [
+const ISOBATHS = [
   [5, 10], [10, 8], [20, 6], [30, 8], [50, 6], [100, 6], [200, 4], [300, 8], [500, 6],
   [1000, 4], [1500, 8], [2000, 4], [2500, 8], [3000, 2], [5000, 2], ...[4000, 6000, 7000, 8000, 9000, 10000, 11000].map((d) => [d, 4]),
 ];

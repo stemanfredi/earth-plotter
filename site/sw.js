@@ -126,11 +126,15 @@ self.addEventListener('activate', (e) => {
 });
 
 // the page asks for the waiting version to be applied (its Reload), says the saved areas changed, or
-// asks whether there is a connection
+// asks whether there is a connection: told what the last try said, and, that try failed, the
+// provider tried again (its small description), the pages told if that changed
 self.addEventListener('message', (e) => {
   if (e.data === 'apply') self.skipWaiting();
   if (e.data === 'packs') { packs = null; anyPack = undefined; }
-  if (e.data === 'connection') e.source?.postMessage({ connection });
+  if (e.data === 'connection') {
+    e.source?.postMessage({ connection });
+    if (connection === false) e.waitUntil(net(new Request(OFM_TILEJSON, { cache: 'no-store' })).catch(() => {}));
+  }
 });
 
 // Whether the network answers: what the last try of the base map's provider said (a phone with a

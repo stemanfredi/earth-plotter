@@ -67,17 +67,22 @@ export function areaOf(map) {
 
 // Whether there is a connection: none when the browser says so, or when the service worker's last
 // try of the base map's provider failed (a phone with a signal but no data calls itself online).
-// onConnection(fn): fn() when that may have changed
+// Asked again (the worker tries the provider anew if its last try failed) when the browser goes
+// online, the page is seen again and the dialog opens: inside a saved area the map asks the provider
+// nothing, so a connection back would not be seen. onConnection(fn): fn() when that may have changed
 let swSays = null;
 const listeners = new Set();
 export const noConnection = () => navigator.onLine === false || swSays === false;
 export const onConnection = (fn) => listeners.add(fn);
 const changed = () => listeners.forEach((fn) => fn());
+const askConnection = () => navigator.serviceWorker?.controller?.postMessage('connection');
 if (typeof navigator !== 'undefined' && navigator.serviceWorker) {
   navigator.serviceWorker.addEventListener('message', (e) => { if (e.data && 'connection' in e.data) { swSays = e.data.connection; changed(); } });
-  navigator.serviceWorker.ready.then(() => navigator.serviceWorker.controller?.postMessage('connection'));
+  navigator.serviceWorker.ready.then(askConnection);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) askConnection(); });
 }
-for (const e of ['online', 'offline']) window.addEventListener(e, changed);
+window.addEventListener('online', () => { askConnection(); changed(); });
+window.addEventListener('offline', changed);
 
 // the service worker, told the saved areas changed
 const sw = () => navigator.serviceWorker?.controller;
@@ -372,7 +377,7 @@ export function offlineDialog({ map, fit, download }) {
   el.addEventListener('cancel', (e) => { if (saving) e.preventDefault(); });
   el.addEventListener('close', () => saving?.abort());
   onConnection(() => { if (el.open && !saving) render(); }); // Save and Update come and go with the connection
-  const open = () => { say(''); return render().catch((err) => console.error('offline areas:', err)).then(() => { if (!el.open) { el.showModal(); focusMain(); } }); };
+  const open = () => { say(''); askConnection(); return render().catch((err) => console.error('offline areas:', err)).then(() => { if (!el.open) { el.showModal(); focusMain(); } }); };
   return {
     open,
     openFile: async (file) => { if (saving) return; await open(); busy('Opening…', false, () => openAreaFile(file), 'Not opened'); },

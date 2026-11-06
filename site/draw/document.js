@@ -3,7 +3,7 @@
 //
 // Four primitives and the group (the model and its words: docs/drawing-format.md, The model):
 //   point: one position, a symbol (screen size) and a bearing; it can hold shapes, which move and
-//     turn with it in its frame (carry);
+//     turn with it as one piece (carry);
 //   circle: a centre and a radius; with an aperture, a sector centred on its bearing;
 //   line: vertices joined by legs; closed, a ring (its last vertex joined to its first);
 //   label: text pointing at a place;
@@ -16,7 +16,7 @@
 // table: { from: [id, index], to: a target, attach.js }), applied after each change.
 
 import { moveAbout, circle, sector, inverse, destination } from '../geodesy.js';
-import { norm360, norm180, unrollTo } from '../geo.js';
+import { norm360, unrollTo } from '../geo.js';
 
 export const FORMAT = 'earthplotter-drawing';
 export const VERSION = 1; // the drawing's version: this code writes and reads it, and no other
@@ -149,8 +149,8 @@ const groupOf = (doc, el) => {
 // The groups an element (or a group) is in, the nearest first: its group (a shape: its point, then
 // the point's group), that group's, and so on
 export function groupsOf(doc, el) {
-  const out = [];
-  for (let g = groupOf(doc, el); g && g !== el && !out.includes(g); g = groupOf(doc, g)) out.push(g);
+  const out = [], seen = new Set([el]);
+  for (let g = groupOf(doc, el); g && !seen.has(g); g = groupOf(doc, g)) { seen.add(g); out.push(g); }
   return out;
 }
 // the groups an element is in, the nearest first, without a shape's point (groupsOf)
@@ -196,14 +196,12 @@ export const isMeasurement = (el) => !!el.measure;
 // how far a line is drawn from where it is (Offset: px, positive to the right of its direction, 0: on it)
 export const offsetOf = (doc, el) => lookOf(doc, el).offset;
 // A shape's drawing scale (Look's Scale: a circle's or a closed line's a point holds; any other 1)
-// and what it does to a position: { k, o (its point), f (a real position as drawn), back (a drawn
-// position as real) }. Display only: a drawn area is real geography, never drawn larger.
+// and what it does to a position: { k, f (a real position as drawn) }. Display only: a drawn area is real geography, never drawn larger.
 export function drawnOf(doc, el) {
   const n = (el.radius != null || el.closed) && holderOf(doc, el), k = n ? lookOf(doc, el).scale : 1;
-  if (k === 1) return { k, o: null, f: (q) => q, back: (q) => q };
+  if (k === 1) return { k, f: (q) => q };
   const o = n.position;
-  const by = (m) => (q) => { const g = inverse(o, q); return g.s ? destination(o, g.azi, g.s * m) : [...o]; };
-  return { k, o, f: by(k), back: by(1 / k) };
+  return { k, f: (q) => { const g = inverse(o, q); return g.s ? destination(o, g.azi, g.s * k) : [...o]; } };
 }
 // Set one field of x's own look (path: 'offset', 'fill.color', 'text.name'…); undefined takes it back
 // (the value then comes from the drawing, or the defaults).
@@ -249,54 +247,20 @@ export function addLine(doc, positions, opts = {}, taken = undefined) {
   return s;
 }
 export const fewestPlaces = (line) => (line.closed ? 3 : 2); // what a line keeps
-// ---- a point's shapes, in its frame --------------------------------------------------------------
-// A shape a point holds is kept in the point's frame (docs/drawing-format.md, The model, rule 3):
-// frame { places: [[a, d]], turn }, each of its vertices (a circle's centre) d metres from the point at a
-// degrees from the point's bearing, and a circle's bearing turn degrees from it. Its positions are
-// worked out from it whenever the point moves or turns (follow), so the shape stays exactly as it
-// was about its point: as a block in CAD.
-// its frame, from where it is now about point p (made once it is held; again when it is reshaped)
-export function adopt(p, kind, el) {
-  const at = (q) => { const g = inverse(p.position, q); return g.s ? [norm180(g.azi - p.bearing), g.s] : [0, 0]; };
-  el.frame = { places: positionsIn(kind, el).map(([o, k]) => at(o[k])), ...(kind === 'circle' ? { turn: norm360(el.bearing - p.bearing) } : {}) };
-}
-// a position in point p's frame ([a, d]) on the map
-const fromFrame = (p, [a, d]) => (d ? destination(p.position, p.bearing + a, d) : [...p.position]);
-// shape el's positions and bearing as its frame about p says: { places, bearing }
-export const framed = (p, el) => ({ places: el.frame.places.map((q) => fromFrame(p, q)), bearing: el.frame.turn == null ? null : +norm360(p.bearing + el.frame.turn).toFixed(4) });
-// p's shapes, each with a frame that fits it (one made where it is, about p as it is now, if not)
-function framesOf(doc, p) {
-  const ms = membersOf(doc, p.id);
-  for (const { kind, el } of ms) if (el.frame?.places.length !== positionsIn(kind, el).length) adopt(p, kind, el);
-  return ms;
-}
-// p's shapes where their frames say
-export function follow(doc, p) {
-  for (const { kind, el } of framesOf(doc, p)) {
-    const f = framed(p, el);
-    positionsIn(kind, el).forEach(([o, k], i) => { o[k] = f.places[i]; });
-    if (f.bearing != null) el.bearing = f.bearing;
-  }
-}
-// A point moved to position and turned to bearing, its shapes with it as one piece (their frames)
+// ---- a point's shapes, carried with it ---------------------------------------------------------
+// A shape a point holds moves and turns with it as one piece (docs/drawing-format.md, The model, rule
+// 3), as a block in CAD: each of its vertices (a circle's centre) stays as far from the point, at the
+// same angle from the point's bearing, and a circle's bearing as far from it. Taken from where they
+// are each time the point moves or turns.
 export function carry(doc, p, position, bearing = p.bearing) {
   if (bearing === p.bearing && p.position[0] === position[0] && p.position[1] === position[1]) return;
-  framesOf(doc, p); // about where it was
+  const about = (q) => { const g = inverse(p.position, q); return [g.azi - p.bearing, g.s]; };
+  const shapes = membersOf(doc, p.id).map(({ kind, el }) => ({ kind, el, places: positionsIn(kind, el).map(([o, k]) => about(o[k])), turn: el.bearing - p.bearing }));
   p.position = [...position];
   p.bearing = bearing;
-  follow(doc, p);
-}
-// After a shape's own form changed (its bearing, its vertices): its frame made again from where it is
-export function refit(doc, kind, el) { const p = holderOf(doc, el); if (p) adopt(p, kind, el); }
-// After any change: every shape a point holds has a frame, a free one none
-export function frames(doc) {
-  const pts = new Map(doc.points.map((p) => [p.id, p]));
-  for (const kind of ['circle', 'line']) {
-    for (const el of doc[KIND[kind].list]) {
-      const p = el.groupId && pts.get(el.groupId);
-      if (!p) delete el.frame;
-      else if (el.frame?.places.length !== positionsIn(kind, el).length) adopt(p, kind, el);
-    }
+  for (const { kind, el, places, turn } of shapes) {
+    positionsIn(kind, el).forEach(([o, k], i) => { const [a, d] = places[i]; o[k] = d ? destination(p.position, p.bearing + a, d) : [...p.position]; });
+    if (kind === 'circle') el.bearing = +norm360(p.bearing + turn).toFixed(4);
   }
 }
 // The elements ids moved as one piece from position `from` to `to`, along the ellipsoid (moveAbout:
@@ -467,7 +431,6 @@ export function setGroup(doc, id, gid) {
   const was = holderOf(doc, x.el);
   x.el.groupId = gid;
   const p = holderOf(doc, x.el);
-  if (p) adopt(p, x.kind, x.el); else delete x.el.frame; // held: in its point's frame from now on
   if (was && !p) { // a shape freed (Detach, a drop in the tree): an element of its own, named, never scaled
     setLook(x.el, 'scale', undefined);
     if (!x.el.name) x.el.name = nextName(doc, x.kind, x.kind === 'circle' ? (x.el.aperture ? 'Sector' : 'Circle') : 'Area');

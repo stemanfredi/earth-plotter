@@ -5,7 +5,7 @@
 // elements as the document does, in this page, so they paste into another drawing opened in it too.
 // Pure.
 
-import { leavesOf, positionsIn, newId, idsOf, KIND, nextName, emptyDoc, follow } from './document.js';
+import { leavesOf, positionsIn, newId, idsOf, KIND, nextName, emptyDoc, carry } from './document.js';
 import { targetPosition } from './attach.js';
 import { samePosition } from '../geo.js';
 import { extentOf } from './features.js';
@@ -33,19 +33,19 @@ const nameOn = (doc, kind, base) => (base ? nextName(doc, kind, base) : '');
 // Each gets a numbered name, but those whose kind keep(kind) says: their names as copied.
 export function paste(doc, clip, mv, keep = () => false) {
   const taken = idsOf(doc), ids = new Map(), groups = new Set(doc.groups.map((g) => g.id));
+  const points = new Set(clip.items.filter((x) => x.kind === 'point').map((x) => x.el.id)); // each carried, its shapes with it (below)
   for (const { el } of clip.items) ids.set(el.id, newId(doc, taken));
   const made = [];
   for (const { kind, el: src } of clip.items) {
     const el = clone(src);
     el.id = ids.get(src.id);
     el.name = keep(kind) ? src.name : nameOn(doc, kind, baseOf(src.name));
-    if (!ids.has(el.groupId)) delete el.frame; // a shape copied without its point: free
     el.groupId = ids.get(el.groupId) ?? (groups.has(el.groupId) ? el.groupId : null); // a shape in the copy of its point
-    for (const [o, k] of positionsIn(kind, el)) o[k] = mv(o[k]);
+    if (kind !== 'point' && !points.has(src.groupId)) for (const [o, k] of positionsIn(kind, el)) o[k] = mv(o[k]);
     doc[KIND[kind].list].push(el);
     made.push({ kind, el });
   }
-  for (const { kind, el } of made) if (kind === 'point') follow(doc, el); // its shapes as its frame holds them: exactly as they were about it
+  for (const { kind, el } of made) if (kind === 'point') carry(doc, el, mv(el.position)); // its shapes exactly as they were about it
   // a link among the elements copied: to the copy; a label's to an element left behind: kept only if
   // that element is where the label pointed when copied (the same drawing: the same element; another
   // drawing's element of the same ID is not it), else the label free where it points

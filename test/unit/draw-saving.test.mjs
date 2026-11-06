@@ -37,6 +37,28 @@ test('saved as the file is: GeoJSON text, read back as it was', () => {
   assert.deepEqual(e.doc.points.map((p) => p.position), [[12, 41]]);
 });
 
+test('a kept drawing near a pole reads back whole; what could not be read is said, not dropped silently', () => {
+  data.clear();
+  const d = drawing(), doc = named('Polar', [10, 87.5]);
+  addPoint(doc, [10, 41]);
+  d.adopt(doc);
+  d.saving.now();
+  const e = drawing(), said = [];
+  e.saving.say = (t) => said.push(t);
+  e.saving.restore();
+  assert.deepEqual(e.doc.points.map((p) => p.position[1]), [87.5, 41], 'beyond the map\'s 85.05°, kept');
+  assert.deepEqual(said, []);
+  const key = `earthplotter.drawing.${e.saving.id}`, file = JSON.parse(localStorage.getItem(key));
+  file.features[0].geometry.coordinates = [10, 91];
+  localStorage.setItem(key, JSON.stringify(file));
+  const f = drawing(), warn = console.warn;
+  f.saving.say = (t) => said.push(t);
+  console.warn = () => {};
+  try { f.saving.restore(); } finally { console.warn = warn; }
+  assert.equal(f.doc.points.length, 1);
+  assert.match(said.join(), /1 element of this drawing could not be read/);
+});
+
 test('a drawing of the list of another format version is not read: a new one opens, its text never saved over', () => {
   data.clear();
   const text = another('Old', { center: [12, 41], zoom: 6, bearing: 0 });
@@ -45,9 +67,9 @@ test('a drawing of the list of another format version is not read: a new one ope
   localStorage.setItem('earthplotter.drawings.current', 'k1');
   assert.equal(savedView(null), null);
   const d = drawing();
-  const said = [], error = console.error;
-  console.error = (...x) => said.push(x.join(' '));
-  try { d.saving.restore(); } finally { console.error = error; }
+  const said = [];
+  d.saving.say = (t) => said.push(t);
+  d.saving.restore();
   assert.match(said.join(), /format version 2/);
   assert.ok(d.isEmpty());
   const list = d.saving.list();

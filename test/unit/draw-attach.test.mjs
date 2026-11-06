@@ -100,6 +100,19 @@ test('vertices added, taken away, a line split: labels on its vertices stay on t
   assert.deepEqual([ref(doc, b).position, ref(doc, c).position], [[10.015, 40], [10.03, 40]]);
 });
 
+test('a line split at a vertex keeps the vertex\'s name: the dot made takes it, else the first half\'s end', () => {
+  const doc = emptyDoc(0);
+  const l = lineFrom(doc, [10, 40], [[10.01, 40], [10.02, 40]], [10.03, 40], { id: 'l' });
+  l.names = ['', 'Free', 'Held', ''];
+  const p = addPoint(doc, [10.02, 40]);
+  setLink(doc, 'l', 2, { element: p.id });
+  splitLine(doc, 'l', 2);
+  assert.equal(l.names.at(-1), 'Held', 'on a point already: the half keeps it');
+  const dot = splitLine(doc, 'l', 1);
+  assert.equal(dot.name, 'Free');
+  assert.equal(l.names.at(-1), '');
+});
+
 test('an area\'s corners added and taken away, an outline changed: labels on corners and edges stay where they were', () => {
   const doc = emptyDoc(0);
   const a = addRing(doc, [[10, 40], [10.02, 40], [10.02, 40.02], [10, 40.02]], { id: 'a' });
@@ -203,9 +216,7 @@ test('the file keeps the links: a line\'s places on points and on points\' shape
   settleGeometry(doc);
   const text = serialise(doc), back = parse(text);
   assert.deepEqual(back.report.warnings, []);
-  const bare = (ls) => ls.map(({ frame, ...x }) => x), frameOf = (ls) => ls.map((x) => x.frame?.places.flat() ?? []); // a frame comes back as the file rounds it
-  assert.deepEqual([bare(back.doc.lines), back.doc.labels, back.doc.links], [bare(doc.lines), doc.labels, doc.links]);
-  frameOf(back.doc.lines).forEach((f, i) => f.forEach((v, k) => near(v, frameOf(doc.lines)[i][k], 1e-3, '')));
+  assert.deepEqual([back.doc.lines, back.doc.labels, back.doc.links], [doc.lines, doc.labels, doc.links]);
   const raw = JSON.parse(text), linked = (id, i) => raw.earthplotter.links.find((k) => k.from[0] === id && k.from[1] === i)?.to;
   assert.deepEqual([linked('y', 0), linked('y', 1), linked('z', 0), linked('z', 1), linked(t1.id, 0), linked(t2.id, 0), linked(t3.id, 0)],
     [{ element: 'p' }, { element: 'p' }, { element: 'sh', vertex: 3 }, { element: 'sh', edge: 1, at: 0.25 }, { element: 'a', edge: 2, at: 0.3 }, { element: 'l', vertex: 1 }, { element: 'a' }]);
@@ -351,10 +362,10 @@ test('the model kept in one place: a shape given to a point drops its own attach
   setGroup(doc, 'poly', 'A'); // given to A: rigid now, its corner free
   settleGeometry(doc);
   assert.equal(placeIn(doc, poly, 1).to, null, 'its own attachment dropped');
-  const frame = structuredClone(poly.frame);
+  const from = () => poly.points.map((q) => inverse(a.position, q).s), was = from();
   carry(doc, a, [10.05, 40.05], 30);
   settleGeometry(doc);
-  assert.deepEqual(poly.frame, frame, 'moved as one piece, not torn');
+  from().forEach((m, i) => near(m, was[i], 1e-6, 'moved as one piece, not torn'));
   // a line on its corner; the shape detached: an area now, the line's end free where it was
   const l = lineFrom(doc, [9.9, 39.9], [], { element: 'poly', vertex: 0, position: [0, 0] });
   settleGeometry(doc);

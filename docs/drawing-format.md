@@ -14,7 +14,7 @@ Five rules every part of the drawing keeps; a change that breaks one changes the
 2. **Lines meet at points.** Where lines join, a point is shared: a vertex of each is attached to it,
    as ways share nodes in OpenStreetMap. Any number of lines meet at one point.
 3. **A point can hold rigid shapes.** Circles, sectors and outlines placed as one piece with their
-   point, kept in its frame and moved and turned with it, as a block in CAD.
+   point, moved and turned with it, as a block in CAD.
 4. **A line attaches only to what moves by itself:** a point, or a corner or an edge of a point's
    shape. A label may point at anything. Nothing attaches through a line to a line, so every
    attached vertex is settled in one pass.
@@ -41,7 +41,7 @@ attachment as a **link** (§7.6).
 
 | What | How |
 |---|---|
-| Position | `[longitude, latitude]`, WGS 84 degrees; −180 ≤ lon ≤ 180, \|lat\| ≤ 85.05112878 (the map's limit). A third value is dropped. |
+| Position | `[longitude, latitude]`, WGS 84 degrees; −180 ≤ lon ≤ 180, \|lat\| ≤ 90 (the map shows to ±85.05°; what lies beyond is kept, unseen). A third value is dropped. |
 | Distance | metres |
 | Angle | degrees clockwise from **true** north, 0 ≤ a < 360 (read: any finite value, normalised with a warning) |
 | Colour | `"#rrggbb"`, read in either case, written in lower case; opacity apart, 0–1 |
@@ -118,7 +118,6 @@ An unknown layer, variant, period, data entry or depth is skipped with a warning
 |---|---|
 | `kind` | `"point"`, `"circle"`, `"line"`, `"label"`; always written. On reading only `circle` and `label` matter (a `Point` geometry then is one); else the geometry decides. |
 | `group` | what holds it, at most one: a group; a shape's, the point that holds it (§7.2) |
-| `frame` | a point's shape's: where it is about its point (§7.2) |
 | `visible` | `false`: hidden (not drawn, not in GIS data; in the file). A hidden group hides its members, a hidden point its shapes. |
 | `guide` | supporting geometry: faint, dashed, left out of totals (not on labels) |
 | `measure` | `true`: a **measurement** (what Measure makes): a guide of its own colour (`guide` read as `true` too), its name not drawn |
@@ -161,7 +160,7 @@ Listed in the collection's `earthplotter.groups`, not as features:
 
 `groupId` is the group it is in (absent: at the top). A group is only who is in it: joining or
 leaving changes nothing of an element. A group without a valid, unused ID is skipped; a member naming
-a group that is not there becomes standalone, and a group inside itself goes to the top (warnings).
+a group that is not there becomes standalone, and a group inside itself, or more than 32 groups deep, goes to the top (warnings).
 
 ### 7.2 Point
 
@@ -179,22 +178,10 @@ else (a file saying so, an open line included: the element standalone, warning).
 shapes: a circle, rings (several), a sector, or an outline (a closed line, `site/draw/outlines.js`).
 A shape is rigid: its form changes by its own fields and handles, not vertex by vertex.
 
-**Its frame.** A shape is kept in its point's frame:
-
-```json
-"frame": { "places": [[20.5545352, 213.6011], [159.4443607, 213.5993]], "turn": 0 }
-```
-
-| Field | Notes |
-|---|---|
-| `places` | one `[a, d]` per vertex in its own order (a circle: its centre): `d` metres from the point, `a` degrees from its bearing (−180 to 180) |
-| `turn` | a circle's bearing, this many degrees from the point's |
-
-Its positions are worked out from its frame, so it goes with its point exactly. The file writes both,
-the geometry for other tools and the frame, about the point as the file writes it (7 decimals; its
-bearing 4); degrees to 7 decimals, metres to 4. On reading **the frame wins**: a position more than
-10⁻⁶° from where it puts it goes there, counted ("the file was edited elsewhere"). A shape without a
-valid frame gets one from where it is.
+**Moved with it.** When the point moves or turns, each vertex of its shapes (a circle's centre)
+stays as far from it and at the same angle from its bearing, and a circle's bearing turns as much: the
+shape goes with its point exactly. Nothing more is written: a shape is where its geometry says, moved
+in another tool or not.
 
 ### 7.3 Line
 
@@ -339,7 +326,7 @@ branch, root link, link) follows from what its ends are attached to.
 
 - Defaults left out (§13), an object when nothing in it differs.
 - Rounding: positions 7 decimals (about 1 cm); metres 3; angles 4; the view's zoom 2, its bearing 1;
-  opacities and widths 3; an edge's `at` 6 (left out when 0); a frame as §7.2. The reader takes any
+  opacities and widths 3; an edge's `at` 6 (left out when 0). The reader takes any
   precision.
 - Indented JSON, each position on one line. A drawing read back is the same drawing
   (`test/unit/draw-document.test.mjs`).
@@ -364,7 +351,7 @@ Any GeoJSON: a FeatureCollection, a Feature or a bare geometry.
 - Unknown fields are ignored and not written again.
 - **Refused** (nothing loads): over 64 MB; not JSON; not an object; not GeoJSON; another version;
   more than 1 000 000 positions in its lines.
-- **Limits:** past 20 000 elements, 10 000 characters of text, 200 properties on one element, the
+- **Limits:** past 20 000 elements and groups, 10 000 characters of text, 200 properties on one element, the
   rest is dropped (warning).
 - **Skipped**, the rest loading: not a Feature; no geometry, or a GeometryCollection; a position not
   `[lon, lat]` or its latitude out of range; a line of fewer than two positions (closed: three) or
@@ -428,11 +415,10 @@ shortened only in layout.
         "earthplotter": { "kind": "point", "symbol": "dot" } } },
     { "type": "Feature", "id": "c",
       "geometry": { "type": "Point", "coordinates": [12.4, 41.9] },
-      "properties": { "earthplotter": { "kind": "circle", "group": "a", "frame": { "places": [[0, 0]], "turn": 0 }, "radius": 5000, "aperture": 90, "bearing": 45 } } },
+      "properties": { "earthplotter": { "kind": "circle", "group": "a", "radius": 5000, "aperture": 90, "bearing": 45 } } },
     { "type": "Feature", "id": "r",
       "geometry": { "type": "Polygon", "coordinates": [[[12.6004227, 41.951897], [12.5980106, 41.9487782], [12.5995773, 41.948103], [12.6019894, 41.9512218], [12.6004227, 41.951897]]] },
-      "properties": { "earthplotter": { "kind": "line", "group": "s",
-        "frame": { "places": [[20.5545352, 213.6011], [159.4443607, 213.5993], [-159.4435921, 213.6035], [-20.5561999, 213.5992]] }, "reversed": true } } },
+      "properties": { "earthplotter": { "kind": "line", "group": "s", "reversed": true } } },
     { "type": "Feature", "id": "l1",
       "geometry": { "type": "LineString", "coordinates": [[12.4, 41.9], [12.5, 41.8], [12.6, 41.95]] },
       "properties": { "name": "Line 1", "ref": "7",
@@ -448,9 +434,8 @@ shortened only in layout.
 }
 ```
 
-`c` and `r` are held by their points (`group`) and placed by their frames: the sector on `a`; the
-rectangle's corners about 214 m from `s`, at ±20.6° and ±159.4° from its bearing, written
-counter-clockwise and `reversed`. The line runs from `a` to `s` through the dot `j`, which vertex 1 of
+`c` and `r` are held by their points (`group`): the sector on `a`; the rectangle's corners about
+214 m from `s`, at ±20.6° and ±159.4° from its bearing, written counter-clockwise and `reversed`. The line runs from `a` to `s` through the dot `j`, which vertex 1 of
 the area `g1` is attached to too: they meet there. The label points half way along the line's first
 leg.
 

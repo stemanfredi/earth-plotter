@@ -22,8 +22,8 @@ const F = (id, type, coordinates, earthplotter, props = {}) => ({ type: 'Feature
 const collection = (features, earthplotter = { format: FORMAT, version: VERSION }) => ({ type: 'FeatureCollection', ...(earthplotter ? { earthplotter } : {}), features });
 const read = (o, known = null) => parse(typeof o === 'string' ? o : JSON.stringify(o), known, NOW);
 const VIEW = { center: [12.5, 41.9], zoom: 7.25, bearing: 10, layers: [{ id: 'chart' }], data: null, units: 'nm', bearings: true }; // a view the scene's file carries
-// written and read back, as the app would after a change (every point's shape in its frame)
-const again = (doc, known = null) => { d.frames(doc); return parse(serialise(doc, VIEW), known, NOW); };
+// written and read back
+const again = (doc, known = null) => parse(serialise(doc, VIEW), known, NOW);
 // a label pointing at r: a target (with its position, else where the target is), or { position } free
 const labelAt = (doc, r) => addLabel(doc, r.position ?? resolve(doc, r).position, r.element ? r : null);
 
@@ -32,11 +32,8 @@ const labelAt = (doc, r) => addLabel(doc, r.position ?? resolve(doc, r).position
 const r = (n) => (v) => (typeof v === 'number' ? +v.toFixed(n) : v);
 const ROUND = { position: 7, pos: 7, center: 7, points: 7,
   radius: 3, width: 3, at: 6, offset: 3, opacity: 3, bearing: 4, aperture: 4, zoom: 4 };
-// a shape's frame as the file keeps it: degrees to 7 decimals, metres to 4
-const roundFrame = (f) => ({ places: f.places.map(([a, m]) => [r(7)(a) || 0, r(4)(m)]), ...(f.turn != null ? { turn: r(4)(f.turn) } : {}) }); // as JSON writes it: no -0
 function rounded(x, n = null) {
   if (Array.isArray(x)) return x.map((y) => rounded(y, n));
-  if (x && typeof x === 'object' && x.frame) return { ...rounded({ ...x, frame: null }, n), frame: roundFrame(x.frame) };
   if (x && typeof x === 'object') return Object.fromEntries(Object.entries(x).map(([k, v]) => [k, rounded(v, k in ROUND ? ROUND[k] : n)]));
   return n === null ? x : r(n)(x);
 }
@@ -83,9 +80,6 @@ function sample() {
   doc.look = { offset: 2 }; // the drawing's
   for (const l of doc.lines) l.points = l.points.map((q) => q.map(r(7))); // as the file writes them
   refreshAttached(doc); // each reference where it points
-  for (const x of [...doc.circles, ...doc.lines]) delete x.frame; // made again from the places as rounded
-  d.frames(doc); // every point's shape in its frame, as the file writes it
-  for (const x of [...doc.circles, ...doc.lines]) if (x.frame) x.frame = roundFrame(x.frame);
   return doc;
 }
 
@@ -143,11 +137,7 @@ test('round trip: values come back rounded as the file writes them', () => {
   assert.deepEqual(at, resolve(back, linkFrom(back, back.labels[0].id).to).position);
   assert.ok(Math.abs(at[0] - doc.labels[0].position[0]) < 1e-6 && Math.abs(at[1] - doc.labels[0].position[1]) < 1e-6);
   want.labels[0].position = at;
-  // the circle's frame: about its point as the file writes it (its bearing to 4 decimals), so that it
-  // reads back where it was written, 4,600 km from its point
-  assert.deepEqual(back.circles[0].position, want.circles[0].position, 'the circle where it was written');
-  near(back.circles[0].frame.places[0][1], doc.circles[0].frame.places[0][1], 1, 'its distance from its point');
-  want.circles[0].frame = back.circles[0].frame;
+  assert.deepEqual(back.circles[0].position, want.circles[0].position, 'the circle where it was written, 4,600 km from its point');
   assert.deepEqual(back, want);
   assert.equal(back.lines[0].points.at(-1)[0], back.points[0].position[0]); // the linked end where its point is
 });
@@ -230,22 +220,32 @@ test('IDs: a malformed, repeated or missing one is replaced with a warning; a nu
   assert.deepEqual(report.skipped.map((s) => [s.kind, s.reason]), [['group', 'no valid ID'], ['group', 'no valid ID']]);
 });
 
+test('IDs as numbers everywhere a file names one: groups, what is in them, links', () => {
+  const { doc, report } = read(collection([
+    F(1, 'Point', [0, 0], { kind: 'point', group: 20 }), F(2, 'LineString', [[1, 0], [0, 0]], { kind: 'line' }),
+  ], { format: FORMAT, version: VERSION, groups: [{ id: 10 }, { id: 20, groupId: 10 }], links: [{ from: [2, 1], to: 1 }, { from: [2, 0], to: { element: 1 } }] }));
+  assert.deepEqual(doc.groups.map((g) => [g.id, g.groupId]), [['10', null], ['20', '10']]);
+  assert.equal(doc.points[0].groupId, '20');
+  assert.deepEqual(doc.links.map((l) => [l.from, l.to]), [[['2', 1], { element: '1' }], [['2', 0], { element: '1' }]]);
+  assert.deepEqual(report.warnings.filter((w) => /^link|group/.test(w)), []);
+});
+
 test('skipped: latitudes out of range, positions missing, too few positions, what is not a feature, geometry collections; a longitude past ±180 brought back', () => {
   const { doc, report } = read(collection([
-    F('ok', 'Point', [0, 0]), F('far', 'Point', [0, 86]), F('west', 'Point', [-181, 0]), F('nopos', 'Point', null), F('short', 'Point', [1]),
+    F('ok', 'Point', [0, 0]), F('far', 'Point', [0, 91]), F('polar', 'Point', [0, 86]), F('west', 'Point', [-181, 0]), F('nopos', 'Point', null), F('short', 'Point', [1]),
     F('one', 'LineString', [[0, 0]]), F('badvertex', 'LineString', [[0, 0], [1, 'x']]), F('two', 'Polygon', [[[0, 0], [1, 0], [0, 0]]]), F('noring', 'Polygon', [1, 2]),
     'junk', { type: 'Feature', id: 'nogeo', properties: {} }, F('gc', 'GeometryCollection', undefined), F('odd', 'Curve', [0, 0]),
   ]));
-  assert.deepEqual(doc.points.map((p) => [p.id, p.position]), [['ok', [0, 0]], ['west', [179, 0]]]);
+  assert.deepEqual(doc.points.map((p) => [p.id, p.position]), [['ok', [0, 0]], ['polar', [0, 86]], ['west', [179, 0]]]);
   assert.deepEqual(doc.lines, []);
-  assert.deepEqual(skippedIds(report), ['far', 'nopos', 'short', 'one', 'badvertex', 'two', 'noring', '10', 'nogeo', 'gc', 'odd']);
+  assert.deepEqual(skippedIds(report), ['far', 'nopos', 'short', 'one', 'badvertex', 'two', 'noring', '11', 'nogeo', 'gc', 'odd']);
   const why = Object.fromEntries(report.skipped.map((s) => [s.id, s.reason]));
   assert.match(why.far, /out of range/);
   assert.match(why.nopos, /not \[longitude, latitude\]/);
   assert.match(why.one, /two positions/);
   assert.match(why.badvertex, /position 2/);
   assert.match(why.two, /a ring needs three positions/);
-  assert.match(why['10'], /not a Feature/);
+  assert.match(why['11'], /not a Feature/);
   assert.match(why.nogeo, /no geometry/);
   assert.match(why.gc, /geometry collection/);
   assert.match(why.odd, /Curve: not read/);
@@ -290,8 +290,8 @@ test('repairs: symbol, angles, sizes, Offset, style values, circles, flags', () 
   assert.match(report.skipped[0].reason, /radius not between 0 and 10 000 km/);
   assert.deepEqual([s1.look.offset, s1.smooth], [-d.MAX_OFFSET, false]); // clamped either side
   assert.deepEqual([s2.look.offset, s3.look.offset], [d.MAX_OFFSET, undefined]); // true or false is not a number of pixels
-  for (const re of [/unknown symbol "star"/, /bearing -90 read as 270/, /aperture 400 read as a full circle/, /aperture: not an angle above 0; a circle/, /bearing 370 read as 10/,
-    /unknown dash "wavy"/, /look text name: not true or false, ignored/, /stroke width 99 clamped to 20/, /stroke opacity 2 clamped to 1/, /fill colour: not a #rrggbb/,
+  for (const re of [/symbol: unknown "star"/, /bearing -90 read as 270/, /aperture 400 read as a full circle/, /aperture: not an angle above 0; a circle/, /bearing 370 read as 10/,
+    /stroke dash: unknown "wavy"/, /look text name: not true or false, ignored/, /stroke width 99 clamped to 20/, /stroke opacity 2 clamped to 1/, /fill colour: not a #rrggbb/,
     /Offset: not a number/, /smooth is not true or false/]) warned(report, re);
   assert.equal(report.warnings.filter((w) => /aperture/.test(w)).length, 2); // those two; a sector of exactly 360°: a circle, quietly
 });
@@ -302,6 +302,10 @@ test('circles in the file: a Point with kind circle, its radius always, aperture
   const f = toFile(doc).features[0];
   assert.deepEqual([f.geometry, f.properties], [{ type: 'Point', coordinates: [0, 0] }, { name: 'b', earthplotter: { kind: 'circle', visible: false, guide: true, radius: 100, aperture: 33.3333, bearing: 10 } }]);
   assert.deepEqual(again(doc).doc.circles, rounded(doc.circles));
+  // rounded within what the reader takes: still a circle under 10 000 km, still a sector
+  const edge = emptyDoc(NOW);
+  addCircle(edge, [0, 0], { radius: 9999999.9996, aperture: 359.99996 });
+  assert.deepEqual(again(edge).doc.circles.map((c) => [c.radius, c.aperture]), [[9999999.999, 359.9999]]);
 });
 
 test('any GeoJSON: Multi geometries split, holes dropped, foreign points diamonds, names and columns read', () => {
@@ -443,7 +447,7 @@ test('groups in the file: a group holds nothing of its own; a point holds shapes
   for (const re of [/point p: group m not found; now standalone/, /label t: group c not found/, /group nowhere not found; now standalone/]) warned(report, re);
   assert.ok(!('parts' in toFile(doc).earthplotter.groups[0]) && !('radii' in toFile(doc).earthplotter.groups[0]));
   assert.deepEqual(toFile(doc).features.find((x) => x.id === 'c').properties.earthplotter.group, 'm'); // its point
-  assert.deepEqual(again(doc).doc, rounded(doc)); // its shapes' frames as the file keeps them
+  assert.deepEqual(again(doc).doc, rounded(doc));
 });
 
 test('view: layers, variants and data checked against what the app offers', () => {
@@ -839,6 +843,18 @@ test('nested groups in the file: the parent kept; one missing or making a loop p
   assert.deepEqual(again(doc).doc, doc);
 });
 
+test('groups nested deep in a small file: 32 levels kept, deeper ones at the top; read and totalled quickly', async () => {
+  const { totals } = await import('../../site/draw/lines.js');
+  const n = 3000, groups = Array.from({ length: n }, (_, i) => ({ id: `g${i}`, groupId: i ? `g${i - 1}` : null }));
+  const t0 = performance.now();
+  const { doc, report } = read(collection(Array.from({ length: n }, (_, i) => F(`p${i}`, 'Point', [0, 0], { kind: 'point', group: `g${i}` })), { format: FORMAT, version: VERSION, groups }));
+  totals(doc);
+  assert.ok(performance.now() - t0 < 3000, 'no stall');
+  assert.equal(Math.max(...doc.groups.map((g) => d.groupsOf(doc, g).length)), 32);
+  assert.deepEqual([doc.groups[32].groupId, doc.groups[33].groupId], ['g31', null]);
+  warned(report, /group g33: more than 32 groups deep; now at the top/);
+});
+
 test('the look: the drawing\'s defaults, then its own (a group adds nothing); a measurement keeps its name off; written where each belongs', () => {
   const doc = emptyDoc(NOW);
   const a = addPoint(doc, [0, 0]), b = addPoint(doc, [1, 0]);
@@ -979,66 +995,61 @@ test('reading: find, groupsOf, membersOf and holderOf answer as a scan does, the
   assert.equal(ask().length, scanned.length + 1);
 });
 
-// ---- a point's shapes in its frame ------------------------------------------------------------------
+// ---- a point's shapes, carried with it ---------------------------------------------------------------
 
-test('a point\'s shape in its frame: turned a thousand times and moved round the world, exactly where its frame puts it', async () => {
-  const { inverse, destination } = await import('../../site/geodesy.js');
+// each place of a shape about its point: [degrees from the point's bearing, metres]
+const about = async (p, el) => {
+  const { inverse } = await import('../../site/geodesy.js');
+  return d.positionsIn(el.radius != null ? 'circle' : 'line', el).map(([o, k]) => { const g = inverse(p.position, o[k]); return [(((g.azi - p.bearing) % 360) + 540) % 360 - 180, g.s]; });
+};
+const sameAbout = (a, b) => a.forEach(([x, m], i) => assert.ok(Math.abs(m - b[i][1]) < 1e-6 && Math.abs(x - b[i][0]) < 1e-7, `place ${i}: ${[x, m]} ≠ ${b[i]}`));
+
+test('a point\'s shape carried: turned a thousand times and moved round the world, the same shape about it', async () => {
+  const { destination } = await import('../../site/geodesy.js');
   const doc = d.emptyDoc(NOW);
   const { point: p, shapes: [sh] } = addShape(doc, [12, 41], 'rectangle', 500);
-  d.frames(doc);
-  const frame = structuredClone(sh.frame);
+  const was = await about(p, sh);
   for (let i = 0; i < 1000; i++) d.carry(doc, p, destination(p.position, 7 * i, 900), p.bearing + 13);
-  assert.deepEqual(sh.frame, frame, 'the frame never changes');
-  sh.frame.places.forEach(([a, m], i) => {
-    const g = inverse(p.position, sh.points[i]);
-    assert.ok(Math.abs(g.s - m) < 1e-6 && Math.abs((((g.azi - p.bearing - a) % 360) + 540) % 360 - 180) < 1e-9, `place ${i}`);
-  });
+  sameAbout(await about(p, sh), was);
 });
 
-test('a point\'s shape pasted far away: its frame copied, so it is the same shape about the copy\'s point', async () => {
+test('a point\'s shape pasted far away: the same shape about the copy\'s point', async () => {
   const { paste, clipOf } = await import('../../site/draw/clipboard.js');
   const { moveAbout } = await import('../../site/geodesy.js');
   const doc = d.emptyDoc(NOW);
   const { point: p, shapes: [sh] } = addShape(doc, [12, 0], 'rectangle', 5000);
   d.carry(doc, p, p.position, 30);
-  const made = paste(doc, clipOf(doc, [p.id]), moveAbout([12, 0], [12, 70])), copy = made.find((x) => x.kind === 'line').el;
-  assert.deepEqual(copy.frame, sh.frame);
-  const q = made.find((x) => x.kind === 'point').el;
-  assert.deepEqual(copy.points, d.framed(q, copy).places);
+  const made = paste(doc, clipOf(doc, [p.id]), moveAbout([12, 0], [12, 70])), copy = made.find((x) => x.kind === 'line').el, q = made.find((x) => x.kind === 'point').el;
+  near(q.position[1], 70, 1e-9, 'moved');
+  sameAbout(await about(q, copy), await about(p, sh));
 });
 
-test('a point\'s shape: a frame once a point holds it, none once free; Attach to… a point puts it in that point\'s frame where it is', () => {
+test('a point\'s shape: Attach to… a point holds it where it is; turned with it, a sector turns as much; freed, it stays', () => {
   const doc = d.emptyDoc(NOW);
   const p = d.addPoint(doc, [12, 41]), c = d.addCircle(doc, [12.01, 41], { radius: 300, aperture: 60, bearing: 100 });
   d.setGroup(doc, c.id, p.id);
-  assert.equal(c.frame.places.length, 1);
-  assert.ok(Math.abs(c.frame.places[0][0] - 90) < 0.01 && Math.abs(c.frame.turn - 100) < 1e-9);
   assert.deepEqual(c.position, [12.01, 41], 'where it was');
   d.carry(doc, p, p.position, 90); // turned: the circle about the point, its sector turned as much
   near(c.bearing, 190, 1e-9, '');
+  near(c.position[1], 41 - 0.0075, 1e-3, 'south of the point now');
   d.setGroup(doc, c.id, null);
-  assert.equal('frame' in c, false);
-  const l = addRing(doc, [[12, 41.01], [12.01, 41.01], [12.01, 41.02]], { groupId: p.id });
-  d.frames(doc); // after any change
-  assert.equal(l.frame.places.length, 3);
+  const at = [...c.position];
+  d.carry(doc, p, p.position, 0);
+  assert.deepEqual(c.position, at, 'free: no longer carried');
 });
 
-test('read: a point\'s shape where its frame says; moved in another tool, it goes back (counted); no frame or a broken one, made from where it is', () => {
+test('read: a point\'s shape where the file puts it, moved in another tool or not; the file holds no frame', () => {
   const doc = d.emptyDoc(NOW);
   const { point: p, shapes: [sh] } = addShape(doc, [12, 41], 'rectangle', 500);
   d.carry(doc, p, p.position, 20);
   const raw = JSON.parse(serialise(doc));
   const f = raw.features.find((x) => x.id === sh.id);
+  assert.equal('frame' in f.properties.earthplotter, false);
   f.geometry.coordinates[0] = f.geometry.coordinates[0].map(([x, y]) => [x + 0.001, y]); // moved in a GIS
   const back = read(raw);
-  warned(back.report, /^4 places of shapes moved to where their points hold them/);
-  assert.ok(back.doc.lines[0].points.every((q, i) => Math.abs(q[0] - sh.points[i][0]) < 1e-6 && Math.abs(q[1] - sh.points[i][1]) < 1e-6));
-  delete f.properties.earthplotter.frame; // a file by hand: where it is
-  const plain = read(raw);
-  assert.deepEqual(plain.report.warnings, []);
-  assert.equal(plain.doc.lines[0].frame.places.length, 4);
-  f.properties.earthplotter.frame = { places: [[0, 1]] }; // too few places
-  warned(read(raw).report, /frame not read; made from where it is/);
+  assert.deepEqual(back.report.warnings, []);
+  assert.ok(back.doc.lines[0].points.every((q, i) => Math.abs(q[0] - sh.points[i][0] - 0.001) < 1e-6), 'as moved');
+  assert.equal(back.doc.lines[0].groupId, p.id, 'still its point\'s');
 });
 
 test('across 180°: a point\'s shape reads back with no word of moving; an area\'s centre (and a label on it) on it, not at longitude 0', () => {

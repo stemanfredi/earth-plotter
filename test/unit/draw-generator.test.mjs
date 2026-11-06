@@ -345,7 +345,7 @@ test('a distribution follows nothing until Update, which places its copies along
   assert.deepEqual(pointsOf(doc, array).map((n) => n.position), before, 'nothing follows by itself');
   // one dragged by hand; Update: every copy at its place along the line as it is now, that one too
   const ns = pointsOf(doc, array), hand = ns[2];
-  hand.position = [12.2, 39.9];
+  carry(doc, hand, [12.2, 39.9]); // as a drag moves it: its shapes with it
   assert.deepEqual(updateRule(doc, array.id), { distribution: array, remade: false });
   fromPlaces(doc, guide, array).forEach((d, k) => near(d, 0, 0.01, `${k} at its place along the line`));
   assert.ok(pointsOf(doc, array).at(-1).position[1] > before.at(-1)[1] + 0.02, 'the far copies moved north');
@@ -596,6 +596,10 @@ test('copies: a built-in kind at the radius (its largest shape), a Library item 
   // a copy deleted: its shapes with it
   remove(doc, [ns[0].id]);
   assert.equal(doc.circles.filter((c) => c.name.startsWith('outer')).length, 2);
+  // edited without the item at hand (a radius typed, another count): its copies stay its, never circles
+  editDistribution(doc, mine.id, { radius: 99 });
+  editDistribution(doc, mine.id, { count: 4 });
+  assert.deepEqual(pointsOf(doc, mine).map((n) => [n.symbol, shapesOf(doc, n).map((c) => c.radius)]), Array(4).fill(['square', [2000]]));
 });
 
 test('rule groups: Connection in the points\' group (a distribution\'s copies: beside Copies) or one given; gone with unconnect when empty', () => {

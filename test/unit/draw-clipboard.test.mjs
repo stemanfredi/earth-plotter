@@ -52,7 +52,8 @@ test('a point copied with its shapes: they are its copy\'s; a shape copied alone
   const clip = clipOf(doc, [p.id]);
   assert.deepEqual(clip.items.map((x) => x.el.id), [p.id, c.id, r.id]); // a point: with its shapes
   const [p2, c2, r2] = paste(doc, clip, shift).map((x) => x.el);
-  assert.deepEqual([p2.groupId, c2.groupId, r2.groupId, c2.aperture, c2.position, r2.points[0]], [g.id, p2.id, p2.id, 45, [11, 40], shift(r.points[0])]);
+  assert.deepEqual([p2.groupId, c2.groupId, r2.groupId, c2.aperture, c2.position], [g.id, p2.id, p2.id, 45, [11, 40]]);
+  r2.points.forEach((q, i) => q.forEach((v, k) => assert.ok(Math.abs(v - shift(r.points[i])[k]) < 1e-9))); // carried with its point
   assert.notEqual(c2.id, c.id);
   const [c3] = paste(doc, clipOf(doc, [c.id]), shift).map((x) => x.el);
   assert.equal(c3.groupId, null); // its point not copied: free

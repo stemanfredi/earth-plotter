@@ -162,7 +162,7 @@ export const DRAW_LAYERS = [
   nameLayer('draw-name-point', 'draw', [['==', ['geometry-type'], 'Point'], ['!', ['has', 'ctr']], ['!', ['has', 'rim']], ['!', ['has', 'under']]],
     { 'text-variable-anchor': ['top', 'bottom', 'right', 'left'], 'text-radial-offset': 0.9, 'text-justify': 'center', 'text-max-width': 12 }), // centred below it (else above, right, left): the same however its shapes are turned
   nameLayer('draw-name-under', 'draw', [['has', 'under']], { 'text-anchor': 'top', 'text-offset': [0, 0.3], 'text-max-width': 12 }), // a point's, just under its outlines
-  nameLayer('draw-name-rim', 'draw', [['has', 'rim']], { 'text-anchor': 'top', 'text-offset': [0, 0.3], 'text-max-width': 24 }), // a circle's, just inside its rim
+  nameLayer('draw-name-rim', 'draw', [['has', 'rim']], { 'text-anchor': ['get', 'anchor'], 'text-offset': ['case', ['==', ['get', 'anchor'], 'bottom'], ['literal', [0, -0.3]], ['literal', [0, 0.3]]], 'text-max-width': 24 }), // a circle's, just inside its rim (its anchor: features.js rimOf)
   nameLayer('draw-name-centre', 'drawzoom', [['has', 'ctr']], { 'text-max-width': 12 }),
   // labels (labels.js, their own source): leaders, their ends, the text (on a halo, or in a box);
   // always shown, where the user put them

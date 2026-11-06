@@ -633,8 +633,8 @@ await section('dragging, shapes, attaching', async () => {
   const marks = [await markAt('m'), await markAt('g')];
   await dw.evaluate((id) => drawing.select([id]), sc.id);
   await dw.click('.dinspect button[aria-label="Detach from its point"]');
-  const freedShape = await dw.evaluate((id) => { const x = drawing.doc.lines.find((l) => l.id === id); return [x.name, 'frame' in x, x.groupId === null || !drawing.doc.points.some((p) => p.id === x.groupId)]; }, sc.id);
-  check(titles.join() === 'Outline,Area' && marks.join() === '1,0' && /^Area \d+$/.test(freedShape[0]) && !freedShape[1] && freedShape[2],
+  const freedShape = await dw.evaluate((id) => { const x = drawing.doc.lines.find((l) => l.id === id); return [x.name, x.groupId === null || !drawing.doc.points.some((p) => p.id === x.groupId)]; }, sc.id);
+  check(titles.join() === 'Outline,Area' && marks.join() === '1,0' && /^Area \d+$/.test(freedShape[0]) && freedShape[1],
     `shapes and areas: titled ${titles}; a snap mark free with Measure, attaching with Line (${marks}); Detach: an area of its own (${freedShape})`);
   await dw.evaluate((ids) => drawing.remove(ids), [areaId, sc.id]);
   // the Line tool: a middle click on a point attaches that vertex too, as its yellow mark says

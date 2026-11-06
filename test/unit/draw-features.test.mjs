@@ -345,9 +345,25 @@ test('values shown: each leg\'s length and bearing, the total; a closed line\'s 
   // a sector's radius at its bearing
   Object.assign(ring, { aperture: 90, bearing: 135 });
   near(inverse([13, 40], valueFeatures(doc).at(-1).geometry.coordinates).azi, 135, 1e-6, 'at the bearing');
+  assert.equal(valueFeatures(doc).at(-1).properties.anchor, 'top', 'its arc low on screen: the value below it, outside');
+  // a full circle's at the top of the screen, whatever the map's bearing (up)
+  ring.aperture = null;
+  near(inverse([13, 40], valueFeatures(doc, 'km', false, 200).at(-1).geometry.coordinates).azi, -160, 1e-6, 'the map turned');
   // a single leg: no total
   ruler.points.splice(1, 1);
   assert.equal(valueFeatures(doc).filter((x) => x.properties.id === ruler.id).length, 1);
+});
+
+test('a circle\'s name: inside its rim at the top of the screen, a sector\'s at its arc, above it when the arc is low on screen', () => {
+  const doc = emptyDoc(0);
+  const c = addCircle(doc, [13, 40], { radius: 2000, name: 'Ring', look: { text: { name: true } } });
+  const rim = (bearing) => drawFeatures(doc, new Set(), null, { bearing }).features.find((f) => f.properties.rim);
+  const turned = rim(90);
+  near(inverse([13, 40], turned.geometry.coordinates).azi, 90, 1e-6, 'up on the screen, the map turned');
+  assert.equal(turned.properties.anchor, 'top');
+  Object.assign(c, { aperture: 60, bearing: 180 });
+  assert.equal(rim(0).properties.anchor, 'bottom', 'facing down the screen: the name above its arc');
+  assert.equal(rim(180).properties.anchor, 'top');
 });
 
 test('measured elements are drawn as guides, in the style they are measured with; their values are not drawn with the drawing', () => {

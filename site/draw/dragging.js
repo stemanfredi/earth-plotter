@@ -2,7 +2,7 @@
 // or a selected element takes the gesture from the map's panning; each move applies the drag to the
 // document as it was when it started (one undo step when released). Methods of Drawing.
 
-import { find, elements, positionsIn, MAX_LABEL_OFFSET, MAX_RADIUS, linkFrom, setLink, carry, holderOf, moveElements, drawnOf, refit } from './document.js';
+import { find, elements, positionsIn, MAX_LABEL_OFFSET, MAX_RADIUS, linkFrom, setLink, carry, holderOf, moveElements, drawnOf } from './document.js';
 import { settleGeometry } from './store.js';
 import { HANDLE_LAYERS } from './layers.js';
 import { drawnCircle } from './features.js';
@@ -104,16 +104,15 @@ export class Dragging {
         this.putPlace(doc, { kind: 'line', el }, i, { position: r.position, to: attachAt(doc, r) });
         return;
       }
-      case 'scale': { // its vertices as drawn resized; their real ones that over its Scale, about the point's new place; its frame from them
+      case 'scale': { // its vertices as drawn resized; their real ones that over its Scale, about the point's new place
         const n = holderOf(doc, el), t = drawnOf(doc, el), r = scaledPlaces(n.position, n.bearing, el.points.map(t.f), +d.ref, p, e.shiftKey);
         carry(doc, n, r.centre); el.points = r.points.map((q) => { const g = inverse(r.centre, q); return g.s ? destination(r.centre, g.azi, g.s / t.k) : [...r.centre]; });
-        refit(doc, 'line', el);
         return;
       } // a held shape's vertex: the shape resized, the farthest vertex kept (Shift: its proportions too); its point moves to stay its centre, its other shapes with it
       case 'mid': { const q = this.snapped(pt, e, p, { exclude: new Set([el.id]) }).position; insertVertex(doc, el.id, +d.ref + 1, q); return; } // a place added halfway along a leg
       case 'radius': { const c = drawnCircle(doc, el); el.radius = Math.max(1, Math.min(MAX_RADIUS - 1, radiusTo(c.position, p) * el.radius / c.radius)); return; } // a circle's size only: a sector's ends and the stalk turn it
-      case 'aperture': Object.assign(el, sectorEdgeTo(drawnCircle(doc, el).position, el.bearing, el.aperture, +d.ref, p, snap)); refit(doc, 'circle', el); return; // one end of a sector's arc: its aperture, and its bearing (its middle; a point's: its frame too)
-      case 'rotate': if (el.radius) { el.bearing = bearingTo(drawnCircle(doc, el).position, p, snap); refit(doc, 'circle', el); } else carry(doc, el, el.position, bearingTo(el.position, p, snap)); // a sector; a point, its shapes with it
+      case 'aperture': Object.assign(el, sectorEdgeTo(drawnCircle(doc, el).position, el.bearing, el.aperture, +d.ref, p, snap)); return; // one end of a sector's arc: its aperture, and its bearing (its middle)
+      case 'rotate': if (el.radius) { el.bearing = bearingTo(drawnCircle(doc, el).position, p, snap); } else carry(doc, el, el.position, bearingTo(el.position, p, snap)); // a sector; a point, its shapes with it
     }
   }
   // a dragged position: snapped where the pointer is near something (snapFor), else where the drag

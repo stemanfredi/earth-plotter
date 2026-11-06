@@ -3,16 +3,15 @@
 // DOM (the tests run it in Node). The map's side (drawing.js) extends it and is told of each change:
 // changed() (the document), selectionChanged(), hoverChanged().
 
-import { emptyDoc, touch, find, elements, remove, frames, reading } from './document.js';
+import { emptyDoc, touch, find, elements, remove, reading } from './document.js';
 import { refreshAttached } from './attach.js';
 import { pruneRules } from './generator.js';
 
 const UNDO_STEPS = 100, UNDO_BYTES = 20e6;
 
-// after any change, in one pass: every shape a point holds in its frame; the attached vertices and anchors where
-// what they are on is; the rules' lists what is still there (a rule follows nothing: Update)
+// after any change, in one pass: the attached vertices and anchors where what they are on is; the rules' lists what is still there (a rule follows nothing: Update)
 export function settleGeometry(doc) {
-  reading(doc, () => { frames(doc); refreshAttached(doc); }); // indexed: these add or take away no element
+  reading(doc, () => refreshAttached(doc)); // indexed: these add or take away no element
   pruneRules(doc);
 }
 

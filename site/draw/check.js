@@ -2,13 +2,16 @@
 // default with a warning (c.warn), or skips the element (c.skip throws Skip), for the file's reader
 // (file.js). Pure: no map, no DOM.
 
-import { MAX_LAT, norm360, norm180 } from '../geo.js';
+import { norm360, norm180 } from '../geo.js';
 import { DEFAULT_STYLE, MAX_OFFSET, STROKE_WIDTH, DASHES, TEXT_SIZE, SCALE, BACKGROUNDS, LOOK_FIELDS, isoNow } from './document.js';
 
 export const ID = /^[A-Za-z0-9_-]{1,64}$/;
 const COLOUR = /^#[0-9a-fA-F]{6}$/;
 export const isObj = (x) => x !== null && typeof x === 'object' && !Array.isArray(x);
 export const fin = (x) => typeof x === 'number' && Number.isFinite(x);
+// a value one of list, else dflt (warned: what it is, the value; undefined: ignored); missing: dflt
+export const oneOf = (v, list, dflt, c, what) => (v === undefined || list.includes(v) ? v ?? dflt
+  : (c.warn(`${what}: unknown "${String(v).slice(0, 20)}", ${dflt === undefined ? 'ignored' : `${dflt} used`}`), dflt));
 
 export class Skip extends Error {}
 
@@ -50,7 +53,7 @@ export function flag(v, c, what) {
 }
 export function position(p, c, what) {
   if (!Array.isArray(p) || p.length < 2 || !fin(p[0]) || !fin(p[1])) c.skip(`${what}: not [longitude, latitude]`);
-  if (Math.abs(p[1]) > MAX_LAT) c.skip(`${what}: [${p[0]}, ${p[1]}] is out of range (latitude ±${MAX_LAT})`);
+  if (Math.abs(p[1]) > 90) c.skip(`${what}: [${p[0]}, ${p[1]}] is out of range (latitude ±90)`);
   // a longitude past ±180 (placed on a copy of the world beside the first): the same place, brought back
   return [Math.abs(p[0]) > 180 ? norm180(p[0]) : p[0], p[1]];
 }
@@ -93,7 +96,7 @@ function ownStyle(s, c) {
     const v = Object.fromEntries(Object.keys(d).filter((f) => s[key][f] !== undefined).map((f) => [f, check(f, s[key][f])]).filter(([, x]) => x !== undefined));
     if (Object.keys(v).length) out[key] = v;
   };
-  const check = (key) => (f, v) => (f === 'color' ? colour(v, undefined, c, `${key} colour`) : f === 'dash' ? (DASHES.includes(v) ? v : (c.warn(`unknown dash "${String(v).slice(0, 20)}", ignored`), undefined))
+  const check = (key) => (f, v) => (f === 'color' ? colour(v, undefined, c, `${key} colour`) : f === 'dash' ? oneOf(v, DASHES, undefined, c, `${key} dash`)
     : clamp(v, f === 'width' ? STROKE_WIDTH[0] : 0, f === 'width' ? STROKE_WIDTH[1] : 1, undefined, c, `${key} ${f}`));
   part('fill', DEFAULT_STYLE.fill, check('fill'));
   part('stroke', DEFAULT_STYLE.stroke, check('stroke'));
@@ -116,10 +119,10 @@ export function look(l, c, kind, style = null) {
       if (typeof t[k] === 'boolean') o[k] = t[k];
       else if (t[k] !== undefined) c.warn(`look text ${k}: not true or false, ignored`);
     }
-    const one = (k, list) => { if (t[k] === undefined) return; if (list.includes(t[k])) o[k] = t[k]; else c.warn(`look text ${k} "${String(t[k]).slice(0, 20)}" unknown, ignored`); };
     if (fin(t.size)) o.size = Math.max(TEXT_SIZE[0], Math.min(TEXT_SIZE[1], t.size)); // px
     else if (t.size !== undefined) c.warn(`look text size "${String(t.size).slice(0, 20)}": not a number of pixels, ignored`);
-    one('background', BACKGROUNDS);
+    const bg = oneOf(t.background, BACKGROUNDS, undefined, c, 'look text background');
+    if (bg !== undefined) o.background = bg;
     if (t.color != null) { const v = colour(t.color, undefined, c, 'look text colour'); if (v !== undefined) o.color = v; }
     if (Object.keys(o).length) out.text = o;
   }
@@ -149,7 +152,7 @@ export function readView(v, known, c) {
   if (v.zoom !== undefined) view.zoom = fin(v.zoom) ? Math.min(24, Math.max(0, v.zoom)) : (c.warn('zoom: not a number, ignored'), null);
   if (v.bearing !== undefined) view.bearing = angle(v.bearing, c, 'bearing');
   if (v.bearings !== undefined) view.bearings = flag(v.bearings, c, 'bearings');
-  if (v.units !== undefined) view.units = v.units === 'nm' || v.units === 'km' ? v.units : (c.warn(`unknown units "${String(v.units).slice(0, 10)}", km used`), 'km');
+  if (v.units !== undefined) view.units = oneOf(v.units, ['km', 'nm'], 'km', c, 'units');
   if (Array.isArray(v.layers)) {
     view.layers = [];
     for (const l of v.layers) {

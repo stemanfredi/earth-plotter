@@ -6,7 +6,7 @@
 import { h, typing, morph, animate, NARROW } from '../dom.js';
 import { ask, askText, note } from '../menu.js';
 import { FINGER } from './layers.js';
-import { find, elements, groupsOf, membersOf, leavesOf, canHold, label, KIND, lookOf, lookField, setLook, LOOK_FIELDS, SYMBOLS, LABEL_OFFSET, makeGroup, setGroup, moveStep, MAX_RADIUS, MAX_OFFSET, STROKE_WIDTH, TEXT_SIZE, SCALE, linkFrom, setLink, carry, holderOf, ringOf, refit } from './document.js';
+import { find, elements, groupsOf, membersOf, leavesOf, canHold, label, KIND, lookOf, lookField, setLook, LOOK_FIELDS, SYMBOLS, LABEL_OFFSET, makeGroup, setGroup, moveStep, MAX_RADIUS, MAX_OFFSET, STROKE_WIDTH, TEXT_SIZE, SCALE, linkFrom, setLink, carry, holderOf, ringOf } from './document.js';
 import { partName, lineRef, resolve } from './attach.js';
 import { labelValues, labelText, TOKENS } from './labels.js';
 import { totals, breakdown } from './lines.js';
@@ -220,7 +220,7 @@ export function drawView(root, ctx) {
   // every inspector's top (its title, kind · name, in the head): the rule that made it, its name
   const commonTop = (kind, id) => {
     const el = now(id);
-    title = `${kindTitle(kind, el)} · ${shownName(drawing.doc, kind, el, drawing.units())}`;
+    title = `${kindTitle(drawing.doc, kind, el)} · ${shownName(drawing.doc, kind, el, drawing.units())}`;
     return [ruleRow(id)?.row, kind === 'label' ? null : row('Name', textField(id, 'name', 'Name'))]; // a label is its text
   };
   const ruleActs = (id) => ruleRow(id)?.acts ?? [];
@@ -370,7 +370,7 @@ export function drawView(root, ctx) {
     return [...commonTop('circle', id), coordFields(id, 'position'),
       row('Radius', withUnit(F.dist(() => now(id).radius, (m) => at((x) => { x.radius = m; }), 'Radius', { check: radiusCheck }))),
       row('Aperture', F.angle(() => now(id).aperture, (v) => at((x) => { x.aperture = v || null; }), 'Aperture (degrees): a sector centred on its bearing; empty or 360: a whole circle', { wrap: false, none: true }), funit('°')),
-      row('Bearing', F.angle(() => now(id).bearing, (v) => at((x, d) => { x.bearing = v; refit(d, 'circle', x); }), 'Bearing (degrees true): a sector\'s middle, a circle\'s start'), funit('°T')), // a point's: its frame too
+      row('Bearing', F.angle(() => now(id).bearing, (v) => at((x) => { x.bearing = v; }), 'Bearing (degrees true): a sector\'s middle, a circle\'s start'), funit('°T')),
       drawable(el) ? row('Area', valued(fmtArea(areaOf(ringOf(el)), u))) : h('p', { class: 'note warn' }, `Not drawn: a circle of ${fmtDist(el.radius, u)} there reaches a pole.`),
       actionsRow(ruleActs(id), h('button', { type: 'button', class: 'small', title: 'Copies round it', onclick: () => openDistribution({ element: id }) }, 'Distribute along…')),
       lookBlock([item(id)]), ...commonBottom('circle', id)];

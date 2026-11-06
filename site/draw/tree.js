@@ -18,13 +18,13 @@ const countOf = (b, u) => [b.points ? plural(b.points, 'point') : '', b.circles 
   b.placed ? `${b.placed} placed` : '', b.lines ? `${plural(b.lines, 'line')}, ${fmtDist(b.length, u)}` : '', b.areas ? plural(b.areas, 'area') : '', b.hidden ? 'incl. hidden' : ''].filter(Boolean).join(' · ');
 // an element's icon and what the panel calls its kind: a circle or a sector; a closed line a point's
 // outline or an area
-// a closed line: a point's (in its frame) an outline, the Shape tool's icon; drawn on its own, an area
-const iconOf = (kind, el) => (kind === 'circle' ? POINT_ICON[el.aperture ? 'sector' : 'circle'] : KIND_ICON[el.closed ? (el.frame ? 'shape' : 'polygon') : kind]);
-export const kindTitle = (kind, el) => (kind === 'circle' && el.aperture ? 'Sector' : kind === 'line' && el.closed ? (el.frame ? 'Outline' : 'Area') : KIND[kind].name);
+// a closed line: a point's an outline, the Shape tool's icon; drawn on its own, an area
+const iconOf = (doc, kind, el) => (kind === 'circle' ? POINT_ICON[el.aperture ? 'sector' : 'circle'] : KIND_ICON[el.closed ? (holderOf(doc, el) ? 'shape' : 'polygon') : kind]);
+export const kindTitle = (doc, kind, el) => (kind === 'circle' && el.aperture ? 'Sector' : kind === 'line' && el.closed ? (holderOf(doc, el) ? 'Outline' : 'Area') : KIND[kind].name);
 // an element's name as shown: its own; a label's text as it reads on the map (its first line); a
 // nameless shape held by a point its kind alone (its point names it; its row's value says its size)
 export const shownName = (doc, kind, el, units) => (kind === 'label' ? labelText(doc, el, units).split('\n')[0].trim() || 'Label'
-  : !el.name?.trim() && holderOf(doc, el) ? kindTitle(kind, el) : label(kind, el));
+  : !el.name?.trim() && holderOf(doc, el) ? kindTitle(doc, kind, el) : label(kind, el));
 // a group's name with the groups it is in: "A › B"
 export const groupPath = (doc, g) => [...groupsOf(doc, g).reverse(), g].map((x) => label('group', x)).join(' › ');
 
@@ -127,7 +127,7 @@ export function createTree(drawing, { facts, drawingPicked = () => {} }) {
       onclick: () => { if (open === (kind === 'group')) set.add(id); else set.delete(id); render(); } }) : null;
     const t = kind === 'group' && facts().totals.groups.get(id);
     const first = kind === 'point' && el.symbol === 'none' ? membersOf(drawing.doc, id)[0] : null; // with no symbol, the row shows what it holds
-    return elementRow({ id, kindIcon: first ? iconOf(first.kind, first.el) : iconOf(kind, el), title: kindTitle(kind, el), name: shownName(drawing.doc, kind, el, drawing.units()), value: value(kind, el), valueTitle: t ? countOf(t, drawing.units()) : undefined,
+    return elementRow({ id, kindIcon: first ? iconOf(drawing.doc, first.kind, first.el) : iconOf(drawing.doc, kind, el), title: kindTitle(drawing.doc, kind, el), name: shownName(drawing.doc, kind, el, drawing.units()), value: value(kind, el), valueTitle: t ? countOf(t, drawing.units()) : undefined,
       visible: el.visible, drawn: isShown(drawing.doc, el), selected: chosen(el) }, {
       select: (e) => clickRow(id, e), hover: (x) => drawing.setHover(x),
       visible: (v) => drawing.change((doc) => { find(doc, id).el.visible = v; }),

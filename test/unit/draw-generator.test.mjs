@@ -345,7 +345,7 @@ test('a distribution follows nothing until Update, which places its copies along
   assert.deepEqual(pointsOf(doc, array).map((n) => n.position), before, 'nothing follows by itself');
   // one dragged by hand; Update: every copy at its place along the line as it is now, that one too
   const ns = pointsOf(doc, array), hand = ns[2];
-  hand.position = [12.2, 39.9];
+  carry(doc, hand, [12.2, 39.9]); // as a drag moves it: its shapes with it
   assert.deepEqual(updateRule(doc, array.id), { distribution: array, remade: false });
   fromPlaces(doc, guide, array).forEach((d, k) => near(d, 0, 0.01, `${k} at its place along the line`));
   assert.ok(pointsOf(doc, array).at(-1).position[1] > before.at(-1)[1] + 0.02, 'the far copies moved north');

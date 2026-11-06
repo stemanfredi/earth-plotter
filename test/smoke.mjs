@@ -10,6 +10,7 @@ import { start, openPage, exportItem, unzip, settled, frames, until } from './br
 import { setSwVersion } from './serve.mjs';
 import { tileBounds } from '../site/geo.js';
 import { OFFLINE_PREFIXES } from '../site/hosts.js';
+import { shellFiles } from '../tools/deps.mjs';
 
 const { browser, base, check, section, finish } = await start();
 // the service worker blocked, but in its own section at the end: here the network as it is, routes included
@@ -353,6 +354,23 @@ await section('a satellite observation', async () => {
   await ob.close();
 });
 
+await section('normals', async () => {
+  // a normal: the month of the map's time, said alone in the time chip (no day, no hour); January
+  // asked as the service takes it (to the second: with milliseconds it answers 400 for January)
+  const nm = await open('#v=5/40/10/0&col=normalwaves:height&on=chart,coastline,legend&t=2026-01-15T12', ctx, 'layers', ['data']);
+  const [nmHidden, nmText] = await nm.evaluate(() => [document.querySelector('#shown').hidden, document.querySelector('#shown').innerText.trim()]);
+  check(!nmHidden && nmText === 'January', `normal wave height: the time chip says the month alone (${nmText})`);
+  await until(nm, () => !!document.querySelector('#legends canvas[data-legend=normalwaves]')?.style.width, null, 30000);
+  const nmBroken = await nm.evaluate(() => [...document.querySelectorAll('.item.error, .item.partial')].map((r) => r.title));
+  check(!nmBroken.length && !nm.providerErrors.length, `normal wave height: its January tiles and its legend drawn ${nmBroken.join(' ')} ${nm.providerErrors.slice(0, 3).join(' | ')}`, true);
+  check(!nm.errors.length, `normal wave height: no page errors ${nm.errors.join(' | ')}`);
+  await nm.close();
+  // the severe waves: one map with no time, so no time chip
+  const sv = await open('#v=5/40/10/0&col=normalwaves:severe&on=chart,coastline,legend', ctx, 'layers', ['data']);
+  check(await sv.evaluate(() => document.querySelector('#shown').hidden) && !sv.errors.length, `severe wave height: no time chip, no page errors ${sv.errors.join(' | ')}`);
+  await sv.close();
+});
+
 await section('the PNG and GIS exports', async () => {
   const again = await open('#v=6/41/12/0&on=chart,coastline,depth,isobaths&u=nm'); // the view the link reopened
   // the scale is in the display's units, one bar: NM here, as Measure does (MapLibre writes "nm")
@@ -568,7 +586,7 @@ await section('the page without a connection, and a new version', async () => {
   const sp = await open('#v=8/43.5/9.5/0&on=chart,coastline', sctx);
   await sp.waitForFunction(() => navigator.serviceWorker.controller?.state === 'activated', null, { timeout: 30000 });
   const kept = await sp.evaluate(async () => [(await caches.keys()).join(), (await (await caches.open('shell-a')).keys()).map((r) => new URL(r.url).pathname)]);
-  const shell = (await readFile(new URL('../site/sw.js', import.meta.url), 'utf8')).match(/shell:start[^\n]*\n([\s\S]*?)\s*\/\/ shell:end/)[1].split('\n').length;
+  const shell = (await shellFiles()).length; // the page's files, as tools/deps.mjs lists them into sw.js
   check(kept[0] === 'shell-a' && kept[1].length === shell && kept[1].includes('/vendor/maplibre-gl.mjs'), `offline: the worker keeps the page's ${kept[1].length} of ${shell} files (${kept[0]})`);
   // another page of the site (a licence About links to) is itself, not the app (the worker answers
   // only the page's own address with index.html)

@@ -64,8 +64,9 @@ async function moduleGraph(entry = 'app.js') {
   return [...seen];
 }
 
-// the page's files, relative to site/, sorted (the libraries in site/vendor/ included)
-async function shellFiles() {
+// the page's files, relative to site/, sorted (the libraries in site/vendor/ included): what the
+// service worker keeps (smoke.mjs checks its cache against them)
+export async function shellFiles() {
   const files = (await readdir(SITE, { recursive: true, withFileTypes: true })).filter((e) => e.isFile())
     .map((e) => posix.join(posix.relative(fileURLToPath(SITE), e.parentPath).split('\\').join('/'), e.name))
     .filter((f) => !NOT_SHELL.has(f) && !f.split('/').some((part) => part.startsWith('.')));

@@ -1129,3 +1129,11 @@ test('a bearing just under 360° is kept and written as 0, never 360', () => {
   assert.equal(r.doc.circles[0].bearing, 0);
   assert.ok(!r.report.warnings.some((w) => /bearing 360/.test(w)), r.report.warnings.join(' | '));
 });
+
+test('a label pointing at a group or a label: dropped, and said why', () => {
+  const doc = emptyDoc(), line = addLine(doc, [[10, 40], [10.1, 40]]), other = addLabel(doc, [10.05, 40.02]);
+  addLabel(doc, [10.05, 40.01], { element: line.id });
+  const f = JSON.parse(serialise(doc, null));
+  f.earthplotter.links[0].to = { element: other.id };
+  warned(read(f).report, /a label, which nothing points at/);
+});

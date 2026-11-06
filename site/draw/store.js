@@ -7,7 +7,7 @@ import { emptyDoc, touch, find, elements, remove, reading, making } from './docu
 import { refreshAttached } from './attach.js';
 import { pruneRules } from './generator.js';
 
-const UNDO_STEPS = 100, UNDO_BYTES = 20e6;
+const UNDO_STEPS = 100, UNDO_CHARS = 20e6; // the undo steps' JSON, in characters (two bytes each in memory: up to 40 MB)
 
 // after any change, in one pass: the attached vertices and anchors where what they are on is; the rules' lists what is still there (a rule follows nothing: Update)
 export function settleGeometry(doc) {
@@ -65,8 +65,8 @@ export class DrawStore {
     if (JSON.stringify(this.doc) === before) return false;
     touch(this.doc);
     this.undos.push(before);
-    let bytes = this.undos.reduce((n, s) => n + s.length, 0);
-    while (this.undos.length > UNDO_STEPS || (bytes > UNDO_BYTES && this.undos.length > 1)) bytes -= this.undos.shift().length;
+    let chars = this.undos.reduce((n, s) => n + s.length, 0);
+    while (this.undos.length > UNDO_STEPS || (chars > UNDO_CHARS && this.undos.length > 1)) chars -= this.undos.shift().length;
     this.redos = [];
     this.settle();
     return true;

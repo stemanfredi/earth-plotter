@@ -16,7 +16,7 @@ Five rules every part of the drawing keeps; a change that breaks one changes the
 3. **A point can hold rigid shapes.** Circles, sectors and outlines placed as one piece with their
    point, moved and turned with it, as a block in CAD.
 4. **A line attaches only to what moves by itself:** a point, or a corner or an edge of a point's
-   shape. A label may point at anything. Nothing attaches through a line to a line, so every
+   shape. A label may point at any point, circle or line (never a group or another label). Nothing attaches through a line to a line, so every
    attached vertex is settled in one pass.
 5. **Rules make plain elements.** Distribute along and Connect make ordinary points and lines and
    keep their settings, to be edited again or updated; they follow nothing by themselves.
@@ -252,12 +252,12 @@ What a vertex of a line, or a label, is attached to: one list, `earthplotter.lin
 
 | `to` | | From |
 |---|---|---|
-| `{ "element" }` | a point's position; a circle's centre; a closed line's centre (the mean of its vertices); an open line's middle | a line's vertex: a point only. A label: any. |
+| `{ "element" }` | a point's position; a circle's centre; a closed line's centre (the mean of its vertices); an open line's middle | a line's vertex: a point only. A label: a point, a circle or a line. |
 | `{ "element", "vertex" }` | a line's vertex | a line's vertex: a point's shape only. A label: any line. |
 | `{ "element", "edge", "at" }` | along edge k (vertex k to the next, as drawn), a fraction `at` (0–1; missing 0), turning and stretching with it | as `vertex` |
 
 Where lines meet they meet at a point: a vertex of each attached to it. A vertex of a point's shape
-is never linked; a group, a label or a guide is never a line's target. The rule is kept after every
+is never linked; a group, a label or a guide is never a line's target, and a group or a label never a label's. The rule is kept after every
 change too: a link it no longer allows (a line given to a point, a shape detached and now an area)
 goes, its vertex free where it is. A closed line's vertices count in its own order;
 the rectangle's are its front right, back right, back left, front left; a triangle's its apex, back
@@ -349,7 +349,7 @@ Any GeoJSON: a FeatureCollection, a Feature or a bare geometry.
   silently: a line's offset (±50), a label's (±2000), a text size (8–48), a Scale (0.1–100), the
   zoom (0–24).
 - Unknown fields are ignored and not written again.
-- **Refused** (nothing loads): over 64 MB; not JSON; not an object; not GeoJSON; another version;
+- **Refused** (nothing loads): over 64 MB (a file opened or dropped on the map); not JSON; not an object; not GeoJSON; another version;
   more than 1 000 000 positions in its lines.
 - **Limits:** past 20 000 elements and groups, 10 000 characters of text, 200 properties on one element, the
   rest is dropped (warning).

@@ -176,9 +176,10 @@ function read(raw, app, known, now, report) {
       const f = isObj(v) && Array.isArray(v.from) ? [idIn(v.from[0]), v.from[1]] : [], to = refIn(unpack(v?.to)), x = typeof f[0] === 'string' && find(doc, f[0]);
       const place = x && ((x.kind === 'line' && !holderOf(doc, x.el)) || x.kind === 'label') && Number.isInteger(f[1]) && placeAt(doc, f);
 
+      const tk = to && find(doc, to.element)?.kind; // a group or a label: there, but never a target
       const what = !place ? `from ${shown(f[0], 64)} ${shown(f[1], 8)}, which is not a line's or a label's place here`
         : !to ? 'to nothing it can point at' : to.element === f[0] ? 'to its own element' : linked.has(`${f[0]} ${f[1]}`) ? 'from a place already linked'
-          : !targetPosition(doc, to) ? `to ${shown(to.element, 64)}, which is not here (or has no such vertex or edge)`
+          : !targetPosition(doc, to) ? `to ${shown(to.element, 64)}, ${tk === 'group' || tk === 'label' ? `a ${tk}, which nothing points at` : 'which is not here (or has no such vertex or edge)'}`
             : x.kind === 'line' && !lineTarget(doc, to) && `from a line's place to ${shown(to.element, 64)}, which is neither a point nor a point's shape`;
       if (what) { report.warnings.push(`link ${what}: dropped`); continue; }
       doc.links.push({ from: [f[0], f[1]], to });

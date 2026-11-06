@@ -38,6 +38,7 @@ export function fileGroup(drawing, ctx, libraryChanged) {
   const sep = () => h('div', { class: 'dsep' });
   // Open: the drawings in this browser, + New, a file from the computer
   function openItems() {
+    // the size kept: its characters, as bytes (a drawing's text is ASCII but for names and text typed)
     const kb = (n) => (n < 1024 ? `${n} B` : `${(n / 1024).toFixed(n < 10240 ? 1 : 0)} KB`);
     const when = (t) => new Date(t).toLocaleString([], { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
     const del = async (x) => {

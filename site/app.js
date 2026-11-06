@@ -1126,8 +1126,10 @@ map.on('click', async (e) => {
   if (!depthClicks()) return;
   if (e.cleared || drawing.hitAt(e.point).length) return; // a click on a drawing selects it; one that cleared the selection does only that
   const { lng, lat } = e.lngLat, z = Math.min(DEM_SEA_MAX, Math.floor(map.getZoom()) + 1); // 256 px DEM tiles at z show at map zoom z − 1
-  const asked = ++depthAsked;
+  const asked = ++depthAsked, box = map.getContainer();
+  box.setAttribute('aria-busy', 'true'); // the depth being looked up (said done before its popup, if any)
   const [v, code] = await Promise.all([depthAt([lng, lat], z).catch(() => null), tidAt(lng, lat).catch(() => null)]);
+  if (asked === depthAsked) box.removeAttribute('aria-busy');
   if (asked !== depthAsked || !depthClicks()) return; // another click since, or a tool or the layers switched meanwhile
   if (v === null) { depthPopup.setLngLat(e.lngLat).setDOMContent(h('div', {}, h('b', {}, 'Depth not available'), h('small', {}, 'GEBCO 2026 could not be read'))).addTo(map); return; }
   if (!Number.isFinite(v)) { depthPopup.remove(); return; } // land, a lake, inland water: no depth here

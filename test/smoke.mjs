@@ -21,7 +21,6 @@ ctx.on('request', (r) => { const u = new URL(r.url()); if (u.origin !== new URL(
 // a page at hash, loaded, its errors collected (in: another context, a phone's; tab, groups: openPage's)
 const open = (hash, inCtx = ctx, tab = null, groups = null) => openPage(inCtx, base + hash, tab, groups);
 const visible = (page, id) => page.evaluate((id) => map.getLayoutProperty(id, 'visibility'), id);
-// the time line: behind the time chip on the bottom row
 // the search: a field in the bar (a phone: behind its lens)
 const findOpen = async (page) => page.click((await page.isVisible('#b-find')) ? '#b-find' : '#q');
 
@@ -476,9 +475,8 @@ await section('the depth on a click', async () => {
   const at = async (lng, lat) => {
     const { x, y } = await dp.evaluate(([a, b]) => map.project([a, b]), [lng, lat]);
     await dp.mouse.click(x, y);
-    // the sea: its popup; on land the answer is no popup, and nothing says the lookup is over: a sleep
-    if (lng === 8.3) await dp.waitForSelector('.depthpop .maplibregl-popup-content > div', { timeout: 15000 }).catch(() => {});
-    else await dp.waitForTimeout(2500);
+    // the lookup over (the map no longer busy; the popup, if any, is put in the same task)
+    await dp.waitForFunction(() => !map.getContainer().hasAttribute('aria-busy'), null, { timeout: 15000 }).catch(() => {});
     return dp.evaluate(() => document.querySelector('.depthpop .maplibregl-popup-content > div')?.textContent || '');
   };
   const sea = await at(8.3, 43.9), land = await at(8.0, 44.2);

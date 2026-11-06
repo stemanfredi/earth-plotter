@@ -7,7 +7,7 @@
 
 import { inverse, destination } from '../geodesy.js';
 import { nearestOnSegment } from '../geo.js';
-import { lineTrace, steps } from './lines.js';
+import { lineTrace, steps, legAt } from './lines.js';
 import { isShown, KIND, drawnOf, reading } from './document.js';
 
 export const RADIUS = 6; // px
@@ -56,12 +56,7 @@ function snapAtIn(doc, p, view, { ids = null, exclude = new Set(), radius = RADI
       const tr = lineTrace(doc, el), { from } = steps(tr.coords);
       for (let i = 1; i < tr.coords.length; i++) {
         const a = f(tr.coords[i - 1]), b = f(tr.coords[i]), start = from[i - 1], s = from[i] - start;
-        edge(a, b, (t) => {
-          const d = start + t * s;
-          let k = tr.legs.length - 1;
-          while (k > 0 && tr.at[k] > d + 1e-6) k--;
-          return { element: el.id, edge: k, at: +Math.min(1, Math.max(0, tr.legs[k] ? (d - tr.at[k]) / tr.legs[k] : 0)).toFixed(6) };
-        }, el.id);
+        edge(a, b, (t) => ({ element: el.id, ...legAt(tr, start + t * s) }), el.id);
       }
     }
   }

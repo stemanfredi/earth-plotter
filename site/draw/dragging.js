@@ -7,6 +7,7 @@ import { settleGeometry } from './store.js';
 import { HANDLE_LAYERS } from './layers.js';
 import { drawnCircle } from './features.js';
 import { inverse, destination, moveAbout } from '../geodesy.js';
+import { clamp } from '../geo.js';
 import { stepped, neighbours } from './snap.js';
 import { attachAt, insertVertex, refNear } from './attach.js';
 import { radiusTo, bearingTo, sectorEdgeTo, scaledPlaces } from './drag.js';
@@ -110,7 +111,7 @@ export class Dragging {
         return;
       } // a held shape's vertex: the shape resized, the farthest vertex kept (Shift: its proportions too); its point moves to stay its centre, its other shapes with it
       case 'mid': { const q = this.snapped(pt, e, p, { exclude: new Set([el.id]) }).position; insertVertex(doc, el.id, +d.ref + 1, q); return; } // a place added halfway along a leg
-      case 'radius': { const c = drawnCircle(doc, el); el.radius = Math.max(1, Math.min(MAX_RADIUS - 1, radiusTo(c.position, p) * el.radius / c.radius)); return; } // a circle's size only: a sector's ends and the stalk turn it
+      case 'radius': { const c = drawnCircle(doc, el); el.radius = clamp(radiusTo(c.position, p) * el.radius / c.radius, 1, MAX_RADIUS - 1); return; } // a circle's size only: a sector's ends and the stalk turn it
       case 'aperture': Object.assign(el, sectorEdgeTo(drawnCircle(doc, el).position, el.bearing, el.aperture, +d.ref, p, snap)); return; // one end of a sector's arc: its aperture, and its bearing (its middle)
       case 'rotate': if (el.radius) { el.bearing = bearingTo(drawnCircle(doc, el).position, p, snap); } else carry(doc, el, el.position, bearingTo(el.position, p, snap)); // a sector; a point, its shapes with it
     }
@@ -126,7 +127,7 @@ export class Dragging {
   // place grabbed stays under the pointer); labels alone in it: their text moves (its offset on screen)
   moveSelection(doc, start, p) {
     if (![...this.sel].every((id) => find(doc, id)?.kind === 'label')) return moveElements(doc, this.sel, start, p);
-    const a = this.map.project(start), b = this.map.project(p), px = (v) => Math.max(-MAX_LABEL_OFFSET, Math.min(MAX_LABEL_OFFSET, Math.round(v))); // within the file's reach
+    const a = this.map.project(start), b = this.map.project(p), px = (v) => clamp(Math.round(v), -MAX_LABEL_OFFSET, MAX_LABEL_OFFSET); // within the file's reach
     for (const id of this.sel) { const { el } = find(doc, id); el.offset = [px(el.offset[0] + b.x - a.x), px(el.offset[1] + b.y - a.y)]; }
   }
 

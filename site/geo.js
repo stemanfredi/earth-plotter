@@ -45,3 +45,5 @@ export function tileBounds(z, x, y) {
   const n = 2 ** z;
   return [(x / n) * 360 - 180, latOf((y + 1) / n), ((x + 1) / n) * 360 - 180, latOf(y / n)];
 }
+// v within [lo, hi]
+export const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));

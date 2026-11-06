@@ -12,7 +12,7 @@ import { FORMAT, VERSION, KINDS, KIND, SYMBOLS, LEADERS, LABEL_OFFSET, META_D, M
 import { ID, isObj, fin, oneOf, shown, Skip, time, text, properties, flag, position, angle, look, aperture, readView, VIEW_D, VIEW_DATA_D } from './check.js';
 import { targetPosition, refreshAttached, placeAt, lineTarget } from './attach.js';
 import { settings, connectSettings, DISTRIBUTE_D, CONNECT_D } from './generator.js';
-import { norm180, samePosition, lonLatArea2 } from '../geo.js';
+import { norm180, samePosition, lonLatArea2, clamp } from '../geo.js';
 
 const MAX_POSITIONS = 100000; // positions in one line: more would stall the page at every change
 const MAX_FEATURES = 20000; // elements and groups in one file: the rest are skipped (as many points stall the list)
@@ -284,7 +284,7 @@ const READ = {
   },
   label(coords, mine, x, c) {
     const o = mine.offset;
-    const offset = Array.isArray(o) && o.length >= 2 && fin(o[0]) && fin(o[1]) ? [Math.max(-MAX_LABEL_OFFSET, Math.min(MAX_LABEL_OFFSET, o[0])), Math.max(-MAX_LABEL_OFFSET, Math.min(MAX_LABEL_OFFSET, o[1]))]
+    const offset = Array.isArray(o) && o.length >= 2 && fin(o[0]) && fin(o[1]) ? o.slice(0, 2).map((v) => clamp(v, -MAX_LABEL_OFFSET, MAX_LABEL_OFFSET))
       : (o !== undefined && c.warn('offset: not [x, y] pixels, the default used'), [...LABEL_OFFSET]);
     // a label has no name: it goes by its text (one in the file is dropped, as its guide is)
     return { ...x, name: '', text: text(mine.text, c, 'text'), position: coord(coords, c, 'position'), offset, leader: oneOf(mine.leader, LEADERS, 'arrow', c, 'leader') };

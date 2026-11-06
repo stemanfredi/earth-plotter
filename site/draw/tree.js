@@ -8,6 +8,7 @@ import { find, elements, groupsOf, membersOf, holderOf, label, KIND, setGroup, m
 import { labelText } from './labels.js';
 import { lineTrace } from './lines.js';
 import { MOD } from '../keys.js';
+import { clamp } from '../geo.js';
 import { fmtArea, fmtDist, plural } from '../format.js';
 import { icon, KIND_ICON, UI_ICON, POINT_ICON } from '../icons.js';
 
@@ -219,7 +220,7 @@ export function createTree(drawing, { facts, drawingPicked = () => {} }) {
     const ids = shown().map((x) => x.el.id);
     if (!ids.length) return false;
     const cur = ids.indexOf([...drawing.sel].at(-1));
-    const next = cur < 0 ? (dir > 0 ? 0 : ids.length - 1) : Math.max(0, Math.min(ids.length - 1, cur + dir));
+    const next = cur < 0 ? (dir > 0 ? 0 : ids.length - 1) : clamp(cur + dir, 0, ids.length - 1);
     anchor = ids[next];
     drawing.select([ids[next]]);
     return true;

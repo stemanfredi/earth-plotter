@@ -6,6 +6,7 @@
 import { h, COMPACT } from '../dom.js';
 import { popup, dialog, ask, note } from '../menu.js';
 import { parse } from './file.js';
+import { clamp } from '../geo.js';
 import { elements, isMeasurement } from './document.js';
 import { libraryFile, readLibrary } from './library.js';
 import { plural, slug } from '../format.js';
@@ -29,7 +30,7 @@ export function fileGroup(drawing, ctx, libraryChanged) {
   const menuEl = h('div', { class: 'dmenu', role: 'menu', hidden: true });
   document.body.append(menuEl, fileInput);
   const menu = popup(menuEl, { choose: false, // open while an output is prepared (it says how it went in the note)
-    place: (b) => { const r = b.getBoundingClientRect(); Object.assign(menuEl.style, { top: `${r.bottom + 4}px`, left: `${Math.max(8, Math.min(r.left, innerWidth - 360))}px` }); },
+    place: (b) => { const r = b.getBoundingClientRect(); Object.assign(menuEl.style, { top: `${r.bottom + 4}px`, left: `${clamp(r.left, 8, innerWidth - 360)}px` }); },
   });
   const close = () => menu.close();
   menuEl.addEventListener('click', (e) => { if (e.target.closest('[data-closes]')) close(); }); // an output that opens a dialog of its own

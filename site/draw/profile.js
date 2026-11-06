@@ -4,7 +4,7 @@
 // elevationAt, the app's reading of those.
 
 import { pointsAlong } from './lines.js';
-import { CIRC, D2R } from '../geo.js';
+import { CIRC, D2R, clamp } from '../geo.js';
 
 export const STEP_MIN = 30; // m: the land's elevation, about (38 m a pixel at its tiles' last zoom); closer adds nothing
 export const MAX_SAMPLES = 1000;
@@ -13,7 +13,7 @@ export const MAX_SAMPLES = 1000;
 // step, at most maxZoom (the tiles' last)
 export function zoomFor(step, lat, maxZoom) {
   const z = Math.round(Math.log2((CIRC * Math.cos(lat * D2R)) / (256 * step)));
-  return Math.max(0, Math.min(maxZoom, z));
+  return clamp(z, 0, maxZoom);
 }
 
 // The places to sample along a trace ({ coords, length }): MAX_SAMPLES, or every STEP_MIN metres on a

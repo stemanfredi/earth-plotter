@@ -6,7 +6,7 @@
 // of it. Pure: no map, no DOM.
 
 import { densify, inverse, destination, areaOf, lengthOf } from '../geodesy.js';
-import { mercator, unmercator, D2R, nearestOnSegment, unrollTo } from '../geo.js';
+import { mercator, unmercator, D2R, nearestOnSegment, unrollTo, clamp } from '../geo.js';
 import { isShown, groupsOf, groupsOnlyOf, linkFrom, reading, holderOf, membersOf } from './document.js';
 
 const TOL = 1e-4; // a curve is sampled finer until its length changes by less than this, relative
@@ -104,6 +104,12 @@ export function lineTrace(doc, line) {
   return trace;
 }
 
+// which leg of a trace d metres from its start falls on, and how far along it (0–1, to 1e-6): { edge, at }
+export function legAt(tr, d) {
+  let k = tr.legs.length - 1;
+  while (k > 0 && tr.at[k] > d + 1e-6) k--;
+  return { edge: k, at: +clamp(tr.legs[k] ? (d - tr.at[k]) / tr.legs[k] : 0, 0, 1).toFixed(6) };
+}
 // A polyline's steps' geodesics and their distances from its start, once per coords (a trace's are cached).
 const stepsOf = new WeakMap();
 export function steps(coords) {

@@ -9,9 +9,9 @@
 // no map, no DOM.
 
 import { inverse, destination } from '../geodesy.js';
-import { mercator, samePosition } from '../geo.js';
+import { mercator, samePosition, clamp } from '../geo.js';
 import { find, addDot, centroid, positionsIn, targetOf, setLink, linkFrom, takenIds, newId, nextName, fewestPlaces, holderOf } from './document.js';
-import { lineTrace, pointsAlong, nearestAlong } from './lines.js';
+import { lineTrace, pointsAlong, nearestAlong, legAt } from './lines.js';
 
 // the position f (0–1) along the geodesic a → b
 export const along = (a, b, f) => { const d = inverse(a, b); return destination(a, d.azi, d.s * f); };
@@ -70,11 +70,8 @@ export function refNear(doc, x, p, vertex = false) {
 }
 // the target d metres along a line from its start (with its position): on the leg there
 export function lineRef(doc, line, d) {
-  const tr = lineTrace(doc, line), dd = Math.max(0, Math.min(tr.length, d));
-  let k = tr.legs.length - 1;
-  while (k > 0 && tr.at[k] > dd) k--;
-  const at = tr.legs[k] ? (dd - tr.at[k]) / tr.legs[k] : 0;
-  return { position: pointsAlong(tr.coords, [dd])[0].position, element: line.id, edge: k, at: +Math.min(1, Math.max(0, at)).toFixed(6) };
+  const tr = lineTrace(doc, line), dd = clamp(d, 0, tr.length);
+  return { position: pointsAlong(tr.coords, [dd])[0].position, element: line.id, ...legAt(tr, dd) };
 }
 
 // The links to the vertices and edges of element id placed again where their places are: after its

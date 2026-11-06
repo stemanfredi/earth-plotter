@@ -14,11 +14,12 @@ import { lru } from './net.js';
 import { h } from './dom.js';
 import { chartCanvas, chartPng, pngOf } from './png.js';
 
-// deps: map, layersOf (item → its style layers), kindOf (item → its kind, with values()), drawing,
+// deps: map, layersOf (item → its style layers), layerDrawn(l, z) (a style layer drawn at zoom z),
+// kindOf (item → its kind, with values()), drawing,
 // display, profiled (the elevation profiles read, by trace), clips { sea, land } (the clippers, for the
 // elevation grids), cmemsDrawn(id, at) (a Copernicus layer's time and level as drawn), snapshot(src),
 // onFrame(button, fn, before), download(blob, name). Returns exportZip(button).
-export function gisExport({ map, layersOf, kindOf, drawing, display, profiled, clips, cmemsDrawn, snapshot, onFrame, download }) {
+export function gisExport({ map, layersOf, layerDrawn, kindOf, drawing, display, profiled, clips, cmemsDrawn, snapshot, onFrame, download }) {
   // what the item's vector layers draw, as pieces for vector.js: one query per source layer and
   // filter (a line and its casing, or a line and its labels, are the same features). Symbols placed
   // along lines are labels of features exported anyway; computed overlays (graticule) are left out.
@@ -26,7 +27,7 @@ export function gisExport({ map, layersOf, kindOf, drawing, display, profiled, c
     const z = map.getZoom(), queries = new Map();
     for (const l of layersOf[id] || []) {
       if (map.getSource(l.source)?.type !== 'vector' || !['line', 'fill', 'symbol'].includes(l.type) || l.layout?.['symbol-placement'] === 'line') continue;
-      if (map.getLayoutProperty(l.id, 'visibility') !== 'visible' || z < (l.minzoom ?? 0) || z >= (l.maxzoom ?? 24)) continue;
+      if (!layerDrawn(l, z)) continue;
       queries.set(JSON.stringify([l.source, l['source-layer'], l.filter]), l);
     }
     const pieces = [];

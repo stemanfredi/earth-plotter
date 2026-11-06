@@ -1167,11 +1167,11 @@ function scaleText() {
 // the credits of what is drawn: each shown source's own (catalog.js), once, the base map's first
 // (OpenStreetMap and Esri ask for theirs to be seen, and a line that does not fit scrolls from its start)
 const baseSources = new Set(ITEMS.filter((it) => it.group === 'base').flatMap((it) => (layersOf[it.id] || []).map((l) => l.source)));
+// a style layer drawn at this zoom: shown, and within its zoom range (the seamarks from 9 …)
+function drawn(l, z = map.getZoom()) { return map.getLayoutProperty(l.id, 'visibility') !== 'none' && z >= (l.minzoom ?? 0) && z < (l.maxzoom ?? 24); }
 function creditParts() {
   const srcs = [], z = map.getZoom();
-  // what is drawn at this zoom: a layer shown, and within its zoom range (the seamarks from 9 …)
-  const drawn = (l) => map.getLayoutProperty(l.id, 'visibility') !== 'none' && z >= (l.minzoom ?? 0) && z < (l.maxzoom ?? 24);
-  for (const l of style.layers) if (l.source && drawn(l) && !srcs.includes(l.source)) srcs.push(l.source);
+  for (const l of style.layers) if (l.source && drawn(l, z) && !srcs.includes(l.source)) srcs.push(l.source);
   srcs.sort((a, b) => baseSources.has(b) - baseSources.has(a));
   const parts = [...new Set(srcs.map((s) => map.getSource(s)?.attribution).filter(Boolean))];
   return parts.filter((p) => !parts.some((q) => q !== p && q.includes(p))); // a credit another holds: once
@@ -1285,10 +1285,10 @@ function exportPng(b) {
 // the menu items the view draws: switched on, over their base, in their zoom range
 function drawnItems() {
   const z = map.getZoom();
-  return ITEMS.filter((it) => (layersOf[it.id] || []).some((l) => map.getLayoutProperty(l.id, 'visibility') === 'visible' && z >= (l.minzoom ?? 0) && z < (l.maxzoom ?? 24)))
+  return ITEMS.filter((it) => (layersOf[it.id] || []).some((l) => drawn(l, z)))
     .map((it) => ({ ...it, variant: variantsOf(it) && state.variant[it.id] })); // the variant's key, as the file's view and item.json's at.variant
 }
-const exportZip = gisExport({ map, layersOf, kindOf, drawing, display, profiled, clips: { sea: seaClip, land: landClip }, cmemsDrawn, snapshot, onFrame, download });
+const exportZip = gisExport({ map, layersOf, layerDrawn: drawn, kindOf, drawing, display, profiled, clips: { sea: seaClip, land: landClip }, cmemsDrawn, snapshot, onFrame, download });
 
 // ---- go ---------------------------------------------------------------------
 map.on('load', () => {

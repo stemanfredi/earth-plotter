@@ -74,39 +74,21 @@ function dmsValue(nums) {
   if (m < 0 || m >= 60 || s < 0 || s >= 60 || nums.slice(0, -1).some((v) => !Number.isInteger(v))) return NaN;
   return (d < 0 || Object.is(d, -0) ? -1 : 1) * (Math.abs(d) + m / 60 + s / 3600);
 }
+// the text cut in its two coordinates, each read by parseCoord: at the letters (both before their
+// numbers, or both after), else the numbers in half, latitude first
 function latLon(text) {
-  const t = text.toUpperCase().replace(/[°º˚′'″",;]/g, ' ').replace(/([NSEW])/g, ' $1 ').trim();
-  if (!t || /[^0-9NSEW.+\-\s]/.test(t)) return null;
-  const tokens = t.split(/\s+/);
-  const parts = []; // [{ nums: [d, m?, s?], hemi }]
-  const prefix = /^[NSEW]$/.test(tokens[0]);
-  let cur = { nums: [], hemi: null };
-  for (const tok of tokens) {
-    if (/^[NSEW]$/.test(tok)) {
-      if (prefix) { if (cur.nums.length || cur.hemi) parts.push(cur); cur = { nums: [], hemi: tok }; }
-      else { if (!cur.nums.length || cur.hemi) return null; cur.hemi = tok; parts.push(cur); cur = { nums: [], hemi: null }; }
-    } else if (/^[+-]?\d+(\.\d+)?$/.test(tok)) cur.nums.push(+tok);
-    else return null;
-  }
-  if (cur.nums.length || cur.hemi) parts.push(cur);
-  let comps;
-  if (parts.every((p) => p.hemi)) comps = parts;
-  else if (parts.length === 1 && !parts[0].hemi) { // no letters: split the numbers in half
-    const n = parts[0].nums;
-    if (![2, 4, 6].includes(n.length)) return null;
-    comps = [{ nums: n.slice(0, n.length / 2) }, { nums: n.slice(n.length / 2) }];
-  } else return null;
-  if (comps.length !== 2 || comps.some((c) => !c.nums.length || c.nums.length > 3)) return null;
-  const value = ({ nums }) => dmsValue(nums);
-  let lat, lon;
-  if (comps[0].hemi) {
-    const la = comps.find((c) => 'NS'.includes(c.hemi)), lo = comps.find((c) => 'EW'.includes(c.hemi));
-    if (!la || !lo || la.nums[0] < 0 || lo.nums[0] < 0) return null;
-    lat = value(la) * (la.hemi === 'S' ? -1 : 1);
-    lon = value(lo) * (lo.hemi === 'W' ? -1 : 1);
-  } else [lat, lon] = comps.map(value);
-  if (!Number.isFinite(lat) || !Number.isFinite(lon) || Math.abs(lat) > 90 || Math.abs(lon) > 180) return null;
-  return { lat, lon };
+  const tokens = text.toUpperCase().replace(/[°º˚′'″",;]/g, ' ').replace(/([NSEW])/g, ' $1 ').trim().split(/\s+/);
+  const at = tokens.flatMap((x, i) => (/^[NSEW]$/.test(x) ? [i] : []));
+  let parts;
+  if (!at.length) parts = [2, 4, 6].includes(tokens.length) ? [tokens.slice(0, tokens.length / 2), tokens.slice(tokens.length / 2)] : null;
+  else if (at.length === 2 && at[0] === 0) parts = [tokens.slice(0, at[1]), tokens.slice(at[1])];
+  else if (at.length === 2 && at[1] === tokens.length - 1) parts = [tokens.slice(0, at[0] + 1), tokens.slice(at[0] + 1)];
+  if (!parts) return null;
+  const letter = (p) => p.find((x) => /^[NSEW]$/.test(x));
+  const axes = at.length ? parts.map((p) => ('NS'.includes(letter(p)) ? 'lat' : 'lon')) : ['lat', 'lon'];
+  if (axes[0] === axes[1]) return null;
+  const [lat, lon] = (axes[0] === 'lat' ? parts : [parts[1], parts[0]]).map((p, i) => parseCoord(p.join(' '), i ? 'lon' : 'lat'));
+  return lat == null || lon == null ? null : { lat, lon };
 }
 
 // One coordinate typed into its own field: axis 'lat' or 'lon' → decimal degrees, or null. The

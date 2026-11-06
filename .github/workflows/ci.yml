@@ -88,8 +88,13 @@ jobs:
       # the service worker's version: the commit, so each deploy is a new worker that fetches its files
       # (a development copy keeps 'dev': the network first)
       - run: sed -i "s/^const VERSION = 'dev';/const VERSION = '$GITHUB_SHA';/" site/sw.js && grep -q "^const VERSION = '$GITHUB_SHA';" site/sw.js
+      # named by the attempt: a re-run of this job uploads again, and deploy-pages refuses a run holding
+      # two uploads of one name
       - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
         with:
           path: site                 # the site files only: no tools, tests or dev dependencies
+          name: github-pages-${{ github.run_attempt }}
       - id: deploy
         uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346    # v5.0.1
+        with:
+          artifact_name: github-pages-${{ github.run_attempt }}

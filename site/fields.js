@@ -59,11 +59,15 @@ export function fields({ note, units }) {
     });
     return input;
   }
+  // Esc in a textarea (where Enter is a new line): its text applied as it leaves (change), the focus
+  // with it; a second Esc, no longer in it, steps back as anywhere
+  const escapes = (e) => { if (e.key === 'Escape') { e.stopPropagation(); e.target.blur(); } };
   // free text, on one line or several (a textarea: rows)
   const text = (get, put, aria, rows = 0) => {
     if (!rows) return field(get, (t) => t, put, { 'aria-label': aria });
     const t = h('textarea', { rows, 'aria-label': aria }, get());
     t.addEventListener('change', () => put(t.value));
+    t.addEventListener('keydown', escapes);
     return t;
   };
   // a distance in the display units (a suffix may say another: 500 m, 1.2 NM). zero: 0 allowed;
@@ -110,7 +114,7 @@ export function fields({ note, units }) {
     const v = num(t);
     return Number.isFinite(v) && (!whole || Number.isInteger(v)) && (above ? v > min : v >= min) && v <= max ? v : undefined;
   }, put, { 'aria-label': aria, class: 'num', inputmode: whole ? 'numeric' : 'decimal', nudge: (t, up, big) => stepped(t, up, big, min), bad: bad || `${whole ? 'a whole number' : 'a number'} ${above ? 'above' : 'from'} ${min}${max < Infinity ? ` to ${max}` : ''}`, ...attrs });
-  return { field, text, dist, angle, coord, position, number };
+  return { field, text, escapes, dist, angle, coord, position, number };
 }
 
 // A choice among options ([[value, text]]) as a <select>: value the one chosen (null: "mixed", a

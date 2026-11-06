@@ -36,8 +36,8 @@ export function eyeFor(drawing, xs, what) {
   const b = h('button', { type: 'button', class: 'deye', onclick: () => { const all = xs(); showAll(drawing, !all.every(seen), all); } });
   b.render = () => {
     const all = xs(), on = all.filter(seen).length, every = !!all.length && on === all.length;
-    b.setAttribute('aria-pressed', on && !every ? 'mixed' : String(every));
-    b.setAttribute('aria-label', `${every ? 'Hide' : 'Show'} all ${what}`);
+    b.setAttribute('aria-pressed', on && !every ? 'mixed' : String(every)); // its label the same, as a row's eye: pressed, shown
+    b.setAttribute('aria-label', `Show all ${what}`);
     b.title = every ? 'All shown: click to hide them all' : on ? 'Some hidden: click to show them all' : 'All hidden: click to show them all';
     b.replaceChildren(icon(...(every ? UI_ICON.eye : UI_ICON.hidden)));
   };

@@ -289,6 +289,7 @@ export function drawView(root, ctx) {
     const text = h('textarea', { rows: 3, 'aria-label': 'Text', class: 'ltext' }, el.text);
     text.addEventListener('input', () => drawing.previewLabels((d) => { find(d, id).el.text = text.value; })); // seen on the map as it is typed
     text.addEventListener('change', () => set(id, (x) => { x.text = text.value; }));
+    text.addEventListener('keydown', F.escapes);
     const insert = (token) => {
       const a = text.selectionStart ?? text.value.length, b = text.selectionEnd ?? a;
       text.value = text.value.slice(0, a) + token + text.value.slice(b);
@@ -593,7 +594,11 @@ export function drawView(root, ctx) {
     // ↑ ↓ step the tree, unless what has the focus takes them itself (a slider, a radio card, the map)
     const ownArrows = e.target.closest?.('input[type=range], .maplibregl-canvas');
     if ((e.key === 'ArrowDown' || e.key === 'ArrowUp') && !ownArrows && ctx.frame.tab === 'elements' && tree.step(e.key === 'ArrowDown' ? 1 : -1)) e.preventDefault(); // the tree stepped only while seen
-    else if (e.key === 'F2' && drawing.sel.size === 1) { e.preventDefault(); tree.rename([...drawing.sel][0]); }
+    else if (e.key === 'F2' && drawing.sel.size === 1) { // renamed in its tree row while seen, else in Properties' Name (a label: its text)
+      e.preventDefault();
+      if (ctx.frame.tab === 'elements') tree.rename([...drawing.sel][0]);
+      else { if (ctx.props.hidden) { ctx.frame.setProps(true); renderInspector(); } const f = inspector.querySelector('input[aria-label="Name"], .ltext'); f?.focus(); f?.select(); }
+    }
   });
 
   // ---- rendering ---------------------------------------------------------------------------

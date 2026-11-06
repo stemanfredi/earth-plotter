@@ -53,6 +53,8 @@ export function createTools(drawing, ctx, { del, fileBtns, drawsNow }) {
     boxBtn.hidden = phone && tool; // a phone, while drawing: Back, Undo, Redo, what is drawn (Measure's own button), Done
     measureBtn.hidden = phone && tool && !measuring;
     touchbar.hidden = phone || [touch.done, touch.back, touch.del, touch.dup].every((b) => b.hidden);
+    undoBtn.disabled = !drawing.undos.length && !drawing.draft; // half drawn: Undo takes back a point (a phone has no Backspace)
+    redoBtn.disabled = !drawing.redos.length;
   }
   // The bar (drawing-ui.md §1): the file group (files.js); Layers, Elements and Draw (the left
   // panel's tabs); Undo, Redo (history); Select and Box select; Measure; at its end Properties' toggle
@@ -77,8 +79,6 @@ export function createTools(drawing, ctx, { del, fileBtns, drawsNow }) {
     selectBtn.setAttribute('aria-pressed', String(!on && !drawing.boxNext));
     boxBtn.setAttribute('aria-pressed', String(!!drawing.boxNext));
     measureBtn.setAttribute('aria-pressed', String(on === 'measure'));
-    undoBtn.disabled = !drawing.undos.length;
-    redoBtn.disabled = !drawing.redos.length;
     renderTouch();
   }
   return { press, renderTools, renderTouch };

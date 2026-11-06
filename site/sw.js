@@ -76,6 +76,8 @@ const SHELL = [
   'offline.js',
   'png.js',
   'search.js',
+  'series.js',
+  'stats.js',
   'style.css',
   'style.js',
   'values.js',

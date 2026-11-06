@@ -24,7 +24,7 @@ import { pipeline } from 'node:stream/promises';
 import geojsonvt from 'geojson-vt';
 import vtpbf from 'vt-pbf';
 
-export const RELEASE = 'seagrass-2025';
+const RELEASE = 'seagrass-2025';
 const ZIP = 'https://files.emodnet-seabedhabitats.eu/data/SeagrassBeds_EOV_2025.zip';
 const MINZ = 7, MAXZ = 13, REGION_Z = 5, WEST = -50;
 

@@ -8,8 +8,6 @@
 //                                  module app.js reaches (a cold load asks for them at once, not
 //                                  nine import levels deep, one round trip each); and into
 //                                  site/sw.js the list of the page's files it keeps
-//   node tools/deps.mjs            newer data periods in the EMODnet density WMS than catalog.js
-//                                  lists (newer library versions: npm outdated)
 //
 // To upgrade a library: change its version in package.json, npm install, --write, then test the page.
 import { readFile, writeFile, mkdir, readdir, rm } from 'node:fs/promises';
@@ -124,28 +122,7 @@ async function write() {
   console.log('site/vendor/, the policy, the preloads and the service worker\'s files written');
 }
 
-// newest period the WMS offers for each density dataset vs the newest one catalog.js lists
-async function dataReport() {
-  const { DENSITY, HA_WMS, ITEMS } = await import('../site/catalog.js');
-  const r = await fetch(`${HA_WMS}?service=WMS&request=GetCapabilities&version=1.3.0`);
-  if (!r.ok) throw new Error(`EMODnet capabilities ${r.status}`);
-  const xml = await r.text();
-  for (const [id, d] of Object.entries(DENSITY)) {
-    const title = ITEMS.find((x) => x.id === id)?.label ?? id; // the layer's name as the menu shows it
-    const name = d.layer('all');
-    const i = xml.indexOf(`<Name>${name}</Name>`);
-    const times = (/name="time"[^>]*>([^<]*)/.exec(xml.slice(i, xml.indexOf('</Layer>', i))) || [])[1] || '';
-    const newest = times.match(/\d{4}-\d{2}/g)?.sort().at(-1);
-    const listed = [...d.periods].sort().at(-1);
-    const offered = id === 'traffic' ? newest?.slice(0, 4) : newest;
-    const newer = offered && offered > listed;
-    console.log(`${title.padEnd(24)} listed to ${listed.padEnd(8)} WMS offers to ${offered}${newer ? '   ← newer data: update catalog.js' : ''}`);
-    if (newer && process.env.GITHUB_ACTIONS) console.log(`::notice title=Newer ${title}::the WMS has ${offered}; catalog.js lists to ${listed}`);
-  }
-}
-
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
-  const a = process.argv;
-  if (a.includes('--write')) await write();
-  else await dataReport();
+  if (process.argv.includes('--write')) await write();
+  else console.log('node tools/deps.mjs --write: copy the libraries, write the policy, the preloads and the service worker\'s files');
 }

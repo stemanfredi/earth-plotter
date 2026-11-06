@@ -218,7 +218,7 @@ export class Drafting {
   placeLabel(point, p) {
     let el;
     const mine = this.libraryItem('label'); // an item's label: its text and look
-    this.change((doc) => { const r = this.anchorFor(point, p); el = addLabel(doc, r.position, r.to); if (mine) styleLike(doc, el, 'label', mine); });
+    this.change((doc) => { const r = this.anchorFor(point, p); el = addLabel(doc, r.position, r.to, this.map.getZoom()); if (mine) styleLike(doc, el, 'label', mine); });
     this.snapMark = null; // placed: its mark gone with the click (drawn again as the pointer moves)
     this.select([el.id]);
     this.onChange('placed'); // the panel puts the cursor in its text

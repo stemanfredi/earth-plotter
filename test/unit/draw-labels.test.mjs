@@ -251,3 +251,39 @@ test('live values on a vertex and a leg: a leg\'s bearing; a closed line\'s area
   assert.equal(t('{radius}|{area}', { element: 'a' }), '|');
   assert.deepEqual(labelValues(doc, null), {});
 });
+
+test('a label as the map zooms: pinned to the map without a leader, shrinking only with one, as set without a zoom', async () => {
+  const { offsetAt, setOffsetAt } = await import('../../site/draw/labels.js');
+  const free = { offset: [-200, 20], zoom: 12, leader: 'none' }, callout = { offset: [40, -40], zoom: 12, leader: 'arrow' };
+  assert.deepEqual(offsetAt(free, 12), [-200, 20]);
+  assert.deepEqual(offsetAt(free, 10), [-50, 5]); // a quarter as far two levels out: where it was on the map
+  assert.deepEqual(offsetAt(free, 13), [-400, 40]);
+  assert.deepEqual(offsetAt(callout, 11), [20, -20]); // closer zoomed out
+  assert.deepEqual(offsetAt(callout, 15), [40, -40]); // as set zoomed in
+  assert.deepEqual(offsetAt({ offset: [40, -40], zoom: null, leader: 'arrow' }, 3), [40, -40]); // an older file's
+  // set again where it is drawn: nothing moves at that zoom, and the rule starts from there
+  const a = { ...free };
+  setOffsetAt(a, 11, [10, 0]);
+  assert.deepEqual([a.offset, a.zoom], [[-90, 10], 11]);
+  assert.deepEqual(offsetAt(a, 12), [-180, 20]);
+  // the text in the map's features follows the view's zoom
+  const doc = base();
+  withLabel(doc, 'z', { element: 'a' }, { text: 'T', offset: [0, -100], zoom: 12, leader: 'none' });
+  const at = (z) => labelFeatures(doc, { ...view, zoom: z }).find((f) => f.properties.kind === 'label').geometry.coordinates;
+  const p = view.project([12, 40]), y = (z) => view.project(at(z))[1] - p[1];
+  assert.ok(Math.abs(y(12) + 100) < 1e-6 && Math.abs(y(11) + 50) < 1e-6, `${y(12)} ${y(11)}`);
+});
+
+test('a label\'s zoom in the file: written when set, read back, a bad one warned', async () => {
+  const { serialise, parse } = await import('../../site/draw/file.js');
+  const doc = base();
+  addLabel(doc, [12.2, 40.2], null, 11.784);
+  const back = parse(serialise(doc, null), null, 0);
+  assert.equal(back.doc.labels.at(-1).zoom, 11.78);
+  const old = JSON.parse(serialise(doc, null));
+  const f = old.features.find((x) => x.properties.earthplotter.kind === 'label');
+  delete f.properties.earthplotter.zoom;
+  assert.equal(parse(JSON.stringify(old), null, 0).doc.labels.at(-1).zoom, null);
+  f.properties.earthplotter.zoom = 'x';
+  assert.ok(parse(JSON.stringify(old), null, 0).report.warnings.some((w) => /zoom "x"/.test(w)));
+});

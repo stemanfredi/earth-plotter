@@ -286,7 +286,9 @@ takes one unit by its largest value.
   while it has any, what it **reads** under it; **Attached to** what and where (a line's vertex or leg,
   as its table numbers them), or its **Position**; **Along**, on
   a line; **Text offset**, where its text was dragged to (↺: back); **Leader**. Look:
-  text size (px), colour, background (halo or box).
+  text size (px), colour, background (halo or box). As the map zooms, a label without a leader keeps
+  its text's place on the map; one with a leader brings its text closer zoomed out and keeps it as
+  dragged zoomed in, so that it never drifts away from what it points at.
 - A **group**: **Members** as the tree counts them (everything in it, its subgroups' too) and its
   subgroups, with the group's eye (as its row's); **Totals** as the drawing's, its members only, by subgroup
   (Copy); **Select members**; **Look · sets each member** (a group has no look of its own); its foot

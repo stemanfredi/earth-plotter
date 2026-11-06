@@ -1,7 +1,8 @@
 // Labels (docs/drawing-format.md §7.5): where each one points (its position; linked, what it points
 // at), its text with the live values filled in, and what the map draws for it: the text, a leader line
-// from the text to where it points, the leader's end. The text sits at an offset in screen pixels from there, so the map
-// gives the projection (view.project, view.unproject) and the size of a text (view.measure). Pure
+// from the text to where it points, the leader's end. The text sits at an offset in screen pixels from there (offsetAt: as the
+// zoom changes), so the map gives the projection (view.project, view.unproject), its zoom (view.zoom)
+// and the size of a text (view.measure). Pure
 // otherwise: no map, no DOM.
 
 import { isShown, label, lookOf, linkFrom, ringOf, reading } from './document.js';
@@ -38,6 +39,24 @@ export function labelText(doc, a, units = 'km') {
   return a.text.replace(new RegExp(`\\{(${TOKENS.join('|')})\\}`, 'g'), (_, k) => v[k] ?? '');
 }
 
+// Where a label's text is from where it points, on screen at zoom z (px): its offset is in px at the
+// zoom it was set at (a.zoom). With no leader the text keeps its place on the map: the offset grows and
+// shrinks with the map, as a name on a chart. With a leader it shrinks with the map zoomed out and
+// stays as set zoomed in, so that it never drifts away from what it points at nor runs far from it.
+// No zoom (set by an older file): as set, in px at every zoom.
+export function offsetAt(a, z) {
+  if (a.zoom == null || z == null) return a.offset;
+  const k = 2 ** (z - a.zoom), s = a.leader === 'none' ? k : Math.min(1, k);
+  return [a.offset[0] * s, a.offset[1] * s];
+}
+// a label's offset set again at zoom z, where it is drawn now (moved by d px): what it shows there
+// stays, and is what the rule above starts from (fit: whole pixels, else as given)
+export function setOffsetAt(a, z, d = [0, 0], fit = Math.round) {
+  const o = offsetAt(a, z);
+  a.offset = [fit(o[0] + d[0]), fit(o[1] + d[1])];
+  a.zoom = Math.round(z * 100) / 100;
+}
+
 // Where a leader leaves the text: the point where the line from the text's centre t to the anchor p
 // (screen px) crosses the text's box, half its size half ([w, h], padding included), or null when the
 // anchor is inside the box (no leader to draw).
@@ -51,7 +70,7 @@ export function leaderFrom(t, p, half) {
 // The map's features for the labels (the "drawlabel" source): each shown label's text at its offset
 // from where it points, its leader, its end (an arrow head turned along the leader, or a dot); for the
 // selected ones, a handle where it points when that can be dragged (free, or on an edge or a leg).
-// view: { project, unproject, measure(text, px) → [w, h] }; units: the display units; texts: each
+// view: { project, unproject, zoom, measure(text, px) → [w, h] }; units: the display units; texts: each
 // label's text by id, filled as read (kept by the caller while the drawing and the units stay as they
 // are: the map moving changes no text).
 export const labelFeatures = (doc, ...rest) => reading(doc, () => labelFeaturesIn(doc, ...rest)); // indexed while it reads
@@ -65,7 +84,7 @@ function labelFeaturesIn(doc, view, sel = new Set(), hover = null, units = 'km',
     if (!texts.has(a.id)) texts.set(a.id, labelText(doc, a, units));
     const text = texts.get(a.id);
     const lt = lookOf(doc, a).text, px = lt.size, c = lt.color, mark = sel.has(a.id) ? 'sel' : hover === a.id ? 'hover' : '';
-    const p = view.project(a.position), t = [p[0] + a.offset[0], p[1] + a.offset[1]];
+    const p = view.project(a.position), o = offsetAt(a, view.zoom), t = [p[0] + o[0], p[1] + o[1]];
     if (text.trim()) pt({ id: a.id, kind: 'label', text, px, c, box: lt.background === 'box' ? 1 : 0, mark }, view.unproject(t));
     if (a.leader !== 'none') {
       const [w, h] = text.trim() ? view.measure(text, px) : [0, 0], pad = PAD[lt.background];

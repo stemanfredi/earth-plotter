@@ -8,7 +8,7 @@ import { ask, askText, note } from '../menu.js';
 import { FINGER } from './layers.js';
 import { find, elements, groupsOf, membersOf, leavesOf, canHold, label, KIND, lookOf, lookField, setLook, LOOK_FIELDS, SYMBOLS, LABEL_OFFSET, makeGroup, setGroup, moveStep, MAX_RADIUS, MAX_OFFSET, STROKE_WIDTH, TEXT_SIZE, SCALE, linkFrom, setLink, carry, holderOf, ringOf, reading } from './document.js';
 import { partName, lineRef, resolve } from './attach.js';
-import { labelValues, labelText, TOKENS } from './labels.js';
+import { labelValues, labelText, TOKENS, setOffsetAt } from './labels.js';
 import { totals, breakdown } from './lines.js';
 import { connections } from './generator.js';
 import { boundsOf, drawable } from './features.js';
@@ -301,8 +301,8 @@ export function drawView(root, ctx) {
       row('Text', text), reads,
       tokens.length ? row('', ...tokens.map((k) => h('button', { type: 'button', class: 'small', title: `A live ${TOKEN_TEXT[k][0]}`, onclick: () => insert(`{${k}}`) }, `+ ${TOKEN_TEXT[k][0]}`))) : null,
       refRow(to ? 'Attached to' : 'Position', id), alongRow,
-      row('Text offset', fvalue(`${el.offset[0]}, ${el.offset[1]}`.replace(/-/g, '−'), { title: 'Drag its text on the map' }), funit('px'),
-        moved ? h('button', { type: 'button', class: 'x', title: 'Back to the default', 'aria-label': 'Text offset back to where a new label puts it', onclick: () => set(id, (x) => { x.offset = to ? [...LABEL_OFFSET] : [0, 0]; }) }, '↺') : null),
+      row('Text offset', fvalue(`${el.offset[0]}, ${el.offset[1]}`.replace(/-/g, '−'), { title: 'Drag its text on the map' }), funit(el.zoom == null ? 'px' : `px at zoom ${el.zoom}`),
+        moved ? h('button', { type: 'button', class: 'x', title: 'Back to the default', 'aria-label': 'Text offset back to where a new label puts it', onclick: () => set(id, (x) => { x.offset = to ? [...LABEL_OFFSET] : [0, 0]; x.zoom = Math.round(drawing.map.getZoom() * 100) / 100; }) }, '↺') : null),
       leaderRow([item(id)]),
       actionsRow(ruleActs(id), libraryBtn(id, labelText(drawing.doc, el, drawing.units()).split('\n')[0])), lookBlock([item(id)]),
       ...commonBottom('label', id)];
@@ -311,7 +311,8 @@ export function drawView(root, ctx) {
   // labels' leader: a line from the text to its point, an arrow head there, or none (one or several labels)
   function leaderRow(xs) {
     const on = xs.map((x) => x.el.leader !== 'none'), v = on.every((x) => x === on[0]) ? on[0] : null;
-    return row('Leader', check(v, (x) => drawing.change((d) => { for (const y of xs) find(d, y.el.id).el.leader = x ? 'arrow' : 'none'; }),
+    // its text set again where it is drawn now, so that changing how it follows the zoom moves nothing
+    return row('Leader', check(v, (x) => drawing.change((d) => { for (const y of xs) { const el = find(d, y.el.id).el; setOffsetAt(el, drawing.map.getZoom()); el.leader = x ? 'arrow' : 'none'; } }),
       { 'aria-label': 'Leader', title: 'A line from the text to its point' }));
   }
 

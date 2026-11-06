@@ -10,6 +10,7 @@ import { inverse, destination, moveAbout } from '../geodesy.js';
 import { clamp } from '../geo.js';
 import { stepped, neighbours } from './snap.js';
 import { attachAt, insertVertex, refNear } from './attach.js';
+import { setOffsetAt } from './labels.js';
 import { radiusTo, bearingTo, sectorEdgeTo, scaledPlaces } from './drag.js';
 
 export class Dragging {
@@ -127,7 +128,7 @@ export class Dragging {
   moveSelection(doc, start, p) {
     if (![...this.sel].every((id) => find(doc, id)?.kind === 'label')) return moveElements(doc, this.sel, start, p);
     const a = this.map.project(start), b = this.map.project(p), px = (v) => clamp(Math.round(v), -MAX_LABEL_OFFSET, MAX_LABEL_OFFSET); // within the file's reach
-    for (const id of this.sel) { const { el } = find(doc, id); el.offset = [px(el.offset[0] + b.x - a.x), px(el.offset[1] + b.y - a.y)]; }
+    for (const id of this.sel) setOffsetAt(find(doc, id).el, this.map.getZoom(), [b.x - a.x, b.y - a.y], px); // set again at this zoom, where it is drawn
   }
 
   // vertex (or anchor) index of x ({ kind, el }) put at r.position and linked to r.to (a target, or null: free)

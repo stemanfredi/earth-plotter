@@ -191,7 +191,7 @@ export class Drawing extends DrawStore {
         const x = find(doc, id);
         if (!x) return;
         // free text set on an element: its text moves off it, with an arrow
-        if (label && r.to && !x.el.offset[0] && !x.el.offset[1]) { x.el.offset = [...LABEL_OFFSET]; if (x.el.leader === 'none') x.el.leader = 'arrow'; }
+        if (label && r.to && !x.el.offset[0] && !x.el.offset[1]) { x.el.offset = [...LABEL_OFFSET]; x.el.zoom = Math.round(this.map.getZoom() * 100) / 100; if (x.el.leader === 'none') x.el.leader = 'arrow'; }
         this.putPlace(doc, x, index, label ? r : { position: r.position, to: attachAt(doc, r) });
       });
       return;
@@ -368,7 +368,7 @@ export class Drawing extends DrawStore {
   // ---- snapping (snap.js): where a click or a drag lands --------------------------------------
   // the map's projection, as snap.js wants it
   view() {
-    return { project: (p) => { const q = this.map.project(p); return [q.x, q.y]; }, unproject: (q) => { const p = this.map.unproject(q); return [p.lng, p.lat]; }, measure: measureText };
+    return { project: (p) => { const q = this.map.project(p); return [q.x, q.y]; }, unproject: (q) => { const p = this.map.unproject(q); return [p.lng, p.lat]; }, zoom: this.map.getZoom(), measure: measureText };
   }
   // Snapping at a screen point: { position, to (what a line's vertex would attach to), kind }. e: the
   // event (Alt: as it is, nothing snapped or attached; Shift, drawing from `from`: in 15° steps from

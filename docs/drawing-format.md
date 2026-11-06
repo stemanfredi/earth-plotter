@@ -232,7 +232,8 @@ A `Point` geometry where it points:
 |---|---|
 | what it points at | its link (§7.6); none: free, at its position |
 | `text` | free text, `\n` a new line; `{name}`, `{length}`, `{along}`, `{bearing}`, `{radius}`, `{area}`, `{perimeter}` filled in as drawn, in the display units (empty where they do not apply) |
-| `offset` | the text's centre in pixels from where it points (x right, y down; ±2000) |
+| `offset` | the text's centre in pixels from where it points (x right, y down; ±2000), at `zoom` |
+| `zoom` | the map's zoom (0–24) the offset was set at. Other zooms scale it by 2 to the power of the difference: always without a leader (the text keeps its place on the map), only to shrink it with one (zoomed in it stays as set). Missing: the offset at every zoom |
 | `leader` | `arrow` (a line to where it points) or `none` |
 
 A label has no name, no style names and no `guide`.
@@ -467,7 +468,7 @@ What a value is when the file leaves it out; writing it with this value means th
 | point | `bearing`; `symbol` | `0`; `none` (`diamond` without `earthplotter`) |
 | circle | `aperture`; `bearing` | none (whole); `0` |
 | line | `names`; `smooth`; `reversed` | each `""`; `false`; `false` |
-| label | `text`; `offset`; `leader` | `""`; `[40, -40]`; `arrow` |
+| label | `text`; `offset`; `zoom`; `leader` | `""`; `[40, -40]`; none; `arrow` |
 | link target | `at` | `0` |
 | distribute | `groupId`, `copiesId`, `spacing`, `count`, `aperture`, `item` | `null` (`item`: a circle) |
 | distribute | `startMargin`, `endMargin`, `offset`; `side`; `radius`; `pointIds` | `0`; `left`; `500`; `[]` |

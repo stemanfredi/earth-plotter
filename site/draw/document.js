@@ -336,10 +336,11 @@ export function holderOf(doc, el) {
 // whether el is chosen by the selection sel (a Set of IDs): selected, or a shape held by a point selected
 export const isChosen = (doc, sel, el) => sel.has(el.id) || (sel.has(el.groupId) && !!holderOf(doc, el));
 // A label pointing at position, linked to `to` (a target, attach.js) when given: on an element its
-// name, and its text up and to the right with a leader; free, the text there, no leader.
-export function addLabel(doc, position, to = null) {
+// name, and its text up and to the right with a leader; free, the text there, no leader. zoom: the
+// map's, where its offset (px) is set (labels.js offsetAt); none: px at every zoom.
+export function addLabel(doc, position, to = null, zoom = null) {
   // no name: it goes by its text (tree.js shownName)
-  const a = { ...base(doc, 'label', undefined, ''), text: to ? '{name}' : 'Text', position: [...position], offset: to ? [...LABEL_OFFSET] : [0, 0], leader: to ? 'arrow' : 'none' };
+  const a = { ...base(doc, 'label', undefined, ''), text: to ? '{name}' : 'Text', position: [...position], offset: to ? [...LABEL_OFFSET] : [0, 0], zoom: zoom == null ? null : Math.round(zoom * 100) / 100, leader: to ? 'arrow' : 'none' };
   doc.labels.push(a);
   setLink(doc, a.id, 0, to);
   return a;

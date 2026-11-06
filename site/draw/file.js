@@ -287,8 +287,10 @@ const READ = {
     const o = mine.offset;
     const offset = Array.isArray(o) && o.length >= 2 && fin(o[0]) && fin(o[1]) ? o.slice(0, 2).map((v) => clamp(v, -MAX_LABEL_OFFSET, MAX_LABEL_OFFSET))
       : (o !== undefined && c.warn('offset: not [x, y] pixels, the default used'), [...LABEL_OFFSET]);
+    // the zoom its offset is in px at (labels.js offsetAt); missing: px at every zoom, as before it was written
+    const zoom = fin(mine.zoom) ? clamp(mine.zoom, 0, 24) : (mine.zoom != null && c.warn(`zoom "${shown(mine.zoom)}": not a number, ignored`), null);
     // a label has no name: it goes by its text (one in the file is dropped, as its guide is)
-    return { ...x, name: '', text: text(mine.text, c, 'text'), position: coord(coords, c, 'position'), offset, leader: oneOf(mine.leader, LEADERS, 'arrow', c, 'leader') };
+    return { ...x, name: '', text: text(mine.text, c, 'text'), position: coord(coords, c, 'position'), offset, zoom, leader: oneOf(mine.leader, LEADERS, 'arrow', c, 'leader') };
   },
 };
 
@@ -358,7 +360,7 @@ function feature(kind, el) {
     if (el.names.some(Boolean)) mine.names = [...el.names];
   } else {
     geometry = { type: 'Point', coordinates: pos(el.position) };
-    Object.assign(mine, lean({ text: el.text, offset: [r3(el.offset[0]), r3(el.offset[1])], leader: el.leader }, { text: '', offset: LABEL_OFFSET, leader: 'arrow' }));
+    Object.assign(mine, lean({ text: el.text, offset: [r3(el.offset[0]), r3(el.offset[1])], zoom: el.zoom ?? null, leader: el.leader }, { text: '', offset: LABEL_OFFSET, zoom: null, leader: 'arrow' }));
   }
   return { type: 'Feature', id: el.id, geometry, properties: { ...props, earthplotter: mine } };
 }

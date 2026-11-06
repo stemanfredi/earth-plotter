@@ -9,13 +9,13 @@ import { profileCsv } from './profile.js';
 import { inverse, destination } from '../geodesy.js';
 import { norm360 } from '../geo.js';
 import { check } from '../fields.js';
-import { row, funit, fvalue, valued, actionsRow, act, copyBtn } from './rows.js';
+import { row, funit, fvalue, valued, actionsRow, act, copyBtn, foldHead, PAGE } from './rows.js';
 import { MOD } from '../keys.js';
 import { listGrid, setCurrent } from './grid.js';
 import { fmtArea, fmtDist, fmtElevation, distText, UNIT_TEXT, inUnit } from '../format.js';
 
 export function createLineView(kit) {
-  const { drawing, map, ctx, F, field, pathRow, distValue, link, now, set, item, foldHead, section, paged, PAGE, pageAt,
+  const { drawing, map, ctx, F, field, pathRow, distValue, link, now, set, item, section, paged, pageAt,
     attachBtn, detach, commonTop, commonBottom, lookBlock, ruleActs, libraryBtn, openDistribution, inspector, render: renderInspector } = kit;
   // Legs typed (the line's table of vertices): the straight leg arriving at a vertex from the one before
   // (a closed line's first: from its last), its length and its bearing. A value typed moves that

@@ -32,3 +32,12 @@ export const copyBtn = (rows) => h('button', { type: 'button', class: 'small', t
   const [head, body] = rows();
   navigator.clipboard?.writeText(rowsText(head, body)).then(() => note(`${plural(body.length, 'row')} copied`), () => note('This browser did not let them be copied'));
 } }, 'Copy');
+// A folding section's head (drawing-ui.md §5: every section folds), as a group's in Layers:
+// the whole head folds it (its title a button, for keys), its fold mark first (style.css); extras: buttons
+// after the title (Copy, +). data-key: its state, so that morph never keeps a head whose click
+// would toggle from the state it was made in
+export const foldHead = (title, open, toggle, ...extras) => h('h3', { class: open ? 'folds open' : 'folds', 'data-key': open ? 'open' : 'folded', onclick: (e) => { if (!e.target.closest('.hbtns, .hfold')) toggle(); } },
+  h('button', { type: 'button', class: 'hfold', 'aria-expanded': String(open), onclick: toggle }, title), // named by its title, open or not
+  h('span', { class: 'hbtns' }, ...extras.flat().filter(Boolean)));
+// a long list's page (drawing-ui.md §5): rows shown at a time
+export const PAGE = 100;

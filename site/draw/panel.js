@@ -25,7 +25,7 @@ import { createTools } from './tools.js';
 import { createTree, kindTitle, groupPath, eyeFor, shownName } from './tree.js';
 import { createForms } from './forms.js';
 import { createLineView } from './lineview.js';
-import { row, pair, funit, withUnit, fvalue, valued, actionsRow, act, copyBtn } from './rows.js';
+import { row, pair, funit, withUnit, fvalue, valued, actionsRow, act, copyBtn, foldHead, PAGE } from './rows.js';
 import { icon, UI_ICON, SYMBOL_ICON } from '../icons.js';
 
 const SYMBOL_TITLE = { diamond: 'Diamond', square: 'Square', triangle: 'Triangle', dot: 'Dot', none: 'None' };
@@ -157,13 +157,6 @@ export function drawView(root, ctx) {
   // category: properties like any other)
   // Data, folded while it has nothing of the user's: the Library item it was placed from is said under
   // its heading (it is a property all the same, in the list once open)
-  // A folding section's head (drawing-ui.md §5: every section folds), as a group's in Layers:
-  // the whole head folds it (its title a button, for keys), its fold mark first (style.css); extras: buttons
-  // after the title (Copy, +). data-key: its state, so that morph never keeps a head whose click
-  // would toggle from the state it was made in
-  const foldHead = (title, open, toggle, ...extras) => h('h3', { class: open ? 'folds open' : 'folds', 'data-key': open ? 'open' : 'folded', onclick: (e) => { if (!e.target.closest('.hbtns, .hfold')) toggle(); } },
-    h('button', { type: 'button', class: 'hfold', 'aria-expanded': String(open), onclick: toggle }, title), // named by its title, open or not
-    h('span', { class: 'hbtns' }, ...extras.flat().filter(Boolean)));
   // Any other section: open to start with, folded by hand (by its key, this session: Look folded stays
   // folded from one element to the next); extras (Copy) and body shown while open; tip: its head's title
   const sectionsFolded = new Set();
@@ -325,7 +318,7 @@ export function drawView(root, ctx) {
   // A long list a page at a time (drawing-ui.md §5): PAGE rows, from the page shown (each list's own,
   // this session), and ‹ › under it; Copy still takes every row. rows: the absolute rows
   // shown, in order.
-  const PAGE = 100, pageAt = new Map();
+  const pageAt = new Map();
   function paged(name, total) {
     const from = Math.min(pageAt.get(name) ?? 0, Math.max(0, total - 1) - (Math.max(0, total - 1) % PAGE)), to = Math.min(total, from + PAGE);
     const go = (f) => { pageAt.set(name, f); renderInspector(); };
@@ -338,7 +331,7 @@ export function drawView(root, ctx) {
   }
 
   // a line: its table of vertices, its profile, its inspector (lineview.js)
-  const lines = createLineView({ drawing, map, ctx, F, field, pathRow, distValue, link, now, set, item, foldHead, section, paged, PAGE, pageAt,
+  const lines = createLineView({ drawing, map, ctx, F, field, pathRow, distValue, link, now, set, item, section, paged, pageAt,
     attachBtn, detach, commonTop, commonBottom, lookBlock, ruleActs, libraryBtn, openDistribution: (...a) => openDistribution(...a), inspector, render: () => renderInspector() });
   const { lineInspector, pickPlace, dropProfileCursor } = lines;
   const radiusCheck = (m) => (m < MAX_RADIUS ? null : 'a distance under 10 000 km');

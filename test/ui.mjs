@@ -4,7 +4,7 @@
 //  - nothing on screen leaves the viewport;
 //  - every visible control is a ≥ 44 × 44 px target (labels count for their checkbox).
 //   CHROME=/path/to/chrome npm run ui        Screenshots go to $UI_SHOTS if set.
-import { start, frames, until } from './browser.mjs';
+import { start, frames, until, openPage, addDistance } from './browser.mjs';
 
 // phone and tablet are touch devices (pointer: coarse, 44 px targets); desktop has a mouse (36 px; 24
 // in the panels, 28 (32 drawn) in the bar, 32 in the map's controls and the search bar)
@@ -34,36 +34,36 @@ const SEED = (d) => { localStorage.setItem('earthplotter.drawings', JSON.stringi
 const { browser, base, check, section, finish } = await start();
 
 for (const [name, width, height, touch] of VIEWPORTS) {
-  for (const menu of [0, 1, 'drawing', 'draw', 'line', 'label']) { // the Draw view four times: the drawing's inspector, a node's, a line's, a label's
-    await section(`${name} ${width}px, ${menu}`, async () => {
-      const page = await browser.newPage({ viewport: { width, height }, hasTouch: touch, isMobile: touch });
-      // the Draw view with a drawing: a point with two sectors (its inspector shown) and a shape
-      if (typeof menu === 'string') await page.addInitScript(SEED, DRAWING);
-      await page.addInitScript(() => localStorage.setItem('earthplotter.groups.open', '["base","sea","data"]')); // the Layers groups open
+  // 'map': the left panel not on Layers (Elements, where a computer opens on Layers); 'layers': on
+  // Layers; then the Elements tab four times: the drawing's inspector, a node's, a line's, a label's
+  for (const view of ['map', 'layers', 'drawing', 'draw', 'line', 'label']) {
+    await section(`${name} ${width}px, ${view}`, async () => {
+      // the live providers: two of the legends are drawn from what they say (ci.yml retries a bad day)
+      const ctx = await browser.newContext({ viewport: { width, height }, hasTouch: touch, isMobile: touch });
+      // the Elements tab with a drawing: a point with two sectors (its inspector shown) and a shape
+      const inspect = !['map', 'layers'].includes(view);
+      if (inspect) await ctx.addInitScript(SEED, DRAWING);
       // a zoomed-out view (scale note shown), four stacked legends (they once ran over the
-      // credits), a measurement
-      await page.goto(`${base}#v=5/45/14/0&col=waves:height&arr=currents:surface&on=chart,coastline,depth,isobaths,traffic,legend`);
-      await page.waitForFunction(() => window.map?.loaded?.(), null, { timeout: 90000 });
-      // 1: the left panel on Layers; else not on Layers (Elements, where a computer opens on Layers)
-      const onLayers = await page.locator('#bar .ptab[data-tab=layers]').getAttribute('aria-pressed') === 'true';
-      if (menu === 1 && !onLayers) await page.click('#bar .ptab[data-tab=layers]');
-      if (menu !== 1 && onLayers) await page.click('#bar .ptab[data-tab=elements]');
-      await page.evaluate(async () => { const { addLine } = await import('./draw/document.js'); drawing.change((doc) => addLine(doc, [[12, 44], [13, 44.5]], { name: 'Distance 1', guide: true, measure: true, look: { text: { values: true } } })); });
+      // credits), a measurement; the Layers groups open (on a phone the panel starts closed)
+      const page = await openPage(ctx, `${base}#v=5/45/14/0&col=waves:height&arr=currents:surface&on=chart,coastline,depth,isobaths,traffic,legend`,
+        view === 'layers' ? 'layers' : 'elements', ['base', 'sea', 'data']);
+      if (view === 'layers' && await page.locator('#bar .ptab[data-tab=layers]').getAttribute('aria-pressed') !== 'true') await page.click('#bar .ptab[data-tab=layers]');
+      await addDistance(page, [12, 44], [13, 44.5]);
       // the left panel (on a phone closed to start with): open on Elements; an element (or the drawing)
       // selected, its properties shown (on a phone in place of the tree)
-      if (typeof menu === 'string' && await page.locator('#bar .ptab[data-tab=elements]').getAttribute('aria-pressed') !== 'true') await page.click('#bar .ptab[data-tab=elements]');
-      if (menu === 'drawing') await page.click('.droot .dname');
-      if (menu === 'draw') await page.click('.dlist .drow .dname');
-      if (menu === 'line') await page.click('.dlist .drow:has(.kind[title=Line]) .dname');
-      if (menu === 'label') await page.click('.dlist .drow:has(.kind[title=Label]) .dname');
-      if (['drawing', 'draw', 'line', 'label'].includes(menu) && await page.locator('#props').isHidden()) await page.keyboard.press('i');
+      if (inspect && await page.locator('#bar .ptab[data-tab=elements]').getAttribute('aria-pressed') !== 'true') await page.click('#bar .ptab[data-tab=elements]');
+      if (view === 'drawing') await page.click('.droot .dname');
+      if (view === 'draw') await page.click('.dlist .drow .dname');
+      if (view === 'line') await page.click('.dlist .drow:has(.kind[title=Line]) .dname');
+      if (view === 'label') await page.click('.dlist .drow:has(.kind[title=Label]) .dname');
+      if (inspect && await page.locator('#props').isHidden()) await page.keyboard.press('i');
       // the inspector's text: no element printed as text ("[object …]")
-      if (typeof menu === 'string') check(!(await page.evaluate(() => document.querySelector('.dinspect').textContent.includes('[object'))), `${name}: the ${menu} inspector shows no "[object …]"`);
+      if (inspect) check(!(await page.evaluate(() => document.querySelector('.dinspect').textContent.includes('[object'))), `${name}: the ${view} inspector shows no "[object …]"`);
       await page.mouse.move(width / 2, height / 2); // shows the cursor readout
       // (only with the map under the pointer: on a phone a panel may cover it)
       await until(page, ([x, y]) => !document.elementFromPoint(x, y)?.closest('.maplibregl-canvas') || document.querySelector('#pos')?.textContent, [width / 2, height / 2]);
       await frames(page); // laid out as shown (the legends are there from the map's load; its tiles do not matter here)
-      if (process.env.UI_SHOTS) await page.screenshot({ path: `${process.env.UI_SHOTS}/${name}-${typeof menu === 'string' ? menu : menu ? 'menu' : 'map'}.png` });
+      if (process.env.UI_SHOTS) await page.screenshot({ path: `${process.env.UI_SHOTS}/${name}-${view}.png` });
       const r = await page.evaluate(({ OVERLAYS }) => {
         // with a mouse 36 px, but 24 in the panels (grids of rows), 28 (32 drawn) in the bar, 32 in the map's controls
         const COARSE = matchMedia('(pointer: coarse)').matches, MIN = COARSE ? 44 : 36, minOf = (el) => (COARSE ? MIN : el.closest('#side, #props') ? 24 : el.closest('#bar') ? 28 : el.closest('#mapctl, #search') ? 32 : MIN);
@@ -104,11 +104,12 @@ for (const [name, width, height, touch] of VIEWPORTS) {
         }
         return { overlaps, offscreen, small: [...new Set(small)], MIN };
       }, { OVERLAYS });
-      const where = `${name} ${width}px, ${typeof menu === 'string' ? `Draw view, ${{ drawing: 'the drawing', draw: 'a node', line: 'a line', label: 'a label' }[menu]}` : `menu ${menu ? 'open' : 'closed'}`}`;
+      const where = `${name} ${width}px, ${inspect ? `Elements, ${{ drawing: 'the drawing', draw: 'a node', line: 'a line', label: 'a label' }[view]}` : view === 'layers' ? 'Layers open' : 'not on Layers'}`;
       check(!r.overlaps.length, `${where}: no overlapping overlays ${r.overlaps.join(', ')}`);
       check(!r.offscreen.length, `${where}: nothing off screen ${r.offscreen.join(', ')}`);
       check(!r.small.length, `${where}: targets ≥ ${r.MIN} px ${r.small.join(', ')}`);
-      await page.close();
+      check(!page.errors.length, `${where}: no page errors ${page.errors.join(' | ')}`);
+      await ctx.close();
     });
   }
 }

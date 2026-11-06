@@ -56,6 +56,12 @@ export const settled = (page, timeout = 30000) => page.evaluate((ms) => new Prom
 // two frames: what a resize or a click set in the page (its layout, a ResizeObserver's work) done
 export const frames = (page) => page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
 
+// a measurement from a to b ([lng, lat] each), named Distance 1, its values shown, added to the page's drawing
+export const addDistance = (page, a, b) => page.evaluate(async (ab) => {
+  const { addLine } = await import('./draw/document.js');
+  drawing.change((doc) => addLine(doc, ab, { name: 'Distance 1', guide: true, measure: true, look: { text: { values: true } } }));
+}, [a, b]);
+
 // a page at url, loaded and its map at rest, its errors collected
 // tab: the left panel's tab to open on ('layers', 'elements'), as the frame keeps it in this browser;
 // groups: the Layers groups open, as the page keeps them in this browser

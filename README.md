@@ -2,7 +2,7 @@
 
 **[earthplotter.org](https://earthplotter.org)**
 
-![The Bay of Naples in Earth Plotter: depth shading, isobaths, relief and place names](site/preview.jpg)
+![The Bay of Naples in Earth Plotter: depth shading, isobaths, relief and place names, beside the Draw panel](site/preview.jpg)
 
 A free map of the world's land and sea in your browser, from open data. It
 draws the OpenStreetMap base map with relief and contours, depth shading and

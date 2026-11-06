@@ -93,6 +93,8 @@ Two things are the project's own and need replacing in a copy:
   the two Zarr stores (and verifies them); `tools/seagrass.mjs` builds the
   seagrass tiles from EMODnet's service, which takes a minute or more per
   tile. Both say how to run them at their top.
+- **The preview.** `tools/preview.mjs` takes `site/preview.jpg` again (the
+  README's picture and shared links'), after a change to what the page shows.
 
 A copy that adds a host adds it to `site/hosts.js` and runs `npm run vendor`
 (the security policy and the preloads are written from it: architecture.md,

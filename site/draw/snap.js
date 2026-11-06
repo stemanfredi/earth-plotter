@@ -8,7 +8,7 @@
 import { inverse, destination } from '../geodesy.js';
 import { nearestOnSegment } from '../geo.js';
 import { lineTrace, steps } from './lines.js';
-import { isShown, KIND, drawnOf } from './document.js';
+import { isShown, KIND, drawnOf, reading } from './document.js';
 
 export const RADIUS = 6; // px
 const STEP = 15; // degrees: Shift's steps
@@ -29,7 +29,8 @@ function crossing(a, b, c, d) {
 // at its Scale). ids: the elements whose edges to
 // look at (the map's hits near p, which may lag a change by a frame; null: all; vertices are looked at
 // in every element); exclude: elements never snapped to (the one drawn or dragged).
-export function snapAt(doc, p, view, { ids = null, exclude = new Set(), radius = RADIUS } = {}) {
+export const snapAt = (doc, ...rest) => reading(doc, () => snapAtIn(doc, ...rest)); // indexed while it reads (at every pointer move)
+function snapAtIn(doc, p, view, { ids = null, exclude = new Set(), radius = RADIUS } = {}) {
   const px = (q) => view.project(q);
   const want = (el) => !exclude.has(el.id) && isShown(doc, el);
   const edgesOf = (el) => !ids || ids.has(el.id);

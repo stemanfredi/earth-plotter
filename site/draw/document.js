@@ -124,8 +124,20 @@ export function find(doc, id) {
 }
 // the mean of a list of positions (a closed line's centre, for its name and labels)
 export const centroid = (pts) => [pts.reduce((a, q) => a + unrollTo(pts[0], q)[0], 0) / pts.length, pts.reduce((a, q) => a + q[1], 0) / pts.length]; // longitudes continuous from the first (across 180°)
-// a circle's polygon: the whole of it, or a sector centred on its bearing
-export const ringOf = (c) => (c.aperture ? sector(c.position, c.radius, c.bearing, c.aperture) : circle(c.position, c.radius));
+// a circle's polygon: the whole of it, or a sector centred on its bearing. Kept by what it depends on
+// (129 geodesic points each: every change, every drag frame draws every circle); not to be changed
+// in place by a caller
+const rings = new Map();
+export function ringOf(c) {
+  const key = `${c.position[0]} ${c.position[1]} ${c.radius} ${c.aperture ? `${c.bearing} ${c.aperture}` : ''}`;
+  let rg = rings.get(key);
+  if (!rg) {
+    if (rings.size >= 20000) rings.clear(); // the drawing's circles, and what a drag passed through
+    rg = c.aperture ? sector(c.position, c.radius, c.bearing, c.aperture) : circle(c.position, c.radius);
+    rings.set(key, rg);
+  }
+  return rg;
+}
 // where an element is: a point's position, a circle's centre, a line's start
 export const placeOf = (kind, el) => (el.position && kind !== 'label' ? el.position : kind === 'line' ? el.points[0] : null);
 // what the panel calls an element: its name, or for an unnamed one its kind and where it is
@@ -160,15 +172,20 @@ export function groupsOf(doc, el) {
 export const groupsOnlyOf = (doc, el) => groupsOf(doc, el).filter((g) => !g.position);
 // What is in group gid: its members and subgroups (deep: and theirs, all the way down)
 export function membersOf(doc, gid, deep = false) {
-  const i = !deep && ix(doc);
+  if (deep) return reading(doc, () => { // everything below gid, through the index; in the document's order
+    const below = new Set(), walk = (id) => { for (const x of IX.held.get(id) ?? []) if (!below.has(x.el)) { below.add(x.el); walk(x.el.id); } };
+    walk(gid);
+    return elements(doc).filter((x) => below.has(x.el));
+  });
+  const i = ix(doc);
   if (i) return i.held.get(gid) ?? [];
-  return elements(doc).filter((x) => (deep ? groupsOf(doc, x.el).some((g) => g.id === gid) : x.el.groupId === gid));
+  return elements(doc).filter((x) => x.el.groupId === gid);
 }
 // What the elements ids stand for, none twice, in the document's order: each itself, a group
 // everything in it (its subgroups' too; the groups themselves left out), a point itself and its shapes
 export function leavesOf(doc, ids) {
   const want = new Set(ids);
-  return elements(doc).filter((x) => x.kind !== 'group' && (want.has(x.el.id) || groupsOf(doc, x.el).some((g) => want.has(g.id))));
+  return reading(doc, () => elements(doc).filter((x) => x.kind !== 'group' && (want.has(x.el.id) || groupsOf(doc, x.el).some((g) => want.has(g.id)))));
 }
 // every position an element has, as [object, key] pairs, in the order of its vertices (a link's from
 // index): a line's vertices, a label's where it points, a point's position, a circle's centre
@@ -339,7 +356,7 @@ export function setLink(doc, id, index, to) {
 // element deleted stays, free where it was. A Set of IDs.
 export function dependents(doc, ids, withMembers = false) {
   const all = new Set(ids);
-  for (const { el } of elements(doc)) if (groupsOf(doc, el).some((g) => all.has(g.id) && (withMembers || g.position))) all.add(el.id);
+  reading(doc, () => { for (const { el } of elements(doc)) if (groupsOf(doc, el).some((g) => all.has(g.id) && (withMembers || g.position))) all.add(el.id); });
   return all;
 }
 // Delete ids and what goes with them (dependents); the members and subgroups of a deleted group go to
@@ -348,19 +365,21 @@ export function dependents(doc, ids, withMembers = false) {
 // linked to it is free where it was. A point with no symbol whose every shape goes, goes with them:
 // nothing of it would be left to see (as a group emptied is removed in drawing tools).
 export function remove(doc, ids, withMembers = false) {
-  const all = dependents(doc, ids, withMembers);
-  for (const p of doc.points) {
-    if (all.has(p.id) || p.symbol !== 'none') continue;
-    const held = membersOf(doc, p.id);
-    if (held.length && held.every((m) => all.has(m.el.id))) all.add(p.id);
-  }
-  // where each one staying in a deleted group goes: the nearest group above it that stays, read while
-  // the group is still there
-  const moves = [];
-  for (const { el } of elements(doc)) {
-    if (all.has(el.id) || !el.groupId || !all.has(el.groupId)) continue;
-    moves.push([el, groupsOf(doc, el).find((g) => !all.has(g.id))?.id ?? null]);
-  }
+  // what goes, and where each one staying in a deleted group goes (the nearest group above it that
+  // stays): read, indexed, while everything is still there
+  const { all, moves } = reading(doc, () => {
+    const all = dependents(doc, ids, withMembers), moves = [];
+    for (const p of doc.points) {
+      if (all.has(p.id) || p.symbol !== 'none') continue;
+      const held = membersOf(doc, p.id);
+      if (held.length && held.every((m) => all.has(m.el.id))) all.add(p.id);
+    }
+    for (const { el } of elements(doc)) {
+      if (all.has(el.id) || !el.groupId || !all.has(el.groupId)) continue;
+      moves.push([el, groupsOf(doc, el).find((g) => !all.has(g.id))?.id ?? null]);
+    }
+    return { all, moves };
+  });
   for (const kind of KINDS) doc[KIND[kind].list] = doc[KIND[kind].list].filter((el) => !all.has(el.id));
   for (const [el, gid] of moves) el.groupId = gid;
   return all;

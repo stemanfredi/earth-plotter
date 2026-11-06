@@ -6,7 +6,7 @@
 import { h, typing, morph, keepFocus, animate, NARROW } from '../dom.js';
 import { ask, askText, note } from '../menu.js';
 import { FINGER } from './layers.js';
-import { find, elements, groupsOf, membersOf, leavesOf, canHold, label, KIND, lookOf, lookField, setLook, LOOK_FIELDS, SYMBOLS, LABEL_OFFSET, makeGroup, setGroup, moveStep, MAX_RADIUS, MAX_OFFSET, STROKE_WIDTH, TEXT_SIZE, SCALE, linkFrom, setLink, carry, holderOf, ringOf } from './document.js';
+import { find, elements, groupsOf, membersOf, leavesOf, canHold, label, KIND, lookOf, lookField, setLook, LOOK_FIELDS, SYMBOLS, LABEL_OFFSET, makeGroup, setGroup, moveStep, MAX_RADIUS, MAX_OFFSET, STROKE_WIDTH, TEXT_SIZE, SCALE, linkFrom, setLink, carry, holderOf, ringOf, reading } from './document.js';
 import { partName, lineRef, resolve } from './attach.js';
 import { labelValues, labelText, TOKENS } from './labels.js';
 import { totals, breakdown } from './lines.js';
@@ -521,9 +521,9 @@ export function drawView(root, ctx) {
     // a field being edited, when something else is to be shown, is applied first, to the element it belongs to
     if (what !== shows && inspector.contains(document.activeElement)) document.activeElement.blur();
     if (what !== shows) forgetCurrent(); // another selection: no table row current (Delete takes it, not a vertex chosen before)
-    const kids = forms.current() ? forms.view() : !xs.length ? drawingInspector()
+    const kids = forms.current() ? forms.view() : reading(drawing.doc, () => (!xs.length ? drawingInspector() // indexed while it reads (a form's view may preview a change: not)
       : xs.length > 1 ? severalInspector(xs)
-        : { point: pointInspector, circle: circleInspector, line: lineInspector, group: groupInspector, label: labelInspector }[xs[0].kind](xs[0].el.id);
+        : { point: pointInspector, circle: circleInspector, line: lineInspector, group: groupInspector, label: labelInspector }[xs[0].kind](xs[0].el.id)));
     const top = inspector.scrollTop;
     keepFocus(inspector, () => { // a section's fold, a button pressed from the keyboard: the focus kept on it
       if (what === shows) morph(inspector, h('div', {}, kids.flat().filter(Boolean)));

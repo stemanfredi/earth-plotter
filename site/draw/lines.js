@@ -80,11 +80,14 @@ export function leg(a, b) {
 // (a closed one's, m²; else 0) }, cached by what it depends on (the anchors), so an unchanged line is
 // not computed again.
 const cache = new Map();
+// whether a cached trace is of these points, smooth and closed as they are now (compared in place: no
+// key string built from every vertex at every look-up)
+const sameAs = (hit, line) => hit.closed === !!line.closed && hit.smooth === !!line.smooth && hit.pts.length === line.points.length
+  && line.points.every((p, i) => p[0] === hit.pts[i][0] && p[1] === hit.pts[i][1]);
 export function lineTrace(doc, line) {
-  const anchors = anchorsOf(line);
-  const key = JSON.stringify(anchors);
   const hit = cache.get(line.id);
-  if (hit && hit.key === key) return hit.line;
+  if (hit && sameAs(hit, line)) return hit.line;
+  const anchors = anchorsOf(line);
   const coords = [], at = [0], legs = [];
   let length = 0;
   for (let i = 0; i < anchors.length - 1; i++) {
@@ -97,7 +100,7 @@ export function lineTrace(doc, line) {
   }
   const trace = { coords, length, at, legs, area: line.closed ? areaOf(coords) : 0 };
   if (cache.size > Math.max(5000, 2 * doc.lines.length)) cache.clear(); // kept for every line a drawing has (one pass would miss them all)
-  cache.set(line.id, { key, line: trace });
+  cache.set(line.id, { closed: !!line.closed, smooth: !!line.smooth, pts: line.points.map((p) => [p[0], p[1]]), line: trace });
   return trace;
 }
 

@@ -1,7 +1,7 @@
 // Box select (drawing.js, which takes these methods): Shift-drag a box with no tool on (a finger:
 // Box select, then a drag), what lies inside added to the selection. Methods of Drawing.
 
-import { elements, isShown } from './document.js';
+import { elements, isShown, reading } from './document.js';
 import { GEOMETRY } from './features.js';
 import { canvasPoint } from './input.js';
 
@@ -65,6 +65,6 @@ export class Boxing {
   // lines when all of them is inside
   inside([x0, y0, x1, y1]) {
     const inBox = (p) => { const q = this.map.project(p); return q.x >= x0 && q.x <= x1 && q.y >= y0 && q.y <= y1; };
-    return elements(this.doc).filter((x) => isShown(this.doc, x.el) && GEOMETRY[x.kind].inside(this.doc, x.el, inBox)).map((x) => x.el.id);
+    return reading(this.doc, () => elements(this.doc).filter((x) => isShown(this.doc, x.el) && GEOMETRY[x.kind].inside(this.doc, x.el, inBox)).map((x) => x.el.id));
   }
 }

@@ -4,7 +4,7 @@
 // into a group or before one of their kind, shown or hidden by their eye.
 
 import { h, editInPlace, keepFocus } from '../dom.js';
-import { find, elements, groupsOf, membersOf, holderOf, label, KIND, setGroup, moveBefore, isShown, canHold, isChosen } from './document.js';
+import { find, elements, groupsOf, membersOf, holderOf, label, KIND, setGroup, moveBefore, isShown, canHold, isChosen, reading } from './document.js';
 import { labelText } from './labels.js';
 import { lineTrace } from './lines.js';
 import { MOD } from '../keys.js';
@@ -77,14 +77,18 @@ export function createTree(drawing, { facts, drawingPicked = () => {} }) {
   // members; a point, then its shapes), one level further in; at the top, the groups, then the rest.
   // depth: how far in.
   function ordered() {
-    const all = drawElements(), out = [], seen = new Set();
+    const out = [], seen = new Set(), groupsIn = new Map(), othersIn = new Map(); // what each group or point holds, read once
+    const put = (m, k, v) => { if (!m.has(k)) m.set(k, []); m.get(k).push(v); };
+    for (const g of drawing.doc.groups) put(groupsIn, g.groupId ?? null, g);
+    for (const x of drawElements()) if (x.kind !== 'group') put(othersIn, x.el.groupId ?? null, x);
     const under = (gid, depth) => {
-      for (const g of drawing.doc.groups.filter((x) => (x.groupId ?? null) === gid && !seen.has(x))) {
+      for (const g of groupsIn.get(gid) ?? []) {
+        if (seen.has(g)) continue;
         seen.add(g);
         out.push({ kind: 'group', el: g, depth });
         if (isOpen('group', g.id) || filter) under(g.id, depth + 1);
       }
-      for (const x of all.filter((y) => y.kind !== 'group' && (y.el.groupId ?? null) === gid)) {
+      for (const x of othersIn.get(gid) ?? []) {
         out.push({ ...x, depth });
         if (x.kind === 'point' && (isOpen('point', x.el.id) || filter)) under(x.el.id, depth + 1); // its shapes
       }
@@ -136,7 +140,8 @@ export function createTree(drawing, { facts, drawingPicked = () => {} }) {
   }
 
   let held = new Map(); // how many shapes each point holds, counted at each rendering
-  function render() {
+  const render = () => reading(drawing.doc, renderNow); // indexed while it reads
+  function renderNow() {
     held = new Map();
     for (const c of [...drawing.doc.circles, ...drawing.doc.lines]) if (c.groupId) held.set(c.groupId, (held.get(c.groupId) ?? 0) + 1);
     const rows = shown();
@@ -201,7 +206,8 @@ export function createTree(drawing, { facts, drawingPicked = () => {} }) {
   // a row selected: its element, or a shape with its point
   const chosen = (el) => isChosen(drawing.doc, drawing.sel, el);
   let unfolded = ''; // the selection a rebuild was last made for, to show a row it lacked
-  function mark() {
+  const mark = () => reading(drawing.doc, markNow);
+  function markNow() {
     // a shape selected under its point's fold: built again once, its row shown (one with no row even then,
     // filtered out, is not built again at every change of the selection)
     const missing = [...drawing.sel].filter((id) => find(drawing.doc, id) && !list.querySelector(`[data-id="${CSS.escape(id)}"]`)).join(' ');

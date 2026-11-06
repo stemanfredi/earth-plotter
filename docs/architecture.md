@@ -96,30 +96,33 @@ drawing file that cannot be read says why.
 policy limits the page to its own files and the listed hosts (its workers
 build their addresses from the same list); libraries are
 the page's own files, so no CDN sees a visit. What leaves the browser is said
-once, in the README (Privacy).
+once, in the page's About dialog (`site/index.html`); the README sums it up.
 
 ## Where to look
 
 | For | Start at |
 |---|---|
-| The page, its state and the URL, the time line, the elevation profile's reads | `site/app.js` |
+| The page, the time line, the elevation profile's reads | `site/app.js` |
+| The page's state in the URL: read, written, checked | `site/address.js` |
+| Every host the page reaches; how it fetches (no cookies, no referrer, caches) | `site/hosts.js`, `site/net.js` |
+| Formatting: angles, distances, depths, the scale | `site/format.js` |
 | Legends: ramps, classes, colour maps | `site/legend.js` |
 | Search: places and typed coordinates | `site/search.js` |
 | The UI's basics: elements, menus and dialogs, fields, keys, icons | `site/dom.js`, `menu.js`, `fields.js`, `keys.js`, `icons.js` |
 | The frame: the bar, the side panels, a phone's sheet | `site/frame.js` |
 | A layer: its sources, variants, legend, credits | `site/catalog.js`, then `site/style.js` |
-| Elevation tiles, the coastline cut, inland water | `site/clip.js`, `site/gebco.js` |
+| Elevation tiles, the coastline cut, inland water; isobaths | `site/clip.js`, `site/gebco.js`, `site/isobaths.js` |
 | Copernicus layers, their times and depths | `site/cmems.js`, `site/values.js` |
 | Readers and writers: Zarr, GeoTIFF, zip (both ways), PNG (written) | `site/zarr.js`, `site/geotiff.js`, `site/zip.js`, `site/png.js` |
-| The exports | `site/gis.js`, `site/export.js`, `snapshot` in `site/app.js` |
-| The drawing's model, file and rules | `site/draw/document.js`, `file.js`, `generator.js` |
-| Links, snapping, placing, outlines, a line's trace and totals | `site/draw/attach.js`, `snap.js`, `place.js`, `outlines.js`, `lines.js` |
+| The exports | `site/gis.js`, `site/export.js`, `site/vector.js`, `snapshot` in `site/app.js` |
+| The drawing's model, file and rules | `site/draw/document.js`, `file.js` (with `check.js`), `generator.js` |
+| Links, snapping, placing, outlines, a line's trace and totals, labels, drags | `site/draw/attach.js`, `snap.js`, `place.js`, `outlines.js`, `lines.js`, `labels.js`, `drag.js` |
 | Undo, the selection, saving in the browser | `site/draw/store.js`, `saving.js` |
 | Copy and paste; the Library's items; the Draw tab | `site/draw/clipboard.js`, `library.js`, `drawtab.js` |
-| The drawing on the map and in the panel | `site/draw/drawing.js` (with `drafting.js`, `dragging.js`, `boxing.js`, `input.js`), `layers.js`, `features.js`, `panel.js` (with `forms.js`, `lineview.js`), `tree.js` |
+| The drawing on the map and in the panel | `site/draw/drawing.js` (with `drafting.js`, `dragging.js`, `boxing.js`), `layers.js`, `features.js`, `panel.js` (with `forms.js`, `lineview.js`, `rows.js`, `grid.js`), `tree.js` |
 | The bar's tools and its file group (Open, Download, Copy link) | `site/draw/tools.js`, `files.js` |
 | A line's elevation profile | `site/draw/profile.js`, `profileFor` in `site/app.js` |
 | Geodesy and map maths | `site/geodesy.js`, `site/geo.js` |
 | The page's files and the offline areas kept for use without a connection | `site/sw.js`, `site/offline.js` |
 | The data builds | `tools/gebco.mjs`, `tools/seagrass.mjs` |
-| The tests | `test/`, described in [development.md](development.md) |
+| The tests | `test/`: each says what it covers at its top |

@@ -36,7 +36,7 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
       - run: npm ci
-      - run: npm test                # unit tests, offline (site/vendor/ and the policy up to date too)
+      - run: npm test                # unit tests, offline (and what npm run vendor writes up to date: tools/deps.mjs)
       - run: npm run lint            # ESLint's recommended rules
       - if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
         run: npm outdated || true    # newer library versions, in the log

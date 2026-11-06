@@ -19,7 +19,9 @@ soundings.
 Choose layers by task; each says where its data comes from, under what
 licence, and how fine it is. Click the sea for its depth. Search a place or
 type coordinates. Set one time for every layer that changes with time, and
-one depth for the ocean variables. Measure distances, bearings and areas along
+one depth for the ocean variables. See what is normal for a month: wave
+height, temperature, salinity and currents averaged over decades, and the
+severe waves of European seas. Measure distances, bearings and areas along
 the real curve of the Earth, in kilometres or nautical miles. Save the view
 in the browser to open it without a connection: the base map, relief and
 contours, depths and isobaths, and seamarks. Draw points,
@@ -34,15 +36,10 @@ of its own: the page fetches each layer from its provider as you look at it.
 
 ## Privacy
 
-Drawings stay in your browser and are never sent anywhere. The page keeps
-its own files in your browser too, so that it opens without a connection, and
-so are the areas you save for use without one. Tile requests
-necessarily tell each provider which area you are looking at; a hidden layer
-makes no request. Place names you type go to the search provider as you type,
-with the map's centre to a tenth of a degree; coordinates are read in the
-page. Your location, when you show it, stays in
-the page. The About dialog in the page says the same, and each layer's ⓘ
-names its provider.
+Drawings, saved areas and your location stay in your browser; tile requests
+tell each provider which area you are looking at, and place names you type go
+to the search provider. The About dialog in the page says in full what leaves
+your browser and what stays in it; each layer's ⓘ names its provider.
 
 ## Hosting a copy
 

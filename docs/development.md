@@ -11,14 +11,14 @@ the browser tests. The page itself needs no build: `site/` is what is served.
 ```sh
 npm ci              # development dependencies (test tooling only)
 npm run serve       # http://127.0.0.1:8000, site/ only, caching off (--host 0.0.0.0 for a phone)
-npm test            # unit tests, offline (they also check site/vendor/ and the security policy)
+npm test            # unit tests, offline (also that what npm run vendor writes is up to date: tools/deps.mjs)
 npm run lint        # ESLint's recommended rules
 npm run smoke       # end-to-end in headless Chrome, against the live providers
 npm run draw        # the drawing tools in headless Chrome, the network blocked
-npm run ui          # layout at phone, tablet and desktop widths: no overlaps, 44 px targets
+npm run ui          # layout at phone, tablet and desktop widths: no overlaps, 44 px targets; the network blocked
 npm run tiles-check # elevation tiles of known trouble spots: seams, zooms, lakes
 npm run perf        # how long the depth layers take to draw
-npm run data-check  # newer density data periods (newer libraries: npm outdated)
+npm run data-check  # newer density data; a layer or Copernicus dataset no longer offered (newer libraries: npm outdated)
 npm run vendor      # site/vendor/, the security policy and sw.js's lists written anew
 ```
 
@@ -27,9 +27,7 @@ The browser tests use `/usr/bin/google-chrome` by default; set
 which the project's data host allows cross-origin reads from.
 
 The smoke test depends on the network by design, because the page depends on
-the providers. A failure can mean that a provider changed or went down, not
-only that the code broke. Checks of what a provider served are therefore
-*advisory*: they warn, and only the weekly run (`STRICT=1`) fails on them.
+the providers; how a provider's failure counts is said in `test/browser.mjs`.
 
 What the browser tests share (the site served, Chrome, the checks and the
 sections) is in `test/browser.mjs`; each test says what it covers at its top.
@@ -91,8 +89,8 @@ Two things are the project's own and need replacing in a copy:
   possible; its details change often and are not documented here.
 - **The data builds.** `tools/gebco.mjs` downloads GEBCO's grids and builds
   the two Zarr stores (and verifies them); `tools/seagrass.mjs` builds the
-  seagrass tiles from EMODnet's service, which takes a minute or more per
-  tile. Both say how to run them at their top.
+  seagrass tiles from EMODnet's downloadable product (its map service takes a
+  minute or more a tile, which is why it is not used live). Both say how to run them at their top.
 - **The preview.** `tools/preview.mjs` takes `site/preview.jpg` again (the
   README's picture and shared links'), after a change to what the page shows.
 
@@ -124,7 +122,7 @@ is a summary only.
 | Vessel density (Europe) | EMODnet Human Activities | EMODnet open data, attribution requested |
 | Vessel density (world) | World Bank Group and IMF, Global Shipping Traffic Density | CC BY 4.0 |
 | Route density (Europe) | EMSA, via EMODnet Human Activities | CC BY 4.0 |
-| Sea state, water properties, satellite observations, water quality | Copernicus Marine Service | Copernicus Marine licence: free, attribution required |
+| Sea state, water properties, satellite observations, water quality, normals | Copernicus Marine Service | Copernicus Marine licence: free, attribution required |
 | NASA daily (true colour) | NASA EOSDIS GIBS | NASA open data |
 | Place search | Photon (komoot), OpenStreetMap data | ODbL |
 

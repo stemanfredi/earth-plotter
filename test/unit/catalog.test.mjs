@@ -104,7 +104,7 @@ test('Copernicus colours and arrows: what each draws, styles, arrows drawn over 
   assert.equal(cmemsStyle(CMEMS.currents.surface, 'colour'), 'cmap:speed,range:0/1.5');
   assert.equal(cmemsStyle(CMEMS.wind.observed, 'arrows'), 'cmap:thermal,range:0/25,vectorStyle:vector');
   const order = buildStyle({ seaDemUrl: 'x', landDemUrl: 'x', isobathUrl: 'x', contourUrl: 'x', date: '2026-10-21' }).layers.map((l) => l.id).filter((id) => id.startsWith('cmems-'));
-  assert.deepEqual(order.slice(-2), ['cmems-currents', 'cmems-wind'], `layers that draw arrows come last: ${order.join(' ')}`);
+  assert.deepEqual(order.slice(-3), ['cmems-currents', 'cmems-normalcurrents', 'cmems-wind'], `layers that draw arrows come last: ${order.join(' ')}`);
 });
 
 test('every overlay drawn in colours or symbols has a legend, and Europe-only layers say so', () => {

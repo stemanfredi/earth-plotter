@@ -36,7 +36,7 @@ const DATA = ITEMS.filter((it) => it.group === 'data');
 const variantsOf = (it) => (it.group === 'data' ? Object.keys(it.kind === 'gibs' ? GIBS : CMEMS[it.id]) : it.variants ? Object.keys(it.variants) : null); // its choices, by key
 const drawsOfEntry = (it, v) => (it.kind === 'gibs' ? ['colour'] : drawsOf(CMEMS[it.id][v]));
 const entryLabel = (it, v, slot) => (it.kind === 'gibs' ? `NASA ${GIBS[v].label.replace('True colour', 'true colour')}`
-  : it.id === 'currents' ? (slot === 'colour' ? 'Current speed' : 'Currents') : CMEMS[it.id][v].label);
+  : CMEMS[it.id][v].labels?.[slot] ?? CMEMS[it.id][v].label);
 const entryOf = (key) => { if (!key) return null; const [id, variant] = key.split(':'); return { id, variant: variant ?? null }; }; // 'item:variant' → { id, variant }, '' → null
 const ENTRIES = { colour: [], arrows: [] }; // slot → [{ key, it, label }]
 for (const it of DATA) for (const v of variantsOf(it)) for (const slot of drawsOfEntry(it, v)) ENTRIES[slot].push({ key: `${it.id}:${v}`, it, label: entryLabel(it, v, slot) });
@@ -442,7 +442,7 @@ async function creditEsri() {
 // A kind points its item's source at the map's state and says what of that state the item uses;
 // the rest of the app asks the kind, never the item's id:
 //   show(id)       draws the item as the state says: its source, then its layers' visibility
-//   time(id)       'hour' or 'day' if it changes with the map's time; depth(id): drawn at the map's depth
+//   time(id)       'hour', 'day' or 'month' (a normal: the calendar month) if it changes with the map's time; depth(id): drawn at the map's depth
 //   range(id)      promise of its datasets' spans, [[start, end]] in ms (null where not known)
 //   controls(it)   what goes under its row, built with the state's values (its own changes keep them)
 //   values(it, box) promise of its values as GeoTIFF over [west, south, east, north], or null:
@@ -460,6 +460,7 @@ function latestGibs(key) {
 // Copernicus: each dataset at its own step for the hour shown, its time resolution (cmems.js draws
 // the tiles)
 const cmemsDepth = (id) => !!CMEMS[id][state.variant[id]].depth;
+const cmemsUrl = {}; // item → the tiles' address its source has now
 // the time and level the item draws at over box [w, s, e, n]: { variant, t, depth } as captured: the
 // part drawn on top there (a regional one where the view meets its area, else the global one). A part
 // whose steps could not be read (partTimes: undefined) is drawn all the same, at no known time: none
@@ -468,7 +469,8 @@ async function cmemsDrawn(id, at, box) {
   const [times, levels] = await Promise.all([partTimes(id, at.variant, at.t), partLevels(id, at.variant, at.depth)]);
   const parts = CMEMS[id][at.variant].parts;
   const k = parts.map((p, i) => i).reverse().find((i) => times[i] !== null && partIn(parts[i], box)) ?? -1;
-  return k < 0 ? { time: null, level: null } : { time: times[k], level: levels[k] };
+  // a climatology's step is a month of its stand-in year, not a time: none said
+  return k < 0 ? { time: null, level: null } : { time: CMEMS[id][at.variant].month ? null : times[k], level: levels[k] };
 }
 
 // a classed layer's classes, from its services' JSON legends (legend.js wmsClasses): a class drawn
@@ -547,19 +549,23 @@ const KINDS = {
     },
     range: (id) => latestGibs(state.variant[id]).then((end) => [[null, end && Date.parse(`${end}T23:00:00Z`)]]),
   },
-  // Copernicus Marine: the hour shown (daily means: its day), at the depth shown for variables with depth
+  // Copernicus Marine: the hour shown (daily means: its day; a normal: its month; a still map: no
+  // time), at the depth shown for variables with depth
   cmems: {
-    time: (id) => (CMEMS[id][state.variant[id]].daily ? 'day' : 'hour'),
+    time: (id) => { const v = CMEMS[id][state.variant[id]]; return v.still ? null : v.month ? 'month' : v.daily ? 'day' : 'hour'; },
     depth: cmemsDepth,
     show(id) {
-      const depth = cmemsDepth(id) ? state.depth : 0; // no new tiles for a depth change it ignores
-      map.getSource(`cmems-${id}`).setTiles([`cmems://${id}/${state.variant[id]}/${drawnAs(id) || 'both'}/${state.time}/${depth}/{z}/{x}/{y}`]);
+      const v = CMEMS[id][state.variant[id]], depth = cmemsDepth(id) ? state.depth : 0; // no new tiles for a depth change it ignores
+      // a normal at its month's first hour, a still map at none: no new tiles for a time that draws the same
+      const d = new Date(state.time), t = v.still ? 0 : v.month ? Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1) : state.time;
+      const url = `cmems://${id}/${state.variant[id]}/${drawnAs(id) || 'both'}/${t}/${depth}/{z}/{x}/{y}`;
+      if (cmemsUrl[id] !== url) { cmemsUrl[id] = url; map.getSource(`cmems-${id}`).setTiles([url]); }
       applyItem(id);
     },
     // each dataset from its first step to the end of its last (a daily mean covers its day, a
-    // 3-hourly step three hours)
-    range: (id) => Promise.all(CMEMS[id][state.variant[id]].parts.map((p) => domainOf(p).then(({ time }) =>
-      [Math.min(...time.map((r) => r.start)), Math.max(...time.map((r) => r.end + Math.max(0, r.step - 36e5)))], () => null))),
+    // 3-hourly step three hours); a normal holds every time (its months are of no year)
+    range: (id) => (CMEMS[id][state.variant[id]].month ? Promise.resolve([]) : Promise.all(CMEMS[id][state.variant[id]].parts.map((p) => domainOf(p).then(({ time }) =>
+      [Math.min(...time.map((r) => r.start)), Math.max(...time.map((r) => r.end + Math.max(0, r.step - 36e5)))], () => null)))),
     // the colours and unit: the time and depth are the map's, said once beside the coordinates
     legend(id) {
       const v = CMEMS[id][state.variant[id]];
@@ -574,9 +580,10 @@ for (const it of ITEMS) if (it.kind && !KINDS[it.kind]) console.error(`${it.id}:
 const kindOf = (id) => KINDS[byId[id].kind];
 // draws an item as the state says; a kind with a show() of its own asks its service, only while the item is on
 const refresh = (id) => (state.on.has(id) && kindOf(id)?.show ? kindOf(id).show(id) : applyItem(id));
-const timeOn = () => ITEMS.filter((it) => state.on.has(it.id) && kindOf(it.id)?.time);
+const timeOn = () => ITEMS.filter((it) => state.on.has(it.id) && kindOf(it.id)?.time?.(it.id));
 const depthOn = () => ITEMS.filter((it) => state.on.has(it.id) && kindOf(it.id)?.depth?.(it.id));
 const hourly = () => timeOn().some((it) => kindOf(it.id).time(it.id) === 'hour');
+const monthly = () => timeOn().length > 0 && timeOn().every((it) => kindOf(it.id).time(it.id) === 'month'); // only normals change with the time
 
 // ---- Ocean data: one entry drawing colours, one drawing arrows --------------------------------
 // The menus' entries switch their items on at their variants, drawing colours, arrows, or both
@@ -663,6 +670,11 @@ function renderWhen() {
   depthEl.value = state.depth;
   // beside the coordinates: "Today 18:00", or "Wed 21 Oct" when only daily layers are on: their day,
   // in UTC as the products have it (the depth: its own chip)
+  if (monthly()) { // normals alone: their month, of no year (the products' months are UTC)
+    shownText.textContent = d.toLocaleDateString([], { month: 'long', timeZone: 'UTC' });
+    shownEl.title = `Normals shown: ${shownText.textContent}. A click: the calendar`;
+    return;
+  }
   const tz = hr ? undefined : 'UTC', same = (a) => a.toLocaleDateString('en', { timeZone: tz }) === d.toLocaleDateString('en', { timeZone: tz });
   const part = (o) => d.toLocaleDateString([], { ...o, timeZone: tz });
   const day = same(new Date()) ? 'Today' // "Wed 21 Oct", in this order in every locale
@@ -1255,7 +1267,7 @@ function download(blob, name) {
 function snapshot(src) {
   writeHashNow(); // the link is the view as it is now
   const when = new Date(), c = map.getCenter(), W = src.clientWidth, H = src.clientHeight;
-  const timed = timeOn().length > 0, hr = hourly(), depth = depthOn().length ? state.depth : null, t = state.time;
+  const timed = timeOn().length > 0, hr = hourly(), mo = monthly(), depth = depthOn().length ? state.depth : null, t = state.time;
   // each layer with what it is drawn with: at (its variant, the time and depth: its values are read at these), and for
   // item.json its period (density), its day (NASA daily), what it draws (colours, arrows: Copernicus)
   const layers = drawnItems().map((it) => ({ ...it, assets: [], at: { variant: state.variant[it.id], t, depth: state.depth },
@@ -1265,14 +1277,14 @@ function snapshot(src) {
     zoom: map.getZoom(), bearing: map.getBearing(), link: location.href, credits: attributionText(), layers, legends: legendWant.map((id) => legendEls[id]),
     scaleVariation: scaleVariation(),
     corners: [[0, 0], [W, 0], [W, H], [0, H]].map((p) => { const ll = map.unproject(p); return [ll.lng, ll.lat]; }),
-    time: timed ? (hr ? { at: t } : { day: dayOf(t) }) : null, depth,
+    time: timed && !mo ? (hr ? { at: t } : { day: dayOf(t) }) : null, depth, // normals alone: a month of no year, no time
     // in words: as the reading gives them, with the date and time zone (a daily product's day in UTC)
-    timeText: !timed ? '' : hr ? new Date(t).toLocaleString([], { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', timeZoneName: 'short' })
+    timeText: !timed ? '' : mo ? `normal for ${new Date(t).toLocaleDateString([], { month: 'long', timeZone: 'UTC' })}` : hr ? new Date(t).toLocaleString([], { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', timeZoneName: 'short' })
       : new Date(t).toLocaleDateString([], { dateStyle: 'medium', timeZone: 'UTC' }),
     depthText: depth == null ? '' : depthWords(depth),
     drawText: [drawing.offset().length ? 'lines drawn offset' : '', drawing.scaled().length ? 'shapes drawn at another size' : ''].filter(Boolean).join(', ').replace(/.+/, '$&, not to scale'), // what the picture shows not where it is
     // for files read elsewhere: in UTC
-    dataText: !timed ? '' : `data ${hr ? `at ${new Date(t).toISOString().slice(0, 16).replace('T', ' ')} UTC` : `of ${dayOf(t)} (UTC)`}${depth == null ? '' : `, ${depthWords(depth)}`}`,
+    dataText: !timed ? '' : mo ? `normals for ${new Date(t).toLocaleDateString('en', { month: 'long', timeZone: 'UTC' })}${depth == null ? '' : `, ${depthWords(depth)}`}` : `data ${hr ? `at ${new Date(t).toISOString().slice(0, 16).replace('T', ' ')} UTC` : `of ${dayOf(t)} (UTC)`}${depth == null ? '' : `, ${depthWords(depth)}`}`,
   };
 }
 function exportPng(b) {

@@ -180,11 +180,25 @@ const GLO_NUT = 'GLOBAL_ANALYSISFORECAST_BGC_001_028/cmems_mod_glo_bgc-nut_anfc_
 const MED_BIO = 'MEDSEA_ANALYSISFORECAST_BGC_006_014/cmems_mod_med_bgc-bio_anfc_4.2km_P1D-m_202511';
 const MED_CAR = 'MEDSEA_ANALYSISFORECAST_BGC_006_014/cmems_mod_med_bgc-car_anfc_4.2km_P1D-m_202511';
 const MED_NUT = 'MEDSEA_ANALYSISFORECAST_BGC_006_014/cmems_mod_med_bgc-nut_anfc_4.2km_P1D-m_202511';
+// normals: what the hindcasts (multi-year reanalyses) say a place is like, by calendar month or
+// over all years. Each monthly climatology holds 12 maps in one stand-in year of its own (1993 in
+// the Mediterranean, 2004 or 2006 in the world's): drawn at the month of the map's time (month).
+// The 99th percentiles of wave height are one map each, with no time (still): the IBI one (Iberia,
+// Biscay, Ireland: 1980–2023) is drawn first, as a global one would be (its tiles are empty outside
+// its area), the Mediterranean's (1993–2019) over it in the Mediterranean.
+const GLO_WAV_CLIM = 'GLOBAL_MULTIYEAR_WAV_001_032/cmems_mod_glo_wav_my_0.2deg-climatology_P1M-m_202311';
+const MED_WAV_CLIM = 'MEDSEA_MULTIYEAR_WAV_006_012/cmems_mod_med_wav_my_4.2km-climatology_P1M-m_202311';
+const GLO_PHY_CLIM = 'GLOBAL_MULTIYEAR_PHY_001_030/cmems_mod_glo_phy_my_0.083deg-climatology_P1M-m_202311';
+const MED_PHY_CLIM = 'MEDSEA_MULTIYEAR_PHY_006_004/cmems_mod_med_phy_my_4.2km-climatology_P1M-m_202211';
+const IBI_WAV_P99 = 'IBI_OMI_SEASTATE_extreme_var_swh_mean_and_anomaly/ibi_omi_seastate_extreme_var_swh_mean_and_anomaly_202511';
+const MED_WAV_P99 = 'MEDSEA_OMI_SEASTATE_extreme_var_swh_mean_and_anomaly/medsea_omi_seastate_extreme_var_swh_mean_and_anomaly_202112';
 // item → variant → { label, unit, range, cmap, vector (arrows drawn by the service: 'solidAndVector' over the colours,
 //   'vector' alone, coloured by speed; what the variant can draw: colours, arrows or both, see drawsOf),
 //   parts: [dataset/variable],
 //   daily (daily means), depth (drawn at the depth chosen, each dataset at its nearest level),
-//   log (logarithmic colours), offset (added to the data's values for the legend: Kelvin → °C) }
+//   log (logarithmic colours), offset (added to the data's values for the legend: Kelvin → °C),
+//   month (a climatology: drawn at the calendar month of the map's time), still (one map: no time),
+//   labels (the entry's name in the colours' and the arrows' menus, where it is in both) }
 // Ranges serve the global and the regional model alike, so a colour means the same everywhere.
 // No sea level: the models' sea surface height (zos) carries each model's own mean offset (the
 // Mediterranean model reads −0.4 m in the Mediterranean and +0.8 m in its Atlantic box beside it),
@@ -194,7 +208,7 @@ export const CMEMS = {
     height: { label: 'Significant wave height', unit: 'm', range: [0, 6], cmap: 'amp', parts: [`${GLO_WAV}/VHM0`, `${MED_WAV}/VHM0`] },
     period: { label: 'Peak wave period', unit: 's', range: [0, 16], cmap: 'tempo', parts: [`${GLO_WAV}/VTPK`, `${MED_WAV}/VTPK`] },
   },
-  currents: { surface: { label: 'Surface current', unit: 'm/s', range: [0, 1.5], cmap: 'speed', vector: 'solidAndVector', parts: [`${GLO_CUR}/sea_water_velocity`, `${MED_CUR}/sea_water_velocity`] } },
+  currents: { surface: { label: 'Surface current', labels: { colour: 'Current speed', arrows: 'Currents' }, unit: 'm/s', range: [0, 1.5], cmap: 'speed', vector: 'solidAndVector', parts: [`${GLO_CUR}/sea_water_velocity`, `${MED_CUR}/sea_water_velocity`] } },
   sst: {
     measured: { label: 'Sea surface temperature', unit: '°C', range: [273.15, 303.15], offset: -273.15, cmap: 'thermal', daily: true, parts: [`${GLO_SST}/analysed_sst`, `${MED_SST}/analysed_sst`] },
     anomaly: { label: 'Sea surface temperature anomaly', unit: '°C', range: [-3, 3], cmap: 'balance', daily: true, parts: [`${MED_SSTA}/sst_anomaly`] },
@@ -213,6 +227,21 @@ export const CMEMS = {
   },
   salinity: { depth: { label: 'Salinity', unit: 'PSU', range: [32, 40], cmap: 'haline', daily: true, depth: true, parts: [`${GLO_SAL}/so`, `${MED_SAL}/so`] } },
   mld: { depth: { label: 'Mixed layer depth', unit: 'm', range: [0, 200], cmap: 'plasma', daily: true, parts: [`${GLO_2D}/mlotst`, `${MED_MLD}/mlotst`] } },
+  // normals: the same colour ranges as the layers they are the normal of, so that a colour means the same
+  normalwaves: {
+    height: { label: 'Normal wave height', unit: 'm', range: [0, 6], cmap: 'amp', month: true, parts: [`${GLO_WAV_CLIM}/VHM0`, `${MED_WAV_CLIM}/VHM0`] },
+    severe: { label: 'Severe wave height (99th percentile)', unit: 'm', range: [0, 8], cmap: 'amp', still: true, parts: [`${IBI_WAV_P99}/swh_percentile99_mean`, `${MED_WAV_P99}/swh_percentile99_mean`] },
+  },
+  normalwater: {
+    temperature: { label: 'Normal temperature', unit: '°C', range: [0, 30], cmap: 'thermal', month: true, depth: true, parts: [`${GLO_PHY_CLIM}/thetao`, `${MED_PHY_CLIM}/thetao_avg`] },
+    bottom: { label: 'Normal bottom temperature', unit: '°C', range: [0, 30], cmap: 'thermal', month: true, parts: [`${GLO_PHY_CLIM}/bottomT`, `${MED_PHY_CLIM}/bottomT_avg`] },
+    salinity: { label: 'Normal salinity', unit: 'PSU', range: [32, 40], cmap: 'haline', month: true, depth: true, parts: [`${GLO_PHY_CLIM}/so`, `${MED_PHY_CLIM}/so_avg`] },
+    mld: { label: 'Normal mixed layer depth', unit: 'm', range: [0, 200], cmap: 'plasma', month: true, parts: [`${GLO_PHY_CLIM}/mlotst`, `${MED_PHY_CLIM}/mlotst_avg`] },
+  },
+  normalcurrents: {
+    current: { label: 'Normal current', labels: { colour: 'Normal current speed', arrows: 'Normal currents' }, unit: 'm/s', range: [0, 1.5], cmap: 'speed', vector: 'solidAndVector', month: true, depth: true,
+      parts: [`${GLO_PHY_CLIM}/sea_water_velocity`, `${MED_PHY_CLIM}/sea_water_velocity`] },
+  },
   // wind as arrows alone, over the chart and the waves: thermal starts dark, so light winds stay visible
   wind: { observed: { label: 'Wind (satellite)', unit: 'm/s', range: [0, 25], cmap: 'thermal', vector: 'vector', parts: [`${WIND}/wind`] } },
 };
@@ -247,7 +276,7 @@ export const GROUPS = [
   { id: 'sea', label: 'Sea' },
   // the layers that change with time, chosen in two menus: one for colours, one for arrows
   // (app.js); their sections head the menus' entries
-  { id: 'data', label: 'Ocean data', sections: ['Sea state', 'Water column', 'Satellite'] },
+  { id: 'data', label: 'Ocean data', sections: ['Sea state', 'Water column', 'Satellite', 'Normals'] },
   { id: 'shipping', label: 'Shipping' },
   { id: 'uses', label: 'Uses & areas' }, // EMODnet Human Activities
   { id: 'land', label: 'Land' },
@@ -377,6 +406,13 @@ export const ITEMS = [
     info: { ...COPERNICUS, url: product('SEALEVEL_GLO_PHY_L4_NRT_008_046'), src: 'Copernicus Marine Service: satellite altimetry, all missions merged (SEALEVEL_GLO_PHY_L4_NRT_008_046)', res: 'Sea surface height above its 1993–2012 mean, daily, 0.125° (~14 km). Eddies and large-scale highs and lows; tides and storm surge removed. The time shown goes no later than its latest day' } },
   { id: 'bgc', group: 'data', section: 'Water column', label: 'Water quality', opacity: 0.85, kind: 'cmems',
     info: { ...COPERNICUS, url: product('GLOBAL_ANALYSISFORECAST_BGC_001_028'), src: 'Copernicus Marine Service: Mediterranean biogeochemistry forecast (MEDSEA_ANALYSISFORECAST_BGC_006_014) over the global one (GLOBAL_ANALYSISFORECAST_BGC_001_028)', res: 'Daily means at the level nearest the depth chosen. Mediterranean 4.2 km; elsewhere 0.25° (~28 km). Nitrate in logarithmic colours. Model analysis and forecast, about 9 days ahead' } },
+  // normals: from the hindcasts, the month of the map's time (or one map for all years)
+  { id: 'normalwaves', group: 'data', section: 'Normals', label: 'Normal waves', opacity: 0.85, kind: 'cmems',
+    info: { ...COPERNICUS, url: product('GLOBAL_MULTIYEAR_WAV_001_032'), src: 'Copernicus Marine Service: monthly climatologies of the Mediterranean wave reanalysis (MEDSEA_MULTIYEAR_WAV_006_012) over the global one (GLOBAL_MULTIYEAR_WAV_001_032); the 99th percentile of wave height, Mediterranean (MEDSEA_OMI_SEASTATE_extreme_var_swh_mean_and_anomaly) over Iberia, Biscay and Ireland (IBI_OMI_SEASTATE_extreme_var_swh_mean_and_anomaly)', res: 'Normal: the mean wave height of the calendar month of the time shown, over many years (Mediterranean 1993–2016, 4.2 km; elsewhere 0.2°, ~22 km), in the colours of Waves. Severe: the height exceeded 1% of the time, the mean of each year\'s 99th percentile (Mediterranean 1993–2019; Iberia, Biscay and Ireland 1980–2023); none elsewhere. A model run over the past, not observations' } },
+  { id: 'normalwater', group: 'data', section: 'Normals', label: 'Normal water', opacity: 0.85, kind: 'cmems',
+    info: { ...COPERNICUS, url: product('GLOBAL_MULTIYEAR_PHY_001_030'), src: 'Copernicus Marine Service: monthly climatologies of the Mediterranean physics reanalysis (MEDSEA_MULTIYEAR_PHY_006_004) over the global one (GLOBAL_MULTIYEAR_PHY_001_030)', res: 'The mean of the calendar month of the time shown, over many years, in the colours of the layers it is the normal of: temperature and salinity at the level nearest the depth chosen, bottom temperature, mixed layer depth. Mediterranean 4.2 km; elsewhere 1/12° (~9 km). A model run over the past, not observations' } },
+  { id: 'normalcurrents', group: 'data', section: 'Normals', label: 'Normal currents', opacity: 0.85, kind: 'cmems',
+    info: { ...COPERNICUS, url: product('GLOBAL_MULTIYEAR_PHY_001_030'), src: 'Copernicus Marine Service: monthly climatologies of the Mediterranean physics reanalysis (MEDSEA_MULTIYEAR_PHY_006_004) over the global one (GLOBAL_MULTIYEAR_PHY_001_030)', res: 'The mean current of the calendar month of the time shown, over many years, at the level nearest the depth chosen: the steady flow, without tides; a mean of directions that vary is weaker than the currents of a day. Mediterranean 4.2 km; elsewhere 1/12° (~9 km). Arrows show the direction the water flows' } },
 
   { id: 'gibs', group: 'data', section: 'Satellite', label: 'NASA daily', opacity: 0.9, kind: 'gibs',
     info: { src: 'NASA EOSDIS GIBS (WMTS)', lic: 'NASA open data; attribution requested', res: 'True colour, 250 m, to zoom 9. A picture of the day as the satellite saw it: clouds and swath gaps are real. The time shown goes no later than its newest published day', url: 'https://www.earthdata.nasa.gov/engage/open-data-services-software/earthdata-developer-portal/gibs-api' } },

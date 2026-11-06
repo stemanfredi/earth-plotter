@@ -70,3 +70,28 @@ test('partIn: a global part covers every view; a regional one only views meeting
   assert.ok([atlantic, tyrrhenian, black].every((b) => partIn(glo, b)));
   assert.deepEqual([atlantic, tyrrhenian, black].map((b) => partIn(med, b)), [false, true, false]);
 });
+
+test('normals: a climatology drawn at the calendar month of its stand-in year; a still map at no time', async () => {
+  const { monthIn, partTimes, storedVariables, isoTime } = await import('../../site/cmems.js');
+  assert.equal(isoTime(Date.UTC(1993, 0, 1)), '1993-01-01T00:00:00Z');
+  const domain = Array.from({ length: 12 }, (_, m) => ({ start: Date.UTC(1993, m, 1), end: Date.UTC(1993, m, 1), step: 0 }));
+  assert.equal(monthIn(domain, Date.UTC(2026, 7, 15, 13)), Date.UTC(1993, 7, 1));
+  assert.equal(snapTime(domain, monthIn(domain, Date.UTC(2026, 11, 31, 23))), Date.UTC(1993, 11, 1));
+  assert.deepEqual(await partTimes('normalwaves', 'severe', Date.UTC(2026, 0, 1)), [null, null]); // no capabilities asked
+  assert.deepEqual(storedVariables('MEDSEA_MULTIYEAR_PHY_006_004/cmems_mod_med_phy_my_4.2km-climatology_P1M-m_202211/sea_water_velocity'), ['uo_avg', 'vo_avg']);
+  assert.deepEqual(storedVariables('GLOBAL_MULTIYEAR_PHY_001_030/cmems_mod_glo_phy_my_0.083deg-climatology_P1M-m_202311/sea_water_velocity'), ['uo', 'vo']);
+  // every normal is one or the other, and takes the colour range of the layer it is the normal of
+  for (const [id, vs] of Object.entries(CMEMS).filter(([id]) => id.startsWith('normal'))) {
+    for (const [k, v] of Object.entries(vs)) assert.ok(!!v.month !== !!v.still, `${id}/${k}`);
+  }
+  assert.deepEqual(CMEMS.normalwaves.height.range, CMEMS.waves.height.range);
+  assert.deepEqual(CMEMS.normalwater.temperature.range, CMEMS.temperature.depth.range);
+  assert.deepEqual(CMEMS.normalwater.salinity.range, CMEMS.salinity.depth.range);
+  assert.deepEqual(CMEMS.normalwater.mld.range, CMEMS.mld.depth.range);
+  assert.deepEqual(CMEMS.normalcurrents.current.range, CMEMS.currents.surface.range);
+});
+
+test('cmemsValues: a still map is said to have no data, not read', async () => {
+  const { cmemsValues } = await import('../../site/values.js');
+  await assert.rejects(cmemsValues('normalwaves', { variant: 'severe', t: 0, depth: 0 }, [0, 40, 1, 41]), /map only/);
+});

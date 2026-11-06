@@ -37,6 +37,7 @@ export function storeOf(part, asset = 'timeChunked') {
 // at: { variant, t, depth } as captured
 export async function cmemsValues(id, at, box) {
   const v = CMEMS[id][at.variant];
+  if (v.still) throw new Error('published as a map only, not as data'); // its datasets have no Zarr store
   const [times, levels] = await Promise.all([partTimes(id, at.variant, at.t), partLevels(id, at.variant, at.depth)]);
   return (await Promise.all(v.parts.map(async (part, i) => {
     // partTimes: undefined where the dataset's steps could not be read (the map asked for its tiles
@@ -51,7 +52,8 @@ export async function cmemsValues(id, at, box) {
     const names = storedVariables(part), units = names.map((n) => store.meta(n).attrs.units || '');
     const planes = await Promise.all(names.map((n) => readCells(store, n, ti, zi, cells)));
     const region = regionOf(part)?.name || (v.parts.length > 1 ? 'Global' : ''), key = `raster/${id}${region ? `-${region.toLowerCase()}` : ''}`;
-    const when = new Date(ts[ti]).toISOString(), level = elevation ? +Math.abs(elevation[zi]).toFixed(2) : null;
+    // a climatology's time is a month of its stand-in year: said as the month, not as that year's date
+    const when = v.month ? `the normal of ${new Date(ts[ti]).toLocaleDateString('en', { month: 'long', timeZone: 'UTC' })}` : new Date(ts[ti]).toISOString(), level = elevation ? +Math.abs(elevation[zi]).toFixed(2) : null;
     const description = `${partOf(part).id.replace('/', ' / ')}: ${names.join(', ')} (${[...new Set(units)].join(', ')}) at ${when}${level != null ? `, ${level} m deep` : ''}; its own grid, EPSG:4326${cells.step > 1 ? `, every ${cells.step}th cell` : ''}, over the view's bounding box. No data: NaN`;
     return rasterOf(cells, key, { title: `${v.label}${region ? `, ${region}` : ''}: values`, description, names, units, planes,
       bands: names.map((n, k) => ({ description: `${n}, ${when}${level != null ? `, ${level} m` : ''}`, unit: units[k] })) });

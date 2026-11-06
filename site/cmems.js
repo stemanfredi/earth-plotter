@@ -12,10 +12,11 @@ export function cmemsStyle(v, look = 'both') {
   const vector = look === 'colour' ? null : look === 'arrows' ? 'vector' : v.vector;
   return `cmap:${v.cmap},range:${v.range.join('/')}${v.log ? ',logScale' : ''}${vector ? `,vectorStyle:${vector}` : ''}`;
 }
-// 512 px tiles (the @2x matrix set): arrows at a readable spacing, and sharp on high-density screens
+// 512 px tiles (the @2x matrix set): arrows at a readable spacing, and sharp on high-density screens;
+// time null for a layer with no time (a still map)
 function cmemsTileUrl(part, style, time, z, x, y, level = null) {
   return `${CMEMS_WMTS}?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=${encodeURIComponent(part)}&STYLE=${encodeURIComponent(style)}`
-    + `&TILEMATRIXSET=EPSG:3857@2x&TILEMATRIX=${z}&TILEROW=${y}&TILECOL=${x}&FORMAT=image/png&TIME=${time}${level === null ? '' : `&ELEVATION=${level}`}`;
+    + `&TILEMATRIXSET=EPSG:3857@2x&TILEMATRIX=${z}&TILEROW=${y}&TILECOL=${x}&FORMAT=image/png${time === null ? '' : `&TIME=${time}`}${level === null ? '' : `&ELEVATION=${level}`}`;
 }
 const cmemsLegendUrl = (part, style) => `${CMEMS_WMTS}?SERVICE=WMTS&REQUEST=GetLegend&LAYER=${encodeURIComponent(part)}&STYLE=${encodeURIComponent(style)}&FORMAT=application/json`;
 // a dataset's entry in Copernicus Marine's STAC catalogue: where its values are, as Zarr stores (zarr.js)
@@ -23,10 +24,11 @@ const cmemsLegendUrl = (part, style) => `${CMEMS_WMTS}?SERVICE=WMTS&REQUEST=GetL
 export const partOf = (part) => { const [product, dataset, variable] = part.split('/'); return { product, dataset, variable, id: `${product}/${dataset}` }; };
 export const cmemsStacUrl = (part) => `${HOSTS.copernicusStac}/metadata/${partOf(part).id}/dataset.stac.json`;
 // the stored variables a part draws: itself, or for arrows their eastward and northward components
-// (the global currents: the total, with tides and wave drift, as the tiles draw it)
+// (the global currents: the total, with tides and wave drift, as the tiles draw it; the Mediterranean
+// climatology's: its means, named _avg beside their standard deviations)
 export function storedVariables(part) {
   const { dataset, variable } = partOf(part);
-  if (variable === 'sea_water_velocity') return dataset.includes('merged-uv') ? ['utotal', 'vtotal'] : ['uo', 'vo'];
+  if (variable === 'sea_water_velocity') return dataset.includes('merged-uv') ? ['utotal', 'vtotal'] : dataset.startsWith('cmems_mod_med_') && dataset.includes('climatology') ? ['uo_avg', 'vo_avg'] : ['uo', 'vo'];
   return variable === 'wind' ? ['eastward_wind', 'northward_wind'] : [variable];
 }
 // one dataset's own capabilities (~100 kB, not the 67 MB of the whole service): its time steps
@@ -93,10 +95,19 @@ export function domainOf(part) {
     }));
 }
 
-// for each part of item/variant: the time it draws for t (ms), its step holding t; null outside its
-// range, or undefined if its range is not known
+// a time as the service takes it: ISO 8601 to the second (with milliseconds, it answers 400 for the
+// first step of a climatology, January, and takes the other eleven: seen 2026-11-06)
+export const isoTime = (t) => new Date(t).toISOString().replace(/\.\d{3}Z$/, 'Z');
+// a climatology's step for the calendar month (UTC) of t: its 12 months are in one stand-in year of
+// its own (its first step's)
+export const monthIn = (domain, t) => Date.UTC(new Date(domain[0].start).getUTCFullYear(), new Date(t).getUTCMonth(), 1);
+// for each part of item/variant: the time it draws for t (ms), its step holding t (a climatology:
+// its month of t); null outside its range, or undefined if its range is not known; a still map: null
+// for every part, which has no time and is drawn whatever the time (still: drawn without one)
 export function partTimes(item, variant, t) {
-  return Promise.all(CMEMS[item][variant].parts.map((p) => domainOf(p).then(({ time }) => snapTime(time, t), () => undefined)));
+  const v = CMEMS[item][variant];
+  if (v.still) return Promise.resolve(v.parts.map(() => null));
+  return Promise.all(v.parts.map((p) => domainOf(p).then(({ time }) => snapTime(time, v.month ? monthIn(time, t) : t), () => undefined)));
 }
 // for each part: the depth level drawn for depth (m), as the service lists it; null for a variable
 // without depth (or if its levels are not known: the service then draws its default, the top)
@@ -118,9 +129,9 @@ export async function cmemsTile({ url }, abortController) {
   const v = CMEMS[item][variant], style = cmemsStyle(v, look);
   const [times, levels] = await Promise.all([partTimes(item, variant, t), partLevels(item, variant, depth)]);
   const images = await Promise.all(v.parts.map(async (part, i) => {
-    if (times[i] === null || !partIn(part, tileBounds(z, x, y))) return null; // no data at this hour, or not here
-    const when = times[i] === undefined ? new Date(t) : new Date(times[i]); // range unknown: ask anyway
-    const r = await fetchOk(cmemsTileUrl(part, style, when.toISOString(), z, x, y, levels[i]), { signal: abortController?.signal });
+    if ((times[i] === null && !v.still) || !partIn(part, tileBounds(z, x, y))) return null; // no data at this hour, or not here
+    const when = v.still ? null : isoTime(times[i] === undefined ? t : times[i]); // range unknown: ask anyway
+    const r = await fetchOk(cmemsTileUrl(part, style, when, z, x, y, levels[i]), { signal: abortController?.signal });
     return createImageBitmap(await r.blob());
   }));
   const c = new OffscreenCanvas(512, 512), g = c.getContext('2d');

@@ -36,7 +36,6 @@ export class Drawing extends DrawStore {
     super();
     Object.assign(this, { map, onChange, known, getView, units, bearings });
     this.saving = new Saving(this);
-    this.tool = null;
     this.last = null; // the last click: its point and what was under it, for clicking through
     this.zoomRaf = 0;
     // what is being drawn: a line { pts, tos (what each snapped to) }; a sector { pts }; a shape
@@ -281,8 +280,7 @@ export class Drawing extends DrawStore {
   // what the next click on the map attaches (Attach to…): vertex index of element id (a label's 0, a
   // line's vertex; null: a shape as a whole, to a point); or nothing
   startRepoint(id, index = 0) {
-    this.stop(); // a click on the map now attaches, not a tool's next point
-    this.boxSelect(false);
+    this.leave(); // a click on the map now attaches, not a tool's next point
     this.repointing = { id, index };
     this.map.getCanvas().style.cursor = 'crosshair';
   }
@@ -311,15 +309,21 @@ export class Drawing extends DrawStore {
   }
 
   // ---- tools -----------------------------------------------------------------------------
+  // What the map's next click or drag is for: one thing at a time. Each of a tool, Box select, Attach
+  // to… and a form (Distribute, Connect) starts by leaving whatever else was under way: the form closed
+  // (as Esc closes it), Attach to… given up, the tool stopped, Box select off
+  leave() {
+    if (this.keepSel) this.onChange('cancel');
+    this.giveUpRepoint();
+    this.stop();
+    if (this.boxNext) this.boxSelect(false);
+  }
+  // the tool on: its button's, Shape with Sector drawing as 'sector' (three clicks); or null
+  get tool() { return this.button === 'shape' && this.variant.shape === 'sector' ? 'sector' : this.button; }
   start(tool) {
-    if (this.keepSel) this.onChange('cancel'); // a form open (Distribute, Connect): closed, as Esc closes it
-    this.giveUpRepoint(); // Attach to… waiting: given up (the next click is the tool's)
-    if (this.tool) this.stop();
-    this.boxNext = false;
+    this.leave();
     clearTimeout(this.dblZoom); // stop()'s, which would turn it on again after this
-    const v = this.variant[tool];
     this.button = tool;
-    this.tool = tool === 'shape' && v === 'sector' ? v : tool;
     this.map.doubleClickZoom.disable();
     this.map.getCanvas().style.cursor = 'crosshair';
     this.onChange('tool');
@@ -327,7 +331,6 @@ export class Drawing extends DrawStore {
   stop() {
     if (!this.tool) return;
     this.snapMark = null;
-    this.tool = null;
     this.button = null;
     this.draft = null;
     this.renderMarks();

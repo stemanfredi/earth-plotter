@@ -60,8 +60,7 @@ export function createForms(kit) {
     along: form && { element: form.along.element } });
   const conParams = () => ({ pattern: con.pattern, groupSize: con.groupSize, minBranch: con.minBranch, roots: con.roots.map((r) => ({ ...r })), newRoots: con.newRoots.map((q) => [...q]) });
   function openForm(f) {
-    drawing.stop(); // a click on the map now picks a root, not a tool's next point
-    drawing.boxSelect(false);
+    drawing.leave(); // a click on the map now picks a root, not a tool's next point (another form closed)
     form = { ...f, sel: selKey() };
     drawing.setPicking(form.kind === 'connect' ? pick : null, true); // roots are picked on the map while Connect's is open
     formPreview();

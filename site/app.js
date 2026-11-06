@@ -1076,7 +1076,6 @@ window.addEventListener('keydown', (e) => {
   if (k.open === 'search') { e.preventDefault(); setFinding(true); }
   else if (['layers', 'elements', 'draw'].includes(k.open)) frame.toggleTab(k.open);
   else if (k.open === 'props') frame.setProps(!frame.props);
-  else if (k.tool === 'box') drawing.boxSelect(!drawing.boxNext);
   else drawPanel.press(k.tool); // on, or off
 });
 // the tooltips and About say the keys

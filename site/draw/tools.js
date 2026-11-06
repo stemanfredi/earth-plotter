@@ -13,8 +13,8 @@ import { icon, SELECT_ICON, BOX_ICON, UI_ICON } from '../icons.js';
 // fileBtns: the bar's file group (files.js); drawsNow(): the name of what is being drawn (drawtab.js),
 // or ''. Returns { press, renderTools, renderTouch }.
 export function createTools(drawing, ctx, { del, fileBtns, drawsNow }) {
-  // a tool's key: on (with what it drew last), or off
-  const press = (tool) => (drawing.button === tool ? drawing.stop() : drawing.start(tool));
+  // a tool's key: on (with what it drew last), or off; Box select's too
+  const press = (tool) => (tool === 'box' ? drawing.boxSelect(!drawing.boxNext) : drawing.button === tool ? drawing.stop() : drawing.start(tool));
   // Measure: a question asked of the map, not a thing drawn: the bar's
   const measureBtn = h('button', { type: 'button', 'data-tool': 'measure', 'aria-pressed': 'false', 'aria-label': 'Measure', title: `Measure (${keyOf('measure')})`, onclick: () => press('measure') }, icon(...UI_ICON.ruler));
   const undoBtn = h('button', { type: 'button', class: 'urbtn', 'aria-label': 'Undo', title: `Undo (${MOD} Z)`, onclick: () => drawing.undo() }, icon(...UI_ICON.undo));
@@ -22,10 +22,10 @@ export function createTools(drawing, ctx, { del, fileBtns, drawsNow }) {
   const sep = () => h('span', { class: 'tsep', 'aria-hidden': 'true' });
   // Select
   const selectBtn = h('button', { type: 'button', class: 'selbtn', 'aria-label': 'Select', title: 'Select',
-    onclick: () => { drawing.stop(); drawing.boxSelect(false); } }, icon(...SELECT_ICON));
+    onclick: () => drawing.leave() }, icon(...SELECT_ICON));
   // Select's other kind: the next drag on the map draws a box, what lies inside selected; then Select
   const boxBtn = h('button', { type: 'button', class: 'boxbtn', 'aria-label': 'Box select', 'aria-pressed': 'false', title: `Box select (${keyOf('box')})`,
-    onclick: () => drawing.boxSelect(!drawing.boxNext) }, icon(...BOX_ICON));
+    onclick: () => press('box') }, icon(...BOX_ICON));
   // With a finger (drawing-ui.md §1): what keys and a mouse do on a computer, each shown when it
   // applies. Back steps back one level (what is half drawn, else the tool, else the selection). On a
   // phone Back and Done are the dock's, what is being drawn between them; the selection's actions are

@@ -6,6 +6,8 @@ import { norm360, norm180, NM, D2R } from './geo.js';
 export const escapeHtml = (t) => String(t).replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`); // text set as markup (HTML or XML)
 
 // a length, an area, a bearing as read (in the display's units: 'km' or 'nm')
+// a colour #rrggbb → [r, g, b] (0–255)
+export const rgbOf = (hex) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
 // a normal's month (Copernicus's climatologies: a month of no year, in UTC), on screen in the page's
 // language (locale []) or in English for files; a normal said in words: "the January normal"
 export const monthOf = (t, locale = []) => new Date(t).toLocaleDateString(locale, { month: 'long', timeZone: 'UTC' });

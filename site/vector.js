@@ -15,9 +15,8 @@
 // touches itself (3 of 49 building features in central Taranto at zoom 14.5). GIS tools read them; QGIS's
 // "Fix geometries" repairs them.
 
-import { mercator, unmercator as lonLat, CIRC, signedArea2 } from './geo.js';
+import { mercator, unmercator as lonLat, CIRC, signedArea2, EXTENT } from './geo.js';
 
-const EXTENT = 4096; // vector tile units per tile edge (OpenMapTiles, maplibre-contour)
 const DIGITS = 1e7; // output to 7 decimals of a degree: about 1 cm
 const unmercator = (p) => lonLat(p).map((v) => Math.round(v * DIGITS) / DIGITS);
 

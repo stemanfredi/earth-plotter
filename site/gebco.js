@@ -23,6 +23,7 @@ import { openStore } from './zarr.js';
 import { latOf, TILE } from './geo.js';
 import { fetchBytes, lru } from './net.js';
 import { GEBCO, GEBCO_TID, DEPTH_SOURCES } from './catalog.js';
+import { rgbOf } from './format.js';
 
 const SIZE = TILE, CELL = 15 / 3600, LEVELS = 7, KEEP = 96, WATER_FULL = 0.5; // KEEP: chunks kept (512 kB each at most): a zoomed-out view's, and its neighbours'
 
@@ -111,7 +112,7 @@ export const gebcoTile = (z, x, y) => gridTile(GEBCO, 'elevation', z, x, y, fals
 // MapLibre tile handler for gebco-tid://z/x/y: each cell coloured by the group of its code; land and
 // no data transparent
 const RGBA = new Uint8ClampedArray(128 * 4); // code × 4 → r, g, b, 255 of its group (alpha 0: not drawn)
-for (const { ranges, colour } of DEPTH_SOURCES) for (const [lo, hi] of ranges) for (let c = lo; c <= hi; c++) RGBA.set([...[1, 3, 5].map((i) => parseInt(colour.slice(i, i + 2), 16)), 255], c * 4);
+for (const { ranges, colour } of DEPTH_SOURCES) for (const [lo, hi] of ranges) for (let c = lo; c <= hi; c++) RGBA.set([...rgbOf(colour), 255], c * 4);
 export async function tidTile({ url }) {
   const [z, x, y] = /^gebco-tid:\/\/(\d+)\/(\d+)\/(\d+)$/.exec(url).slice(1).map(Number);
   const codes = await gridTile(GEBCO_TID, 'tid', z, x, y, true), img = new ImageData(SIZE, SIZE);

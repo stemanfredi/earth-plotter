@@ -71,11 +71,14 @@ export function areaOf(map) {
 // online, the page is seen again and the dialog opens: inside a saved area the map asks the provider
 // nothing, so a connection back would not be seen. onConnection(fn): fn() when that may have changed
 let swSays = null;
+// the service worker, told the saved areas changed, asked whether there is a connection
+const sw = () => navigator.serviceWorker?.controller;
+const tell = (msg) => sw()?.postMessage(msg);
+const askConnection = () => tell('connection');
 const listeners = new Set();
 export const noConnection = () => navigator.onLine === false || swSays === false;
 export const onConnection = (fn) => listeners.add(fn);
 const changed = () => listeners.forEach((fn) => fn());
-const askConnection = () => navigator.serviceWorker?.controller?.postMessage('connection');
 if (typeof navigator !== 'undefined' && navigator.serviceWorker) {
   navigator.serviceWorker.addEventListener('message', (e) => { if (e.data && 'connection' in e.data) { swSays = e.data.connection; changed(); } });
   navigator.serviceWorker.ready.then(askConnection);
@@ -83,10 +86,6 @@ if (typeof navigator !== 'undefined' && navigator.serviceWorker) {
 }
 window.addEventListener('online', () => { askConnection(); changed(); });
 window.addEventListener('offline', changed);
-
-// the service worker, told the saved areas changed
-const sw = () => navigator.serviceWorker?.controller;
-const tell = (msg) => sw()?.postMessage(msg);
 // one tab at a time saves or opens an area (two would share the providers' limits, and race to replace
 // the same area): work run alone, or failing at once while another tab's runs
 const alone = (work) => navigator.locks.request('offline-areas', { ifAvailable: true }, (lock) => {

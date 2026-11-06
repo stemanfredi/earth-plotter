@@ -3,6 +3,7 @@
 // service publishes for the layer (cmems.js), so the colours are the real ones.
 
 import { INK, SOFT } from './style.js';
+import { rgbOf } from './format.js';
 
 const W = 236, H = 44, KEY = 16, BAR = { x: 8, y: 20, w: 220, h: 9 };
 
@@ -156,7 +157,7 @@ export function drawClasses(el, text, sub, classes) {
 // on its casing (two strokes), or a point's symbol, by URL (icon). Rules filled white (no data,
 // as a fill) are left out.
 export function wmsClasses(json) {
-  const rgba = (hex, a) => { const n = parseInt(hex.slice(1), 16); return `rgba(${n >> 16},${(n >> 8) & 255},${n & 255},${a})`; };
+  const rgba = (hex, a) => `rgba(${rgbOf(hex).join(',')},${a})`;
   return json.Legend.flatMap((l) => l.rules).map((r) => {
     const label = (r.title || r.name || '').replace(/^(\d+\.|[A-Z]:)\s*/, ''), of = (k) => r.symbolizers.find((s) => s[k])?.[k];
     const lines = r.symbolizers.filter((s) => s.Line).map((s) => s.Line.stroke);

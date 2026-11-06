@@ -6,16 +6,13 @@
 //   node tools/preview.mjs [zoom/lat/lon/bearing]     default: the Bay of Naples
 import { chromium } from 'playwright-core';
 import { serve, chromeOptions } from '../test/serve.mjs';
-import { settled } from '../test/browser.mjs';
+import { openPage } from '../test/browser.mjs';
 
 const view = process.argv[2] ?? '9.6/40.68/14.09/0';
 const server = await serve(), browser = await chromium.launch(chromeOptions());
 try {
-  const page = await (await browser.newContext({ viewport: { width: 1200, height: 630 } })).newPage();
-  await page.addInitScript(() => localStorage.setItem('earthplotter.frame', JSON.stringify({ tab: 'draw', props: false })));
-  await page.goto(`${server.url}#v=${view}`);
-  await page.waitForFunction(() => window.map?.loaded?.() && map.areTilesLoaded(), null, { timeout: 90000 });
-  await settled(page);
+  const page = await openPage(await browser.newContext({ viewport: { width: 1200, height: 630 } }), `${server.url}#v=${view}`, 'draw'); // Properties: closed, as on a first visit
+  if (page.errors.length) throw new Error(`the page: ${page.errors.join('; ')}`);
   await page.mouse.move(700, 20); // on the bar: no hover on the map, no position shown at its foot
   await page.screenshot({ path: new URL('../site/preview.jpg', import.meta.url).pathname, type: 'jpeg', quality: 85 });
 } finally {

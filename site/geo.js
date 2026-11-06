@@ -6,6 +6,7 @@ export const MAX_LAT = 85.05112878; // the latitude the map stops at (a square w
 export const D2R = Math.PI / 180;
 export const NM = 1852; // a nautical mile, m
 export const TILE = 256; // a raster tile's edge, pixels (the DEM and depth tiles)
+export const EXTENT = 4096; // a vector tile's edge, its units (OpenMapTiles, maplibre-contour, the isobaths)
 // an angle in degrees as 0 ≤ a < 360
 export const norm360 = (a) => ((a % 360) + 360) % 360;
 export const norm180 = (a) => norm360(a + 180) - 180; // a longitude in [−180, 180)

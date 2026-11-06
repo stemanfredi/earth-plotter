@@ -4,9 +4,10 @@
 // drawn, at any zoom, and never a pixel over it. The raster says how deep, the vector says where the
 // sea is. Pure: no fetching, no worker. Coordinates are a tile's, 0…EXTENT across it, y down.
 import mlcontour from './vendor/maplibre-contour.mjs';
+import { EXTENT } from './geo.js';
 
 const { generateIsolines, HeightTile } = mlcontour;
-export const EXTENT = 4096;
+export { EXTENT }; // clip.js takes it from here, with the lines
 
 // The lines of a tile every `step` metres, from its elevation and its 8 neighbours' ([nw, n, ne, w,
 // c, e, sw, s, se], each size × size metres row-major, or undefined off the world), as

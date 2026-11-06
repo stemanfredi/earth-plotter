@@ -585,7 +585,7 @@ whenIn.addEventListener('input', () => {
   const v = whenIn.validity;
   if (!(v.valueMissing || v.badInput || v.rangeUnderflow || v.rangeOverflow)) setTime(new Date(whenIn.value).getTime());
 });
-depthEl.append(...CMEMS_DEPTHS.map((d) => h('option', { value: d }, d ? `${d} m deep` : 'Surface')));
+depthEl.append(...CMEMS_DEPTHS.map((d) => h('option', { value: d }, d ? depthWords(d) : 'Surface')));
 depthEl.addEventListener('change', (e) => setDepth(+e.target.value));
 function renderWhen() {
   const on = timeOn().length > 0, deep = depthOn().length > 0;
@@ -1116,7 +1116,7 @@ function scaleText() {
 // (OpenStreetMap and Esri ask for theirs to be seen, and a line that does not fit scrolls from its start)
 const baseSources = new Set(ITEMS.filter((it) => it.group === 'base').flatMap((it) => (layersOf[it.id] || []).map((l) => l.source)));
 // a style layer drawn at this zoom: shown, and within its zoom range (the seamarks from 9 …)
-function drawn(l, z = map.getZoom()) { return map.getLayoutProperty(l.id, 'visibility') !== 'none' && z >= (l.minzoom ?? 0) && z < (l.maxzoom ?? 24); }
+function drawn(l, z) { return map.getLayoutProperty(l.id, 'visibility') !== 'none' && z >= (l.minzoom ?? 0) && z < (l.maxzoom ?? 24); }
 function creditParts() {
   const srcs = [], z = map.getZoom();
   for (const l of style.layers) if (l.source && drawn(l, z) && !srcs.includes(l.source)) srcs.push(l.source);

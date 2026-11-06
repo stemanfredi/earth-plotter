@@ -80,3 +80,15 @@ in the history, not here.
   - Every chunk of a store must exist: a saved offline area cannot hold a
     file that is not there. Land as one value, not its heights, halved the
     store (4.9 GB to 2.8 GB).
+
+- **Copernicus's records can be read as series in a page** (2026-11-06).
+  Beside the store the GIS export reads (`timeChunked`: one time over a wide
+  area), each dataset has a `geoChunked` store (decades of a small block of
+  cells), keyless, CORS, in the format `site/zarr.js` reads. The
+  Mediterranean wave hindcast (hourly, 4.2 km, from 1985, blocks of 4 × 4
+  cells) gave one block's wave height for 42 years in a second, 6.6 MB; the
+  global one (3-hourly, 0.2°, from 1980) has blocks of 8 × 4 cells. The cost
+  is by block, not by cell: 50 km in the Mediterranean is about nine
+  blocks, 60 MB a variable for the whole record, so a whole view's
+  statistics are a build, not a page's work. Wind, sea temperature, the
+  physics, altimetry and the forecasts have the same layout.

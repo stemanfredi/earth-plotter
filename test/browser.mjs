@@ -19,12 +19,13 @@ export async function start() {
     console.log(`${ok ? 'ok  ' : provider ? 'FAIL~' : 'FAIL'}  ${what}`);
     if (!ok) (provider ? advisories : failures).push(what);
   };
-  // a part of a run on its own: an error thrown in it is one failure, and the next part runs
+  // a part of a run on its own: an error thrown in it is one failure, and the next part runs; an
+  // error a provider caused (err.provider: tiles that never came) is one of what providers served
   const section = async (name, fn) => {
     const had = new Set(browser.contexts().flatMap((c) => [c, ...c.pages()]));
     try { await fn(); } catch (err) {
       const where = err.stack?.split('\n').find((l) => /test\/\w+\.mjs/.test(l))?.trim();
-      check(false, `${name} crashed: ${err.message.split('\n').filter((l) => l.trim()).slice(0, 6).map((l) => l.trim()).join(' / ')}${where ? ` (${where})` : ''}`);
+      check(false, `${name} ${err.provider ? 'stopped' : 'crashed'}: ${err.message.split('\n').filter((l) => l.trim()).slice(0, 6).map((l) => l.trim()).join(' / ')}${where ? ` (${where})` : ''}`, !!err.provider);
       // what it opened and did not close would go on drawing and fetching under the sections after it
       for (const c of browser.contexts()) {
         if (!had.has(c)) { await c.close().catch(() => {}); continue; }
@@ -74,7 +75,11 @@ export async function openPage(ctx, url, tab = null, groups = null) {
   page.on('pageerror', (e) => page.errors.push(e.message));
   page.on('console', (m) => m.type() === 'error' && (/Failed to load resource/.test(m.text()) ? page.providerErrors : page.errors).push(m.text().slice(0, 200)));
   await page.goto(url);
-  await page.waitForFunction(() => window.map?.loaded?.() && map.areTilesLoaded(), null, { timeout: 90000 });
+  // the page's own: the map and its style; then the providers': its tiles (a provider that hangs rather
+  // than fails is one of what providers served, not the page's failure)
+  await page.waitForFunction(() => window.map?.isStyleLoaded?.(), null, { timeout: 90000 });
+  await page.waitForFunction(() => map.loaded() && map.areTilesLoaded(), null, { timeout: 90000 })
+    .catch((e) => { throw Object.assign(new Error(`the map's tiles did not all load in 90 s (${e.message.split('\n')[0]})`), { provider: true }); });
   await settled(page);
   return page;
 }

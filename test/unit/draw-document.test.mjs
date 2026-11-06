@@ -839,6 +839,18 @@ test('nested groups in the file: the parent kept; one missing or making a loop p
   assert.deepEqual(again(doc).doc, doc);
 });
 
+test('groups nested deep in a small file: 32 levels kept, deeper ones at the top; read and totalled quickly', async () => {
+  const { totals } = await import('../../site/draw/lines.js');
+  const n = 3000, groups = Array.from({ length: n }, (_, i) => ({ id: `g${i}`, groupId: i ? `g${i - 1}` : null }));
+  const t0 = performance.now();
+  const { doc, report } = read(collection(Array.from({ length: n }, (_, i) => F(`p${i}`, 'Point', [0, 0], { kind: 'point', group: `g${i}` })), { format: FORMAT, version: VERSION, groups }));
+  totals(doc);
+  assert.ok(performance.now() - t0 < 3000, 'no stall');
+  assert.equal(Math.max(...doc.groups.map((g) => d.groupsOf(doc, g).length)), 32);
+  assert.deepEqual([doc.groups[32].groupId, doc.groups[33].groupId], ['g31', null]);
+  warned(report, /group g33: more than 32 groups deep; now at the top/);
+});
+
 test('the look: the drawing\'s defaults, then its own (a group adds nothing); a measurement keeps its name off; written where each belongs', () => {
   const doc = emptyDoc(NOW);
   const a = addPoint(doc, [0, 0]), b = addPoint(doc, [1, 0]);

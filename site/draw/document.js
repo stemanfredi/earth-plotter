@@ -149,8 +149,8 @@ const groupOf = (doc, el) => {
 // The groups an element (or a group) is in, the nearest first: its group (a shape: its point, then
 // the point's group), that group's, and so on
 export function groupsOf(doc, el) {
-  const out = [];
-  for (let g = groupOf(doc, el); g && g !== el && !out.includes(g); g = groupOf(doc, g)) out.push(g);
+  const out = [], seen = new Set([el]);
+  for (let g = groupOf(doc, el); g && !seen.has(g); g = groupOf(doc, g)) { seen.add(g); out.push(g); }
   return out;
 }
 // the groups an element is in, the nearest first, without a shape's point (groupsOf)

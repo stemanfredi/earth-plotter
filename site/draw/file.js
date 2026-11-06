@@ -15,7 +15,8 @@ import { settings, connectSettings, DISTRIBUTE_D, CONNECT_D } from './generator.
 import { norm180, norm360, samePosition, lonLatArea2 } from '../geo.js';
 
 const MAX_POSITIONS = 100000; // positions in one line: more would stall the page at every change
-const MAX_FEATURES = 20000; // elements in one file: the rest are skipped (as many points stall the list)
+const MAX_FEATURES = 20000; // elements and groups in one file: the rest are skipped (as many points stall the list)
+const MAX_DEPTH = 32; // groups inside groups: a deeper one goes to the top (each level costs every change)
 const MAX_TOTAL_POSITIONS = 1000000; // positions in a file's lines together: more is refused, as soon as read
 class Refused extends Error {}
 // the properties a feature's own are written beside: a user's key that is one of these gets a p_
@@ -48,7 +49,7 @@ const unpack = (v) => { if (typeof v !== 'string' || !/^\s*[[{]/.test(v)) return
 
 function read(raw, app, known, now, report) {
   const doc = emptyDoc(now);
-  let view = null;
+  let view = null, over = 0;
   const taken = new Set();
   const ctx = (kind, id) => ({
     warn: (t) => report.warnings.push(`${kind}${id ? ` ${id}` : ''}: ${t}`),
@@ -86,25 +87,35 @@ function read(raw, app, known, now, report) {
         taken.add(id);
         return { ...commonOf(x, c), id, groupId: typeof x.groupId === 'string' ? x.groupId : null }; // a group has no look: its members' own
       });
-      if (g) doc.groups.push(g);
+      if (g && doc.groups.length >= MAX_FEATURES) over++;
+      else if (g) doc.groups.push(g);
     }
-    // each group's parent: one of the drawing's, never itself nor a group inside it
-    const byId = new Map(doc.groups.map((g) => [g.id, g]));
+    // each group's parent: one of the drawing's, never itself nor a group inside it, at most MAX_DEPTH
+    // groups deep. Each group's depth is found once: the walk up stops at a group already placed
+    const byId = new Map(doc.groups.map((g) => [g.id, g])), depth = new Map();
+    const top = (g, why) => { ctx('group', g.id).warn(`${why}; now at the top`); g.groupId = null; };
     for (const g of doc.groups) {
-      if (g.groupId == null) continue;
-      const c = ctx('group', g.id);
-      let up = byId.get(g.groupId);
-      if (!up) { c.warn(`group ${String(g.groupId).slice(0, 64)} not found; now at the top`); g.groupId = null; continue; }
-      const seen = new Set([g]);
-      while (up && !seen.has(up)) { seen.add(up); up = byId.get(up.groupId); }
-      if (up) { c.warn('in a group inside itself; now at the top'); g.groupId = null; }
+      const path = [], on = new Set();
+      let up = g;
+      while (up && !depth.has(up) && !on.has(up)) {
+        on.add(up); path.push(up);
+        const next = up.groupId == null ? null : byId.get(up.groupId);
+        if (up.groupId != null && !next) top(up, `group ${String(up.groupId).slice(0, 64)} not found`);
+        up = next;
+      }
+      if (up && on.has(up)) top(path.at(-1), 'in a group inside itself'); // the loop cut where it closes
+      for (let i = path.length - 1; i >= 0; i--) {
+        const x = path[i], d = x.groupId == null ? 0 : depth.get(byId.get(x.groupId)) + 1;
+        if (d > MAX_DEPTH) top(x, `more than ${MAX_DEPTH} groups deep`);
+        depth.set(x, d > MAX_DEPTH ? 0 : d);
+      }
     }
   }
 
   // the features, each part of a Multi geometry an element of its own
   const features = raw.type === 'FeatureCollection' ? (Array.isArray(raw.features) ? raw.features : (report.warnings.push('features: not a list, ignored'), []))
     : raw.type === 'Feature' ? [raw] : [{ type: 'Feature', properties: {}, geometry: raw }];
-  let over = 0, positions = 0;
+  let positions = 0;
   const rawFrames = new Map(); // a shape's frame as the file has it, checked once its point is known
   try { features.forEach((f, i) => {
     const fid = isObj(f) && (typeof f.id === 'string' || typeof f.id === 'number') ? String(f.id) : null;
@@ -121,7 +132,7 @@ function read(raw, app, known, now, report) {
       : [g];
     if (!parts) { skip('a geometry collection: not read'); return; }
     parts.forEach((part, k) => {
-      if (doc.points.length + doc.circles.length + doc.lines.length + doc.labels.length >= MAX_FEATURES) { over++; return; } // a Multi geometry: each part an element
+      if (doc.groups.length + doc.points.length + doc.circles.length + doc.lines.length + doc.labels.length >= MAX_FEATURES) { over++; return; } // a Multi geometry: each part an element
       const kind = (mine?.kind === 'label' || mine?.kind === 'circle') && part.type === 'Point' ? mine.kind : { Point: 'point', LineString: 'line', Polygon: 'line' }[part.type];
       if (!kind) { skip(`geometry ${String(part.type).slice(0, 20)}: not read`); return; }
       const el = attempt(kind, fid, (c) => {
@@ -139,7 +150,7 @@ function read(raw, app, known, now, report) {
     });
   }); } catch (e) { if (!(e instanceof Refused)) throw e; report.refused = e.message; return { doc: null, view: null }; }
 
-  if (over) report.warnings.push(`${over} past the first ${MAX_FEATURES} elements: skipped`);
+  if (over) report.warnings.push(`${over} past the first ${MAX_FEATURES} elements and groups: skipped`);
   // the elements all in: indexed while what holds each, then the frames and the links, are read (none
   // is added or taken away; reading() looks each up by ID, not along every list)
   reading(doc, () => {

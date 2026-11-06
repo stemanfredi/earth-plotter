@@ -161,7 +161,7 @@ Listed in the collection's `earthplotter.groups`, not as features:
 
 `groupId` is the group it is in (absent: at the top). A group is only who is in it: joining or
 leaving changes nothing of an element. A group without a valid, unused ID is skipped; a member naming
-a group that is not there becomes standalone, and a group inside itself goes to the top (warnings).
+a group that is not there becomes standalone, and a group inside itself, or more than 32 groups deep, goes to the top (warnings).
 
 ### 7.2 Point
 
@@ -364,7 +364,7 @@ Any GeoJSON: a FeatureCollection, a Feature or a bare geometry.
 - Unknown fields are ignored and not written again.
 - **Refused** (nothing loads): over 64 MB; not JSON; not an object; not GeoJSON; another version;
   more than 1 000 000 positions in its lines.
-- **Limits:** past 20 000 elements, 10 000 characters of text, 200 properties on one element, the
+- **Limits:** past 20 000 elements and groups, 10 000 characters of text, 200 properties on one element, the
   rest is dropped (warning).
 - **Skipped**, the rest loading: not a Feature; no geometry, or a GeometryCollection; a position not
   `[lon, lat]` or its latitude out of range; a line of fewer than two positions (closed: three) or

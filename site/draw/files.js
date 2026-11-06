@@ -11,6 +11,8 @@ import { libraryFile, readLibrary } from './library.js';
 import { plural, slug } from '../format.js';
 import { icon, UI_ICON } from '../icons.js';
 
+const SHOWN = 50; // entries of the import report's lists shown
+
 // drawing (drawing.js); ctx: { download(text, name), openDrawing(id), onImport(doc, view), openArea(file) (an offline area's zip),
 // outputs (the view's, menu items), offlineItem (Offline areas…, a menu item), copyLink(), about() }; libraryChanged(): the Library's items shown again. Returns { buttons (the bar's),
 // importFile(file) }.
@@ -88,14 +90,15 @@ export function fileGroup(drawing, ctx, libraryChanged) {
       return libraryChanged();
     }
     const { doc, view, report } = parse(text, drawing.known);
-    const list = (items) => h('ul', {}, items.map((t) => h('li', {}, t)));
+    // the first SHOWN of a list (a file can hold millions of entries that are not elements), then how many more
+    const list = (items, f = (t) => t) => h('ul', {}, items.slice(0, SHOWN).map((t) => h('li', {}, f(t))), items.length > SHOWN ? h('li', {}, `… and ${(items.length - SHOWN).toLocaleString('en')} more`) : null);
     const counts = doc ? [['point', doc.points], ['circle', doc.circles], ['line', doc.lines.filter((x) => !x.closed)], ['area', doc.lines.filter((x) => x.closed)], ['label', doc.labels], ['group', doc.groups]]
       .map(([k, xs]) => [k, xs.filter((x) => !isMeasurement(x)).length]).filter(([, n]) => n).map(([k, n]) => plural(n, k)) : [];
     const measured = doc ? elements(doc).filter((x) => isMeasurement(x.el)).length : 0;
     if (measured) counts.push(plural(measured, 'measurement'));
     const body = () => h('div', {},
       doc ? h('p', {}, counts.length ? `It holds ${counts.join(', ')}.` : 'It holds no elements.', view ? ' Its view and layers will replace the current ones.' : '') : h('p', {}, report.refused),
-      report.skipped.length ? [h('h3', {}, `Skipped (${report.skipped.length})`), list(report.skipped.map((s) => `${s.kind}${s.id ? ` ${s.id}` : ''}: ${s.reason}`))] : null,
+      report.skipped.length ? [h('h3', {}, `Skipped (${report.skipped.length})`), list(report.skipped, (s) => `${s.kind}${s.id ? ` ${s.id}` : ''}: ${s.reason}`)] : null,
       report.warnings.length ? [h('h3', {}, `Warnings (${report.warnings.length})`), list(report.warnings)] : null);
     const go = await dialog(doc ? `Import ${f.name}` : 'Not imported', body, doc ? [[true, 'Import']] : [], doc ? 'Cancel' : 'Close',
       doc ? h('p', { class: 'note' }, 'It is added to the drawings in this browser and opened; this one stays in the list.') : null);

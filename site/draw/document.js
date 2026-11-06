@@ -62,6 +62,9 @@ export const LABEL_OFFSET = Object.freeze([40, -40]); // px: a new label's text,
 const NEW_RADIUS = 1000; // a new circle's radius: a neutral starting value
 export const MAX_RADIUS = 1e7;
 
+// a bearing as the file writes it: in [0, 360), to 1e-4° (rounding 359.99996 gives 360: written as 0,
+// as the reader would read it, with a warning)
+export const bearingOf = (b) => { const x = +norm360(b).toFixed(4); return x === 360 ? 0 : x || 0; }; // || 0: never −0
 export const isoNow = (now) => new Date(now).toISOString().replace(/\.\d{3}Z$/, 'Z');
 
 // ---- IDs -----------------------------------------------------------------------------------
@@ -260,7 +263,7 @@ export function carry(doc, p, position, bearing = p.bearing) {
   p.bearing = bearing;
   for (const { kind, el, places, turn } of shapes) {
     positionsIn(kind, el).forEach(([o, k], i) => { const [a, d] = places[i]; o[k] = d ? destination(p.position, p.bearing + a, d) : [...p.position]; });
-    if (kind === 'circle') el.bearing = +norm360(p.bearing + turn).toFixed(4);
+    if (kind === 'circle') el.bearing = bearingOf(p.bearing + turn);
   }
 }
 // The elements ids moved as one piece from position `from` to `to`, along the ellipsoid (moveAbout:

@@ -23,7 +23,7 @@
 import { inverse, destination, localFrame, lengthOf } from '../geodesy.js';
 import { norm360 } from '../geo.js';
 import { lineTrace, pointsAlong } from './lines.js';
-import { addPoint, addDot, addLine, addGroup, elements, newId, idsOf, label, remove, setLink, carry, emptyDoc, MAX_RADIUS } from './document.js';
+import { addPoint, addDot, addLine, addGroup, elements, newId, idsOf, label, remove, setLink, carry, emptyDoc, bearingOf, MAX_RADIUS } from './document.js';
 import { BUILT_IN, build, placeCopy, fromLibrary, keyName } from './place.js';
 import { alone } from './clipboard.js';
 
@@ -272,7 +272,7 @@ function templateOf(a, copy = null) {
 // the distribution's copies of tpl made at places, into its Copies group (or the group given): each
 // facing away from what it follows; pointIds, in their order along it
 function place(doc, a, points, tpl, groupId = a.copiesId) {
-  a.pointIds = points.map((pt) => placeCopy(doc, tpl, pt.position, +pt.facing.toFixed(4), groupId).id);
+  a.pointIds = points.map((pt) => placeCopy(doc, tpl, pt.position, bearingOf(pt.facing), groupId).id);
 }
 
 // Distribute along: copies along a line or round a circle (doc is changed: one undo step for the
@@ -310,7 +310,7 @@ export function editDistribution(doc, id, params) {
   const { points } = distribute(doc, along, a);
   const byId = new Map(doc.points.map((n) => [n.id, n]));
   if (same && points.length === a.pointIds.length && a.pointIds.every((id) => byId.has(id))) {
-    a.pointIds.forEach((id, k) => carry(doc, byId.get(id), points[k].position, +points[k].facing.toFixed(4)));
+    a.pointIds.forEach((id, k) => carry(doc, byId.get(id), points[k].position, bearingOf(points[k].facing)));
     return { distribution: a, remade: false };
   }
   const first = byId.get(a.pointIds.find((id) => byId.has(id)));

@@ -8,7 +8,7 @@
 // longitude and latitude: the geometry holds the vertices, "smooth" is the app's). Drawings of another format version are not read. Pure: no map, no DOM.
 
 import { FORMAT, VERSION, KINDS, KIND, SYMBOLS, LEADERS, LABEL_OFFSET, META_D, MAX_RADIUS, MAX_LABEL_OFFSET,
-  emptyDoc, newId, columnsOf, find, targetOf, elements, canHold, holderOf, reading } from './document.js';
+  emptyDoc, newId, columnsOf, find, targetOf, elements, canHold, holderOf, reading, bearingOf } from './document.js';
 import { ID, isObj, fin, oneOf, shown, Skip, time, text, properties, flag, position, angle, look, aperture, readView, VIEW_D, VIEW_DATA_D } from './check.js';
 import { targetPosition, refreshAttached, placeAt, lineTarget } from './attach.js';
 import { settings, connectSettings, DISTRIBUTE_D, CONNECT_D } from './generator.js';
@@ -344,10 +344,10 @@ function feature(kind, el) {
   let geometry;
   if (kind === 'point') {
     geometry = { type: 'Point', coordinates: pos(el.position) };
-    Object.assign(mine, lean({ symbol: el.symbol, bearing: r4(el.bearing) }, { symbol: 'none', bearing: 0 }));
+    Object.assign(mine, lean({ symbol: el.symbol, bearing: bearingOf(el.bearing) }, { symbol: 'none', bearing: 0 }));
   } else if (kind === 'circle') {
     geometry = { type: 'Point', coordinates: pos(el.position) };
-    Object.assign(mine, { radius: Math.min(r3(el.radius), MAX_RADIUS - 0.001) }, lean({ aperture: el.aperture && Math.min(r4(el.aperture), 359.9999), bearing: r4(el.bearing) }, { aperture: null, bearing: 0 }));
+    Object.assign(mine, { radius: Math.min(r3(el.radius), MAX_RADIUS - 0.001) }, lean({ aperture: el.aperture && Math.min(r4(el.aperture), 359.9999), bearing: bearingOf(el.bearing) }, { aperture: null, bearing: 0 }));
   } else if (kind === 'line') {
     // closed: a Polygon, counter-clockwise as RFC 7946 asks; a ring stored clockwise is written
     // reversed, and says so (its names stay in its own order)

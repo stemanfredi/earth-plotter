@@ -1118,3 +1118,14 @@ test('a value made to break text (an object whose toString is not a function) is
   assert.equal(r.report.refused, null);
   warned(r.report, /link from \{"toString":0\} \{"toStri, which/);
 });
+
+test('a bearing just under 360° is kept and written as 0, never 360', () => {
+  const doc = emptyDoc(0), p = addPoint(doc, [14, 40]), c = addCircle(doc, [14.01, 40], { radius: 500, aperture: 60 });
+  c.groupId = p.id; c.bearing = 0; p.bearing = 0.00001;
+  carry(doc, p, p.position, 0); // the point turned back by 1e-5°: its circle at 359.99999°
+  assert.equal(c.bearing, 0);
+  c.bearing = 359.99999;
+  const r = again(doc);
+  assert.equal(r.doc.circles[0].bearing, 0);
+  assert.ok(!r.report.warnings.some((w) => /bearing 360/.test(w)), r.report.warnings.join(' | '));
+});

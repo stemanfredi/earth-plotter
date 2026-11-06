@@ -1057,8 +1057,12 @@ function watchUpdates() {
 // after the page has loaded: its own requests first, the worker's copies of the same files after
 if ('serviceWorker' in navigator) { if (document.readyState === 'complete') watchUpdates(); else window.addEventListener('load', watchUpdates, { once: true }); }
 // a new version taking over (applied here or in another tab): this page reloads, so that it never runs
-// its old scripts with the new version's files. A first install (no controller before) is no new version
-if ('serviceWorker' in navigator && navigator.serviceWorker.controller) navigator.serviceWorker.addEventListener('controllerchange', () => location.reload(), { once: true });
+// its old scripts with the new version's files. A first install (no controller at load) takes the page
+// over once: that one is no new version, the next is
+if ('serviceWorker' in navigator) {
+  let had = !!navigator.serviceWorker.controller;
+  navigator.serviceWorker.addEventListener('controllerchange', () => { if (had) location.reload(); had = true; });
+}
 function reload() {
   if (waiting?.state === 'installed' && navigator.serviceWorker.controller) waiting.postMessage('apply'); // the reload follows the takeover
   else location.reload();

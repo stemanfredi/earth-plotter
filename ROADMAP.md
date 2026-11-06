@@ -103,12 +103,97 @@ would say which.
   OpenFreeMap: the same data, another schema (no sea names), limited capacity.
 - **Place search from Nominatim** instead of Photon: its usage policy rules
   out search as you type.
-- **Tides**: no keyless worldwide source found; NOAA's (US only) refused an
-  automated check.
+- **Tides** (found 2026-11-06, two ways): EOT20 (DGFI-TUM, CC BY 4.0,
+  SEANOE 10.17882/79489), the constituents of a global tide model, 66°S–66°N,
+  built once into a Zarr store beside GEBCO's, so the page predicts the tide
+  for any place and date itself; or Open-Meteo's sea level with tides
+  (Copernicus SMOC, from 2022, ten days ahead; keyless, CORS, free for a
+  site without ads or subscriptions, CC BY 4.0, under 10,000 calls a day per
+  visitor). Both from mean sea level, not chart datum, and weak near the
+  coast. NOAA's (US only) refused an automated check.
 - **A wind forecast**: the wind layer is a satellite observation, a day late;
-  Copernicus Marine has no wind forecast. Another keyless source is needed.
+  Copernicus Marine has no wind forecast. Open-Meteo's forecast API (ECMWF,
+  ICON, GFS; terms as for its tides above) is keyless and CORS, as points,
+  not tiles: a forecast for a point or an area, not a layer.
 - **Magnetic bearings**: bearings are true; magnetic ones need a declination
   model by place and year (WMM).
+
+## Statistics of an area
+
+Pick a point or an area and a period, and read what the layers say about it
+over time: how high the waves are and how often, the calm spells, the
+storms, the seasons, against the normal of the place. Researched 2026-11-06.
+
+What makes it possible: each Copernicus dataset has, beside the store the
+GIS export reads (`timeChunked`: one time over a wide area), a `geoChunked`
+store (decades of a small block of cells), keyless, CORS, in the format
+`site/zarr.js` reads. A probe of the Mediterranean wave hindcast
+(MEDSEA_MULTIYEAR_WAV_006_012: hourly, 4.2 km, 1985 to three months ago, in
+blocks of 4 × 4 cells) read one block's wave height for all 42 years in one
+second, 6.6 MB; direction 9 MB more, period 2 MB. The global hindcast
+(GLOBAL_MULTIYEAR_WAV_001_032: 3-hourly, 0.2°, from 1980) has blocks of
+8 × 4 cells, 1.6° × 0.8°. Cost is by block, not by cell: an area of 50 km in
+the Mediterranean is about nine blocks, 60 MB a variable for the whole
+record. Stores with the same layout: wind (hourly, from satellites, about
+19 years), sea surface temperature (daily, since 1981), the Mediterranean
+and global physics (temperature, salinity, mixed layer, currents, sea
+level: daily and monthly), altimetry, Mediterranean chlorophyll,
+altimeter wave heights (daily, since 2002), the wave forecasts (about five
+years of analysis and nine days ahead), and monthly climatologies (the
+Mediterranean physics one with standard deviations).
+
+Decided 2026-11-06: statistics as **maps**, layers like the others (the
+same menus, colour ranges, legend and time), before any report of its own:
+the least new interface. Steps, each usable alone:
+
+1. **Normals: done** (Ocean data › Normals). Copernicus's own maps, as
+   tiles: each month's mean wave height (Mediterranean 1993–2016, 4.2 km;
+   the world 0.2°), temperature at depth, bottom temperature, salinity,
+   mixed layer and currents (Mediterranean 4.2 km, the world 1/12°), drawn
+   at the calendar month of the map's time; the 99th percentile of wave
+   height averaged over the years (Mediterranean 1993–2019; Iberia, Biscay
+   and Ireland 1980–2023), one map with no time. Left out: the mean wave
+   period of the climatologies (Tm02, not the peak period the Waves layer
+   draws, so its colours would not compare), the Mediterranean's monthly
+   standard deviations, the Black Sea's wave power (a 2023 anomaly).
+2. **Indicator maps built by the project** (parked 2026-11-06), published beside GEBCO's
+   depths and drawn by the page in its own colours, a click giving the
+   cell's values: per month, the share of time below 1, 1.5 and 2 m and
+   the chance of 12 and 24 hours in a row below them; per year, the
+   heights expected once in 10 and 50 years, the mean wave power, the
+   trend. A tool reads the hindcasts' series once (the reader and the
+   statistics below) and writes them; its download is the cost, of the
+   order of 100 GB a region for the wave height, again each year.
+3. **Now against normal**: the forecast's wave height as a percentile of
+   the place's same month ("a one-in-twenty November day"), from 2.
+4. **The water's indicators**: marine heatwave days a year (Hobday's
+   definition), the trend of sea temperature, chlorophyll's season.
+5. **A report of a drawn area** (what 2 cannot say: a period of one's
+   own, a threshold of one's own, the storms with their dates, a wave
+   rose), read in the page from the series; its cost said before reading.
+6. **What does not change**, for a drawn area: its sea surface, its
+   depths by band, how much of them is surveyed (GEBCO's sources),
+   seabed substrate, vessel density, zones, cables and wind farms inside.
+
+Built for 2 and 5, not yet used by the page: `site/series.js` reads a
+record (catalog.js RECORDS) as series from its `geoChunked` store, its
+chunks counted before reading, a few at a time, cancellable, an area
+reduced to its mean, its maximum or its mean direction; `site/stats.js`
+has the statistics as pure functions (spread, months, share below a
+height, calm spells, directions, annual maxima, Gumbel return levels by
+L-moments, storms as events, Sen's trend, wave power).
+
+What it must say every time: the model's cell (4.2 km does not see a
+harbour; cells by the shore have no value), the product and its period,
+the seam where a hindcast gives way to the forecast's analysis, and that
+heights beyond twice the record's length are not estimated. Directions are
+averaged as angles; hours in a row are not independent, so storms are
+counted as events (peaks apart by at least two days).
+
+Also found, for later: Open-Meteo's ERA5 waves from 1940 (0.5°, coarse, the
+oldest record); EMODnet Physics' buoys (ERDDAP, CORS, CC BY) to set the
+model beside an observation near the area; IBTrACS's cyclone tracks (NOAA,
+CSV; licence to read) crossing the area.
 
 ## Drawing
 

@@ -1,5 +1,5 @@
 // The page's frame (drawing-ui.md §1): a bar across the top, and over the map a panel on each side,
-// the left one with tabs (Layers, Elements, Library: each a button in the bar), the right one Properties.
+// the left one with tabs (Layers, Elements, Draw: each a button in the bar), the right one Properties.
 // Each is as wide as dragged at its inner edge (double-click: the default), remembered in this browser. On a phone they are one
 // bottom sheet at a time, as tall as dragged at its grip (dragged down to the bottom: closed). Which tab is open (or none) and whether
 // Properties is on are the user's; Properties shows only while it has something to show (has()). On a phone, while it is off and the

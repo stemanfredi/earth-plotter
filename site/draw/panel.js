@@ -17,8 +17,7 @@ import { norm180, norm360 } from '../geo.js';
 import { fields, choice, select, check } from '../fields.js';
 import { mac, MOD } from '../keys.js';
 import { loadLibrary, itemOf } from './library.js';
-import { createDrawTab, itemNow, itemName } from './drawtab.js';
-import { itemBase } from './place.js';
+import { createDrawTab, drawsNow } from './drawtab.js';
 import { listGrid, forgetCurrent } from './grid.js';
 import { fmtArea, fmtDist, rowsText, plural } from '../format.js';
 import { fileGroup } from './files.js';
@@ -49,11 +48,12 @@ export function drawView(root, ctx) {
 
   drawing.library = loadLibrary();
   const files = fileGroup(drawing, ctx, () => libraryChanged());
-  const tools = createTools(drawing, ctx, { del, fileBtns: files.buttons, drawsNow: () => itemBase(itemName(itemNow(drawing) ?? '')) }); // an item without its folder
+  const tools = createTools(drawing, ctx, { del, fileBtns: files.buttons, drawsNow: () => drawsNow(drawing) });
   const { renderTools } = tools;
   // Draw (drawtab.js), the left panel's third tab: everything there is to draw, the Library's items among it; built only while seen
-  const library = createDrawTab(drawing, ctx.drawTab, { frame: ctx.frame, changed: () => renderTools() });
-  const libraryChanged = () => { renderTools(); library.render(true); };
+  const drawTab = createDrawTab(drawing, ctx.drawTab, { frame: ctx.frame, changed: () => libraryChanged() });
+  // the Library's items changed: the bar, the Draw tab, Properties (a Distribute form's Copy list)
+  const libraryChanged = () => { renderTools(); drawTab.render(true); renderInspector(); };
 
   // ---- the tree (tree.js), its first row the drawing ------------------------------------------
   const tree = createTree(drawing, { facts: fx, drawingPicked: () => { if (NARROW.matches) ctx.frame.setProps(true); } }); // a phone: the drawing's row turns Properties on, showing it
@@ -220,7 +220,7 @@ export function drawView(root, ctx) {
   // every inspector's top (its title, kind · name, in the head): the rule that made it, its name
   const commonTop = (kind, id) => {
     const el = now(id);
-    title = `${kindTitle(kind, el)} · ${shownName(drawing.doc, kind, el, drawing.units())}`;
+    title = `${kindTitle(drawing.doc, kind, el)} · ${shownName(drawing.doc, kind, el, drawing.units())}`;
     return [ruleRow(id)?.row, kind === 'label' ? null : row('Name', textField(id, 'name', 'Name'))]; // a label is its text
   };
   const ruleActs = (id) => ruleRow(id)?.acts ?? [];
@@ -488,7 +488,7 @@ export function drawView(root, ctx) {
     const rows = [], copy = []; // copy: [section, group, name, count, length m, area m², perimeter m]
     const tr = (cls, ...cells) => rows.push({ cls, cells });
     const sel = (text, id) => h('button', { type: 'button', class: 'small link', title: 'Select it', onclick: () => drawing.select([id]) }, text);
-    const fold = (k, folded, text) => h('button', { type: 'button', class: 'small link tfold', 'aria-expanded': String(!folded), title: folded ? 'Show its lines' : 'Fold its lines', onclick: () => { totalsFolded[folded ? 'delete' : 'add'](k); renderInspector(); } }, `${folded ? '▸' : '▾'} ${text}`);
+    const fold = (k, folded, text) => h('button', { type: 'button', class: 'small link tfold', 'aria-expanded': String(!folded), title: folded ? 'Show its lines' : 'Fold its lines', onclick: () => { totalsFolded[folded ? 'delete' : 'add'](k); renderInspector(); } }, text);
     const nameOf = (kind, id) => label(kind, find(doc, id).el);
     const lineRows = [...b.lines.rows].sort((p, q) => (!p.key) - (!q.key) || keyName(p.key).localeCompare(keyName(q.key)));
     const one = lineRows.length === 1 && (!lineRows[0].key || !groupName) && !key; // nothing grouped: no group rows (by a property, the row says "No …")
@@ -623,7 +623,7 @@ export function drawView(root, ctx) {
       if (what === 'tool') { // also after any change of the frame: what has just come into view built
         if (listStale && listSeen()) { listStale = false; tree.render(); }
         if (shows === null && !ctx.props.hidden) renderInspector();
-        library.render();
+        drawTab.render();
         return renderTools();
       }
       if (what === 'draft') return tools.renderTouch();
@@ -646,7 +646,7 @@ export function drawView(root, ctx) {
       renderInspector();
       if (forms.current() && what === 'doc') formPreview(); // the form's preview follows the drawing (an undo, its line edited)
       if (what === 'doc') lines.forgetGone(drawing.doc); // a line gone: its profile too
-      library.render(); // only if what it shows changed (the units)
+      drawTab.render(); // only if what it shows changed (the units)
       renderTools();
     },
     importFile: (f) => files.importFile(f), // a file dropped on the map (app.js)

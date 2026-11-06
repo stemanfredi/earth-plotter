@@ -39,7 +39,7 @@ const figure = (v) => +v.toFixed(v < 10 ? 1 : 0);
 const short = (m, units) => (m < 1000 ? `${figure(m)} m` : units === 'nm' ? `${figure(m / NM)} NM` : `${figure(m / 1000)} km`);
 // what a point item measures: its largest circle's radius, else its outline's extent, the larger side first
 // (as placed, facing north), in the larger's unit
-export function sizeOf(x, units) {
+function sizeOf(x, units) {
   if (itemKind(x) !== 'point') return ''; // a line's, an area's, a label's: a look, no size
   const { circles, box } = layout(x);
   if (circles.length) return `r ${short(Math.max(...circles.map((c) => c.r)), units)}`;
@@ -50,7 +50,7 @@ export function sizeOf(x, units) {
 
 // An item's picture (24 × 24, as the icons): its shapes shown, in their own colours, fitted; a point
 // alone its symbol
-export function thumbOf(x) {
+function thumbOf(x) {
   const kind = itemKind(x);
   if (kind !== 'point') return lookThumb(x, kind);
   const { symbol, circles, lines, box } = layout(x);
@@ -77,19 +77,21 @@ export function thumbOf(x) {
 // closed as it ends), a label, else a shape (a built-in kind or a point item: the Shape tool's)
 const BASIC = { 'tool:point': ['point', null, 'Point', KIND_ICON.point], 'tool:line': ['line', 'line', 'Line', KIND_ICON.line],
   'tool:area': ['line', 'area', 'Area', KIND_ICON.polygon], 'tool:label': ['label', 'label', 'Label', KIND_ICON.label] };
-export function itemTool(v, library) {
+function itemTool(v, library) {
   if (BASIC[v]) return BASIC[v].slice(0, 2);
   const mine = itemFor(library, v);
   return [mine ? TOOL_OF[itemKind(mine)] : 'shape', v];
 }
 // the item being drawn now (from the tool on and its variant), or null
-export function itemNow(drawing) {
+function itemNow(drawing) {
   const t = drawing.button, v = drawing.variant[t];
   if (t === 'shape' || keyName(v) !== null) return v;
   return { point: 'tool:point', label: 'tool:label', line: v === 'area' ? 'tool:area' : 'tool:line' }[t] ?? null;
 }
 // what an item is called: one of the user's by its full name ("Folder / Name"), a built-in by its own
-export const itemName = (v) => keyName(v) ?? BASIC[v]?.[2] ?? builtInName(v) ?? v;
+const itemName = (v) => keyName(v) ?? BASIC[v]?.[2] ?? builtInName(v) ?? v;
+// what is being drawn now, as the bar says it: an item without its folder
+export const drawsNow = (drawing) => itemBase(itemName(itemNow(drawing) ?? ''));
 // a line's, an area's or a label's picture: a stroke as it draws one, a swatch, "Aa" in its colour
 const stroke = (st) => ({ stroke: st.stroke.color, 'stroke-opacity': st.stroke.opacity, 'stroke-width': Math.min(Math.max(st.stroke.width, 1), 4),
   ...(st.stroke.dash === 'dashed' ? { 'stroke-dasharray': '4 2.5' } : st.stroke.dash === 'dotted' ? { 'stroke-dasharray': '0.1 3', 'stroke-linecap': 'round' } : {}) });
@@ -114,7 +116,7 @@ const BUILT_INS = [...Object.keys(BASIC), ...BUILT_IN]; // the Built-in folder, 
 const FOLDED = 'earthplotter.draw.folded'; // the folders folded, kept in this browser
 
 // drawing (drawing.js); root: the tab's body; frame (frame.js: a phone's sheet folded while drawing);
-// changed(): the user's items changed. Returns { render(force) }.
+// changed(): the user's items changed (the tab drawn again with the rest). Returns { render(force) }.
 export function createDrawTab(drawing, root, { frame, changed }) {
   let filter = '', sig = '', folding = false; // folding: a phone's sheet folded away for drawing, back when the tool goes off
   const kept = store.json(FOLDED);
@@ -134,11 +136,12 @@ export function createDrawTab(drawing, root, { frame, changed }) {
     if (NARROW.matches && frame.tab === 'draw') { folding = true; frame.toggleTab('draw'); }
   };
 
-  // a folder's head: its fold, its name, how many it holds
+  // a folder's head: its fold (the one stop for the keyboard: its name, open or not), its name (a
+  // pointer's larger target for the same), how many it holds
   const head = (id, name, n, open) => h('li', { class: 'drow dgroup' },
-    h('button', { type: 'button', class: 'dfold', 'aria-expanded': String(open), 'aria-label': `Show what ${name} holds`, onclick: () => fold(id, open) }),
+    h('button', { type: 'button', class: 'dfold', 'aria-expanded': String(open), 'aria-label': name, 'data-key': `fold:${id}`, onclick: () => fold(id, open) }),
     h('span', { class: 'kind' }, icon(...KIND_ICON.group)),
-    h('button', { type: 'button', class: 'dname', onclick: () => fold(id, open) }, name),
+    h('button', { type: 'button', class: 'dname', tabindex: '-1', 'aria-hidden': 'true', onclick: () => fold(id, open) }, name),
     h('span', { class: 'val' }, String(n)));
   // an item's row: its picture, its name, its size; pressed while it is being drawn; one placed in a
   // click (a point, a shape) dragged onto the map, placed there
@@ -194,9 +197,7 @@ export function createDrawTab(drawing, root, { frame, changed }) {
       if (a === 'rename') drawing.setLibrary(drawing.library.map((p) => (p === x ? { ...p, name: to } : p)), [name, to]);
       else drawing.setLibrary([...drawing.library, { ...x, name: to }]);
     }
-    if (!a) return;
-    changed();
-    render(true);
+    if (a) changed();
   }
 
   // a row dropped on the map: its kind placed there (its default size; an item of the user's its own), selected
@@ -210,7 +211,6 @@ export function createDrawTab(drawing, root, { frame, changed }) {
     let el;
     if (!drawing.change((doc) => { el = placeKind(doc, [p.lng, p.lat], itemTool(v, drawing.library)[1], drawing.library); })) return;
     drawing.select([el.id]);
-    changed();
   });
 
   return { render };

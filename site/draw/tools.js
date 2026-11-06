@@ -10,7 +10,7 @@ import { icon, SELECT_ICON, BOX_ICON, UI_ICON } from '../icons.js';
 
 // drawing (drawing.js); ctx: { bar, frame, props, foot (the map's foot's left stack: the touch row goes
 // there), dock (a phone's bar along the bottom) }; del(ids): delete, asked first (the touch row's);
-// fileBtns: the bar's file group (files.js); drawsNow(): the name of what is being drawn (library.js),
+// fileBtns: the bar's file group (files.js); drawsNow(): the name of what is being drawn (drawtab.js),
 // or ''. Returns { press, renderTools, renderTouch }.
 export function createTools(drawing, ctx, { del, fileBtns, drawsNow }) {
   // a tool's key: on (with what it drew last), or off

@@ -255,7 +255,7 @@ export function setLook(x, path, v) {
 export const lookField = (l, path) => path.split('.').reduce((o, k) => o?.[k], l);
 // whether an element is drawn: shown itself, and every group it is in too (a hidden group hides
 // everything in it)
-export const isShown = (doc, el) => !!el.visible && groupsOf(doc, el).every((g) => g.visible !== false);
+export const isShown = (doc, el, gs = groupsOf(doc, el)) => !!el.visible && gs.every((g) => g.visible !== false); // gs: its groups, when already at hand
 
 // ---- making elements (they change doc in place; the caller keeps the undo snapshot) -----------
 

@@ -52,8 +52,7 @@ export function paste(doc, clip, mv, keep = () => false) {
   const copied = new Map(clip.items.map((x) => [x.el.id, x]));
   const same = (from, to) => { const x = copied.get(from[0]), q = x?.kind === 'label' && targetPosition(doc, to); return !!q && samePosition(q, x.el.position); };
   for (const { from, to } of clip.links) {
-    const keep = ids.has(to.element) || same(from, to);
-    if (keep) doc.links.push({ from: [ids.get(from[0]), from[1]], to: { ...to, element: ids.get(to.element) ?? to.element } });
+    if (ids.has(to.element) || same(from, to)) doc.links.push({ from: [ids.get(from[0]), from[1]], to: { ...to, element: ids.get(to.element) ?? to.element } });
   }
   return made;
 }

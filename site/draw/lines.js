@@ -168,7 +168,7 @@ function totalsIn(doc) {
   const groups = new Map(), all = bucket();
   const into = (key) => { if (!groups.has(key)) groups.set(key, bucket()); return groups.get(key); };
   const each = (el, fn) => {
-    const gs = groupsOf(doc, el), hidden = !el.visible || gs.some((g) => g.visible === false); // isShown, from the groups at hand
+    const gs = groupsOf(doc, el), hidden = !isShown(doc, el, gs);
     for (const b of [...(gs.length ? gs.map((g) => g.id) : ['']).map(into), all]) { fn(b); if (hidden) b.hidden = true; }
   };
   for (const s of doc.lines) {

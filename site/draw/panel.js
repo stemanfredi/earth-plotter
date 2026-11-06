@@ -3,7 +3,7 @@
 // selected, the drawing itself) and edits it with fields. Fields apply on Enter or when they lose
 // focus, one undo step each.
 
-import { h, typing, morph, animate, NARROW } from '../dom.js';
+import { h, typing, morph, keepFocus, animate, NARROW } from '../dom.js';
 import { ask, askText, note } from '../menu.js';
 import { FINGER } from './layers.js';
 import { find, elements, groupsOf, membersOf, leavesOf, canHold, label, KIND, lookOf, lookField, setLook, LOOK_FIELDS, SYMBOLS, LABEL_OFFSET, makeGroup, setGroup, moveStep, MAX_RADIUS, MAX_OFFSET, STROKE_WIDTH, TEXT_SIZE, SCALE, linkFrom, setLink, carry, holderOf, ringOf, refit } from './document.js';
@@ -162,7 +162,7 @@ export function drawView(root, ctx) {
   // after the title (Copy, +). data-key: its state, so that morph never keeps a head whose click
   // would toggle from the state it was made in
   const foldHead = (title, open, toggle, ...extras) => h('h3', { class: open ? 'folds open' : 'folds', 'data-key': open ? 'open' : 'folded', onclick: (e) => { if (!e.target.closest('.hbtns, .hfold')) toggle(); } },
-    h('button', { type: 'button', class: 'hfold', 'aria-expanded': String(open), 'aria-label': `${open ? 'Fold' : 'Open'} ${title}`, onclick: toggle }, title),
+    h('button', { type: 'button', class: 'hfold', 'aria-expanded': String(open), onclick: toggle }, title), // named by its title, open or not
     h('span', { class: 'hbtns' }, ...extras.flat().filter(Boolean)));
   // Any other section: open to start with, folded by hand (by its key, this session: Look folded stays
   // folded from one element to the next); extras (Copy) and body shown while open; tip: its head's title
@@ -525,8 +525,10 @@ export function drawView(root, ctx) {
       : xs.length > 1 ? severalInspector(xs)
         : { point: pointInspector, circle: circleInspector, line: lineInspector, group: groupInspector, label: labelInspector }[xs[0].kind](xs[0].el.id);
     const top = inspector.scrollTop;
-    if (what === shows) morph(inspector, h('div', {}, kids.flat().filter(Boolean)));
-    else inspector.replaceChildren(...kids.flat().filter(Boolean));
+    keepFocus(inspector, () => { // a section's fold, a button pressed from the keyboard: the focus kept on it
+      if (what === shows) morph(inspector, h('div', {}, kids.flat().filter(Boolean)));
+      else inspector.replaceChildren(...kids.flat().filter(Boolean));
+    });
     shows = what;
     inspector.scrollTop = top;
     renderHead(xs);

@@ -3,7 +3,7 @@
 // (Shift: a range; Ctrl/⌘: add or remove), hovered on the map, renamed (a double-click, F2), dragged
 // into a group or before one of their kind, shown or hidden by their eye.
 
-import { h, editInPlace } from '../dom.js';
+import { h, editInPlace, keepFocus } from '../dom.js';
 import { find, elements, groupsOf, membersOf, holderOf, label, KIND, setGroup, moveBefore, isShown, canHold, isChosen } from './document.js';
 import { labelText } from './labels.js';
 import { lineTrace } from './lines.js';
@@ -141,7 +141,7 @@ export function createTree(drawing, { facts, drawingPicked = () => {} }) {
     for (const c of [...drawing.doc.circles, ...drawing.doc.lines]) if (c.groupId) held.set(c.groupId, (held.get(c.groupId) ?? 0) + 1);
     const rows = shown();
     filterRow.hidden = drawElements().length <= FILTER_FROM && !filter; // nothing to show above the list: no room taken
-    list.replaceChildren(...rows.map(rowOf));
+    keepFocus(list, () => list.replaceChildren(...rows.map(rowOf))); // a fold or an eye pressed from the keyboard: the focus stays on it
     eyeAll.render();
     rootName.textContent = drawing.doc.meta.title || 'Untitled drawing';
     rootVal.textContent = plural(drawElements().filter((x) => x.kind !== 'group').length, 'element');

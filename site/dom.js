@@ -48,6 +48,17 @@ const NAMES = ['type', 'role', 'aria-label', 'data-unit', 'data-r', 'data-id', '
 const sameAs = (a, b) => a.nodeType === b.nodeType && (a.nodeType !== 1 || (a.tagName === b.tagName && NAMES.every((k) => a.getAttribute(k) === b.getAttribute(k))
   && (!(button(a) || button(b)) || (a.className === b.className && a.textContent === b.textContent))));
 const button = (el) => el.acts && (el.tagName === 'BUTTON' || el.getAttribute('role') === 'button');
+// fn() builds container's content again: the keyboard focus, if it was on a control there that went
+// with it, put back on the control that took its place (the same row's data-id, the same name, the
+// same tag), not left on the page's body. Only a keyboard's focus (:focus-visible): a button clicked
+// lets it go, so that the single keys and Enter are the map's again
+export function keepFocus(container, fn) {
+  const a = document.activeElement, was = a && a !== container && container.contains(a) && a.matches(':focus-visible') ? focusSig(a) : null;
+  fn();
+  if (!was || container.contains(document.activeElement)) return;
+  [...container.querySelectorAll('button, input, select, textarea')].find((x) => focusSig(x) === was)?.focus({ preventScroll: true });
+}
+const focusSig = (el) => [el.tagName, el.closest('[data-id]')?.dataset.id ?? '', el.getAttribute('aria-label') ?? el.textContent.trim()].join('|');
 // A name edited in place: an input where el was, focused; Enter or leaving it applies, Esc does not.
 // apply(value), once: the text typed, or null when cancelled (the caller draws the row again).
 export function editInPlace(el, value, attrs, apply) {

@@ -4,7 +4,7 @@
 // size; a filter. A row clicked: drawing it (the tool that draws it on; again: off); one placed in a
 // click dragged onto the map: placed there. An item's ⋯: rename (its folder too), duplicate, delete.
 
-import { h, svg, store, NARROW } from '../dom.js';
+import { h, svg, store, keepFocus, NARROW } from '../dom.js';
 import { ask, askText, note } from '../menu.js';
 import { BUILT_IN, builtInName, placeKind, itemBase, itemKind, itemFor, itemKey, keyName, TOOL_OF } from './place.js';
 import { emptyDoc, styleOf, lookOf } from './document.js';
@@ -180,7 +180,7 @@ export function createDrawTab(drawing, root, { frame, changed }) {
     }
     if (!drawing.library.length && !f) rows.push(h('li', { class: 'empty' }, 'Add your own from an element\'s Properties.'));
     else if (!rows.length) rows.push(h('li', { class: 'empty' }, 'Nothing matches the filter.'));
-    list.replaceChildren(...rows);
+    keepFocus(list, () => list.replaceChildren(...rows)); // a row or a fold pressed from the keyboard: the focus stays on it
   }
 
   // an item's ⋯: renamed (its folder with it), duplicated, deleted

@@ -10,7 +10,7 @@
 
 import { inverse, destination } from '../geodesy.js';
 import { mercator, samePosition } from '../geo.js';
-import { find, addDot, centroid, positionsIn, targetOf, setLink, linkFrom, idsOf, newId, nextName, fewestPlaces, holderOf } from './document.js';
+import { find, addDot, centroid, positionsIn, targetOf, setLink, linkFrom, takenIds, newId, nextName, fewestPlaces, holderOf } from './document.js';
 import { lineTrace, pointsAlong, nearestAlong } from './lines.js';
 
 // the position f (0–1) along the geodesic a → b
@@ -129,7 +129,7 @@ export function splitLine(doc, lineId, index) {
     return null;
   }
   // what the vertex is on already (a point, a shape's corner), else a dot made there: both halves on it
-  const taken = idsOf(doc), on = linkFrom(doc, lineId, index)?.to, at = on ? targetOf(on) : { element: addDot(doc, s.points[index], s.names[index], taken).id };
+  const taken = takenIds(doc), on = linkFrom(doc, lineId, index)?.to, at = on ? targetOf(on) : { element: addDot(doc, s.points[index], s.names[index], taken).id };
   const rest = { ...structuredClone(s), id: newId(doc, taken), name: nextName(doc, 'line'), points: s.points.slice(index), names: ['', ...s.names.slice(index + 1)] };
   s.points = s.points.slice(0, index + 1);
   s.names = [...s.names.slice(0, index), on ? s.names[index] : '']; // the vertex's name: the dot made takes it, else the first half's end keeps it

@@ -76,8 +76,21 @@ export function idsOf(doc) {
   for (const x of doc.rules) ids.add(x.id);
   return ids;
 }
+// While a change is made (making: store.js change, around every edit): the IDs in use read once and
+// kept as each new one is taken, and each name base's last number given kept, so that making n elements
+// (a paste, Distribute along, Connect) is not n reads of every element
+let MAKING = null;
+export function making(doc, fn) {
+  if (MAKING?.doc === doc) return fn();
+  const prev = MAKING;
+  MAKING = { doc, taken: null, last: new Map() };
+  try { return fn(); } finally { MAKING = prev; }
+}
+const makingOf = (doc) => (MAKING?.doc === doc ? MAKING : null);
+// the IDs in use (idsOf), as a set to take new ones from: the same set while a change is made
+export const takenIds = (doc) => { const m = makingOf(doc); return m ? (m.taken ??= idsOf(doc)) : idsOf(doc); };
 // a new random 8-character ID, not in use (taken: the set of IDs in use, updated)
-export function newId(doc, taken = idsOf(doc)) {
+export function newId(doc, taken = takenIds(doc)) {
   const abc = 'abcdefghijklmnopqrstuvwxyz0123456789';
   for (;;) {
     const id = [...crypto.getRandomValues(new Uint8Array(8))].map((b) => abc[b % 36]).join('');
@@ -150,9 +163,15 @@ export function label(kind, el) {
 // "Point 4": the next free number among the kind's names (base: another word than the kind's); a bare
 // "Base" counts as 1
 export function nextName(doc, kind, base = KIND[kind].name) {
-  const re = new RegExp(`^${base.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?: (\\d+))?$`);
-  const used = doc[KIND[kind].list].map((e) => re.exec(e.name)).filter(Boolean).map((m) => (m[1] ? +m[1] : 1));
-  return `${base} ${used.length ? Math.max(...used) + 1 : 1}`;
+  const m = makingOf(doc), key = `${kind} ${base}`;
+  let n = m?.last.get(key);
+  if (n === undefined) { // the highest number in use (a loop: the kind's elements can be more than Math.max(...) takes)
+    const re = new RegExp(`^${base.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?: (\\d+))?$`);
+    n = 0;
+    for (const e of doc[KIND[kind].list]) { const x = re.exec(e.name); if (x) n = Math.max(n, x[1] ? +x[1] : 1); }
+  }
+  m?.last.set(key, n + 1);
+  return `${base} ${n + 1}`;
 }
 // what holds an element: its group, or (a shape) its point
 const groupOf = (doc, el) => {
@@ -245,16 +264,16 @@ export function touch(doc, now = Date.now()) { doc.modified = isoNow(now); }
 const base = (doc, kind, taken, name = nextName(doc, kind)) => ({ id: newId(doc, taken), name, properties: [], groupId: null, visible: true, ...(kind === 'group' ? {} : { look: {} }) }); // a group has no look: its members' own
 // A point at position: a diamond unless opts say otherwise; opts set its other fields ({ symbol,
 // name, ... }).
-export function addPoint(doc, position, opts = {}, taken = idsOf(doc)) {
+export function addPoint(doc, position, opts = {}, taken = takenIds(doc)) {
   const p = { ...base(doc, 'point', taken), position: [...position], bearing: 0, symbol: 'diamond', guide: false, ...opts };
   doc.points.push(p);
   return p;
 }
 // a small dot: where lines meet (a split, a junction: named, else the next "Point n"), a hub
-export const addDot = (doc, position, name = '', taken = idsOf(doc)) => addPoint(doc, position, { symbol: 'dot', ...(name ? { name } : {}) }, taken);
+export const addDot = (doc, position, name = '', taken = takenIds(doc)) => addPoint(doc, position, { symbol: 'dot', ...(name ? { name } : {}) }, taken);
 // A circle about position (aperture: a sector that wide, centred on its bearing), of the default
 // radius unless opts say otherwise
-export function addCircle(doc, position, opts = {}, taken = idsOf(doc)) {
+export function addCircle(doc, position, opts = {}, taken = takenIds(doc)) {
   const c = { ...base(doc, 'circle', taken, nextName(doc, 'circle', opts.aperture ? 'Sector' : 'Circle')), position: [...position], radius: NEW_RADIUS, aperture: null, bearing: 0, guide: false, ...opts };
   doc.circles.push(c);
   return c;
@@ -405,7 +424,7 @@ export function makeGroup(doc, ids) {
 }
 // a new group, named (else the next "Group n"), in the group parent (null: at the top)
 export function addGroup(doc, name, parent = null) {
-  const g = { ...base(doc, 'group', idsOf(doc), name), groupId: parent };
+  const g = { ...base(doc, 'group', undefined, name), groupId: parent };
   doc.groups.push(g);
   return g;
 }

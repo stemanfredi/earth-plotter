@@ -5,7 +5,7 @@
 // elements as the document does, in this page, so they paste into another drawing opened in it too.
 // Pure.
 
-import { leavesOf, positionsIn, newId, idsOf, KIND, nextName, emptyDoc, carry } from './document.js';
+import { leavesOf, positionsIn, newId, takenIds, KIND, nextName, emptyDoc, carry } from './document.js';
 import { targetPosition } from './attach.js';
 import { samePosition } from '../geo.js';
 import { extentOf } from './features.js';
@@ -32,7 +32,7 @@ const nameOn = (doc, kind, base) => (base ? nextName(doc, kind, base) : '');
 // The clipboard pasted into doc, each position moved by mv(position): the new elements, in order.
 // Each gets a numbered name, but those whose kind keep(kind) says: their names as copied.
 export function paste(doc, clip, mv, keep = () => false) {
-  const taken = idsOf(doc), ids = new Map(), groups = new Set(doc.groups.map((g) => g.id));
+  const taken = takenIds(doc), ids = new Map(), groups = new Set(doc.groups.map((g) => g.id));
   const points = new Set(clip.items.filter((x) => x.kind === 'point').map((x) => x.el.id)); // each carried, its shapes with it (below)
   for (const { el } of clip.items) ids.set(el.id, newId(doc, taken));
   const made = [];

@@ -142,3 +142,14 @@ test('undo while a change is previewed (a colour being picked): the preview drop
   assert.equal(s.doc.points.length, 2);
   assert.ok(!s.doc.points.some((p) => p.name === 'Previewed'), 'the preview not brought back by redo');
 });
+
+test('many made in one change: names numbered on from the highest, IDs never twice', () => {
+  const s = store();
+  s.change((doc) => { addPoint(doc, [0, 0], { name: 'Point 7' }); });
+  s.change((doc) => { for (let i = 0; i < 3; i++) addPoint(doc, [i, 1]); });
+  assert.deepEqual(s.doc.points.map((p) => p.name), ['Point 7', 'Point 8', 'Point 9', 'Point 10']);
+  s.change((doc) => { for (let i = 0; i < 500; i++) addPoint(doc, [i, 2]); });
+  assert.equal(new Set(s.doc.points.map((p) => p.id)).size, s.doc.points.length);
+  s.change((doc) => { addPoint(doc, [0, 3]); });
+  assert.equal(s.doc.points.at(-1).name, 'Point 511', 'a later change reads the names again');
+});

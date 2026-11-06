@@ -3,7 +3,7 @@
 // DOM (the tests run it in Node). The map's side (drawing.js) extends it and is told of each change:
 // changed() (the document), selectionChanged(), hoverChanged().
 
-import { emptyDoc, touch, find, elements, remove, reading } from './document.js';
+import { emptyDoc, touch, find, elements, remove, reading, making } from './document.js';
 import { refreshAttached } from './attach.js';
 import { pruneRules } from './generator.js';
 
@@ -60,7 +60,8 @@ export class DrawStore {
   change(fn) {
     const before = this.pending ?? JSON.stringify(this.doc);
     this.pending = null;
-    try { fn(this.doc); settleGeometry(this.doc); } catch (e) { this.doc = JSON.parse(before); this.settle(); throw e; }
+    // making: the IDs in use and the names' numbers counted once, however many elements the change makes
+    try { making(this.doc, () => fn(this.doc)); settleGeometry(this.doc); } catch (e) { this.doc = JSON.parse(before); this.settle(); throw e; }
     if (JSON.stringify(this.doc) === before) return false;
     touch(this.doc);
     this.undos.push(before);

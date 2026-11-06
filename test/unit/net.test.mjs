@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { lru } from '../../site/net.js';
+import { lru, fetchOk, fetchBytes } from '../../site/net.js';
 
 test('lru: a promise kept per key, the least recently used forgotten past max; peek is not a use', async () => {
   let made = 0;
@@ -73,4 +73,16 @@ test('lru with maxAge: a refresh that fails keeps the one kept, and asks again a
     now += 36e5; fail = false;
     assert.equal(await get('a', make), 'v3', 'an hour later: asked again');
   } finally { Date.now = real; }
+});
+
+test('fetchOk and fetchBytes: every request gets a deadline, the caller\'s signal kept', async (t) => {
+  const seen = [];
+  t.mock.method(globalThis, 'fetch', async (url, init) => { seen.push(init.signal); return new Response('x'); });
+  const mine = new AbortController();
+  await fetchOk('https://example.org/a', { signal: mine.signal });
+  await fetchBytes('https://example.org/b');
+  assert.ok(seen.every((s) => s instanceof AbortSignal && !s.aborted), 'a signal on each');
+  mine.abort();
+  assert.ok(seen[0].aborted, 'the caller\'s cancel still reaches the request');
+  assert.ok(!seen[1].aborted);
 });

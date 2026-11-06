@@ -20,7 +20,14 @@ export async function fetchInto(area, url, init = {}) {
 // the area every fetch below goes into: set in a clipping worker saving one (clip-worker.js)
 let area = null;
 export const fetchAllInto = (a) => { area = a; };
-const get = (url, init = {}) => (area ? fetchInto(area, url, init) : fetch(url, { ...FETCH, ...init }));
+// A request that does not end within a minute is given up (an error, so that an lru forgets it and
+// the next ask tries again): a provider that hangs, rather than failing, would otherwise hold every
+// tile of its layer, the time line's range and an export until the browser gives up, minutes later.
+// A minute: a few MB (a Zarr chunk) on a slow connection still arrive. The caller's signal kept.
+export const TIMEOUT_MS = 60e3;
+const timed = (init) => (typeof AbortSignal.any === 'function' && typeof AbortSignal.timeout === 'function'
+  ? { ...init, signal: AbortSignal.any([init.signal, AbortSignal.timeout(TIMEOUT_MS)].filter(Boolean)) } : init); // an older browser: as before
+const get = (url, init = {}) => (area ? fetchInto(area, url, timed(init)) : fetch(url, { ...FETCH, ...timed(init) }));
 
 // a fetch that throws on any status but 2xx (init: on top of FETCH: a signal)
 export async function fetchOk(url, init = {}) {

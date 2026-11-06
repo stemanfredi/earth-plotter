@@ -481,7 +481,7 @@ function classesOf(urls) {
     const all = (await Promise.all(urls.map((url) => fetchOk(url).then((r) => r.json()).then(wmsClasses)))).flat();
     const byLabel = new Map();
     for (const c of all) {
-      const label = CLASS_LABELS[c.label] || c.label, had = byLabel.get(label);
+      const label = (Object.hasOwn(CLASS_LABELS, c.label) && CLASS_LABELS[c.label]) || c.label, had = byLabel.get(label);
       if (!had) byLabel.set(label, { ...c, label }); else if (c.icon && !had.icon) had.icon = c.icon;
     }
     return Promise.all([...byLabel.values()].map(async ({ icon, ...c }) => ({ ...c, ...(icon && { image: await iconOf(icon).catch(() => undefined) }) })));

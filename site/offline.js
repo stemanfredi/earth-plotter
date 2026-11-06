@@ -243,6 +243,14 @@ const zoomOk = (z) => Number.isInteger(z) && z >= 0 && z <= TOP_MAX;
 export const isAreaHead = (a) => a?.format === FORMAT && a.version === 1 && Array.isArray(a.files) && typeof a.saved === 'string' && !Number.isNaN(Date.parse(a.saved))
   && Array.isArray(a.bounds) && a.bounds.length === 4 && a.bounds.every(Number.isFinite) && a.bounds[0] < a.bounds[2] && a.bounds[1] < a.bounds[3]
   && zoomOk(a.from) && zoomOk(a.top) && a.from <= a.top && a.files.every((f) => isKeptFile(f?.url));
+// the base map's description as a file has it: its tiles on the provider's own host (the map's
+// workers fetch what it names, and the page's address policy does not reach them)
+export const namesOwnTiles = (bytes) => {
+  try {
+    const tiles = JSON.parse(new TextDecoder().decode(bytes))?.tiles;
+    return Array.isArray(tiles) && tiles.length > 0 && tiles.every((t) => typeof t === 'string' && new URL(t).origin === new URL(HOSTS.openfreemap).origin);
+  } catch { return false; }
+};
 // a file of areaFile's opened: a new area of what it holds; the same area opened before (saved at
 // the same time, of the same place) replaced. Resolves to its manifest; throws on a file that is
 // not one, or holds nothing of the base map
@@ -258,6 +266,7 @@ async function openAreaFile(file) {
       const read = files.get(f?.name);
       if (!read) continue;
       const data = await read(); // one file at a time: the whole area is never in memory
+      if (f.url === OMT_TILEJSON && !namesOwnTiles(data)) throw new Error('its base map description names tiles elsewhere');
       await cache.put(f.url, new Response(data, { headers: f.type ? { 'content-type': String(f.type) } : {} }));
       bytes += data.length;
       if (isBaseTile(f.url)) tiles++;

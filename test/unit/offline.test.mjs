@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { tilesIn, baseTiles, fromZoom, areaOf, isAreaHead, isKeptFile, areaFile, BASE_TILES, TOP_MAX, PACK, MANIFEST_FILE } from '../../site/offline.js';
+import { tilesIn, baseTiles, fromZoom, areaOf, isAreaHead, isKeptFile, areaFile, namesOwnTiles, BASE_TILES, TOP_MAX, PACK, MANIFEST_FILE } from '../../site/offline.js';
 import { unzip } from '../../site/zip.js';
 
 test('tilesIn: the tiles an area covers at a zoom, a margin of tiles more, clamped to the world', () => {
@@ -48,6 +48,14 @@ test('isKeptFile: an area file carries only what saveArea keeps, on the saved ho
   for (const url of [undefined, 'https://example.com/1/2/3.png', 'https://tiles.openfreemap.org/planet/x.js', 'https://tiles.openfreemap.org/styles/liberty',
     'https://s3.amazonaws.com/elevation-tiles-prod/../other/1/2/3.png', 'https://s3.amazonaws.com/elevation-tiles-prod/terrarium/1/2/3.png?x=1',
     'https://geodata.earthplotter.org/gebco-2026/elevation.zarr/.zattrs']) assert.ok(!isKeptFile(url), url);
+});
+
+test('namesOwnTiles: an area file\'s base map description opened only when its tiles are OpenFreeMap\'s', () => {
+  const b = (j) => new TextEncoder().encode(typeof j === 'string' ? j : JSON.stringify(j));
+  assert.ok(namesOwnTiles(b({ tiles: ['https://tiles.openfreemap.org/planet/20261025_080012_pt/{z}/{x}/{y}.pbf'] })));
+  assert.ok(!namesOwnTiles(b({ tiles: ['https://example.com/{z}/{x}/{y}.pbf'] })));
+  assert.ok(!namesOwnTiles(b({ tiles: ['https://tiles.openfreemap.org/a/{z}/{x}/{y}.pbf', 'https://example.com/{z}/{x}/{y}.pbf'] })));
+  assert.ok(!namesOwnTiles(b({ tiles: [] })) && !namesOwnTiles(b({})) && !namesOwnTiles(b('not json')) && !namesOwnTiles(b({ tiles: [7] })));
 });
 
 test('areaOf: the view\'s bounds in the world, a centre beyond ±180° (a hand-edited link) moved by whole turns', () => {

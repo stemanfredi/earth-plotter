@@ -48,7 +48,7 @@ test('footprint: counter-clockwise ring, bbox west > east across the antimeridia
 test('stacItem: one provider per source, licence-less helpers left out', () => {
   const osm = { src: 'OpenStreetMap via OpenFreeMap', lic: 'ODbL', url: 'https://openfreemap.org' };
   const item = stacItem({
-    id: 'chart-x', when: new Date('2026-10-20T12:00:00Z'), corners: [[10, 2], [12, 2], [12, 1], [10, 1]], zoom: 9.123, bearing: 0,
+    id: 'earthplotter-x', when: new Date('2026-10-20T12:00:00Z'), corners: [[10, 2], [12, 2], [12, 1], [10, 1]], zoom: 9.123, bearing: 0,
     layers: [{ id: 'chart', label: 'Chart', info: osm }, { id: 'roads', label: 'Roads', info: osm }, { id: 'graticule', label: 'Graticule', info: { src: 'Computed', lic: '—' } }, { id: 'gibs', label: 'NASA daily', variant: 'SST', date: '2026-10-18', info: { src: 'NASA', lic: 'open' } }, { id: 'relief', label: 'Relief', info: { src: 'Hillshade', lic: 'As DEM' } }],
     attribution: 'OpenStreetMap', link: 'https://example.org/#v=9/1/1/0', assets: { map: { href: './map.png', roles: ['visual'] } },
   });
@@ -56,17 +56,17 @@ test('stacItem: one provider per source, licence-less helpers left out', () => {
   assert.equal(item.stac_version, '1.1.0');
   assert.equal(item.properties.datetime, '2026-10-20T12:00:00.000Z');
   assert.deepEqual(item.properties.providers.map((p) => `${p.name} ${p.roles}`), ['OpenStreetMap via OpenFreeMap producer', 'NASA producer', 'Hillshade processor']);
-  assert.deepEqual(item.properties['chart:layers'][3], { id: 'gibs', title: 'NASA daily', variant: 'SST', date: '2026-10-18' });
-  assert.equal(item.properties['chart:zoom'], 9.12);
+  assert.deepEqual(item.properties['earthplotter:layers'][3], { id: 'gibs', title: 'NASA daily', variant: 'SST', date: '2026-10-18' });
+  assert.equal(item.properties['earthplotter:zoom'], 9.12);
   assert.equal(item.links[0].rel, 'via');
 });
 
 test('stacItem: datetime is the data\'s time (an hour, or a UTC day with its bounds), created the export\'s', () => {
-  const base = { id: 'chart-x', when: new Date('2026-10-20T12:34:00Z'), corners: [[10, 2], [12, 2], [12, 1], [10, 1]], zoom: 6, bearing: 0, attribution: '', assets: {} };
+  const base = { id: 'earthplotter-x', when: new Date('2026-10-20T12:34:00Z'), corners: [[10, 2], [12, 2], [12, 1], [10, 1]], zoom: 6, bearing: 0, attribution: '', assets: {} };
   const hourly = stacItem({ ...base, data: { at: Date.UTC(2026, 9, 22, 9) }, layers: [{ id: 'currents', label: 'Currents', draws: 'arrows', time: '2026-10-22T09:00:00.000Z' }] });
   assert.equal(hourly.properties.datetime, '2026-10-22T09:00:00.000Z');
   assert.equal(hourly.properties.created, '2026-10-20T12:34:00.000Z');
-  assert.equal(hourly.properties['chart:layers'][0].draws, 'arrows');
+  assert.equal(hourly.properties['earthplotter:layers'][0].draws, 'arrows');
   const daily = stacItem({ ...base, data: { day: '2026-10-19' }, layers: [] });
   assert.deepEqual([daily.properties.datetime, daily.properties.start_datetime, daily.properties.end_datetime], ['2026-10-19T00:00:00Z', '2026-10-19T00:00:00Z', '2026-10-19T23:59:59Z']);
   assert.equal(stacItem({ ...base, layers: [] }).properties.datetime, '2026-10-20T12:34:00.000Z', 'no layer with a time: the export\'s');

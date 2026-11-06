@@ -49,7 +49,7 @@ const PROJECTION_EXT = 'https://stac-extensions.github.io/projection/v2.0.0/sche
 // data: the time the layers that change with time draw, { at } (ms, an hour) or { day } ('YYYY-MM-DD',
 // UTC, daily products), absent if none is on: the item's datetime, as STAC means it (the export's
 // own time is `created`)
-export function stacItem({ id, title = 'Chart export', when, data, corners, zoom, bearing, layers, attribution, link, assets }) {
+export function stacItem({ id, title, when, data, corners, zoom, bearing, layers, attribution, link, assets }) {
   const { bbox, geometry } = footprint(corners);
   const providers = new Map(); // one per source, however many layers it feeds
   for (const l of layers) {
@@ -72,14 +72,14 @@ export function stacItem({ id, title = 'Chart export', when, data, corners, zoom
       datetime: data?.at != null ? new Date(data.at).toISOString() : data?.day ? `${data.day}T00:00:00Z` : when.toISOString(),
       ...(data?.day && { start_datetime: `${data.day}T00:00:00Z`, end_datetime: `${data.day}T23:59:59Z` }),
       created: when.toISOString(),
-      license: 'other', // one per source, in providers and chart:attribution
+      license: 'other', // one per source, in providers and earthplotter:attribution
       providers: [...providers.values()],
-      'chart:attribution': attribution,
-      'chart:zoom': +zoom.toFixed(2),
-      'chart:bearing': +bearing.toFixed(1),
+      'earthplotter:attribution': attribution,
+      'earthplotter:zoom': +zoom.toFixed(2),
+      'earthplotter:bearing': +bearing.toFixed(1),
       // assets: the files that hold the layer as data (absent: it is only in the pictures)
       // draws: what a layer of the Ocean data draws, 'colour', 'arrows' or 'both'
-      'chart:layers': layers.map(({ id: lid, label, variant, draws, date, period, time, depth, assets: a }) => ({ id: lid, title: label, ...(variant && { variant }), ...(draws && { draws }), ...(date && { date }), ...(period && { period }), ...(time && { time }), ...(depth != null && { depth_m: depth }), ...(a?.length && { assets: a }) })),
+      'earthplotter:layers': layers.map(({ id: lid, label, variant, draws, date, period, time, depth, assets: a }) => ({ id: lid, title: label, ...(variant && { variant }), ...(draws && { draws }), ...(date && { date }), ...(period && { period }), ...(time && { time }), ...(depth != null && { depth_m: depth }), ...(a?.length && { assets: a }) })),
     },
     links: link ? [{ rel: 'via', href: link, type: 'text/html', title: 'This view in Earth Plotter' }] : [],
     assets,

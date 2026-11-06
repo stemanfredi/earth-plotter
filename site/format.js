@@ -134,12 +134,12 @@ export function distText(m, units) {
   return { text: `${v} ${unit === 'nm' ? 'NM' : unit}`, value: v, unit };
 }
 
-// Export file name (and STAC id): chart-YYYYMMDD-HHMM in UTC, then the view's centre to 0.01°
-// (about 1 km), e.g. chart-20261020-1636-40.51N-17.16E: sorts by time, says where
+// Export file name (and STAC id): earthplotter-YYYYMMDD-HHMM in UTC, then the view's centre to 0.01°
+// (about 1 km), e.g. earthplotter-20261020-1636-40.51N-17.16E: sorts by time, says where
 export function exportName(when, lat, lng) {
   lng = norm180(lng);
   const deg = (v, pos, neg) => { const t = Math.abs(v).toFixed(2); return `${t}${v >= 0 || t === '0.00' ? pos : neg}`; };
-  return `chart-${when.toISOString().slice(0, 16).replace(/[-:]/g, '').replace('T', '-')}-${deg(lat, 'N', 'S')}-${deg(lng, 'E', 'W')}`;
+  return `earthplotter-${when.toISOString().slice(0, 16).replace(/[-:]/g, '').replace('T', '-')}-${deg(lat, 'N', 'S')}-${deg(lng, 'E', 'W')}`;
 }
 
 // rows as text a spreadsheet takes: tab-separated, a header line first

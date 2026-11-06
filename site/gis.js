@@ -112,7 +112,7 @@ export function gisExport({ map, layersOf, layerDrawn, kindOf, drawing, display,
       }));
       if (drawn.length) vectors.push({ key: 'vector/drawings', title: 'Drawings', file: 'vector/drawings.geojson', data: featureCollection('Drawings', drawn), n: drawn.length, how: 'whole, geodesic values in metres' });
       const item = stacItem({
-        id: name, title: `Chart · ${s.at}`, when, data: s.time, corners, zoom: s.zoom, bearing: s.bearing, layers,
+        id: name, title: `Earth Plotter · ${s.at}`, when, data: s.time, corners, zoom: s.zoom, bearing: s.bearing, layers,
         attribution: s.credits, link: s.link,
         assets: {
           map: { href: './map.png', type: 'image/png', title: 'The map as drawn, georeferenced (world file map.pgw, CRS in map.png.aux.xml)', roles: ['visual'],

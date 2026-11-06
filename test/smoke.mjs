@@ -431,7 +431,7 @@ await section('export parity', async () => {
         hourly: /\d:\d\d/.test(document.querySelector('#shown').textContent), canvas: [map.getCanvas().width, map.getCanvas().height] };
     });
     const [dl] = await Promise.all([pp.waitForEvent('download', { timeout: 120000 }), exportItem(pp, 'zip')]);
-    const zf = (await unzip(await readFile(await dl.path()))).files, item = JSON.parse(zf['item.json']), pr = item.properties, layers = pr['chart:layers'];
+    const zf = (await unzip(await readFile(await dl.path()))).files, item = JSON.parse(zf['item.json']), pr = item.properties, layers = pr['earthplotter:layers'];
     const chart = pngFields(zf['chart.png']), timed = !!seen.t;
     const expect = !timed ? pr.created : seen.hourly ? `${seen.t}:00:00.000Z` : `${seen.t.slice(0, 10)}T00:00:00Z`;
     const dataText = !timed ? null : seen.hourly ? `data at ${seen.t.replace('T', ' ')}:00 UTC` : `data of ${seen.t.slice(0, 10)}`;
@@ -445,7 +445,7 @@ await section('export parity', async () => {
     }
     if (chart.width !== seen.canvas[0] || chart.height !== seen.canvas[1]) wrong.push(`chart.png ${chart.width}×${chart.height} ≠ map ${seen.canvas.join('×')}`);
     if (dataText && !chart.Description?.includes(dataText)) wrong.push(`chart.png says "${chart.Description}", not "${dataText}"`);
-    if (chart.Copyright !== pr['chart:attribution']) wrong.push('chart.png and item.json credit differently');
+    if (chart.Copyright !== pr['earthplotter:attribution']) wrong.push('chart.png and item.json credit differently');
     check(!wrong.length && !pp.errors.length, `export parity, ${what}: ${wrong.join('; ') || `${layers.length} layers, ${pr.datetime}`} ${pp.errors.join(' | ')}`);
     await pp.close();
   }

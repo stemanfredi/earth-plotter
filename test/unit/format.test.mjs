@@ -54,9 +54,9 @@ test('parseLatLon: not coordinates', () => {
 
 test('exportName: UTC time, then the centre to 0.01° with hemispheres', () => {
   const t = new Date('2026-10-20T16:36:59Z');
-  assert.equal(exportName(t, 40.51147, 17.16421), 'chart-20261020-1636-40.51N-17.16E');
-  assert.equal(exportName(t, -33.8688, -151.2093), 'chart-20261020-1636-33.87S-151.21W');
-  assert.equal(exportName(t, -0.001, 190), 'chart-20261020-1636-0.00N-170.00W', 'no "-0.00S"; a world copy east of 180°');
+  assert.equal(exportName(t, 40.51147, 17.16421), 'earthplotter-20261020-1636-40.51N-17.16E');
+  assert.equal(exportName(t, -33.8688, -151.2093), 'earthplotter-20261020-1636-33.87S-151.21W');
+  assert.equal(exportName(t, -0.001, 190), 'earthplotter-20261020-1636-0.00N-170.00W', 'no "-0.00S"; a world copy east of 180°');
 });
 
 test('parseLatLon: a decimal comma, where the text has no decimal point', () => {

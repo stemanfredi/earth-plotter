@@ -18,15 +18,11 @@ function rasterOf(cells, key, { title, description, names, units, planes, bands 
 // or 404, as a public bucket answers 403, not 404, for a file it does not hold; either means a chunk
 // not stored (all land, or a time no longer kept), read as fill. A store that is not public fails at
 // its metadata (zarr.js openStore), not with empty rasters. (GEBCO's: gebco.js, none missing.)
-// asset: which of a dataset's two stores, 'timeChunked' (one time over a wide area: the export) or
-// 'geoChunked' (years of a small block of cells: a series, series.js), the same values
-const stores = lru(Infinity); // asset and part (or EMODNET_DTM) → promise of its store and coordinates
-export function storeOf(part, asset = 'timeChunked') {
-  return stores(`${asset} ${part}`, async () => {
+const stores = lru(Infinity); // part (or EMODNET_DTM) → promise of its store and coordinates
+function storeOf(part) {
+  return stores(part, async () => {
     const r = await fetchOk(cmemsStacUrl(part));
-    const href = (await r.json()).assets[asset]?.href;
-    if (!href) throw new Error(`${partOf(part).id} has no ${asset} store`);
-    const store = await openStore(href, fetchBytes);
+    const store = await openStore((await r.json()).assets.timeChunked.href, fetchBytes);
     const [time, lat, lon, elevation] = await Promise.all(['time', 'latitude', 'longitude', 'elevation'].map((c) => (store.meta(c) ? store.coord(c) : null)));
     return { store, times: Array.from(time, timeScale(store.meta('time').attrs.units)), lat, lon, elevation };
   });

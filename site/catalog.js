@@ -245,20 +245,6 @@ export const CMEMS = {
   // wind as arrows alone, over the chart and the waves: thermal starts dark, so light winds stay visible
   wind: { observed: { label: 'Wind (satellite)', unit: 'm/s', range: [0, 25], cmap: 'thermal', vector: 'vector', parts: [`${WIND}/wind`] } },
 };
-// ---- Copernicus Marine's records: decades of a variable at a place --------------------------
-// Each record's datasets are hindcasts (a model run over the past, the same model all along), read
-// as series of a point or an area from their 'geoChunked' stores (series.js) for its statistics
-// (stats.js): the regional dataset where it has its area, the global one elsewhere, never mixed in
-// one series. variables: what the statistics read, by role, as the datasets name them.
-const GLO_WAV_MY = 'GLOBAL_MULTIYEAR_WAV_001_032/cmems_mod_glo_wav_my_0.2deg_PT3H-i_202411';
-const MED_WAV_MY = 'MEDSEA_MULTIYEAR_WAV_006_012/cmems_mod_med_wav_my_4.2km_PT1H-i_202511';
-export const RECORDS = {
-  waves: {
-    label: 'Waves', parts: [GLO_WAV_MY, MED_WAV_MY],
-    variables: { height: 'VHM0', peakPeriod: 'VTPK', energyPeriod: 'VTM10', direction: 'VMDR', swell: 'VHM0_SW1', windSea: 'VHM0_WW' },
-  },
-};
-
 // what a variant can draw: ['colour'], ['arrows'] or both (its colours, its arrows coloured by speed)
 export const drawsOf = (v) => ({ solidAndVector: ['colour', 'arrows'], vector: ['arrows'] })[v.vector] || ['colour'];
 

@@ -122,8 +122,8 @@ test('the Library\'s folders and order', async () => {
 });
 
 test('a line, an area or a label as a library item: kept alone, its look and properties given to one drawn with it', async () => {
-  const { itemKind, hasShapes } = await import('../../site/draw/library.js');
-  const { styleLike } = await import('../../site/draw/place.js');
+  const { hasShapes } = await import('../../site/draw/library.js');
+  const { styleLike, itemKind } = await import('../../site/draw/place.js');
   const doc = emptyDoc(0), p = addPoint(doc, [5, 50]);
   addCircle(doc, [5, 50], { groupId: p.id, radius: 10 });
   const l = addLine(doc, [[5, 50], [5.1, 50]], { name: 'Route', guide: true, look: { stroke: { color: '#e03131', dash: 'dashed' } }, properties: [{ key: 'kind', value: 'b' }] });

@@ -16,7 +16,7 @@ import { inverse, areaOf, moveAbout } from '../geodesy.js';
 import { norm180, norm360 } from '../geo.js';
 import { fields, choice, select, check } from '../fields.js';
 import { mac, MOD } from '../keys.js';
-import { loadLibrary, saveLibrary, itemOf } from './library.js';
+import { loadLibrary, itemOf } from './library.js';
 import { createDrawTab, itemNow, itemName } from './drawtab.js';
 import { itemBase } from './place.js';
 import { listGrid, forgetCurrent } from './grid.js';
@@ -261,8 +261,7 @@ export function drawView(root, ctx) {
       const to = (await askText('Add to library', 'Name (Folder / Name)', name || 'Item'))?.trim();
       if (!to) return;
       if (drawing.library.some((x) => x.name === to) && !(await ask('Add to library', `Replace “${to}” in the library?`, [[() => true, 'Replace']]))) return;
-      drawing.library = [...drawing.library.filter((x) => x.name !== to), itemOf(drawing.doc, id, to)];
-      saveLibrary(drawing.library);
+      drawing.setLibrary([...drawing.library.filter((x) => x.name !== to), itemOf(drawing.doc, id, to)]);
       libraryChanged();
       note(`“${to}” added to the Library`);
     } }, 'Add to library…');

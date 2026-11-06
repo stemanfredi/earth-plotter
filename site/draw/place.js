@@ -8,7 +8,21 @@ import { OUTLINES, OUTLINE_NAME, outlinePoints } from './outlines.js';
 import { inverse } from '../geodesy.js';
 import { unrollTo } from '../geo.js';
 import { clipOf, paste } from './clipboard.js';
-import { itemFor } from './library.js';
+
+// A Library item (library.js) as a tool's variant and a rule's copy say it: 'library:<name>'
+const PREFIX = 'library:';
+export const itemKey = (name) => `${PREFIX}${name}`;
+// the name such a key says, or null (a built-in kind's)
+export const keyName = (v) => (typeof v === 'string' && v.startsWith(PREFIX) ? v.slice(PREFIX.length) : null);
+// what an item is: 'point' (with its shapes), 'line', 'area' (a closed line) or 'label'; the tool drawing it
+export const itemKind = (x) => (x.doc.points.length ? 'point' : x.doc.lines.length ? (x.doc.lines[0].closed ? 'area' : 'line') : 'label');
+export const TOOL_OF = { point: 'shape', line: 'line', area: 'line', label: 'label' };
+// the item a key says, in list, or null; tool given: only one that tool draws (a key kept by a tool
+// may name an item replaced since by another kind)
+export function itemFor(list, v, tool = null) {
+  const n = keyName(v), x = n === null ? null : list.find((y) => y.name === n) ?? null;
+  return x && (!tool || TOOL_OF[itemKind(x)] === tool) ? x : null;
+}
 
 // what a built-in kind is called: "Circle", "Rings", "Rectangle"…
 const KIND_NAME = { circle: 'Circle', rings: 'Rings', sector: 'Sector', ...OUTLINE_NAME };
@@ -74,7 +88,7 @@ export const itemBase = (name) => name.split(' / ').at(-1).trim() || 'Point';
 // so that a shape does not swing while it is sized. d (the Shape tool's second click, metres from the
 // centre): a built-in's largest shape reaches it; 0: its own size. A Library item keeps its size.
 export function placeKind(doc, p, kind, library, d = 0) {
-  const mine = itemFor(library, kind);
+  const mine = itemFor(library, kind, 'shape');
   if (mine) {
     const name = nextName(doc, 'point', itemBase(mine.name)), pt = placeCopy(doc, mine.doc, p); // named before the copy takes a name
     pt.name = name;

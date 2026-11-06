@@ -9,19 +9,12 @@
 import { parse, toFile } from './file.js';
 import { alone, clipOf, paste } from './clipboard.js';
 import { emptyDoc, find } from './document.js';
+import { itemKind } from './place.js';
 import { store } from '../dom.js';
 import { note } from '../menu.js';
 
 const KEY = 'earthplotter.library'; // the items in this browser
 const FORMAT = 'earthplotter-library'; // a library's file
-
-// An item as a tool's variant and a rule's copy say it: 'library:<name>'
-const PREFIX = 'library:';
-export const itemKey = (name) => `${PREFIX}${name}`;
-// the name such a key says, or null (a built-in kind's)
-export const keyName = (v) => (typeof v === 'string' && v.startsWith(PREFIX) ? v.slice(PREFIX.length) : null);
-// the item a key says, in list, or null
-export const itemFor = (list, v) => { const n = keyName(v); return n === null ? null : list.find((x) => x.name === n) ?? null; };
 
 // as kept: each item's drawing as its file's object
 const kept = (list) => list.map((x) => ({ name: x.name, drawing: toFile(x.doc) }));
@@ -40,8 +33,6 @@ export function itemOf(doc, id, name) {
   for (const [i, { el }] of paste(d, clip, (q) => q).entries()) { el.name = clip.items[i].el.name; el.visible = true; el.measure = false; }
   return { name, doc: d };
 }
-// what an item is: 'point' (with its shapes), 'line', 'area' (a closed line) or 'label'
-export const itemKind = (x) => (x.doc.points.length ? 'point' : x.doc.lines.length ? (x.doc.lines[0].closed ? 'area' : 'line') : 'label');
 // the library as a file, and back (what is not an item left out); null: not a library's file
 export const libraryFile = (list) => `${JSON.stringify({ format: FORMAT, items: kept(list) }, null, 2)}\n`;
 export function readLibrary(text) {

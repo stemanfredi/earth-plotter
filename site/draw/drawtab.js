@@ -6,9 +6,9 @@
 
 import { h, svg, store, NARROW } from '../dom.js';
 import { ask, askText, note } from '../menu.js';
-import { BUILT_IN, builtInName, placeKind, itemBase } from './place.js';
+import { BUILT_IN, builtInName, placeKind, itemBase, itemKind, itemFor, itemKey, keyName, TOOL_OF } from './place.js';
 import { emptyDoc, styleOf, lookOf } from './document.js';
-import { saveLibrary, folderOf, byName, itemKind, itemFor, itemKey, keyName } from './library.js';
+import { folderOf, byName } from './library.js';
 import { icon, KIND_ICON, POINT_ICON, SYMBOL_ICON } from '../icons.js';
 
 const KIND_TYPE = 'application/x-earthplotter-kind'; // a row dragged: the kind it places
@@ -75,9 +75,8 @@ export function thumbOf(x) {
 
 // The Library's items: what a row draws, as [tool, its variant]: a point, a line, an area (a line
 // closed as it ends), a label, else a shape (a built-in kind or a point item: the Shape tool's)
-const BASIC = { 'tool:point': ['point', 'symbol', 'Point', KIND_ICON.point], 'tool:line': ['line', 'line', 'Line', KIND_ICON.line],
+const BASIC = { 'tool:point': ['point', null, 'Point', KIND_ICON.point], 'tool:line': ['line', 'line', 'Line', KIND_ICON.line],
   'tool:area': ['line', 'area', 'Area', KIND_ICON.polygon], 'tool:label': ['label', 'label', 'Label', KIND_ICON.label] };
-const TOOL_OF = { point: 'shape', line: 'line', area: 'line', label: 'label' }; // an item's kind: the tool drawing it
 export function itemTool(v, library) {
   if (BASIC[v]) return BASIC[v].slice(0, 2);
   const mine = itemFor(library, v);
@@ -130,7 +129,7 @@ export function createDrawTab(drawing, root, { frame, changed }) {
   const choose = (v) => {
     if (itemNow(drawing) === v) return drawing.stop();
     const [tool, variant] = itemTool(v, drawing.library);
-    drawing.variant[tool] = variant;
+    if (variant) drawing.variant[tool] = variant;
     drawing.start(tool);
     if (NARROW.matches && frame.tab === 'draw') { folding = true; frame.toggleTab('draw'); }
   };
@@ -185,22 +184,17 @@ export function createDrawTab(drawing, root, { frame, changed }) {
   const moreBtn = (name) => h('button', { type: 'button', class: 'more', 'aria-label': `${name}: rename, duplicate or delete`, title: 'Rename, duplicate or delete', onclick: () => manage(name) }, '⋯');
   async function manage(name) {
     const a = await ask('Library item', `“${name}”`, [['delete', 'Delete'], ['duplicate', 'Duplicate'], ['rename', 'Rename…']]);
-    const v = itemKey(name);
-    if (a === 'delete') {
-      drawing.library = drawing.library.filter((x) => x.name !== name);
-      for (const [t, d] of [['shape', 'circle'], ['line', 'line'], ['label', 'label']]) if (drawing.variant[t] === v) drawing.variant[t] = d; // its tool back on its own
-    }
+    if (a === 'delete') drawing.setLibrary(drawing.library.filter((x) => x.name !== name));
     if (a === 'rename' || a === 'duplicate') {
       const start = a === 'rename' ? name : `${name} copy`;
       const to = (await askText(a === 'rename' ? 'Rename' : 'Duplicate', 'Name (Folder / Name)', start))?.trim();
       if (!to || to === name) return;
       if (drawing.library.some((x) => x.name === to)) return note(`The library already has “${to}”`);
       const x = drawing.library.find((p) => p.name === name);
-      drawing.library = a === 'rename' ? drawing.library.map((p) => (p === x ? { ...p, name: to } : p)) : [...drawing.library, { ...x, name: to }];
-      if (a === 'rename') for (const t of ['shape', 'line', 'label']) if (drawing.variant[t] === v) drawing.variant[t] = itemKey(to);
+      if (a === 'rename') drawing.setLibrary(drawing.library.map((p) => (p === x ? { ...p, name: to } : p)), [name, to]);
+      else drawing.setLibrary([...drawing.library, { ...x, name: to }]);
     }
     if (!a) return;
-    saveLibrary(drawing.library);
     changed();
     render(true);
   }

@@ -6,10 +6,11 @@ import { h } from '../dom.js';
 import { note, ask } from '../menu.js';
 import { find, leavesOf, label } from './document.js';
 import { DISTRIBUTE_D, distribute, lines, planConnection, makeDistribution, editDistribution, connect, reconnect, alongTrace, alongOf, distributions, connections, ruleOf, updateRule, MAX_COPIES, MAX_TREE } from './generator.js';
-import { BUILT_IN, builtInName } from './place.js';
+import { BUILT_IN, builtInName, itemFor, itemKey, keyName } from './place.js';
+import { alone } from './clipboard.js';
 import { reachOf } from './features.js';
 import { choice, select } from '../fields.js';
-import { hasShapes, itemFor, itemKey, keyName } from './library.js';
+import { hasShapes } from './library.js';
 import { listGrid } from './grid.js';
 import { fmtDist, plural } from '../format.js';
 import { groupPath } from './tree.js';
@@ -69,6 +70,10 @@ export function createForms(kit) {
     Object.assign(dform, DFORM); // a new one: the defaults
     if (a) Object.assign(dform, { by: a.count ? 'count' : 'spacing', spacing: a.spacing || dform.spacing, count: a.count || a.pointIds.length, startMargin: a.startMargin, endMargin: a.endMargin,
       offset: a.offset, side: a.side, radius: a.radius, aperture: a.aperture, item: a.item ?? 'circle' });
+    // a Library item's copies: its drawing (renamed or deleted since: a copy as placed), its size its own
+    // (never a radius, which would make them circles)
+    const first = a?.pointIds.find((id) => find(drawing.doc, id));
+    if (a && keyName(a.item) !== null) dform.copy = itemFor(drawing.library.filter(hasShapes), a.item)?.doc ?? (first ? alone(drawing.doc, first) : null);
     openForm({ kind: 'distribute', along: { element: along.element }, distributionId: a?.id ?? null });
   }
   function openConnect(pointIds, c = null) {

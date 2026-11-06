@@ -19,6 +19,11 @@ import { SNAP_PX, MID_PX } from './input.js';
 import { Drafting } from './drafting.js';
 import { Dragging } from './dragging.js';
 import { Boxing } from './boxing.js';
+import { saveLibrary } from './library.js';
+import { itemKey, keyName, itemFor, itemKind } from './place.js';
+
+// what each tool draws when no Library item is chosen (the Point tool: a symbol, no variant)
+const DEFAULT_VARIANT = { line: 'line', shape: 'circle', label: 'label' };
 
 export class Drawing extends DrawStore {
   // onChange(what): 'doc' (the document changed), 'sel' (the selection), 'tool', 'draft' (what is
@@ -57,7 +62,7 @@ export class Drawing extends DrawStore {
     // holding a circle, rings, a sector (three clicks), an outline (a closed line) or a Library item (a
     // point of the user's, with its shapes); Label a label, or one like a Library item's. Measure has none: a line, closed or
     // not, a measurement
-    this.variant = { point: 'symbol', line: 'line', shape: 'circle', label: 'label' };
+    this.variant = { ...DEFAULT_VARIANT };
     this.library = []; // the user's own items in the Library (library.js), by the tools' variants 'library:<name>'
     // labels keep their place on screen next to what they point at: drawn again as the map moves
     let labelRaf = 0;
@@ -287,10 +292,22 @@ export class Drawing extends DrawStore {
   giveUpRepoint() { if (!this.repointing) return; this.cancelRepoint(); this.renderMarks(); this.onChange('sel'); }
   // what a click on the map picks while the generator's form is open (fn(nodeId, position)), or null
   setPicking(fn, keepSel = !!fn) { this.picking = fn; this.keepSel = keepSel; if (!fn && !this.tool) this.map.getCanvas().style.cursor = ''; }
-  // a tool's variant chosen (its row of kinds): the tool on with it
-  setVariant(button, v) {
-    this.variant[button] = v;
-    this.start(button);
+  // The Library's items replaced (one added, renamed, deleted, read from a file): kept in this browser.
+  // A tool's variant naming an item renamed follows it; one gone, or replaced by another kind, is the
+  // tool's own again (an area's: Area), and the tool, if on with it, stops. renamed: [from, to]
+  setLibrary(list, renamed = null) {
+    const before = this.library;
+    this.library = list;
+    saveLibrary(list);
+    for (const t of Object.keys(DEFAULT_VARIANT)) {
+      const n = keyName(this.variant[t]);
+      if (n === null) continue;
+      if (renamed && n === renamed[0]) { this.variant[t] = itemKey(renamed[1]); continue; }
+      if (itemFor(list, this.variant[t], t)) continue;
+      const was = itemFor(before, this.variant[t]);
+      this.variant[t] = t === 'line' && was && itemKind(was) === 'area' ? 'area' : DEFAULT_VARIANT[t];
+      if (this.button === t) this.stop();
+    }
   }
 
   // ---- tools -----------------------------------------------------------------------------

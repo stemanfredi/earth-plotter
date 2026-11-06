@@ -25,8 +25,11 @@ that says what it does with the state.
 
 **Every host in one place.** `site/hosts.js` lists every address the page may
 reach. The catalogue builds its addresses from it, and the page's security
-policy is generated from it (`tools/deps.mjs`), so a host the policy does not
-name cannot be reached by mistake, and a copy of the site changes one line.
+policy is generated from it (`tools/deps.mjs`), and a copy of the site
+changes one line. The policy (a meta tag: GitHub Pages sends no headers)
+holds for the page only; the workers, which fetch most tiles, are outside
+it, so what keeps them on the listed hosts is that every address is built
+from this file.
 
 **One coastline.** Depth shading, isobaths, relief and land contours are
 drawn from elevation tiles that the page cuts to the OpenStreetMap coastline
@@ -90,7 +93,8 @@ fails, or leaves out values it could not read, says so in the note. A
 drawing file that cannot be read says why.
 
 **Privacy by construction.** No request carries a referrer; the security
-policy limits the page to its own files and the listed hosts; libraries are
+policy limits the page to its own files and the listed hosts (its workers
+build their addresses from the same list); libraries are
 the page's own files, so no CDN sees a visit. What leaves the browser is said
 once, in the README (Privacy).
 

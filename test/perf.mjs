@@ -1,7 +1,6 @@
 // npm run perf [-- RUNS]: how long the depth layers take to draw, from a fresh browser (empty cache)
 // until every tile is in, with what GEBCO's store sent; the median of RUNS (3). Not in CI: timings
-// vary with the machine and the network. 37–47 s at zooms 7–9 when gebco.js looked up a chunk for
-// every cell it read; 5 s since each tile copies its cells into one block
+// vary with the machine and the network
 import { chromium } from 'playwright-core';
 import { serve, chromeOptions } from './serve.mjs';
 const server = await serve();

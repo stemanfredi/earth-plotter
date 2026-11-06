@@ -15,7 +15,7 @@ npm test            # unit tests, offline (they also check site/vendor/ and the 
 npm run lint        # ESLint's recommended rules
 npm run smoke       # end-to-end in headless Chrome, against the live providers
 npm run draw        # the drawing tools in headless Chrome, the network blocked
-npm run ui          # layout at phone, tablet and desktop widths
+npm run ui          # layout at phone, tablet and desktop widths: no overlaps, 44 px targets
 npm run tiles-check # elevation tiles of known trouble spots: seams, zooms, lakes
 npm run perf        # how long the depth layers take to draw
 npm run data-check  # newer density data periods (newer libraries: npm outdated)
@@ -31,29 +31,10 @@ the providers. A failure can mean that a provider changed or went down, not
 only that the code broke. Checks of what a provider served are therefore
 *advisory*: they warn, and only the weekly run (`STRICT=1`) fails on them.
 
+What the browser tests share (the site served, Chrome, the checks and the
+sections) is in `test/browser.mjs`; each test says what it covers at its top.
 Some functions are exported only for the unit tests. The reasons behind a
 rule in the code are in a comment next to it, not here.
-
-## Tests, briefly
-
-- **Unit** (`test/unit/`, `npm test`): a file per module that runs without a
-  browser: the drawing (model, file, attachments, rules, labels, values,
-  clipboard, the Library, saving, undo; the format doc's example among them),
-  geodesy, the readers and writers (Zarr, GeoTIFF, zip), the clipping cache,
-  net, search, keys, formats, the data builds' maths (GEBCO, seagrass), the
-  catalogue's consistency, and the vendored libraries and the security policy
-  against `package.json` and `site/hosts.js`.
-- **Smoke** (`test/smoke.mjs`): the page in a browser, in sections that fail
-  on their own: layers, time, search, exports compared with the map, the
-  elevation profile, the service worker and offline areas.
-- **Drawing** (`test/draw.mjs`): the drawing tools, files and inspector, a
-  phone with a finger; every request but the site's own aborted, so a
-  provider's bad day cannot fail it.
-- **Layout** (`test/ui.mjs`): no overlaps and 44 px targets at three widths.
-- **Tiles** (`test/tiles-check.mjs`): the elevation tiles of places that once
-  went wrong, weekly, against live data.
-- `test/browser.mjs` is what the browser tests share: the site served, Chrome,
-  the checks and the sections.
 
 ## Dependencies
 
@@ -75,14 +56,9 @@ reload.
 
 ## Continuous integration and deploy
 
-`.github/workflows/ci.yml` runs the unit, lint, smoke, drawing and layout
-tests on pushes to `main` and on pull requests, and deploys `main` to GitHub Pages when
-they pass; only `site/` is published, with the commit written into
-`site/version.json` (About shows it) and into `site/sw.js`. A provider's outage shows as warnings on a push and does not
-hold up a deploy; the weekly run is strict, so an outage that lasts a week is
-a failed run, mailed. The weekly run also lists newer library versions and
-reports newer density data. Pages must be enabled once in the repository
-settings, with *Source: GitHub Actions*.
+`.github/workflows/ci.yml` tests, and deploys `main` to GitHub Pages; what it
+runs when, and why, is in its comments. Pages must be enabled once in the
+repository settings, with *Source: GitHub Actions*.
 
 ## Hosting a copy
 

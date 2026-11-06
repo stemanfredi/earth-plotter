@@ -14,22 +14,15 @@ reference for what it does; what was learned on the way is in
   Interpolated areas of sparse data can show the pattern of the data's own
   grid; smoothing only there would remove it without touching real detail.
   None seen so far: only if one appears.
-- **EMODnet's depths: parked** (2026-11-04). Built and set aside on the
-  branch `emodnet-depth`: EMODnet's DTM 2024 merged with GEBCO into one
-  store over Europe (tools/emodnet.mjs), the page reading it at every zoom.
-  The gain was resolution on rugged coasts only, and every check found new
-  seams between the two grids; GEBCO alone stays. Its place is a depth
-  surface built once, made to agree with the coastline, with the merge's
-  rules checked over all of Europe at build time (docs/takeaways.md).
+- **EMODnet's depths: parked** (2026-11-04) on the branch `emodnet-depth`;
+  why, and what a version must do: docs/takeaways.md.
 - **The browser tests retried only weekly.** On a push, a failed smoke or
   ui run is run again after a minute, and a pass on the retry is only a
   warning on the run (since 2026-10-31). Provider failures are warnings on a
   push anyway, so the retry mostly covers checks of the page that fail now
   and then. The drawing tests run without the network since 2026-10-31;
-  three fixed waits remain (smoke.mjs, a click on land that answers with no
-  popup and nothing that says the lookup is over; draw.mjs, two in the hover
-  check, a pause per element hovered and one at the end). Once they
-  are gone and the warning has stayed away for some weeks: retry only on the
+  the fixed waits left are draw.mjs's, in the hover check (a pause per
+  element hovered and one at the end). Once they are gone and the warning has stayed away for some weeks: retry only on the
   weekly run, so that such a check blocks a deploy until it is fixed.
 
 ## Offline areas

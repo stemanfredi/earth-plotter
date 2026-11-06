@@ -5,7 +5,7 @@
 //   CHROME=/path/to/chrome npm run draw     (default: /usr/bin/google-chrome)
 // What needs a provider stays in smoke.mjs: the elevation profile (relief and depth tiles).
 import { readFile } from 'node:fs/promises';
-import { start, openPage, exportItem, unzip, settled, frames, until as untilOn } from './browser.mjs';
+import { start, openPage, addDistance, exportItem, unzip, settled, frames, until as untilOn } from './browser.mjs';
 
 const { browser, base, check, section, finish } = await start();
 // a context with no network but the site's own (base: http://127.0.0.1:8099/)
@@ -43,7 +43,7 @@ await section('the drawing: the bar, the tools, the kinds, the inspector, its fi
     if (document.querySelector('#bar .pright').getAttribute('aria-pressed') !== 'true') document.querySelector('#bar .pright').click();
     if (document.querySelector('#bar .ptab[data-tab=elements]').getAttribute('aria-pressed') !== 'true') document.querySelector('#bar .ptab[data-tab=elements]').click();
   });
-  await dw.evaluate(async () => { const { addLine } = await import('./draw/document.js'); drawing.change((doc) => addLine(doc, [[12, 40.1], [12.05, 40.12]], { name: 'Distance 1', guide: true, measure: true, look: { text: { values: true } } })); });
+  await addDistance(dw, [12, 40.1], [12.05, 40.12]);
   await dw.keyboard.press('s'); // the Shape tool, a circle (what it drew last: at first a circle)
   // the bar across the top, no tool in it that makes elements (the Library has them), Measure; the
   // left panel open on Elements, hidden by its button, back with E; Properties shows the drawing with

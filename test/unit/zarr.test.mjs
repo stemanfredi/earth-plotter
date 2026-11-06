@@ -23,6 +23,14 @@ test('decode: a chunk not stored is all fill', async () => {
   assert.deepEqual([...v], Array(6).fill(-32767));
 });
 
+test('decode: int64 (a climatology\'s times) as numbers, stored or not', async () => {
+  const raw = new Uint8Array(BigInt64Array.of(376944n, -1n, 2n ** 40n).buffer);
+  const v = await decode({ dtype: '<i8', chunks: [3], fill_value: null, compressor: null }, raw);
+  assert.ok(v instanceof Float64Array);
+  assert.deepEqual([...v], [376944, -1, 2 ** 40]);
+  assert.deepEqual([...await decode({ dtype: '<i8', chunks: [2], fill_value: 0, compressor: null }, null)], [0, 0]);
+});
+
 test('timeScale: CF units, epochs with and without a time', () => {
   assert.equal(timeScale('hours since 1950-01-01')(24), Date.UTC(1950, 0, 2));
   assert.equal(timeScale('seconds since 1970-01-01 00:00:00')(60), 60e3);

@@ -1,8 +1,9 @@
 // Zarr stores (version 2), public and readable from a page: Copernicus Marine's datasets ("timeChunked":
 // a chunk is one or a few time steps over a large block of the grid), EMODnet's depth model, GEBCO's
 // grids (tools/gebco.mjs builds them). What these stores use, and nothing more: Blosc (version 1
-// format) with LZ4 or zlib, and byte shuffle; little-endian int8, int16, int32, float32, float64;
-// C order; coordinates time, [elevation,] latitude, longitude.
+// format) with LZ4 or zlib, and byte shuffle; little-endian int8, int16, int32, int64 (times, as in
+// the global wave climatology's), float32, float64; C order; coordinates time, [elevation,] latitude,
+// longitude.
 import { inflate } from './zip.js';
 
 // ---- Blosc ----------------------------------------------------------------------------------
@@ -69,19 +70,20 @@ export async function unblosc(b, expected = null) {
 
 // ---- arrays ---------------------------------------------------------------------------------
 
-const TYPES = Object.assign(Object.create(null), { '|i1': Int8Array, '<i2': Int16Array, '<i4': Int32Array, '<f4': Float32Array, '<f8': Float64Array }); // no inherited names: the dtype is the store's
+const TYPES = Object.assign(Object.create(null), { '|i1': Int8Array, '<i2': Int16Array, '<i4': Int32Array, '<i8': BigInt64Array, '<f4': Float32Array, '<f8': Float64Array }); // no inherited names: the dtype is the store's
 // a chunk's bytes (Blosc, or none: the chunk is not stored, all fill) → promise of numbers of the
-// array's dtype
+// array's dtype (int64 as a Float64Array: times, exact well past any date)
 export async function decode(meta, bytes) {
   const T = TYPES[meta.dtype];
   if (!T) throw new Error(`Zarr: dtype ${meta.dtype} is not supported`);
-  const n = meta.chunks.reduce((a, c) => a * c, 1), size = n * T.BYTES_PER_ELEMENT;
-  if (!bytes) return new T(n).fill(meta.fill_value ?? 0);
+  const n = meta.chunks.reduce((a, c) => a * c, 1), size = n * T.BYTES_PER_ELEMENT, big = T === BigInt64Array;
+  if (!bytes) return new (big ? Float64Array : T)(n).fill(meta.fill_value ?? 0);
   if (meta.compressor && meta.compressor.id !== 'blosc') throw new Error(`Zarr: compressor ${meta.compressor.id} is not supported`);
   if (meta.filters?.length) throw new Error('Zarr: filters are not supported');
   const raw = meta.compressor ? await unblosc(bytes, size) : bytes;
   if (raw.length < size) throw new Error(`Zarr: a chunk of ${raw.length} bytes where ${size} are expected`);
-  return new T(raw.buffer.slice(raw.byteOffset, raw.byteOffset + size));
+  const out = new T(raw.buffer.slice(raw.byteOffset, raw.byteOffset + size));
+  return big ? Float64Array.from(out, Number) : out;
 }
 
 // CF time units ("hours since 1950-01-01", "seconds since 1970-01-01 00:00:00") → value → ms

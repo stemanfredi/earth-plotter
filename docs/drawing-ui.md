@@ -101,7 +101,8 @@ place found are fitted to the map the bars and the panels leave.
 (to place near something without snapping to it, zoom in); a + only on legs over 80 px; a second
 finger during a drag puts it back and lets the map pinch.
 
-**Colours and sizes**: pressed is blue, a panel shown pale blue, yellow the marks on the map (bands,
+**Colours and sizes**: whatever is on (a tool, a panel, the Draw row being drawn, Attach to…
+waiting) pale blue, its icon or name in blue; solid blue only a choice within a field and Done; yellow the marks on the map (bands,
 targets, +), handles white edged in ink, magenta the map's own (measurements,
 the search's pin). With a mouse the bar is 39 px (32 px buttons, 20 px icons), rows 24 px, heads 30 px; with a
 finger every target is 44 px. Text: 11, 12, 13, 14, 16 px (a × glyph 18 or 20).

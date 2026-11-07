@@ -386,11 +386,12 @@ svg.profile .pcursor { stroke: var(--magenta); stroke-width: 1; }
 :is(.bar, .dock) > button, .mapctl button { width: var(--tap); height: var(--tap); flex: none; padding: 0; border: 0; border-radius: 6px; background: none; display: grid; place-items: center; color: var(--ink); }
 :is(.bar, .dock) > button { position: relative; }
 :is(:is(.bar, .dock) > button, .mapctl button):not(:disabled):hover { background: var(--hover); }
-/* what is pressed, everywhere: the accent, white on it */
-:is(.bar, .dock) > button[aria-pressed="true"], :is(.mapctl, .touchbar, .seg) button[aria-pressed="true"], button.small[aria-pressed="true"], .vrow .x[aria-pressed="true"], button.done {
-  background: var(--accent); border-color: var(--accent); color: #fff; }
-.seg button[aria-pressed="true"], button.done { font-weight: 600; }
-.bar > :is(.ptoggle, #b-find)[aria-pressed="true"], .bar > #b-find[aria-expanded="true"] { background: var(--sel); color: var(--accent); }
+/* what is on, everywhere (a tool, a panel, Attach to… waiting, the Draw row being drawn): pale, in the
+   accent; solid accent only for a choice within a field and for Done */
+:is(.bar, .dock) > button[aria-pressed="true"], .bar > #b-find[aria-expanded="true"], :is(.mapctl, .touchbar) button[aria-pressed="true"], button.small[aria-pressed="true"], .vrow .x[aria-pressed="true"], .drawtab .drow.sel {
+  background: var(--sel); color: var(--accent); }
+.drawtab .drow.sel .dname { color: var(--accent); }
+.seg button[aria-pressed="true"], button.done { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
 /* the file group: Open (a phone's ☰: the second icon), Download, Copy link */
 .bar > .filebtn svg + svg { display: none; }
 /* COMPACT (dom.js: a phone, or a finger's buttons under 1,280 px): the file group and About in Open's

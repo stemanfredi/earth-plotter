@@ -96,9 +96,11 @@
 </head>
 <body>
   <div id="map" role="region" aria-label="Map"></div>
-  <!-- shown only when the map has not started after a few seconds (style.css); app.js removes it -->
-  <p id="nostart" class="nostart">The map did not start. It needs a browser with WebGL.</p>
-  <p id="update" class="dnote" role="status" hidden>A new version is ready · <button type="button" class="linkbtn" data-reload>Reload</button></p>
+  <!-- shown only when the map has not started after a few seconds (style.css); app.js removes it.
+       Both notices are divs with data-nosnippet: a crawler that cannot start the map would otherwise
+       show them as the page's search snippet (data-nosnippet is honoured on div, span and section) -->
+  <div id="nostart" class="nostart" data-nosnippet>The map did not start. It needs a browser with WebGL.</div>
+  <div id="update" class="dnote" role="status" data-nosnippet hidden>A new version is ready · <button type="button" class="linkbtn" data-reload>Reload</button></div>
 
   <!-- top left: places (OpenStreetMap, via Photon) or coordinates (read here, never sent) -->
   <div id="search" class="search" role="search">
@@ -150,6 +152,6 @@
       <button type="button" class="linkbtn" data-reload title="Load the page again (an app installed on a phone has no reload button of its own)">Reload</button></p>
     <div class="fbuttons"><button type="button" data-close>Close</button></div>
   </dialog>
-  <noscript>This chart needs JavaScript and WebGL.</noscript>
+  <noscript>Earth Plotter needs JavaScript and WebGL.</noscript>
 </body>
 </html>

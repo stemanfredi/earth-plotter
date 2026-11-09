@@ -38,8 +38,9 @@ The choices for Earth Plotter:
 8. Give it any title, save, and **generate the key**. Copy it at once: Esri
    shows it only this one time.
 
-Expiration date and referrers cannot be changed later without making a new
-key, so set them now.
+The expiration date and the referrers can be changed later in the key's
+settings, but only with a new key: Esri invalidates the old one, and the
+page has to be given the new one. So set them now.
 
 ## Using it
 

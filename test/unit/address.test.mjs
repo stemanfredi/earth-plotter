@@ -77,3 +77,15 @@ test('address: every menu entry names an item at a variant the file check knows'
     assert.ok(KNOWN.data[id].includes(v), e.key);
   }
 });
+
+test('the aerial photos are an overlay, not a base: a link keeps Satellite with them, in any order', async () => {
+  const { readAddress, initialState } = await import('../../site/address.js');
+  for (const hash of ['#on=aerial,sat', '#on=sat,aerial']) {
+    const st = initialState();
+    readAddress(hash, st, {});
+    assert.ok(st.on.has('sat') && st.on.has('aerial') && !st.on.has('chart'), `${hash}: ${[...st.on]}`);
+  }
+  const st = initialState();
+  readAddress('#on=aerial', st, {});
+  assert.ok(st.on.has('chart') && st.on.has('aerial'), 'no base listed: the first base, the photos kept');
+});

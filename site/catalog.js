@@ -333,6 +333,12 @@ export const ITEMS = [
         lic: eoxOpen(y) ? 'CC BY 4.0' : 'CC BY-NC-SA 4.0: non-commercial use only',
         res: '10 m: coastlines, fields, rivers and roads, not single buildings', url: 'https://cloudless.eox.at' };
     } },
+  // over Satellite (whichever is chosen), not one of the base's choices: its own switch and opacity, to
+  // compare the two; drawn only inside each country (ortho.js)
+  { id: 'aerial', group: 'base', label: 'National aerial photos', overlay: 'sat', on: true, opacity: 1, minzoom: ORTHO_MIN,
+    info: { src: 'Each country\'s own aerial photos, inside its borders: IGN BD ORTHO (France and its overseas departments), swisstopo SWISSIMAGE (Switzerland), Beeldmateriaal Nederland via PDOK (the Netherlands), AGEA 2022–2024 (Italy)',
+      lic: 'Licence Ouverte 2.0 (IGN); free use with attribution (swisstopo); CC BY 4.0 (PDOK, AGEA). Cut to each country with OpenStreetMap\'s boundaries (ODbL)',
+      res: '8–25 cm: single buildings, cars and boats. Flown every one to three years; Italy\'s in three parts, 2022, 2023 and 2024. From zoom 12' } },
 
   { id: 'depth', group: 'sea', label: 'Depth shading', on: true, opacity: 1, maxzoom: DEPTH_ZMAX - 1, kind: 'gebco',
     variants: { atlas: 'Darker = deeper (atlas)', nautical: 'Darker = shallower (nautical chart)' },

@@ -278,8 +278,8 @@ function applyItem(id) {
 }
 function setOn(id, on) {
   const it = byId[id];
-  if (on && GROUPS.find((g) => g.id === it.group).exclusive) {
-    for (const other of ITEMS) if (other.group === it.group && other.id !== id && state.on.delete(other.id)) applyItem(other.id);
+  if (on && GROUPS.find((g) => g.id === it.group).exclusive && !it.overlay) { // an overlay (aerial photos) is no choice of the base's
+    for (const other of ITEMS) if (other.group === it.group && other.id !== id && !other.overlay && state.on.delete(other.id)) applyItem(other.id);
   }
   on ? state.on.add(id) : state.on.delete(id);
   refresh(id);
@@ -813,7 +813,8 @@ function itemRow(it) {
   return row;
 }
 // Base: two cards (a radio group); the satellite source and the provenance below them
-function baseBlock(items) {
+function baseBlock(all) {
+  const items = all.filter((it) => !it.overlay), overlays = all.filter((it) => it.overlay); // the choices; what goes over one of them
   const cards = items.map((it) => {
     const card = h('button', { type: 'button', class: 'basecard', 'data-base': it.id, id: `i-${it.id}`, 'aria-pressed': String(state.on.has(it.id)), onclick: () => setOn(it.id, true) },
       h('div', { class: 'thumb' }), h('span', {}, it.label));
@@ -822,7 +823,7 @@ function baseBlock(items) {
   });
   return h('div', {},
     h('div', { class: 'bases', role: 'group', 'aria-label': 'Base map' }, cards),
-    h('ul', {}, h('li', { class: 'item' }, ...items.map((it) => rows[it.id].controls), ...sourceRow(items, 'this base'))));
+    h('ul', {}, h('li', { class: 'item' }, ...items.map((it) => rows[it.id].controls), ...sourceRow(items, 'this base')), ...overlays.map(itemRow)));
 }
 // Ocean data: two menus, colours and arrows, their entries under the sections' headings; the
 // source, licence and opacity of what is chosen behind one ⓘ, as for the base
@@ -863,6 +864,7 @@ function renderMenu() {
     const r = rows[it.id], on = state.on.has(it.id);
     r?.card?.setAttribute('aria-pressed', String(on)); // a base: another chosen turns it off
     if (r?.controls) r.controls.hidden = !on;
+    if (it.overlay && r) r.row.hidden = !state.on.has(it.overlay); // shown while what it goes over is
   }
   for (const render of sourceRows) render();
   renderWhen();

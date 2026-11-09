@@ -16,7 +16,11 @@ const runs = (rows) => new Map(rows.map(([y, ...xs]) => [y, xs]));
 export const within = (m, x, y) => { const xs = m.get(y); if (!xs) return false; for (let i = 0; i < xs.length; i += 2) if (x >= xs[i] && x <= xs[i + 1]) return true; return false; };
 export const readIndex = (ix) => ({ ...ix, inside: runs(ix.inside), edge: runs(ix.edge) });
 const indexes = lru(ORTHO.length);
-const coverage = (id) => indexes(id, () => fetchOk(`${COVERAGE}/${id}/index.json`).then((r) => r.json()).then(readIndex));
+// a country whose coverage is not on the data host (a 404: not published yet) is drawn nowhere, quietly;
+// one that cannot be read (no connection, a server's error) fails its tiles, which the layer shows
+const NONE = { z: 12, extent: 8192, buffer: 64, inside: [], edge: [] };
+const coverage = (id) => indexes(id, () => fetchBytes(`${COVERAGE}/${id}/index.json`)
+  .then((b) => readIndex(b ? JSON.parse(new TextDecoder().decode(b)) : NONE)));
 // where tile z/x/y is for a coverage: 'inside', 'edge' (the border crosses it), or null (outside);
 // at and above the coverage's zoom, by the coverage tile holding it
 export function where(cov, z, x, y) {
@@ -91,7 +95,8 @@ function withoutWhite(im) {
   g.putImageData(d, 0, 0);
   return c;
 }
-const blank = () => new OffscreenCanvas(1, 1).transferToImageBitmap(); // nothing to draw here
+// nothing to draw here: a transparent pixel (a canvas gives its image only once it has a context)
+const blank = () => { const c = new OffscreenCanvas(1, 1); c.getContext('2d'); return c.transferToImageBitmap(); };
 // a part's answer that only says there is no imagery here (the sea, beyond a flight): not a failure
 const nothingHere = (e) => /^HTTP 4\d\d$/.test(e?.message);
 

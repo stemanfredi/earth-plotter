@@ -18,7 +18,7 @@ export const entryOf = (key) => { if (!key) return null; const [id, variant] = k
 export const ENTRIES = { colour: [], arrows: [] }; // slot → [{ key, it, label }]
 for (const it of DATA) for (const v of variantsOf(it)) for (const slot of drawsOfEntry(it, v)) ENTRIES[slot].push({ key: `${it.id}:${v}`, it, label: entryLabel(it, v, slot) });
 // the base maps: one of them is on, always (their group is exclusive); the first is the default
-const BASES = ITEMS.filter((it) => GROUPS.find((g) => g.id === it.group)?.exclusive).map((it) => it.id);
+const BASES = ITEMS.filter((it) => GROUPS.find((g) => g.id === it.group)?.exclusive && !it.overlay).map((it) => it.id); // an overlay (aerial photos) is no base
 
 export const hour = (t) => Math.floor(t / 36e5) * 36e5; // the hour a time falls in (ms)
 // a layer as it starts: its first variant, its own opacity, a density dataset's default period

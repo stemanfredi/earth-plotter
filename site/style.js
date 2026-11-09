@@ -120,7 +120,7 @@ function layers() {
     { id: 'bg', type: 'background', paint: { 'background-color': C.land } },
 
     ...EOX_YEARS.map((y) => raster(eoxKey(y), 'sat', eoxKey(y))), raster('esri', 'sat', 'esri'),
-    ...ORTHO.map((o) => ({ ...raster(`ortho-${o.id}`, 'sat'), minzoom: ORTHO_MIN })), // over whichever is chosen, inside their countries
+    ...ORTHO.map((o) => { const l = raster(`ortho-${o.id}`, 'aerial'); return { ...l, minzoom: ORTHO_MIN, metadata: { ...l.metadata, base: 'sat' } }; }), // over whichever Satellite is, inside their countries
 
     // land relief and contours sit under the sea fill: the vector coastline cuts them sharply
     { id: 'relief', type: 'hillshade', source: 'dem', ...m('relief'),

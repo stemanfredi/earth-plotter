@@ -49,7 +49,7 @@ Built 2026-10-30 (Download › Offline areas); what is still open:
 Built: Satellite is EOX's Sentinel-2 cloudless mosaics, one a year (2025 to
 2018, and 2016; 2017 covers only Europe), 10 m everywhere; Esri's World
 Imagery with the visitor's own ArcGIS key (docs/esri-key.md); and, from zoom
-12, the national aerial imagery of France (with its overseas departments),
+12, *National aerial photos*: the national imagery of France (with its overseas departments),
 Switzerland, the Netherlands and Italy, each drawn inside its own country
 (`site/ortho.js`, masks from `tools/coverage.mjs`). No open imagery of the
 whole world is sharper than 10 m: sharper is national, one country at a time.
@@ -76,8 +76,9 @@ What the first four countries showed:
   and Connecticut. Then those served as WMS: the other German states,
   Portugal, Wallonia, Brussels, Slovakia, the United States' lower 48 (NAIP,
   0.3–0.6 m, public domain), and a few states and cities more.
-- **To decide**: whether the national imagery stays part of Satellite (drawn
-  over any variant, Esri's included) or becomes a choice of its own.
+- Decided: the national imagery is a layer of its own, *National aerial
+  photos*, under Satellite and over whichever imagery it shows, with its own
+  switch and opacity: to compare it with Esri's or EOX's in place.
 - **One mechanism with the land's official maps** (below): a national source
   described once (where it covers, its zooms, its credit and licence), for
   imagery and topographic overlays alike.

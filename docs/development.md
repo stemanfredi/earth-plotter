@@ -116,7 +116,7 @@ is a summary only.
 | Chart base, coastline, roads, buildings, names, boundaries | OpenStreetMap via OpenFreeMap (OpenMapTiles schema) | ODbL |
 | Satellite | EOX Sentinel-2 cloudless (EOxCloudless), one mosaic a year: 2025 to 2018, and 2016 (2017 covers only Europe) | CC BY 4.0 (2016); CC BY-NC-SA 4.0 from 2018 (non-commercial) |
 | Satellite, with the visitor's own key | Esri World Imagery, keyed (docs/esri-key.md) | Esri's terms, under the visitor's own ArcGIS account |
-| Satellite, from zoom 12, inside each country | National aerial imagery: IGN BD ORTHO (France and its overseas departments), swisstopo SWISSIMAGE (Switzerland), Beeldmateriaal Nederland via PDOK (the Netherlands), AGEA 2022–2024 (Italy); each cut to its country with masks built from OpenStreetMap's boundaries, on the project's data host | Licence Ouverte 2.0; swisstopo's free use with attribution; CC BY 4.0; CC BY 4.0. The masks: ODbL |
+| National aerial photos (over Satellite, from zoom 12, inside each country) | National aerial imagery: IGN BD ORTHO (France and its overseas departments), swisstopo SWISSIMAGE (Switzerland), Beeldmateriaal Nederland via PDOK (the Netherlands), AGEA 2022–2024 (Italy); each cut to its country with masks built from OpenStreetMap's boundaries, on the project's data host | Licence Ouverte 2.0; swisstopo's free use with attribution; CC BY 4.0; CC BY 4.0. The masks: ODbL |
 | Depth shading, isobaths, depth on click | GEBCO 2026 Grid (GEBCO Compilation Group), repacked as Zarr stores on the project's data host | Free to use and redistribute, with attribution |
 | Depth sources | GEBCO 2026 type identifier grid, likewise | As GEBCO |
 | Relief shading, land contours | AWS Terrain Tiles (Terrarium) | Open data, with attribution per source |

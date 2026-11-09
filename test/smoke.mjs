@@ -694,6 +694,8 @@ await section('national imagery: asked only inside its country\'s coverage, cred
   const masks = [];
   await nctx.route(`${HOSTS.geodata}/coverage-2026/**`, (route) => {
     const path = new URL(route.request().url()).pathname, id = path.split('/')[2];
+    // France's not published (a 404, as it was for a while after the upload): drawn nowhere, no error
+    if (path.endsWith('index.json') && id === 'fr') return route.fulfill({ status: 404, body: '', headers: { 'access-control-allow-origin': '*' } });
     if (path.endsWith('index.json')) return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(index(id)), headers: { 'access-control-allow-origin': '*' } });
     masks.push(path);
     return route.fulfill({ status: 200, body: half, headers: { 'access-control-allow-origin': '*' } });
@@ -704,13 +706,27 @@ await section('national imagery: asked only inside its country\'s coverage, cred
     if (r.url().startsWith(HOSTS.ign)) asked.fr.push(r.url());
   });
   const credits = (pg) => pg.evaluate(() => document.querySelector('.credits-text')?.textContent || '');
-  const p = await open('#v=13/52.373/4.91/0&on=sat', nctx);
+  const p = await open('#v=13/52.373/4.91/0&on=sat,aerial', nctx, 'layers', ['base']);
   await until(p, () => /Beeldmateriaal/.test(document.querySelector('.credits-text')?.textContent || ''), null, 15000);
   const outside = asked.nl.filter(([z, x, y]) => { const s = 2 ** (z - 12), kx = Math.floor(x / s), ky = Math.floor(y / s); return ky !== ay || (kx !== ax && kx !== ax + 1); });
   check(asked.nl.length > 0 && outside.length === 0, `the Dutch service asked only for tiles in its coverage (${asked.nl.length} asked, ${outside.length} beyond)`);
   check(masks.length > 0 && masks.every((m) => m.endsWith(`/nl/12/${ax + 1}/${ay}.bin`)), `the border tile's mask fetched, and only it (${[...new Set(masks)].join(', ')})`);
   check(/Luchtfoto Beeldmateriaal Nederland \(PDOK\), CC BY 4\.0/.test(await credits(p)) && !/IGN|swisstopo|AGEA/.test(await credits(p)), 'the Netherlands\' credit in view, no other country\'s');
-  // France, its coverage stood in for as empty: its service never asked (its credit is by area: shown)
+  // a switch of their own under Satellite: off, Satellite alone (to compare); on again, back
+  const row = () => p.evaluate(() => { const i = document.querySelector('#i-aerial'); return i && !i.closest('li').hidden; });
+  check(await row(), 'the aerial photos\' switch under Satellite, shown while it is on');
+  const marked = await p.evaluate(() => { const li = document.querySelector('#i-aerial').closest('li'); return li.classList.contains('error') || li.classList.contains('partial') ? li.title : ''; });
+  check(!marked, `the aerial photos not marked failing: tiles outside the coverage are empty, not errors ${marked}`);
+  await p.click('label[for=i-aerial]');
+  await until(p, () => !/Beeldmateriaal/.test(document.querySelector('.credits-text')?.textContent || ''), null, 10000);
+  check(await visible(p, 'ortho-nl') === 'none' && await visible(p, 'eox25') === 'visible', 'switched off: the photos hidden, Satellite alone, their credit gone');
+  await p.click('label[for=i-aerial]');
+  await until(p, () => /Beeldmateriaal/.test(document.querySelector('.credits-text')?.textContent || ''), null, 10000);
+  check(await visible(p, 'ortho-nl') === 'visible', 'switched on again: the photos back');
+  await p.click('.basecard[data-base=chart]');
+  check(!(await row()) && await visible(p, 'ortho-nl') === 'none', 'over the chart base: the switch hidden, no photos');
+  await p.click('.basecard[data-base=sat]');
+  // France, its coverage not published: its service never asked (its credit is by area: shown)
   await p.evaluate(() => map.jumpTo({ center: [4.84, 45.76], zoom: 13 }));
   await p.waitForFunction(() => map.loaded() && map.areTilesLoaded(), null, { timeout: 60000 });
   await until(p, () => !/Beeldmateriaal/.test(document.querySelector('.credits-text')?.textContent || ''), null, 10000);

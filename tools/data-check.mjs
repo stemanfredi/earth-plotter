@@ -2,11 +2,14 @@
 // What the providers offer against what catalog.js names (newer library versions: npm outdated).
 // Weekly in CI. Newer data periods in the EMODnet density WMS show as a notice; a density layer, its
 // times, a Copernicus dataset or one of its variables no longer offered fail the run (a dataset
-// version retired, a layer renamed: the page would draw nothing there).
+// version retired, a layer renamed: the page would draw nothing there). So do the imagery's: a
+// country's coverage not on the data host, a national service or EOX's newest year not answering
+// with an image; EOX's next year offered is a notice.
 //   node tools/data-check.mjs
-import { DENSITY, HA_WMS, ITEMS, CMEMS } from '../site/catalog.js';
+import { DENSITY, HA_WMS, ITEMS, CMEMS, ORTHO, EOX_YEARS, eoxTiles } from '../site/catalog.js';
 import { HOSTS } from '../site/hosts.js';
 import { partOf } from '../site/cmems.js';
+import { COVERAGE } from '../site/ortho.js';
 
 const problems = [];
 const problem = (title, what) => {
@@ -50,4 +53,24 @@ for (let k = 0; k < ids.length; k += 4) { // four at a time
   }));
 }
 console.log(`Copernicus: ${ids.length} datasets asked, ${problems.filter((p) => p.startsWith('Copernicus')).length} not as listed`);
+
+// the imagery: each country's coverage published, its service answering one tile inside it (Italy:
+// any of its flights), EOX's newest year answering; its next year a notice
+const tile = (url, z, x, y) => url.replace('{z}', z).replace('{x}', x).replace('{y}', y);
+const image = (url) => fetch(url).then((t) => t.ok && /^image\//.test(t.headers.get('content-type')), () => false);
+for (const o of ORTHO) {
+  const ix = await fetch(`${COVERAGE}/${o.id}/index.json`).then((t) => (t.ok ? t.json() : null), () => null);
+  if (!ix?.inside?.length) { problem(o.name, `no coverage at ${COVERAGE}/${o.id}/index.json`); continue; }
+  const [y, x] = ix.inside[Math.floor(ix.inside.length / 2)]; // a row half-way down: inland
+  const ok = (await Promise.all(o.parts.map((p) => image(tile(p, ix.z, x, y))))).some(Boolean);
+  console.log(`${o.name.padEnd(24)} coverage ${ix.inside.length} rows inside; tile ${ix.z}/${x}/${y} ${ok ? 'an image' : 'no image'}`);
+  if (!ok) problem(o.name, `no image for tile ${ix.z}/${x}/${y}`);
+}
+const newest = Math.max(...EOX_YEARS);
+if (!await image(tile(eoxTiles(newest), 0, 0, 0))) problem('EOX', `no image for ${newest}`);
+else console.log(`${'EOX'.padEnd(24)} ${newest} answers`);
+if (await image(tile(eoxTiles(newest + 1), 0, 0, 0))) {
+  console.log(`${'EOX'.padEnd(24)} ${newest + 1} offered   ← newer mosaic: add it to EOX_YEARS`);
+  if (process.env.GITHUB_ACTIONS) console.log(`::notice title=Newer EOX::EOX offers ${newest + 1}; catalog.js lists to ${newest}`);
+}
 if (problems.length) process.exit(1);

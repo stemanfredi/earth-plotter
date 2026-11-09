@@ -95,7 +95,10 @@ Two things are the project's own and need replacing in a copy:
   minute or more a tile, which is why it is not used live); `tools/coverage.mjs`
   cuts OpenStreetMap's national boundaries into the masks the national imagery
   is clipped with (its services draw white, or older imagery, beyond their
-  borders). Each says how to run it at its top.
+  borders). Each says how to run it at its top. Each writes one folder named
+  by its release (`DIR/zarr/gebco-2026/`, `DIR/tiles/seagrass-2025/`,
+  `DIR/tiles/coverage-2026/`), which is copied to the data host's root as it
+  is.
 - **The preview.** `tools/preview.mjs` takes `site/preview.jpg` again (the
   README's picture and shared links'), after a change to what the page shows.
 

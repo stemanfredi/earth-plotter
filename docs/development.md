@@ -82,7 +82,7 @@ Two things are the project's own and need replacing in a copy:
   storage with a public bucket does) serving the folders the three tools
   build, `gebco-2026/` (two Zarr stores: small files, fetched whole, no range
   requests), `seagrass-2025/` (`{z}/{x}/{y}.pbf` and `index.json`) and
-  `coverage-2026/` (per country, `index.json` and `12/{x}/{y}.bin`), over HTTPS, with cross-origin reads
+  `coverage-2026-2/` (per country, `index.json` and `12/{x}/{y}.bin`), over HTTPS, with cross-origin reads
   allowed from the page's origin and, for the browser tests, from
   `http://127.0.0.1:8099`. The page reads every file as bytes itself, so
   content types are not needed, and the files are stored as they are. The
@@ -95,10 +95,14 @@ Two things are the project's own and need replacing in a copy:
   minute or more a tile, which is why it is not used live); `tools/coverage.mjs`
   cuts OpenStreetMap's national boundaries into the masks the national imagery
   is clipped with (its services draw white, or older imagery, beyond their
-  borders). Each says how to run it at its top. Each writes one folder named
+  borders), and marks the tiles with sea in them, where a service's white may
+  be its "no imagery" and is cleared (from France's and the Netherlands' own
+  land outlines and Natural Earth's countries; read only, not published).
+  Each says how to run it at its top. Each writes one folder named
   by its release (`DIR/zarr/gebco-2026/`, `DIR/tiles/seagrass-2025/`,
-  `DIR/tiles/coverage-2026/`), which is copied to the data host's root as it
-  is.
+  `DIR/tiles/coverage-2026-2/`, site/ortho.js RELEASE), which is copied to the
+  data host's root as it is. A new build of the same data goes to a new folder:
+  the files are cached as immutable.
 - **The preview.** `tools/preview.mjs` takes `site/preview.jpg` again (the
   README's picture and shared links'), after a change to what the page shows.
 

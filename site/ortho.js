@@ -8,14 +8,14 @@ import { HOSTS } from './hosts.js';
 import { fetchOk, fetchBytes, tileUrl, lru } from './net.js';
 import { tileBounds, tileXY, boxesMeet, MAX_LAT } from './geo.js';
 
-export const RELEASE = 'coverage-2026'; // the coverage's folder on the data host (tools/coverage.mjs writes it)
+export const RELEASE = 'coverage-2026-2'; // the coverage's folder on the data host (tools/coverage.mjs writes it); a new build, a new folder: the files are cached as immutable
 export const COVERAGE = `${HOSTS.geodata}/${RELEASE}`;
 const byId = Object.fromEntries(ORTHO.map((o) => [o.id, o]));
 
 // a country's coverage: its index's rows ([y, x0, x1, …]) as y → runs of x
 const runs = (rows) => new Map(rows.map(([y, ...xs]) => [y, xs]));
 export const within = (m, x, y) => { const xs = m.get(y); if (!xs) return false; for (let i = 0; i < xs.length; i += 2) if (x >= xs[i] && x <= xs[i + 1]) return true; return false; };
-export const readIndex = (ix) => ({ ...ix, inside: runs(ix.inside), edge: runs(ix.edge) });
+export const readIndex = (ix) => ({ ...ix, inside: runs(ix.inside), edge: runs(ix.edge), sea: runs(ix.sea ?? []) });
 const indexes = lru(ORTHO.length), read = {}; // read: id → its coverage once read (covers)
 // a country whose coverage is not on the data host (a 404: not published yet) is null, drawn nowhere,
 // quietly; one that cannot be read (no connection, a server's error) fails its tiles, which the layer shows
@@ -27,6 +27,12 @@ export function where(cov, z, x, y) {
   if (z < cov.z) return null;
   const s = 2 ** (z - cov.z), kx = Math.floor(x / s), ky = Math.floor(y / s);
   return within(cov.inside, kx, ky) ? 'inside' : within(cov.edge, kx, ky) ? 'edge' : null;
+}
+// whether tile z/x/y has some of the country's sea (by its coverage tile): where a service's white can
+// be its "no imagery", cleared there only (clearWhite), so that snow and white roofs inland are kept
+export function atSea(cov, z, x, y) {
+  const s = 2 ** (z - cov.z);
+  return within(cov.sea, Math.floor(x / s), Math.floor(y / s));
 }
 // whether the box [w, s, e, n] meets country id's coverage (and its bounds), once its coverage has
 // been read (by its first tiles): its credit is due
@@ -133,9 +139,9 @@ export async function orthoTile({ url }, abortController) {
   const [, id, z, x, y] = /^ortho:\/\/(\w+)\/(\d+)\/(\d+)\/(\d+)$/.exec(url).map((v, i) => (i > 1 ? +v : v));
   const o = byId[id], cov = await coverage(id), here = cov && where(cov, z, x, y);
   if (!here) return empty();
-  const signal = abortController?.signal, parts = partsAt(o, z, x, y);
+  const signal = abortController?.signal, parts = partsAt(o, z, x, y), whiten = o.white && atSea(cov, z, x, y);
   const get = async (p) => (await fetchOk(tileUrl(p, z, x, y), { signal })).blob();
-  if (here === 'inside' && parts.length === 1 && !o.white) { // nothing to cut or clear: the service's tile as it is
+  if (here === 'inside' && parts.length === 1 && !whiten) { // nothing to cut or clear: the service's tile as it is
     try { return { data: await (await get(parts[0])).arrayBuffer() }; } catch (e) { if (nothingHere(e)) return empty(); throw e; }
   }
   const s = 2 ** (z - cov.z);
@@ -144,9 +150,12 @@ export async function orthoTile({ url }, abortController) {
   const settled = await Promise.allSettled(parts.map(async (p) => createImageBitmap(await get(p))));
   const images = settled.filter((r) => r.status === 'fulfilled').map((r) => r.value);
   try {
+    // a part that failed (not "nothing here") fails the tile even when another answered: drawn without
+    // it, an older flight would stand where a newer one is, and MapLibre would keep the tile
     const failed = settled.find((r) => r.status === 'rejected' && !nothingHere(r.reason));
-    if (!images.length) { if (failed) throw failed.reason; return empty(); }
-    const draw = o.white ? images.map(withoutWhite).filter(Boolean) : images;
+    if (failed) throw failed.reason;
+    if (!images.length) return empty();
+    const draw = whiten ? images.map(withoutWhite).filter(Boolean) : images;
     if (!draw.length) return empty();
     const c = new OffscreenCanvas(PX, PX), g = c.getContext('2d');
     if (rings) { maskPath(g, await rings, cov, z, x, y, PX); g.clip('evenodd'); }

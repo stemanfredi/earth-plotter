@@ -60,11 +60,11 @@ const tile = (url, z, x, y) => url.replace('{z}', z).replace('{x}', x).replace('
 const image = (url) => fetch(url).then((t) => t.ok && /^image\//.test(t.headers.get('content-type')), () => false);
 for (const o of ORTHO) {
   const ix = await fetch(`${COVERAGE}/${o.id}/index.json`).then((t) => (t.ok ? t.json() : null), () => null);
-  if (!ix?.inside?.length) { problem(o.name, `no coverage at ${COVERAGE}/${o.id}/index.json`); continue; }
+  if (!ix?.inside?.length) { problem(`aerial ${o.id}`, `no coverage at ${COVERAGE}/${o.id}/index.json`); continue; }
   const [y, x] = ix.inside[Math.floor(ix.inside.length / 2)]; // a row half-way down: inland
   const ok = (await Promise.all(o.parts.map((p) => image(tile(p, ix.z, x, y))))).some(Boolean);
-  console.log(`${o.name.padEnd(24)} coverage ${ix.inside.length} rows inside; tile ${ix.z}/${x}/${y} ${ok ? 'an image' : 'no image'}`);
-  if (!ok) problem(o.name, `no image for tile ${ix.z}/${x}/${y}`);
+  console.log(`${o.id.padEnd(24)} coverage ${ix.inside.length} rows inside; tile ${ix.z}/${x}/${y} ${ok ? 'an image' : 'no image'}`);
+  if (!ok) problem(`aerial ${o.id}`, `no image for tile ${ix.z}/${x}/${y}`);
 }
 const newest = Math.max(...EOX_YEARS);
 if (!await image(tile(eoxTiles(newest), 0, 0, 0))) problem('EOX', `no image for ${newest}`);

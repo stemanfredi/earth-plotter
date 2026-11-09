@@ -20,7 +20,9 @@ test('the check: a style is an accepted key; a key error, with HTTP 200 or 498, 
   assert.equal(await esri.ask(KEY, answer(200, STYLE)), 'ok');
   assert.equal(await esri.ask(KEY, answer(200, INVALID)), 'refused');
   assert.equal(await esri.ask(KEY, answer(498, INVALID)), 'refused');
-  assert.equal(await esri.ask(KEY, answer(403, 'Forbidden')), 'refused');
+  assert.equal(await esri.ask(KEY, answer(403, { error: { code: 403, message: 'You do not have permissions to access this resource or perform this operation.' } })), 'refused', 'Esri\'s own 403: no basemaps privilege');
+  await assert.rejects(esri.ask(KEY, answer(403, '<html>Forbidden</html>')), 'a bare 403 (a portal, a proxy): no answer, the key kept');
+  await assert.rejects(esri.ask(KEY, answer(401, 'Unauthorized')), 'a bare 401: no answer');
   await assert.rejects(esri.ask(KEY, answer(503, 'Service Unavailable')), /HTTP 503/, 'a service in trouble is no answer');
   await assert.rejects(esri.ask(KEY, answer(200, { error: { code: 500, message: 'Error' } })), /error 500/, 'a fault of Esri\'s, with HTTP 200, is no answer either');
   await assert.rejects(esri.ask(KEY, async () => { throw new TypeError('Failed to fetch'); }), /Failed to fetch/);

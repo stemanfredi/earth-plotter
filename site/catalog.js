@@ -146,18 +146,21 @@ export const eoxData = (year) => (year === 2018 ? '2017 & 2018' : `${year}`); //
 // white: its service paints white where it has no imagery (at sea, beyond its border), cleared by the page;
 // partBounds: where each part has imagery at all, [w, s, e, n] (from its capabilities): not asked beyond
 export const ORTHO_MIN = 12;
+// the masks each country is cut with are OpenStreetMap's boundaries (tools/coverage.mjs): ODbL asks for
+// its notice where they are used, so it goes with each country's credit
+const CUT = ', cut to its borders © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>';
 export const ORTHO = [
   { id: 'fr', maxzoom: 19, white: true, osm: [1403916, 1401835, 1891495, 1260551, 1785276, 1259885],
-    src: 'IGN BD ORTHO (France and its overseas departments)', lic: 'Licence Ouverte 2.0 (IGN)', credit: 'BD ORTHO © <a href="https://geoservices.ign.fr/bdortho">IGN</a>, Licence Ouverte 2.0',
+    src: 'IGN BD ORTHO (France and its overseas departments)', lic: 'Licence Ouverte 2.0 (IGN)', credit: `BD ORTHO © <a href="https://geoservices.ign.fr/bdortho">IGN</a>, Licence Ouverte 2.0${CUT}`,
     parts: [`${HOSTS.ign}/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=ORTHOIMAGERY.ORTHOPHOTOS&STYLE=normal&TILEMATRIXSET=PM&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}&FORMAT=image/jpeg`] },
   { id: 'ch', maxzoom: 20, osm: [51701],
-    src: 'swisstopo SWISSIMAGE (Switzerland)', lic: 'free use with attribution (swisstopo)', credit: 'SWISSIMAGE © <a href="https://www.swisstopo.admin.ch">swisstopo</a>',
+    src: 'swisstopo SWISSIMAGE (Switzerland)', lic: 'free use with attribution (swisstopo)', credit: `SWISSIMAGE © <a href="https://www.swisstopo.admin.ch">swisstopo</a>${CUT}`,
     parts: [`${HOSTS.swisstopo}/1.0.0/ch.swisstopo.swissimage/default/current/3857/{z}/{x}/{y}.jpeg`] },
   { id: 'nl', maxzoom: 20, white: true, osm: [47796], bounds: [3.3, 50.7, 7.3, 53.6],
-    src: 'Beeldmateriaal Nederland via PDOK (the Netherlands)', lic: 'CC BY 4.0 (PDOK)', credit: 'Luchtfoto <a href="https://www.beeldmateriaal.nl">Beeldmateriaal Nederland</a> (PDOK), CC BY 4.0',
+    src: 'Beeldmateriaal Nederland via PDOK (the Netherlands)', lic: 'CC BY 4.0 (PDOK)', credit: `Luchtfoto <a href="https://www.beeldmateriaal.nl">Beeldmateriaal Nederland</a> (PDOK), CC BY 4.0${CUT}`,
     parts: [`${HOSTS.pdok}/hwh/luchtfotorgb/wmts/v1_0?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=Actueel_orthoHR&STYLE=&FORMAT=image/jpeg&tileMatrixSet=OGC:1.0:GoogleMapsCompatible&tileMatrix={z}&tileRow={y}&tileCol={x}`] },
   { id: 'it', maxzoom: 18, osm: [365331],
-    src: 'AGEA 2022–2024 (Italy)', lic: 'CC BY 4.0 (AGEA)', credit: 'Ortofoto <a href="https://geoportale.agea.gov.it">AGEA</a> 2022–2024, CC BY 4.0',
+    src: 'AGEA 2022–2024 (Italy)', lic: 'CC BY 4.0 (AGEA)', credit: `Ortofoto <a href="https://geoportale.agea.gov.it">AGEA</a> 2022–2024, CC BY 4.0${CUT}`,
     partBounds: [[7.35, 35.32, 18.82, 44.87], [8.9, 39.75, 17.1, 47.14], [6.55, 37.81, 18.26, 46.76]],
     parts: [2022, 2023, 2024].map((year) => `${HOSTS.agea}/image/rest/services/AgEA/Ortofoto_AgEA_${year}/ImageServer/WMTS/tile/1.0.0/AgEA_Ortofoto_AgEA_${year}/default/GoogleMapsCompatible/{z}/{y}/{x}.jpgpng`) },
 ];
@@ -324,7 +327,7 @@ export const ITEMS = [
     info: { ...OSM, src: 'OpenStreetMap via OpenFreeMap (OpenMapTiles schema)', res: 'Coastline from OSM water polygons; generalised below zoom 7' } },
   { id: 'sat', group: 'base', label: 'Satellite', kind: 'imagery', opacity: 1,
     // first = default; Esri's only with the visitor's own key (esri.js), EOX's newest until it is accepted
-    variants: { ...Object.fromEntries(EOX_YEARS.map((y) => [eoxKey(y), `Sentinel-2 ${y}${eoxOpen(y) ? ' · CC BY' : ''}`])), esri: 'Esri World Imagery · your key' },
+    variants: { ...Object.fromEntries(EOX_YEARS.map((y) => [eoxKey(y), `Sentinel-2 ${y} · ${eoxOpen(y) ? 'CC BY' : 'non-commercial'}`])), esri: 'Esri World Imagery · your key' },
     // what its ⓘ says of the variant drawn (app.js: Esri's only once a key is accepted)
     infoOf: (variant) => {
       if (variant === 'esri') {

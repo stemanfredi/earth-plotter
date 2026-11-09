@@ -14,7 +14,7 @@ const ESRI_CHECK = `${HOSTS.esriStyles}/arcgis/rest/services/styles/v2/styles/ar
 export const ESRI_DOC = 'https://github.com/stemanfredi/earth-plotter/blob/main/docs/esri-key.md';
 // Esri asks for "Powered by Esri" and its data providers, always on screen (its text of 2026-11-09)
 export const ESRI_CREDIT = 'Powered by <a href="https://www.esri.com">Esri</a> · Source: Esri, Vantor, Earthstar Geographics, and the GIS User Community';
-const REFUSED = [401, 403, 498, 499]; // 498 Token Invalid, 499 Token Required: sent with HTTP 200 too
+const REFUSED = [401, 403, 498, 499]; // Esri's error codes for a key it refuses (498 Token Invalid, 499 Token Required): sent with HTTP 200 too
 const withKey = (url, key) => `${url}${url.includes('?') ? '&' : '?'}token=${encodeURIComponent(key)}`;
 
 // the key this browser holds, as Esri accepted it, or null
@@ -33,7 +33,9 @@ export async function ask(key, fetchFn = fetch) {
   const r = await fetchFn(withKey(ESRI_CHECK, key), { credentials: 'omit', referrerPolicy: 'strict-origin', signal: AbortSignal.timeout(15000) });
   let body = null;
   try { body = await r.json(); } catch { /* not JSON */ }
-  if (REFUSED.includes(body?.error?.code ?? r.status)) return 'refused';
+  // only Esri's own answer (its JSON error) refuses a key: a bare 401 or 403 may be a captive portal or a
+  // proxy, and a refused key is forgotten (Esri shows a key once)
+  if (REFUSED.includes(body?.error?.code)) return 'refused';
   if (r.ok && body?.version === 8) return 'ok'; // a style: the key works here
   throw new Error(`Esri answered ${body?.error?.code ? `error ${body.error.code}` : `HTTP ${r.status}`}`);
 }

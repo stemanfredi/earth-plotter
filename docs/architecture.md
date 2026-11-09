@@ -94,7 +94,8 @@ fails, or leaves out values it could not read, says so in the note. A
 drawing file that cannot be read says why.
 
 **Privacy by construction.** No request carries a referrer but Esri's, which
-send the page's origin only once the visitor's key is accepted (`site/esri.js`); the security
+send the page's origin only when the visitor has given a key: its check, then
+the tiles once it is accepted (`site/esri.js`); the security
 policy limits the page to its own files and the listed hosts (its workers
 build their addresses from the same list); libraries are
 the page's own files, so no CDN sees a visit. What leaves the browser is said

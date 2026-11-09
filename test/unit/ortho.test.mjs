@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mergeShared, cut, rowsOf, encodeMask, ringsOfRelation, Z, EXTENT, BUFFER } from '../../tools/coverage.mjs';
-import { readIndex, where, within, covers, decodeMask, maskPath, clearWhite, partsAt } from '../../site/ortho.js';
+import { mergeShared, cut, rowsOf, encodeMask, ringsOfRelation, Z, EXTENT, BUFFER, cells, seaTiles, ringsOfGeoJSON, landOfCut } from '../../tools/coverage.mjs';
+import { readIndex, where, within, covers, decodeMask, maskPath, clearWhite, partsAt, atSea } from '../../site/ortho.js';
 import { ORTHO } from '../../site/catalog.js';
 import { HOSTS } from '../../site/hosts.js';
 import { tileXY } from '../../site/geo.js';
@@ -137,4 +137,33 @@ test('a part is not asked beyond its bounds (Italy\'s flights)', () => {
   assert.deepEqual(at(45.464, 9.19), ['2023', '2024'], 'Milan: beyond the 2022 flight\'s extent');
   assert.deepEqual(at(37.5, 15.0), ['2022'], 'Catania: the 2022 flight\'s only');
   assert.equal(partsAt(ORTHO.find((o) => o.id === 'fr'), 14, 8000, 6000).length, 1, 'no bounds: every part');
+});
+
+test('a tile\'s cells covered by its rings, even-odd', () => {
+  const E = 8192, west = [[0, 0], [E / 2, 0], [E / 2, E], [0, E], [0, 0]], hole = [[0, 0], [E / 4, 0], [E / 4, E], [0, E], [0, 0]];
+  const c = cells([west], 4);
+  assert.deepEqual([...c.slice(0, 4)], [1, 1, 0, 0], 'the west half');
+  assert.deepEqual([...cells([west, hole], 4).slice(0, 4)], [0, 1, 0, 0], 'with a hole in it');
+});
+
+test('a white country\'s sea tiles: its outline where its land is not; a land border\'s sliver is not sea', () => {
+  const E = 8192, sq = [[-64, -64], [E + 64, -64], [E + 64, E + 64], [-64, E + 64], [-64, -64]];
+  const half = [[-64, -64], [E / 2, -64], [E / 2, E + 64], [-64, E + 64], [-64, -64]];
+  const sliver = [[-64, -64], [E - 20, -64], [E - 20, E + 64], [-64, E + 64], [-64, -64]]; // land to 20 units (a few metres) short
+  const country = { inside: [{ x: 1, y: 1 }, { x: 2, y: 1 }, { x: 4, y: 1 }], edge: [{ x: 3, y: 1, rings: [sq] }] };
+  const land = { inside: [{ x: 1, y: 1 }], edge: [{ x: 2, y: 1, rings: [half] }, { x: 3, y: 1, rings: [sliver] }] }; // x 4: no land at all
+  assert.deepEqual(seaTiles(country, [landOfCut(land)]).map((t) => t.x), [2, 4], 'half land: sea; all land: not; a sliver short: not; no land: sea');
+  // a neighbour's land where the country's own outline stops (a border the two disagree on): not sea
+  const neighbour = (x) => (x === 2 ? cells([[[E / 2, -64], [E + 64, -64], [E + 64, E + 64], [E / 2, E + 64], [E / 2, -64]]], 32) : null);
+  assert.deepEqual(seaTiles(country, [landOfCut(land), neighbour]).map((t) => t.x), [4], 'the other half a neighbour\'s land: not sea');
+  const cov = readIndex({ z: 12, extent: E, buffer: 64, inside: [], edge: [], sea: rowsOf([{ x: 2, y: 1 }]) });
+  assert.ok(atSea(cov, 12, 2, 1) && atSea(cov, 14, 2 * 4 + 3, 1 * 4) && !atSea(cov, 12, 1, 1), 'found by its coverage tile at any deeper zoom');
+  assert.equal(atSea(readIndex({ z: 12, extent: E, buffer: 64, inside: [], edge: [] }), 12, 2, 1), false, 'an index without sea: none');
+});
+
+test('every ring of a GeoJSON\'s polygons', () => {
+  const box = (w, s, e, n) => [[w, s], [e, s], [e, n], [w, n], [w, s]];
+  const g = { type: 'FeatureCollection', features: [{ type: 'Feature', geometry: { type: 'Polygon', coordinates: [box(0, 0, 3, 3), box(1, 1, 2, 2)] } },
+    { type: 'Feature', geometry: { type: 'MultiPolygon', coordinates: [[box(5, 5, 6, 6)]] } }] };
+  assert.equal(ringsOfGeoJSON(g).length, 3);
 });

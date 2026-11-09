@@ -737,7 +737,8 @@ await section('national imagery: asked only inside its country\'s coverage, cred
     const at = async (tx) => {
       const { data } = await orthoTile({ url: `ortho://nl/12/${tx}/${y}` });
       const g = new OffscreenCanvas(256, 256).getContext('2d');
-      g.drawImage(data, 0, 0);
+      // a tile with nothing to cut or clear comes as the service's bytes; a cut one, as an image
+      g.drawImage(data instanceof ArrayBuffer ? await createImageBitmap(new Blob([data])) : data, 0, 0, 256, 256); // as MapLibre does: to the tile's size
       return [64, 192].map((px) => g.getImageData(px, 128, 1, 1).data[3]);
     };
     return [...await at(x), ...await at(x + 1)];

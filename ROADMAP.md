@@ -44,6 +44,48 @@ Built 2026-10-30 (Download › Offline areas); what is still open:
   tiles: asked), forecasts and observations, the thematic layers, place search
   (its index cannot run in a page).
 
+## Imagery
+
+Built: Satellite is EOX's Sentinel-2 cloudless mosaics, one a year (2025 to
+2018, and 2016; 2017 covers only Europe), 10 m everywhere; and Esri's World
+Imagery with the visitor's own ArcGIS key (docs/esri-key.md). No open imagery
+of the whole world is sharper than 10 m: sharper is national, one country at
+a time.
+
+- **Next: national orthophotos**, each drawn inside its own country over EOX,
+  from about zoom 12. Open licences read, no key, tiles a browser can read in
+  Web Mercator: Luxembourg (CC0, 10 cm), the Netherlands (8 cm),
+  Switzerland and Liechtenstein (10 cm), France with its overseas departments
+  (20 cm), Austria, Spain (25 cm), Czechia (12.5 cm), Bavaria (20 cm), Italy
+  (AGEA, 20 cm), Japan, Taiwan, New South Wales, the ACT, Massachusetts,
+  Kentucky and Connecticut. Then those served as WMS: the other German
+  states, Portugal, Wallonia, Brussels, Slovakia, the United States' lower 48
+  (NAIP, 0.3–0.6 m, public domain), and a few states and cities more.
+- **First a prototype** with France, Switzerland, the Netherlands and Italy,
+  to answer what research could not:
+  - what each service returns outside its country (transparent, white, or
+    nothing): a white tile would paint over the neighbour;
+  - the seams and the order of drawing at borders, where the rectangles a
+    source can be cut to overlap (outlines may be needed);
+  - the credit of what is on screen, one source or several;
+  - inside Satellite, drawn by itself where it exists, or a layer of its own.
+- **One mechanism with the land's official maps** (below): a national source
+  described once (where it covers, its zooms, its credit and licence), for
+  imagery and topographic overlays alike.
+- **Left out**: sources for non-commercial use only (Tasmania, Cape Town),
+  so that any copy may keep every source; those that need a question first
+  (Estonia asks for a proxy, Hong Kong for its logo on the map, Slovenia's
+  browser access unconfirmed, Denmark, Finland and Bulgaria only through
+  intermediaries); those that need a key or a registration (Norway, Sweden,
+  Latvia, New Zealand's LINZ, South Korea, China). LINZ's free key is meant
+  for public pages: the first to add the way Esri's is, if it is wanted.
+- **Later**: Satellite following the page's time, EOX's mosaic of the year
+  set; Copernicus's 2 m mosaic of Europe (2021, view only) where nothing
+  national is open, mainly the United Kingdom.
+- **Offline**: imagery stays out of offline areas: Esri's terms forbid it,
+  EOX has been asked, and each national source would be read for it
+  (basemap.at describes offline downloads).
+
 ## Land and mountains
 
 What walkers and climbers need from a map, against the open data a keyless

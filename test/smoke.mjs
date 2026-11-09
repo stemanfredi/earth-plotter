@@ -680,6 +680,45 @@ await section('Esri\'s imagery with the visitor\'s key: checked first, sent only
   await ectx.close();
 });
 
+await section('national imagery: asked only inside its country\'s coverage, credited only where it is in view', async () => {
+  // the coverage stood in for (what tools/coverage.mjs builds, on the data host): the Netherlands'
+  // has one zoom-12 tile inside (central Amsterdam) and its east neighbour on the border, cut to its
+  // west half; the other countries' none. The Dutch service's own tiles are fetched as they come.
+  const nctx = await browser.newContext({ viewport: { width: 1000, height: 700 }, serviceWorkers: 'block' });
+  const z12 = (lat, lon) => [Math.floor((lon + 180) / 360 * 4096), Math.floor((1 - Math.asinh(Math.tan(lat * Math.PI / 180)) / Math.PI) / 2 * 4096)];
+  const [ax, ay] = z12(52.373, 4.893);
+  const index = (id) => ({ z: 12, extent: 8192, buffer: 64, source: 'test', relations: [], inside: id === 'nl' ? [[ay, ax, ax]] : [], edge: id === 'nl' ? [[ay, ax + 1, ax + 1]] : [] });
+  const half = Buffer.alloc(4 + 4 + 5 * 4); // one ring: the west half of the tile
+  let o = half.writeUInt32LE(1, 0); o = half.writeUInt32LE(5, o);
+  for (const [x, y] of [[-64, -64], [4096, -64], [4096, 8256], [-64, 8256], [-64, -64]]) { o = half.writeUInt16LE(x + 64, o); o = half.writeUInt16LE(y + 64, o); }
+  const masks = [];
+  await nctx.route(`${HOSTS.geodata}/coverage-2026/**`, (route) => {
+    const path = new URL(route.request().url()).pathname, id = path.split('/')[2];
+    if (path.endsWith('index.json')) return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(index(id)), headers: { 'access-control-allow-origin': '*' } });
+    masks.push(path);
+    return route.fulfill({ status: 200, body: half, headers: { 'access-control-allow-origin': '*' } });
+  });
+  const asked = { nl: [], fr: [] };
+  nctx.on('request', (r) => {
+    if (r.url().startsWith(HOSTS.pdok)) { const u = new URL(r.url()); asked.nl.push([+u.searchParams.get('tileMatrix'), +u.searchParams.get('tileCol'), +u.searchParams.get('tileRow')]); }
+    if (r.url().startsWith(HOSTS.ign)) asked.fr.push(r.url());
+  });
+  const credits = (pg) => pg.evaluate(() => document.querySelector('.credits-text')?.textContent || '');
+  const p = await open('#v=13/52.373/4.91/0&on=sat', nctx);
+  await until(p, () => /Beeldmateriaal/.test(document.querySelector('.credits-text')?.textContent || ''), null, 15000);
+  const outside = asked.nl.filter(([z, x, y]) => { const s = 2 ** (z - 12), kx = Math.floor(x / s), ky = Math.floor(y / s); return ky !== ay || (kx !== ax && kx !== ax + 1); });
+  check(asked.nl.length > 0 && outside.length === 0, `the Dutch service asked only for tiles in its coverage (${asked.nl.length} asked, ${outside.length} beyond)`);
+  check(masks.length > 0 && masks.every((m) => m.endsWith(`/nl/12/${ax + 1}/${ay}.bin`)), `the border tile's mask fetched, and only it (${[...new Set(masks)].join(', ')})`);
+  check(/Luchtfoto Beeldmateriaal Nederland \(PDOK\), CC BY 4\.0/.test(await credits(p)) && !/IGN|swisstopo|AGEA/.test(await credits(p)), 'the Netherlands\' credit in view, no other country\'s');
+  // France, its coverage stood in for as empty: its service never asked (its credit is by area: shown)
+  await p.evaluate(() => map.jumpTo({ center: [4.84, 45.76], zoom: 13 }));
+  await p.waitForFunction(() => map.loaded() && map.areTilesLoaded(), null, { timeout: 60000 });
+  await until(p, () => !/Beeldmateriaal/.test(document.querySelector('.credits-text')?.textContent || ''), null, 10000);
+  check(asked.fr.length === 0 && !/Beeldmateriaal/.test(await credits(p)), `beyond every coverage tile: its service never asked (${asked.fr.length}); the Netherlands' credit gone with it out of view`);
+  check(p.errors.length === 0, `no page errors ${p.errors.join(' | ')}`);
+  await nctx.close();
+});
+
 await section('a saved area: served from it, online and without a connection; the imagery never', async () => {
   // an area saved by hand (the downloader comes later): every file of the saved hosts the view asked
   // for, put in a pack-… cache under its own address, as a saved area keeps them

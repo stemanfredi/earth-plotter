@@ -1,6 +1,6 @@
 import * as maplibregl from './vendor/maplibre-gl.mjs';
 import mlcontour from './vendor/maplibre-contour.mjs';
-import { GROUPS, ITEMS, EOX_YEARS, eoxKey, GIBS, DEM_TILES, DEM_SEA_MAX, DEPTH_ZMAX, DEPTH_SOURCES, DEM_LAND_MAX, OMT_TILEJSON, DEPTH_SCHEMES, NO_DEPTH, DENSITY, gibsTiles, gibsDomainUrl, domainEnd, densityTiles, CMEMS, CMEMS_DEPTHS, CLASS_LABELS, EMODNET_DEPTH_STOPS, SEAGRASS } from './catalog.js';
+import { GROUPS, ITEMS, ORTHO, EOX_YEARS, eoxKey, GIBS, DEM_TILES, DEM_SEA_MAX, DEPTH_ZMAX, DEPTH_SOURCES, DEM_LAND_MAX, OMT_TILEJSON, DEPTH_SCHEMES, NO_DEPTH, DENSITY, gibsTiles, gibsDomainUrl, domainEnd, densityTiles, CMEMS, CMEMS_DEPTHS, CLASS_LABELS, EMODNET_DEPTH_STOPS, SEAGRASS } from './catalog.js';
 import { buildStyle, depthRamp, OPACITY_PROP, SEA_PICTURES, LOCATION_LAYERS, INK } from './style.js';
 import { cmemsTile, partTimes, partLevels, domainOf, cmemsLegend, partIn } from './cmems.js';
 import { workerClipper } from './clip.js';
@@ -16,6 +16,7 @@ import { circle } from './geodesy.js';
 import { norm360, norm180, tileXY, TILE, D2R } from './geo.js';
 import { fetchOk, lru } from './net.js';
 import * as esri from './esri.js';
+import { orthoTile } from './ortho.js';
 import { $, h, typing, NARROW, COMPACT, store, animate } from './dom.js';
 import { keyEntry, openKey, keyList } from './keys.js';
 import { note } from './menu.js';
@@ -88,6 +89,7 @@ maplibregl.addProtocol('clip-land', landClip.protocol);
 maplibregl.addProtocol('isobath', seaClip.isobaths);
 maplibregl.addProtocol('cmems', cmemsTile);
 maplibregl.addProtocol('gebco-tid', tidTile);
+maplibregl.addProtocol('ortho', orthoTile);
 // seagrass tiles (tools/seagrass.mjs) exist only where there is seagrass: its index lists them, and
 // a tile not listed is empty, asked of nobody (a 404 would be logged as an error)
 const seagrassIndex = lru(1); // promise of zoom → Set of x · 2^z + y
@@ -1175,9 +1177,15 @@ function scaleText() {
 const baseSources = new Set(ITEMS.filter((it) => it.group === 'base').flatMap((it) => (layersOf[it.id] || []).map((l) => l.source)));
 // a style layer drawn at this zoom: shown, and within its zoom range (the seamarks from 9 …)
 function drawn(l, z) { return map.getLayoutProperty(l.id, 'visibility') !== 'none' && z >= (l.minzoom ?? 0) && z < (l.maxzoom ?? 24); }
+// a national imagery source is credited only while its country is in view
+const orthoAreas = Object.fromEntries(ORTHO.map((o) => [`ortho-${o.id}`, o.areas]));
+function inView(areas) {
+  const b = map.getBounds(), w = b.getWest(), e = b.getEast(), s = b.getSouth(), n = b.getNorth();
+  return areas.some(([aw, as, ae, an]) => aw < e && ae > w && as < n && an > s);
+}
 function creditParts() {
   const srcs = [], z = map.getZoom();
-  for (const l of style.layers) if (l.source && drawn(l, z) && !srcs.includes(l.source)) srcs.push(l.source);
+  for (const l of style.layers) if (l.source && drawn(l, z) && !srcs.includes(l.source) && (!orthoAreas[l.source] || inView(orthoAreas[l.source]))) srcs.push(l.source);
   srcs.sort((a, b) => baseSources.has(b) - baseSources.has(a));
   const parts = [...new Set(srcs.map((s) => map.getSource(s)?.attribution).filter(Boolean))];
   return parts.filter((p) => !parts.some((q) => q !== p && q.includes(p))); // a credit another holds: once
@@ -1207,6 +1215,7 @@ function renderCredits() {
 map.on('styledata', renderCredits);
 map.on('sourcedata', (e) => { if (!e.tile) renderCredits(); });
 map.on('zoomend', renderCredits); // a layer's zoom range entered or left
+map.on('moveend', renderCredits); // a country's imagery come into view or gone
 // An export from button b: after before() (a library to load), the map's next frame, after pending
 // tiles (so a layer switched on a moment ago is in the picture). fn(canvas) runs while the canvas
 // still holds it, and must read it before awaiting; it returns what it left out, if anything. The

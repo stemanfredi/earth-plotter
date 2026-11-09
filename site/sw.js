@@ -75,6 +75,7 @@ const SHELL = [
   'menu.js',
   'net.js',
   'offline.js',
+  'ortho.js',
   'png.js',
   'search.js',
   'style.css',

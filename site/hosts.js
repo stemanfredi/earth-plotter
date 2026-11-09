@@ -9,6 +9,11 @@ export const HOSTS = {
   eox: 'https://tiles.maps.eox.at', // Sentinel-2 cloudless
   esriTiles: 'https://ibasemaps-api.arcgis.com', // World Imagery, with the visitor's own key (esri.js)
   esriStyles: 'https://basemapstyles-api.arcgis.com', // where that key is checked (esri.js)
+  // national aerial imagery (catalog.js ORTHO), each drawn inside its country (ortho.js)
+  ign: 'https://data.geopf.fr', // France
+  swisstopo: 'https://wmts.geo.admin.ch', // Switzerland
+  pdok: 'https://service.pdok.nl', // the Netherlands
+  agea: 'https://geoportale.agea.gov.it', // Italy
   gibs: 'https://gibs.earthdata.nasa.gov', // NASA daily imagery
   openseamap: 'https://tiles.openseamap.org',
   emodnetHumanActivities: 'https://ows.emodnet-humanactivities.eu',

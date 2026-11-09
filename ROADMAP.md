@@ -47,28 +47,37 @@ Built 2026-10-30 (Download › Offline areas); what is still open:
 ## Imagery
 
 Built: Satellite is EOX's Sentinel-2 cloudless mosaics, one a year (2025 to
-2018, and 2016; 2017 covers only Europe), 10 m everywhere; and Esri's World
-Imagery with the visitor's own ArcGIS key (docs/esri-key.md). No open imagery
-of the whole world is sharper than 10 m: sharper is national, one country at
-a time.
+2018, and 2016; 2017 covers only Europe), 10 m everywhere; Esri's World
+Imagery with the visitor's own ArcGIS key (docs/esri-key.md); and, from zoom
+12, the national aerial imagery of France (with its overseas departments),
+Switzerland, the Netherlands and Italy, each drawn inside its own country
+(`site/ortho.js`, masks from `tools/coverage.mjs`). No open imagery of the
+whole world is sharper than 10 m: sharper is national, one country at a time.
 
-- **Next: national orthophotos**, each drawn inside its own country over EOX,
-  from about zoom 12. Open licences read, no key, tiles a browser can read in
-  Web Mercator: Luxembourg (CC0, 10 cm), the Netherlands (8 cm),
-  Switzerland and Liechtenstein (10 cm), France with its overseas departments
-  (20 cm), Austria, Spain (25 cm), Czechia (12.5 cm), Bavaria (20 cm), Italy
-  (AGEA, 20 cm), Japan, Taiwan, New South Wales, the ACT, Massachusetts,
-  Kentucky and Connecticut. Then those served as WMS: the other German
-  states, Portugal, Wallonia, Brussels, Slovakia, the United States' lower 48
-  (NAIP, 0.3–0.6 m, public domain), and a few states and cities more.
-- **First a prototype** with France, Switzerland, the Netherlands and Italy,
-  to answer what research could not:
-  - what each service returns outside its country (transparent, white, or
-    nothing): a white tile would paint over the neighbour;
-  - the seams and the order of drawing at borders, where the rectangles a
-    source can be cut to overlap (outlines may be needed);
-  - the credit of what is on screen, one source or several;
-  - inside Satellite, drawn by itself where it exists, or a layer of its own.
+What the first four countries showed:
+- Beyond their borders the services draw white (France, the Netherlands, also
+  at sea), older imagery of the neighbours (Switzerland: satellite images of
+  2004–05), or nothing (Italy). So every tile is cut to its country: masks
+  from OpenStreetMap's national boundaries, which include the territorial
+  sea. Land borders are exact (Baarle-Nassau's enclaves come out right), and
+  at sea each service's own "no imagery" decides: the page clears the white
+  that joins a tile's edge, so harbours keep their imagery. Land-only
+  outlines were tried first: they cut harbour basins away.
+- Where two countries' imagery meet, the seam is the border; at sea, where a
+  service's imagery ends, EOX shows beyond, in tile-sized steps.
+- Credits: each country's while it is in view.
+- Italy's imagery is three flights (2022, 2023, 2024), each part of the
+  country, drawn newest on top.
+
+- **Next: more countries**, the same way. Open licences read, no key, tiles a
+  browser can read in Web Mercator: Luxembourg (CC0, 10 cm), Liechtenstein
+  (in SWISSIMAGE), Austria, Spain (25 cm), Czechia (12.5 cm), Bavaria
+  (20 cm), Japan, Taiwan, New South Wales, the ACT, Massachusetts, Kentucky
+  and Connecticut. Then those served as WMS: the other German states,
+  Portugal, Wallonia, Brussels, Slovakia, the United States' lower 48 (NAIP,
+  0.3–0.6 m, public domain), and a few states and cities more.
+- **To decide**: whether the national imagery stays part of Satellite (drawn
+  over any variant, Esri's included) or becomes a choice of its own.
 - **One mechanism with the land's official maps** (below): a national source
   described once (where it covers, its zooms, its credit and licence), for
   imagery and topographic overlays alike.

@@ -1,7 +1,7 @@
 // The map's style, from the catalogue: every source, and every layer in draw order. A layer belongs
 // to a menu item through metadata.item; layers of a hidden item are set to visibility:none, and
 // MapLibre requests no tiles for a source whose layers are all hidden.
-import { DEM_CREDITS, EOX_YEARS, eoxKey, eoxOpen, eoxData, eoxTiles, SEAMARKS_MIN, CONTOURS_MIN, DEM_SEA_MAX, DEM_LAND_MAX, DEPTH_ZMAX, ISOBATH_MAX, OMT_TILEJSON, DENSITY, densityTiles, HA_CREDIT, GIBS, gibsTiles, CMEMS, ITEMS, DEPTH_SCHEMES, ISOBATH_ZOOMS, DEPTH_LEVELS, isMajorIsobath, NO_DEPTH, NO_DEPTH_M, SEAGRASS_ZOOMS, SEAGRASS_CLASSES } from './catalog.js';
+import { DEM_CREDITS, ORTHO, ORTHO_MIN, EOX_YEARS, eoxKey, eoxOpen, eoxData, eoxTiles, SEAMARKS_MIN, CONTOURS_MIN, DEM_SEA_MAX, DEM_LAND_MAX, DEPTH_ZMAX, ISOBATH_MAX, OMT_TILEJSON, DENSITY, densityTiles, HA_CREDIT, GIBS, gibsTiles, CMEMS, ITEMS, DEPTH_SCHEMES, ISOBATH_ZOOMS, DEPTH_LEVELS, isMajorIsobath, NO_DEPTH, NO_DEPTH_M, SEAGRASS_ZOOMS, SEAGRASS_CLASSES } from './catalog.js';
 import { HOSTS } from './hosts.js';
 import { ESRI_TILES, ESRI_CREDIT } from './esri.js';
 
@@ -44,6 +44,9 @@ function sources({ seaDemUrl, landDemUrl, isobathUrl, contourUrl, date, density 
       attribution: `<a href="https://cloudless.eox.at">EOxCloudless</a> ${y} by EOX IT Services GmbH (contains modified Copernicus Sentinel data ${eoxData(y)}), ${eoxOpen(y) ? 'CC BY 4.0' : 'CC BY-NC-SA 4.0'}` }])),
     // Esri's imagery with the visitor's key: app.js's transformRequest adds it (esri.js request)
     esri: { type: 'raster', tileSize: 256, maxzoom: 19, tiles: [ESRI_TILES], attribution: ESRI_CREDIT },
+    // national aerial imagery, each cut to its country by the ortho:// handler (ortho.js)
+    ...Object.fromEntries(ORTHO.map((o) => [`ortho-${o.id}`, { type: 'raster', tileSize: 256, minzoom: ORTHO_MIN, maxzoom: o.maxzoom, tiles: [`ortho://${o.id}/{z}/{x}/{y}`],
+      attribution: o.credit, ...(o.areas.length === 1 && { bounds: o.areas[0] }) }])),
     // the grid is 1 km: beyond zoom 10 the map overzooms instead of asking for more tiles
     traffic: { type: 'raster', tileSize: 256, maxzoom: 10, tiles: densityTiles('traffic', ...(density.traffic || ['all', DENSITY.traffic.defaultPeriod])),
       attribution: HA_CREDIT },
@@ -117,6 +120,7 @@ function layers() {
     { id: 'bg', type: 'background', paint: { 'background-color': C.land } },
 
     ...EOX_YEARS.map((y) => raster(eoxKey(y), 'sat', eoxKey(y))), raster('esri', 'sat', 'esri'),
+    ...ORTHO.map((o) => ({ ...raster(`ortho-${o.id}`, 'sat'), minzoom: ORTHO_MIN })), // over whichever is chosen, inside their countries
 
     // land relief and contours sit under the sea fill: the vector coastline cuts them sharply
     { id: 'relief', type: 'hillshade', source: 'dem', ...m('relief'),

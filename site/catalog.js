@@ -135,6 +135,28 @@ export const EOX_YEARS = [...Array.from({ length: 8 }, (_, i) => 2025 - i), 2016
 export const eoxKey = (year) => `eox${String(year).slice(2)}`;
 export const eoxOpen = (year) => year < 2018; // CC BY: any use, commercial included
 export const eoxData = (year) => (year === 2018 ? '2017 & 2018' : `${year}`); // the Sentinel-2 years in it, as EOX credits them
+
+// National aerial imagery (orthophotos), drawn over Satellite from ORTHO_MIN, each cut to its
+// country (ortho.js, with the masks tools/coverage.mjs builds): their services answer beyond their
+// borders with white or with older imagery. parts: the tile addresses, drawn in order (Italy: its
+// three flights, oldest first, each transparent outside its own); areas: where the credit is due;
+// white: its service paints white where it has no imagery (at sea, beyond its border), cleared by the page;
+// partBounds: where each part has imagery at all, [w, s, e, n] (from its capabilities): not asked beyond
+export const ORTHO_MIN = 12;
+export const ORTHO = [
+  { id: 'fr', name: 'France', maxzoom: 19, white: true, credit: 'BD ORTHO © <a href="https://geoservices.ign.fr/bdortho">IGN</a>, Licence Ouverte 2.0',
+    parts: [`${HOSTS.ign}/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=ORTHOIMAGERY.ORTHOPHOTOS&STYLE=normal&TILEMATRIXSET=PM&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}&FORMAT=image/jpeg`],
+    areas: [[-5.3, 41.3, 9.6, 51.2], [-61.9, 15.8, -60.9, 16.6], [-61.3, 14.3, -60.8, 14.9], [-54.7, 2.1, -51.6, 5.8], [55.2, -21.4, 55.9, -20.8], [44.9, -13.1, 45.4, -12.6]] },
+  { id: 'ch', name: 'Switzerland', maxzoom: 20, credit: 'SWISSIMAGE © <a href="https://www.swisstopo.admin.ch">swisstopo</a>',
+    parts: [`${HOSTS.swisstopo}/1.0.0/ch.swisstopo.swissimage/default/current/3857/{z}/{x}/{y}.jpeg`], areas: [[5.9, 45.8, 10.5, 47.9]] },
+  { id: 'nl', name: 'the Netherlands', maxzoom: 20, white: true, credit: 'Luchtfoto <a href="https://www.beeldmateriaal.nl">Beeldmateriaal Nederland</a> (PDOK), CC BY 4.0',
+    parts: [`${HOSTS.pdok}/hwh/luchtfotorgb/wmts/v1_0?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=Actueel_orthoHR&STYLE=&FORMAT=image/jpeg&tileMatrixSet=OGC:1.0:GoogleMapsCompatible&tileMatrix={z}&tileRow={y}&tileCol={x}`],
+    areas: [[3.3, 50.7, 7.3, 53.6]] },
+  { id: 'it', name: 'Italy', maxzoom: 18, credit: 'Ortofoto <a href="https://geoportale.agea.gov.it">AGEA</a> 2022–2024, CC BY 4.0',
+    partBounds: [[7.35, 35.32, 18.82, 44.87], [8.9, 39.75, 17.1, 47.14], [6.55, 37.81, 18.26, 46.76]],
+    parts: [2022, 2023, 2024].map((year) => `${HOSTS.agea}/image/rest/services/AgEA/Ortofoto_AgEA_${year}/ImageServer/WMTS/tile/1.0.0/AgEA_Ortofoto_AgEA_${year}/default/GoogleMapsCompatible/{z}/{y}/{x}.jpgpng`),
+    areas: [[6.6, 35.4, 18.6, 47.1]] },
+];
 export const eoxTiles = (year) => `${HOSTS.eox}/wmts/1.0.0/${year === 2016 ? 's2cloudless' : `s2cloudless-${year}`}_3857/default/g/{z}/{y}/{x}.jpg`;
 
 export const GIBS = {

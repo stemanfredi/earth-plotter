@@ -6,7 +6,8 @@
 
 A free map of the world's land and sea in your browser, from open data. It
 draws the OpenStreetMap base map with relief and contours, depth shading and
-isobaths, satellite imagery, seamarks, shipping density, ocean data from
+isobaths, satellite imagery (and national aerial photos in France,
+Switzerland, the Netherlands and Italy), seamarks, shipping density, ocean data from
 Copernicus Marine and NASA's daily imagery. Measure and draw on it, export the
 view as GIS data, and save areas to use without a connection.
 

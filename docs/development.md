@@ -76,12 +76,13 @@ Any static web server can serve `site/`. What a copy inherits:
 
 Two things are the project's own and need replacing in a copy:
 
-- **The data host.** GEBCO's depths and the seagrass tiles are read from the
-  host named in `site/hosts.js`; a copy changes that one line. The host must be
-  a static file server (any object storage with a public bucket does) serving
-  the folders the two tools build, `gebco-2026/` (two Zarr stores: small
-  files, fetched whole, no range requests) and `seagrass-2025/`
-  (`{z}/{x}/{y}.pbf` and `index.json`), over HTTPS, with cross-origin reads
+- **The data host.** GEBCO's depths, the seagrass tiles and the national
+  imagery's coverage are read from the host named in `site/hosts.js`; a copy
+  changes that one line. The host must be a static file server (any object
+  storage with a public bucket does) serving the folders the three tools
+  build, `gebco-2026/` (two Zarr stores: small files, fetched whole, no range
+  requests), `seagrass-2025/` (`{z}/{x}/{y}.pbf` and `index.json`) and
+  `coverage-2026/` (per country, `index.json` and `12/{x}/{y}.bin`), over HTTPS, with cross-origin reads
   allowed from the page's origin and, for the browser tests, from
   `http://127.0.0.1:8099`. The page reads every file as bytes itself, so
   content types are not needed, and the files are stored as they are. The
@@ -91,7 +92,10 @@ Two things are the project's own and need replacing in a copy:
 - **The data builds.** `tools/gebco.mjs` downloads GEBCO's grids and builds
   the two Zarr stores (and verifies them); `tools/seagrass.mjs` builds the
   seagrass tiles from EMODnet's downloadable product (its map service takes a
-  minute or more a tile, which is why it is not used live). Both say how to run them at their top.
+  minute or more a tile, which is why it is not used live); `tools/coverage.mjs`
+  cuts OpenStreetMap's national boundaries into the masks the national imagery
+  is clipped with (its services draw white, or older imagery, beyond their
+  borders). Each says how to run it at its top.
 - **The preview.** `tools/preview.mjs` takes `site/preview.jpg` again (the
   README's picture and shared links'), after a change to what the page shows.
 
@@ -112,6 +116,7 @@ is a summary only.
 | Chart base, coastline, roads, buildings, names, boundaries | OpenStreetMap via OpenFreeMap (OpenMapTiles schema) | ODbL |
 | Satellite | EOX Sentinel-2 cloudless (EOxCloudless), one mosaic a year: 2025 to 2018, and 2016 (2017 covers only Europe) | CC BY 4.0 (2016); CC BY-NC-SA 4.0 from 2018 (non-commercial) |
 | Satellite, with the visitor's own key | Esri World Imagery, keyed (docs/esri-key.md) | Esri's terms, under the visitor's own ArcGIS account |
+| Satellite, from zoom 12, inside each country | National aerial imagery: IGN BD ORTHO (France and its overseas departments), swisstopo SWISSIMAGE (Switzerland), Beeldmateriaal Nederland via PDOK (the Netherlands), AGEA 2022–2024 (Italy); each cut to its country with masks built from OpenStreetMap's boundaries, on the project's data host | Licence Ouverte 2.0; swisstopo's free use with attribution; CC BY 4.0; CC BY 4.0. The masks: ODbL |
 | Depth shading, isobaths, depth on click | GEBCO 2026 Grid (GEBCO Compilation Group), repacked as Zarr stores on the project's data host | Free to use and redistribute, with attribution |
 | Depth sources | GEBCO 2026 type identifier grid, likewise | As GEBCO |
 | Relief shading, land contours | AWS Terrain Tiles (Terrarium) | Open data, with attribution per source |

@@ -2,7 +2,7 @@
 // (docs/drawing-format.md §4), one grammar read and written here, with no map and no page: the
 // catalogue's items and entries, the state as it starts, the hash read into it, a view written as a
 // hash. app.js keeps what needs the map (the view as it is now, applying it).
-import { ITEMS, GROUPS, GIBS, CMEMS, CMEMS_DEPTHS, DENSITY, drawsOf } from './catalog.js';
+import { ITEMS, isBase, GIBS, CMEMS, CMEMS_DEPTHS, DENSITY, drawsOf } from './catalog.js';
 import { norm180 } from './geo.js';
 
 export const byId = Object.assign(Object.create(null), Object.fromEntries(ITEMS.map((it) => [it.id, it]))); // no inherited names: the link names items
@@ -18,7 +18,7 @@ export const entryOf = (key) => { if (!key) return null; const [id, variant] = k
 export const ENTRIES = { colour: [], arrows: [] }; // slot → [{ key, it, label }]
 for (const it of DATA) for (const v of variantsOf(it)) for (const slot of drawsOfEntry(it, v)) ENTRIES[slot].push({ key: `${it.id}:${v}`, it, label: entryLabel(it, v, slot) });
 // the base maps: one of them is on, always (their group is exclusive); the first is the default
-const BASES = ITEMS.filter((it) => GROUPS.find((g) => g.id === it.group)?.exclusive && !it.overlay).map((it) => it.id); // an overlay (aerial photos) is no base
+const BASES = ITEMS.filter(isBase).map((it) => it.id);
 
 export const hour = (t) => Math.floor(t / 36e5) * 36e5; // the hour a time falls in (ms)
 // a layer as it starts: its first variant, its own opacity, a density dataset's default period

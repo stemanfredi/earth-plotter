@@ -45,8 +45,8 @@ function sources({ seaDemUrl, landDemUrl, isobathUrl, contourUrl, date, density 
     // Esri's imagery with the visitor's key: app.js's transformRequest adds it (esri.js request)
     esri: { type: 'raster', tileSize: 256, maxzoom: 19, tiles: [ESRI_TILES], attribution: ESRI_CREDIT },
     // national aerial imagery, each cut to its country by the ortho:// handler (ortho.js)
-    ...Object.fromEntries(ORTHO.map((o) => [`ortho-${o.id}`, { type: 'raster', tileSize: 256, minzoom: ORTHO_MIN, maxzoom: o.maxzoom, tiles: [`ortho://${o.id}/{z}/{x}/{y}`],
-      attribution: o.credit, ...(o.areas.length === 1 && { bounds: o.areas[0] }) }])),
+    ...Object.fromEntries(ORTHO.map((o) => [`ortho-${o.id}`, { type: 'raster', tileSize: 256, maxzoom: o.maxzoom, tiles: [`ortho://${o.id}/{z}/{x}/{y}`],
+      attribution: o.credit, ...(o.bounds && { bounds: o.bounds }) }])),
     // the grid is 1 km: beyond zoom 10 the map overzooms instead of asking for more tiles
     traffic: { type: 'raster', tileSize: 256, maxzoom: 10, tiles: densityTiles('traffic', ...(density.traffic || ['all', DENSITY.traffic.defaultPeriod])),
       attribution: HA_CREDIT },
@@ -120,7 +120,7 @@ function layers() {
     { id: 'bg', type: 'background', paint: { 'background-color': C.land } },
 
     ...EOX_YEARS.map((y) => raster(eoxKey(y), 'sat', eoxKey(y))), raster('esri', 'sat', 'esri'),
-    ...ORTHO.map((o) => { const l = raster(`ortho-${o.id}`, 'aerial'); return { ...l, minzoom: ORTHO_MIN, metadata: { ...l.metadata, base: 'sat' } }; }), // over whichever Satellite is, inside their countries
+    ...ORTHO.map((o) => ({ ...raster(`ortho-${o.id}`, 'aerial'), minzoom: ORTHO_MIN })), // over whichever Satellite is (its item's overlay), inside their countries
 
     // land relief and contours sit under the sea fill: the vector coastline cuts them sharply
     { id: 'relief', type: 'hillshade', source: 'dem', ...m('relief'),

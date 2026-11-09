@@ -1,6 +1,6 @@
 import * as maplibregl from './vendor/maplibre-gl.mjs';
 import mlcontour from './vendor/maplibre-contour.mjs';
-import { GROUPS, ITEMS, ORTHO, EOX_YEARS, eoxKey, GIBS, DEM_TILES, DEM_SEA_MAX, DEPTH_ZMAX, DEPTH_SOURCES, DEM_LAND_MAX, OMT_TILEJSON, DEPTH_SCHEMES, NO_DEPTH, DENSITY, gibsTiles, gibsDomainUrl, domainEnd, densityTiles, CMEMS, CMEMS_DEPTHS, CLASS_LABELS, EMODNET_DEPTH_STOPS, SEAGRASS } from './catalog.js';
+import { GROUPS, ITEMS, isBase, EOX_YEARS, eoxKey, GIBS, DEM_TILES, DEM_SEA_MAX, DEPTH_ZMAX, DEPTH_SOURCES, DEM_LAND_MAX, OMT_TILEJSON, DEPTH_SCHEMES, NO_DEPTH, DENSITY, gibsTiles, gibsDomainUrl, domainEnd, densityTiles, CMEMS, CMEMS_DEPTHS, CLASS_LABELS, EMODNET_DEPTH_STOPS, SEAGRASS } from './catalog.js';
 import { buildStyle, depthRamp, OPACITY_PROP, SEA_PICTURES, LOCATION_LAYERS, INK } from './style.js';
 import { cmemsTile, partTimes, partLevels, domainOf, cmemsLegend, partIn } from './cmems.js';
 import { workerClipper } from './clip.js';
@@ -16,7 +16,7 @@ import { circle } from './geodesy.js';
 import { norm360, norm180, tileXY, TILE, D2R } from './geo.js';
 import { fetchOk, lru } from './net.js';
 import * as esri from './esri.js';
-import { orthoTile } from './ortho.js';
+import { orthoTile, covers } from './ortho.js';
 import { $, h, typing, NARROW, COMPACT, store, animate } from './dom.js';
 import { keyEntry, openKey, keyList } from './keys.js';
 import { note } from './menu.js';
@@ -260,7 +260,9 @@ const drawing = new Drawing(map, {
 // ---- applying the state to the map ------------------------------------------
 const layersOf = {};
 for (const l of style.layers) if (l.metadata?.item) (layersOf[l.metadata.item] ||= []).push(l);
-const baseDependent = Object.keys(layersOf).filter((k) => layersOf[k].some((l) => l.metadata.base));
+// the base a layer is drawn only over: its own (depth shading: the chart), or its item's overlay's (aerial photos: Satellite)
+const baseOf = (l) => l.metadata.base ?? byId[l.metadata.item]?.overlay;
+const baseDependent = Object.keys(layersOf).filter((k) => layersOf[k].some(baseOf));
 
 // the variant drawn: the one chosen, unless its kind draws another (KINDS.imagery)
 const drawnVariant = (id) => kindOf(id)?.drawn?.(id) ?? state.variant[id];
@@ -269,7 +271,7 @@ function applyItem(id) {
   const on = state.on.has(id);
   for (const l of layersOf[id] || []) {
     const vis = on && (!l.metadata.variant || l.metadata.variant === drawnVariant(id))
-      && (!l.metadata.base || state.on.has(l.metadata.base)); // e.g. depth shading only over the chart base
+      && (!baseOf(l) || state.on.has(baseOf(l))); // e.g. depth shading only over the chart base
     map.setLayoutProperty(l.id, 'visibility', vis ? 'visible' : 'none');
     const prop = OPACITY_PROP[l.type];
     if (it.opacity != null && prop) map.setPaintProperty(l.id, prop, state.opacity[id] * (l.metadata.opacity ?? 1)); // a layer drawn lighter than its item
@@ -277,8 +279,8 @@ function applyItem(id) {
 }
 function setOn(id, on) {
   const it = byId[id];
-  if (on && GROUPS.find((g) => g.id === it.group).exclusive && !it.overlay) { // an overlay (aerial photos) is no choice of the base's
-    for (const other of ITEMS) if (other.group === it.group && other.id !== id && !other.overlay && state.on.delete(other.id)) applyItem(other.id);
+  if (on && isBase(it)) {
+    for (const other of ITEMS) if (other.group === it.group && other.id !== id && isBase(other) && state.on.delete(other.id)) applyItem(other.id);
   }
   on ? state.on.add(id) : state.on.delete(id);
   refresh(id);
@@ -770,7 +772,7 @@ function itemRow(it) {
 }
 // Base: two cards (a radio group); the satellite source and the provenance below them
 function baseBlock(all) {
-  const items = all.filter((it) => !it.overlay), overlays = all.filter((it) => it.overlay); // the choices; what goes over one of them
+  const items = all.filter(isBase), overlays = all.filter((it) => !isBase(it)); // the choices; what goes over one of them
   const cards = items.map((it) => {
     const card = h('button', { type: 'button', class: 'basecard', 'data-base': it.id, id: `i-${it.id}`, 'aria-pressed': String(state.on.has(it.id)), onclick: () => setOn(it.id, true) },
       h('div', { class: 'thumb' }), h('span', {}, it.label));
@@ -1136,15 +1138,11 @@ function scaleText() {
 const baseSources = new Set(ITEMS.filter((it) => it.group === 'base').flatMap((it) => (layersOf[it.id] || []).map((l) => l.source)));
 // a style layer drawn at this zoom: shown, and within its zoom range (the seamarks from 9 …)
 function drawn(l, z) { return map.getLayoutProperty(l.id, 'visibility') !== 'none' && z >= (l.minzoom ?? 0) && z < (l.maxzoom ?? 24); }
-// a national imagery source is credited only while its country is in view
-const orthoAreas = Object.fromEntries(ORTHO.map((o) => [`ortho-${o.id}`, o.areas]));
-function inView(areas) {
-  const b = map.getBounds(), w = b.getWest(), e = b.getEast(), s = b.getSouth(), n = b.getNorth();
-  return areas.some(([aw, as, ae, an]) => aw < e && ae > w && as < n && an > s);
-}
+// a national imagery source is credited only while its country's coverage is in view (ortho.js)
+const shownHere = (src) => !src.startsWith('ortho-') || covers(src.slice(6), map.getBounds().toArray().flat());
 function creditParts() {
   const srcs = [], z = map.getZoom();
-  for (const l of style.layers) if (l.source && drawn(l, z) && !srcs.includes(l.source) && (!orthoAreas[l.source] || inView(orthoAreas[l.source]))) srcs.push(l.source);
+  for (const l of style.layers) if (l.source && drawn(l, z) && !srcs.includes(l.source) && shownHere(l.source)) srcs.push(l.source);
   srcs.sort((a, b) => baseSources.has(b) - baseSources.has(a));
   const parts = [...new Set(srcs.map((s) => map.getSource(s)?.attribution).filter(Boolean))];
   return parts.filter((p) => !parts.some((q) => q !== p && q.includes(p))); // a credit another holds: once
@@ -1173,8 +1171,8 @@ function renderCredits() {
 }
 map.on('styledata', renderCredits);
 map.on('sourcedata', (e) => { if (!e.tile) renderCredits(); });
-map.on('zoomend', renderCredits); // a layer's zoom range entered or left
-map.on('moveend', renderCredits); // a country's imagery come into view or gone
+map.on('moveend', renderCredits); // a layer's zoom range entered or left, a country's imagery come into view or gone
+map.on('idle', renderCredits); // a country's coverage read (by its first tiles)
 // An export from button b: after before() (a library to load), the map's next frame, after pending
 // tiles (so a layer switched on a moment ago is in the picture). fn(canvas) runs while the canvas
 // still holds it, and must read it before awaiting; it returns what it left out, if anything. The

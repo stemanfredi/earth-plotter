@@ -139,23 +139,27 @@ export const eoxData = (year) => (year === 2018 ? '2017 & 2018' : `${year}`); //
 // National aerial imagery (orthophotos), drawn over Satellite from ORTHO_MIN, each cut to its
 // country (ortho.js, with the masks tools/coverage.mjs builds): their services answer beyond their
 // borders with white or with older imagery. parts: the tile addresses, drawn in order (Italy: its
-// three flights, oldest first, each transparent outside its own); areas: where the credit is due;
+// three flights, oldest first, each transparent outside its own); osm: the OpenStreetMap boundary
+// relations its coverage is built from (France: the metropole and its five overseas departments, the
+// whole being too large for one request); bounds: the only area asked, where the boundary holds more
+// than the service covers (the Netherlands' also holds its Caribbean islands); src, lic: the layer's ⓘ;
 // white: its service paints white where it has no imagery (at sea, beyond its border), cleared by the page;
 // partBounds: where each part has imagery at all, [w, s, e, n] (from its capabilities): not asked beyond
 export const ORTHO_MIN = 12;
 export const ORTHO = [
-  { id: 'fr', name: 'France', maxzoom: 19, white: true, credit: 'BD ORTHO © <a href="https://geoservices.ign.fr/bdortho">IGN</a>, Licence Ouverte 2.0',
-    parts: [`${HOSTS.ign}/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=ORTHOIMAGERY.ORTHOPHOTOS&STYLE=normal&TILEMATRIXSET=PM&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}&FORMAT=image/jpeg`],
-    areas: [[-5.3, 41.3, 9.6, 51.2], [-61.9, 15.8, -60.9, 16.6], [-61.3, 14.3, -60.8, 14.9], [-54.7, 2.1, -51.6, 5.8], [55.2, -21.4, 55.9, -20.8], [44.9, -13.1, 45.4, -12.6]] },
-  { id: 'ch', name: 'Switzerland', maxzoom: 20, credit: 'SWISSIMAGE © <a href="https://www.swisstopo.admin.ch">swisstopo</a>',
-    parts: [`${HOSTS.swisstopo}/1.0.0/ch.swisstopo.swissimage/default/current/3857/{z}/{x}/{y}.jpeg`], areas: [[5.9, 45.8, 10.5, 47.9]] },
-  { id: 'nl', name: 'the Netherlands', maxzoom: 20, white: true, credit: 'Luchtfoto <a href="https://www.beeldmateriaal.nl">Beeldmateriaal Nederland</a> (PDOK), CC BY 4.0',
-    parts: [`${HOSTS.pdok}/hwh/luchtfotorgb/wmts/v1_0?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=Actueel_orthoHR&STYLE=&FORMAT=image/jpeg&tileMatrixSet=OGC:1.0:GoogleMapsCompatible&tileMatrix={z}&tileRow={y}&tileCol={x}`],
-    areas: [[3.3, 50.7, 7.3, 53.6]] },
-  { id: 'it', name: 'Italy', maxzoom: 18, credit: 'Ortofoto <a href="https://geoportale.agea.gov.it">AGEA</a> 2022–2024, CC BY 4.0',
+  { id: 'fr', maxzoom: 19, white: true, osm: [1403916, 1401835, 1891495, 1260551, 1785276, 1259885],
+    src: 'IGN BD ORTHO (France and its overseas departments)', lic: 'Licence Ouverte 2.0 (IGN)', credit: 'BD ORTHO © <a href="https://geoservices.ign.fr/bdortho">IGN</a>, Licence Ouverte 2.0',
+    parts: [`${HOSTS.ign}/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=ORTHOIMAGERY.ORTHOPHOTOS&STYLE=normal&TILEMATRIXSET=PM&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}&FORMAT=image/jpeg`] },
+  { id: 'ch', maxzoom: 20, osm: [51701],
+    src: 'swisstopo SWISSIMAGE (Switzerland)', lic: 'free use with attribution (swisstopo)', credit: 'SWISSIMAGE © <a href="https://www.swisstopo.admin.ch">swisstopo</a>',
+    parts: [`${HOSTS.swisstopo}/1.0.0/ch.swisstopo.swissimage/default/current/3857/{z}/{x}/{y}.jpeg`] },
+  { id: 'nl', maxzoom: 20, white: true, osm: [47796], bounds: [3.3, 50.7, 7.3, 53.6],
+    src: 'Beeldmateriaal Nederland via PDOK (the Netherlands)', lic: 'CC BY 4.0 (PDOK)', credit: 'Luchtfoto <a href="https://www.beeldmateriaal.nl">Beeldmateriaal Nederland</a> (PDOK), CC BY 4.0',
+    parts: [`${HOSTS.pdok}/hwh/luchtfotorgb/wmts/v1_0?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=Actueel_orthoHR&STYLE=&FORMAT=image/jpeg&tileMatrixSet=OGC:1.0:GoogleMapsCompatible&tileMatrix={z}&tileRow={y}&tileCol={x}`] },
+  { id: 'it', maxzoom: 18, osm: [365331],
+    src: 'AGEA 2022–2024 (Italy)', lic: 'CC BY 4.0 (AGEA)', credit: 'Ortofoto <a href="https://geoportale.agea.gov.it">AGEA</a> 2022–2024, CC BY 4.0',
     partBounds: [[7.35, 35.32, 18.82, 44.87], [8.9, 39.75, 17.1, 47.14], [6.55, 37.81, 18.26, 46.76]],
-    parts: [2022, 2023, 2024].map((year) => `${HOSTS.agea}/image/rest/services/AgEA/Ortofoto_AgEA_${year}/ImageServer/WMTS/tile/1.0.0/AgEA_Ortofoto_AgEA_${year}/default/GoogleMapsCompatible/{z}/{y}/{x}.jpgpng`),
-    areas: [[6.6, 35.4, 18.6, 47.1]] },
+    parts: [2022, 2023, 2024].map((year) => `${HOSTS.agea}/image/rest/services/AgEA/Ortofoto_AgEA_${year}/ImageServer/WMTS/tile/1.0.0/AgEA_Ortofoto_AgEA_${year}/default/GoogleMapsCompatible/{z}/{y}/{x}.jpgpng`) },
 ];
 export const eoxTiles = (year) => `${HOSTS.eox}/wmts/1.0.0/${year === 2016 ? 's2cloudless' : `s2cloudless-${year}`}_3857/default/g/{z}/{y}/{x}.jpg`;
 
@@ -302,6 +306,8 @@ export const GROUPS = [
   { id: 'land', label: 'Land' },
   { id: 'labels', label: 'Labels & grid' },
 ];
+// one of the base's choices: an item of an exclusive group, but not one drawn over another (overlay)
+export const isBase = (it) => !!GROUPS.find((g) => g.id === it.group)?.exclusive && !it.overlay;
 
 // what most of one provider's layers share: their licence and where to read more
 // a Copernicus Marine product's page, which its licence asks to cite: each layer's ⓘ links to its global
@@ -335,8 +341,8 @@ export const ITEMS = [
   // over Satellite (whichever is chosen), not one of the base's choices: its own switch and opacity, to
   // compare the two; drawn only inside each country (ortho.js)
   { id: 'aerial', group: 'base', label: 'National aerial photos', overlay: 'sat', on: true, opacity: 1, minzoom: ORTHO_MIN,
-    info: { src: 'Each country\'s own aerial photos, inside its borders: IGN BD ORTHO (France and its overseas departments), swisstopo SWISSIMAGE (Switzerland), Beeldmateriaal Nederland via PDOK (the Netherlands), AGEA 2022–2024 (Italy)',
-      lic: 'Licence Ouverte 2.0 (IGN); free use with attribution (swisstopo); CC BY 4.0 (PDOK, AGEA). Cut to each country with OpenStreetMap\'s boundaries (ODbL)',
+    info: { src: `Each country's own aerial photos, inside its borders: ${ORTHO.map((o) => o.src).join(', ')}`,
+      lic: `${ORTHO.map((o) => o.lic).join('; ')}. Cut to each country with OpenStreetMap's boundaries (ODbL)`,
       res: '8–25 cm: single buildings, cars and boats. Flown every one to three years; Italy\'s in three parts, 2022, 2023 and 2024. From zoom 12' } },
 
   { id: 'depth', group: 'sea', label: 'Depth shading', on: true, opacity: 1, maxzoom: DEPTH_ZMAX - 1, kind: 'gebco',

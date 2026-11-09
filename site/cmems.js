@@ -3,7 +3,7 @@
 // regional one over it; the datasets' time ranges, read from their own capabilities; legends.
 import { CMEMS } from './catalog.js';
 import { HOSTS } from './hosts.js';
-import { mercator, tileBounds, CIRC } from './geo.js';
+import { mercator, tileBounds, boxesMeet, CIRC } from './geo.js';
 import { lru, fetchOk } from './net.js';
 // The service's addresses (WMTS, keyless, CORS; STAC for the values) and its styles
 const CMEMS_WMTS = `${HOSTS.copernicusWmts}/teroWmts`;
@@ -121,9 +121,9 @@ export function partLevels(item, variant, depth) {
 }
 
 // whether a part covers any of the box [w, s, e, n] (a global part: everywhere; a regional one: its area)
-export function partIn(part, [w, s, e, n]) {
+export function partIn(part, box) {
   const area = regionOf(part)?.area;
-  return !area || area.some((a) => e > a[0] && w < a[2] && s < a[3] && n > a[1]);
+  return !area || area.some((a) => boxesMeet(a, box));
 }
 // MapLibre protocol handler for cmems://item/variant/look/t/depth/z/x/y (look: what it draws,
 // 'colour', 'arrows' or 'both'; t: ms since the epoch, the hour shown (a normal: its month's first

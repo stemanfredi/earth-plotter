@@ -5,9 +5,10 @@
 // country's outline is cut into zoom-12 tiles once, and published as plain files at
 // geodata.earthplotter.org/coverage-2026/{id}/ (docs/development.md: the data host):
 //
-//   index.json             { z, extent, buffer, inside: rows, edge: rows }: the zoom-12 tiles wholly
+//   index.json             { z, extent, buffer, source, relations, inside: rows, edge: rows }: the zoom-12 tiles wholly
 //                          inside the country and those its border crosses; rows: [[y, x0, x1, …]],
-//                          runs of x from x0 to x1 inclusive. A tile in neither is outside.
+//                          runs of x from x0 to x1 inclusive. A tile in neither is outside. relations:
+//                          each OSM relation read, with its version and timestamp (what was built from).
 //   12/{x}/{y}.bin         a border tile's mask: rings, filled even-odd, in tile units (extent,
 //                          plus buffer around), as u32 ring count, then per ring u32 n and n pairs
 //                          of u16 (x + buffer, y + buffer), little-endian
@@ -16,26 +17,22 @@
 //   node tools/coverage.mjs build DIR      DIR/tiles/coverage-2026/{id}/
 //
 // The outlines are OpenStreetMap's national boundaries (© OpenStreetMap contributors, ODbL: the
-// masks are published under it), read from the OSM API's relation/{id}/full, once per build. They
-// include the territorial sea: the land borders are exact, and at sea each service's own "no imagery"
-// decides (transparent, a 404, or white, which the page clears), so harbours keep their imagery.
+// masks are published under it): catalog.js ORTHO osm, read from the OSM API's relation/{id}/full,
+// once per build. They include the territorial sea: the land borders are exact, and at sea each
+// service's own "no imagery" decides (transparent, a 404, or white, which the page clears), so
+// harbours keep their imagery. A ring that does not close fails the build, as does a country with
+// no tile inside: an outline lost quietly would leave its imagery undrawn.
 // Simplified to about a metre at zoom 12 (geojson-vt's tolerance), which is what the page draws.
 import { mkdirSync, writeFileSync, readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import geojsonvt from 'geojson-vt';
+import { ORTHO } from '../site/catalog.js';
+import { RELEASE } from '../site/ortho.js';
+import { tileXY, clamp } from '../site/geo.js';
 
-export const RELEASE = 'coverage-2026';
 export const Z = 12, EXTENT = 8192, BUFFER = 64;
-// each country's OSM relations: France as metropolitan France and its five overseas departments (the
-// whole of France, with every territory, is too large for one request); the European Netherlands
 const OSM_API = 'https://api.openstreetmap.org/api/0.6/relation';
-export const SOURCES = {
-  fr: [1403916, 1401835, 1891495, 1260551, 1785276, 1259885],
-  nl: [47796],
-  ch: [51701],
-  it: [365331],
-};
 const CREDIT = '© OpenStreetMap contributors, ODbL';
 
 // Lines chained into rings at the points they share (a relation's ways), and rings that share their
@@ -70,7 +67,7 @@ export function mergeShared(rings) {
         ring.push(point.get(next));
         if (next === start) break;
         const on = at.get(next).find(([, kk]) => !used.has(kk));
-        if (!on) break; // an open chain: the data was not closed there
+        if (!on) throw new Error(`an open outline at ${next}: a way missing, or listed twice`);
         here = next; k = on[1];
       }
       if (ring.length > 3 && ring.at(-1) === ring[0]) out.push(ring);
@@ -88,12 +85,12 @@ export function cut(rings, { extent = EXTENT, buffer = BUFFER, tolerance = 1 } =
   const lo = -buffer, hi = extent + buffer;
   const square = (ring) => ring.length <= 5 && ring.every(([x, y]) => (x === lo || x === hi) && (y === lo || y === hi));
   const n = 2 ** Z, tiles = new Set(), inside = [], edge = [];
+  const tile = (lon, lat) => { const t = tileXY(lon, lat, Z); return [clamp(Math.floor(t.x), 0, n - 1), clamp(Math.floor(t.y), 0, n - 1)]; };
   for (const r of rings) {
     let w = Infinity, s = Infinity, e = -Infinity, nn = -Infinity;
     for (const [lon, lat] of r) { w = Math.min(w, lon); e = Math.max(e, lon); s = Math.min(s, lat); nn = Math.max(nn, lat); }
-    const tx = (lon) => Math.min(n - 1, Math.max(0, Math.floor((lon + 180) / 360 * n)));
-    const ty = (lat) => Math.min(n - 1, Math.max(0, Math.floor((1 - Math.asinh(Math.tan(lat * Math.PI / 180)) / Math.PI) / 2 * n)));
-    for (let x = tx(w); x <= tx(e); x++) for (let y = ty(nn); y <= ty(s); y++) tiles.add(x * n + y);
+    const [x0, y0] = tile(w, nn), [x1, y1] = tile(e, s);
+    for (let x = x0; x <= x1; x++) for (let y = y0; y <= y1; y++) tiles.add(x * n + y);
   }
   for (const k of [...tiles].sort((a, b) => a - b)) {
     const x = Math.floor(k / n), y = k % n, t = index.getTile(Z, x, y);
@@ -136,15 +133,17 @@ export function ringsOfRelation(full, rel) {
     else if (e.type === 'relation' && e.id === rel) relation = e;
   }
   if (!relation) throw new Error(`relation ${rel} not in its own answer`);
-  const lines = relation.members.filter((m) => m.type === 'way' && (m.role === 'outer' || m.role === 'inner'))
-    .map((m) => ways.get(m.ref)?.map((n) => nodes.get(n))).filter((l) => l?.length > 1 && l.every(Boolean));
+  const members = relation.members.filter((m) => m.type === 'way' && (m.role === 'outer' || m.role === 'inner')).map((m) => m.ref);
+  const twice = members.find((ref, i) => members.indexOf(ref) !== i);
+  if (twice) throw new Error(`relation ${rel}: way ${twice} listed twice`);
+  const lines = members.map((ref) => ways.get(ref)?.map((n) => nodes.get(n))).filter((l) => l?.length > 1 && l.every(Boolean));
   return mergeShared(lines);
 }
 
 async function download(dir) {
   mkdirSync(join(dir, 'src'), { recursive: true });
-  for (const rels of Object.values(SOURCES)) {
-    for (const rel of rels) {
+  for (const { osm } of ORTHO) {
+    for (const rel of osm) {
       const r = await fetch(`${OSM_API}/${rel}/full.json`, { headers: { 'User-Agent': 'earthplotter-build (https://github.com/stemanfredi/earth-plotter)' } });
       if (!r.ok) throw new Error(`relation ${rel}: HTTP ${r.status}`);
       writeFileSync(join(dir, 'src', `${rel}.json`), Buffer.from(await r.arrayBuffer()));
@@ -153,20 +152,23 @@ async function download(dir) {
   }
 }
 function build(dir) {
-  for (const [id, rels] of Object.entries(SOURCES)) {
-    const rings = rels.flatMap((rel) => {
+  for (const { id, osm: rels } of ORTHO) {
+    const relations = [], rings = rels.flatMap((rel) => {
       const file = join(dir, 'src', `${rel}.json`);
       if (!existsSync(file)) throw new Error(`${file}: run download first`);
-      return ringsOfRelation(JSON.parse(readFileSync(file, 'utf8')), rel);
+      const full = JSON.parse(readFileSync(file, 'utf8')), r = full.elements.find((e) => e.type === 'relation' && e.id === rel);
+      relations.push({ id: rel, version: r?.version, timestamp: r?.timestamp }); // the boundaries' edition this build read
+      return ringsOfRelation(full, rel);
     });
     console.log(id, `${rings.length} rings from ${rels.length} relation${rels.length > 1 ? 's' : ''}`);
     const { inside, edge } = cut(rings);
+    if (!inside.length) throw new Error(`${id}: no tile inside: its outlines are not closed areas`);
     const out = join(dir, 'tiles', RELEASE, id);
     for (const t of edge) {
       mkdirSync(join(out, String(Z), String(t.x)), { recursive: true });
       writeFileSync(join(out, String(Z), String(t.x), `${t.y}.bin`), encodeMask(t.rings));
     }
-    writeFileSync(join(out, 'index.json'), JSON.stringify({ z: Z, extent: EXTENT, buffer: BUFFER, source: CREDIT, relations: rels, inside: rowsOf(inside), edge: rowsOf(edge) }));
+    writeFileSync(join(out, 'index.json'), JSON.stringify({ z: Z, extent: EXTENT, buffer: BUFFER, source: CREDIT, relations, inside: rowsOf(inside), edge: rowsOf(edge) }));
     console.log(id, `${inside.length} tiles inside, ${edge.length} on the border`);
   }
 }

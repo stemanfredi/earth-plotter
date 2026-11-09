@@ -28,7 +28,7 @@ export const HOSTS = {
   // where each dataset's Zarr store is, and the stores (EMODnet's depth model too)
   copernicusStac: 'https://stac.marine.copernicus.eu',
   cloudferro: 'https://s3.waw3-1.cloudferro.com',
-  geodata: 'https://geodata.earthplotter.org', // GEBCO's depths and the seagrass tiles (tools/gebco.mjs, tools/seagrass.mjs)
+  geodata: 'https://geodata.earthplotter.org', // GEBCO's depths, the seagrass tiles, the national imagery's coverage (tools/gebco.mjs, seagrass.mjs, coverage.mjs)
 };
 // The hosts whose files an area saved for use without a connection keeps (ROADMAP, Offline areas): the
 // base map and its fonts, the elevation, the depths, the seamarks. Never the imagery (ROADMAP).

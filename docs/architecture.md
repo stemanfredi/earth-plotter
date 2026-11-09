@@ -93,7 +93,8 @@ instead of leaving blank tiles that could be read as data. An export that
 fails, or leaves out values it could not read, says so in the note. A
 drawing file that cannot be read says why.
 
-**Privacy by construction.** No request carries a referrer; the security
+**Privacy by construction.** No request carries a referrer but Esri's, which
+send the page's origin only once the visitor's key is accepted (`site/esri.js`); the security
 policy limits the page to its own files and the listed hosts (its workers
 build their addresses from the same list); libraries are
 the page's own files, so no CDN sees a visit. What leaves the browser is said
@@ -105,7 +106,7 @@ once, in the page's About dialog (`site/index.html`); the README sums it up.
 |---|---|
 | The page, the time line, the elevation profile's reads | `site/app.js` |
 | The page's state in the URL: read, written, checked | `site/address.js` |
-| Every host the page reaches; how it fetches (no cookies, no referrer, caches) | `site/hosts.js`, `site/net.js` |
+| Every host the page reaches; how it fetches (no cookies, no referrer but Esri's, caches) | `site/hosts.js`, `site/net.js` |
 | Formatting: angles, distances, depths, the scale | `site/format.js` |
 | Legends: ramps, classes, colour maps | `site/legend.js` |
 | Search: places and typed coordinates | `site/search.js` |
@@ -114,6 +115,7 @@ once, in the page's About dialog (`site/index.html`); the README sums it up.
 | A layer: its sources, variants, legend, credits | `site/catalog.js`, then `site/style.js` |
 | Elevation tiles, the coastline cut, inland water; isobaths | `site/clip.js`, `site/gebco.js`, `site/isobaths.js` |
 | Copernicus layers, their times and depths | `site/cmems.js`, `site/values.js` |
+| Satellite: Esri's imagery and the visitor's key; the national aerial photos, cut to each country | `site/esri.js`, `site/ortho.js` |
 | Readers and writers: Zarr, GeoTIFF, zip (both ways), PNG (written) | `site/zarr.js`, `site/geotiff.js`, `site/zip.js`, `site/png.js` |
 | The exports | `site/gis.js`, `site/export.js`, `site/vector.js`, `snapshot` in `site/app.js` |
 | The drawing's model, file and rules | `site/draw/document.js`, `file.js` (with `check.js`), `generator.js` |
@@ -125,5 +127,5 @@ once, in the page's About dialog (`site/index.html`); the README sums it up.
 | A line's elevation profile | `site/draw/profile.js`, `profileFor` in `site/app.js` |
 | Geodesy and map maths | `site/geodesy.js`, `site/geo.js` |
 | The page's files and the offline areas kept for use without a connection | `site/sw.js`, `site/offline.js` |
-| The data builds | `tools/gebco.mjs`, `tools/seagrass.mjs` |
+| The data builds | `tools/gebco.mjs`, `tools/seagrass.mjs`, `tools/coverage.mjs` |
 | The tests | `test/`: each says what it covers at its top |

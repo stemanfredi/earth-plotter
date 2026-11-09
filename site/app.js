@@ -649,7 +649,7 @@ map.on('error', (e) => {
   if (!src || !itemsOfSource[src]) return console.warn(e.error || e);
   const s = (health[src] ||= { err: 0, ok: 0 });
   s.err++;
-  s.msg = e.error?.message || 'request failed';
+  s.msg = (e.error?.message || 'request failed').replace(/\?\S*/g, ''); // an address's query cut: Esri's carries the visitor's key
   renderStatus();
 });
 map.on('data', (e) => {

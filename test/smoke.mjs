@@ -651,8 +651,8 @@ await section('Esri\'s imagery with the visitor\'s key: checked first, sent only
     `without an accepted key, the ⓘ names what is drawn: EOX's 2025, its licence (${(await about()).slice(0, 60)}…)`);
   const use = async (key) => { await p.fill('.keybox input', key); await p.click('.keyrow button'); };
   await use(BAD);
-  await until(p, () => /did not accept/.test(document.querySelector('.keybox')?.textContent || ''), null, 10000);
-  check(await visible(p, 'eox25') === 'visible' && tiles.length === 0, 'a refused key: said so, EOX\'s newest still drawn, no tile asked of Esri');
+  const refused = await until(p, () => /did not accept/.test(document.querySelector('.keybox')?.textContent || ''), null, 10000);
+  check(refused && await visible(p, 'eox25') === 'visible' && tiles.length === 0, 'a refused key: said so, EOX\'s newest still drawn, no tile asked of Esri');
   await use(GOOD);
   await until(p, () => /Your key is in use/.test(document.querySelector('.keybox')?.textContent || ''), null, 10000);
   await p.waitForFunction(() => map.loaded() && map.areTilesLoaded(), null, { timeout: 30000 });
@@ -672,8 +672,8 @@ await section('Esri\'s imagery with the visitor\'s key: checked first, sent only
   await until(p, () => /Your key is in use/.test(document.querySelector('.keybox')?.textContent || ''), null, 10000);
   check(checks.length > before && await visible(p, 'esri') === 'visible', 'the key kept: asked about again at the start, Esri\'s imagery drawn');
   await p.click('.keyrow button'); // Remove key
-  await until(p, () => /needs your own free ArcGIS key/.test(document.querySelector('.keybox')?.textContent || ''), null, 10000);
-  check(await visible(p, 'eox25') === 'visible' && await visible(p, 'esri') === 'none' && !(await p.evaluate(() => localStorage.getItem('earthplotter.esri'))),
+  const removed = await until(p, () => /needs your own free ArcGIS key/.test(document.querySelector('.keybox')?.textContent || ''), null, 10000);
+  check(removed && await visible(p, 'eox25') === 'visible' && await visible(p, 'esri') === 'none' && !(await p.evaluate(() => localStorage.getItem('earthplotter.esri'))),
     'the key removed: forgotten in this browser, EOX\'s newest drawn');
   check(strays.length === 0, `the key only to Esri, and no Referer to any other host ${strays.join(' | ')}`);
   check(p.errors.length === 0, `no page errors ${p.errors.join(' | ')}`);
@@ -718,8 +718,8 @@ await section('national imagery: asked only inside its country\'s coverage, cred
   const marked = await p.evaluate(() => { const li = document.querySelector('#i-aerial').closest('li'); return li.classList.contains('error') || li.classList.contains('partial') ? li.title : ''; });
   check(!marked, `the aerial photos not marked failing: tiles outside the coverage are empty, not errors ${marked}`);
   await p.click('label[for=i-aerial]');
-  await until(p, () => !/Beeldmateriaal/.test(document.querySelector('.credits-text')?.textContent || ''), null, 10000);
-  check(await visible(p, 'ortho-nl') === 'none' && await visible(p, 'eox25') === 'visible', 'switched off: the photos hidden, Satellite alone, their credit gone');
+  const gone = await until(p, () => !/Beeldmateriaal/.test(document.querySelector('.credits-text')?.textContent || ''), null, 10000);
+  check(gone && await visible(p, 'ortho-nl') === 'none' && await visible(p, 'eox25') === 'visible', 'switched off: the photos hidden, Satellite alone, their credit gone');
   await p.click('label[for=i-aerial]');
   await until(p, () => /Beeldmateriaal/.test(document.querySelector('.credits-text')?.textContent || ''), null, 10000);
   check(await visible(p, 'ortho-nl') === 'visible', 'switched on again: the photos back');

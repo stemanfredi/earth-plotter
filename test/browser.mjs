@@ -47,9 +47,9 @@ export async function start() {
   return { server, browser, base: server.url, check, section, finish };
 }
 
-// a page's state awaited: fn true in it (with arg), else on after timeout ms all the same (the check
-// that follows says what was not so)
-export const until = (page, fn, arg = null, timeout = 5000) => page.waitForFunction(fn, arg, { timeout }).catch(() => {});
+// a page's state awaited: fn true in it (with arg), else on after timeout ms all the same; whether
+// it came true, for the check that follows
+export const until = (page, fn, arg = null, timeout = 5000) => page.waitForFunction(fn, arg, { timeout }).then(() => true, () => false);
 
 // the map at rest: its next 'idle' (a frame drawn with nothing left to load or move), after whatever
 // the step before changed

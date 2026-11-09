@@ -6,10 +6,12 @@
 //   CHROME=/path/to/chrome npm run smoke     (default: /usr/bin/google-chrome)
 // Network-dependent by design: it is also what tells us a provider changed or went down.
 import { readFile } from 'node:fs/promises';
+import { deflateSync, crc32 } from 'node:zlib';
 import { start, openPage, exportItem, unzip, settled, frames, until } from './browser.mjs';
 import { setSwVersion } from './serve.mjs';
-import { tileBounds } from '../site/geo.js';
+import { tileBounds, tileXY } from '../site/geo.js';
 import { HOSTS, OFFLINE_PREFIXES } from '../site/hosts.js';
+import { COVERAGE } from '../site/ortho.js';
 import { shellFiles } from '../tools/deps.mjs';
 
 const { browser, base, check, section, finish } = await start();
@@ -25,6 +27,17 @@ const visible = (page, id) => page.evaluate((id) => map.getLayoutProperty(id, 'v
 // the search: a field in the bar (a phone: behind its lens)
 const findOpen = async (page) => page.click((await page.isVisible('#b-find')) ? '#b-find' : '#q');
 
+// a one-pixel PNG of one opaque colour [r, g, b] (a provider's tile stood in for)
+function solidPng(rgb) {
+  const chunk = (type, data) => {
+    const len = Buffer.alloc(4), crc = Buffer.alloc(4), td = Buffer.concat([Buffer.from(type), data]);
+    len.writeUInt32BE(data.length); crc.writeUInt32BE(crc32(td));
+    return Buffer.concat([len, td, crc]);
+  };
+  const ihdr = Buffer.alloc(13);
+  ihdr.writeUInt32BE(1, 0); ihdr.writeUInt32BE(1, 4); ihdr.set([8, 2, 0, 0, 0], 8); // 8-bit RGB
+  return Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), chunk('IHDR', ihdr), chunk('IDAT', deflateSync(Buffer.from([0, ...rgb]))), chunk('IEND', Buffer.alloc(0))]);
+}
 // a PNG's size and iTXt text fields
 function pngFields(b) {
   const f = { width: b.readUInt32BE(16), height: b.readUInt32BE(20) };
@@ -684,35 +697,52 @@ await section('Esri\'s imagery with the visitor\'s key: checked first, sent only
 await section('national imagery: asked only inside its country\'s coverage, credited only where it is in view', async () => {
   // the coverage stood in for (what tools/coverage.mjs builds, on the data host): the Netherlands'
   // has one zoom-12 tile inside (central Amsterdam) and its east neighbour on the border, cut to its
-  // west half; the other countries' none. The Dutch service's own tiles are fetched as they come.
+  // west half; the other countries' none. The Dutch service and EOX's imagery stood in for too, as
+  // solid tiles: the section asks no imagery provider, and a cut can be seen in the pixels.
   const nctx = await browser.newContext({ viewport: { width: 1000, height: 700 }, serviceWorkers: 'block' });
-  const z12 = (lat, lon) => [Math.floor((lon + 180) / 360 * 4096), Math.floor((1 - Math.asinh(Math.tan(lat * Math.PI / 180)) / Math.PI) / 2 * 4096)];
+  const z12 = (lat, lon) => { const t = tileXY(lon, lat, 12); return [Math.floor(t.x), Math.floor(t.y)]; };
   const [ax, ay] = z12(52.373, 4.893);
   const index = (id) => ({ z: 12, extent: 8192, buffer: 64, source: 'test', relations: [], inside: id === 'nl' ? [[ay, ax, ax]] : [], edge: id === 'nl' ? [[ay, ax + 1, ax + 1]] : [] });
   const half = Buffer.alloc(4 + 4 + 5 * 4); // one ring: the west half of the tile
   let o = half.writeUInt32LE(1, 0); o = half.writeUInt32LE(5, o);
   for (const [x, y] of [[-64, -64], [4096, -64], [4096, 8256], [-64, 8256], [-64, -64]]) { o = half.writeUInt16LE(x + 64, o); o = half.writeUInt16LE(y + 64, o); }
-  const masks = [];
-  await nctx.route(`${HOSTS.geodata}/coverage-2026/**`, (route) => {
+  const masks = [], cors = { 'access-control-allow-origin': '*' };
+  await nctx.route(`${COVERAGE}/**`, (route) => {
     const path = new URL(route.request().url()).pathname, id = path.split('/')[2];
-    // France's not published (a 404, as it was for a while after the upload): drawn nowhere, no error
-    if (path.endsWith('index.json') && id === 'fr') return route.fulfill({ status: 404, body: '', headers: { 'access-control-allow-origin': '*' } });
-    if (path.endsWith('index.json')) return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(index(id)), headers: { 'access-control-allow-origin': '*' } });
+    // France's not published (the 404 of a coverage not uploaded yet): drawn nowhere, no error
+    if (path.endsWith('index.json') && id === 'fr') return route.fulfill({ status: 404, body: '', headers: cors });
+    if (path.endsWith('index.json')) return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(index(id)), headers: cors });
     masks.push(path);
-    return route.fulfill({ status: 200, body: half, headers: { 'access-control-allow-origin': '*' } });
+    return route.fulfill({ status: 200, body: half, headers: cors });
   });
-  const asked = { nl: [], fr: [] };
-  nctx.on('request', (r) => {
-    if (r.url().startsWith(HOSTS.pdok)) { const u = new URL(r.url()); asked.nl.push([+u.searchParams.get('tileMatrix'), +u.searchParams.get('tileCol'), +u.searchParams.get('tileRow')]); }
-    if (r.url().startsWith(HOSTS.ign)) asked.fr.push(r.url());
+  const asked = { nl: [], fr: [] }, RED = solidPng([200, 30, 30]), GREY = solidPng([90, 90, 90]);
+  await nctx.route(`${HOSTS.pdok}/**`, (route) => {
+    const u = new URL(route.request().url());
+    asked.nl.push([+u.searchParams.get('tileMatrix'), +u.searchParams.get('tileCol'), +u.searchParams.get('tileRow')]);
+    return route.fulfill({ status: 200, contentType: 'image/png', body: RED, headers: cors });
   });
+  await nctx.route(`${HOSTS.eox}/**`, (route) => route.fulfill({ status: 200, contentType: 'image/png', body: GREY, headers: cors }));
+  nctx.on('request', (r) => { if (r.url().startsWith(HOSTS.ign)) asked.fr.push(r.url()); });
   const credits = (pg) => pg.evaluate(() => document.querySelector('.credits-text')?.textContent || '');
   const p = await open('#v=13/52.373/4.91/0&on=sat,aerial', nctx, 'layers', ['base']);
+  await p.waitForFunction(() => map.loaded() && map.areTilesLoaded(), null, { timeout: 60000 });
   await until(p, () => /Beeldmateriaal/.test(document.querySelector('.credits-text')?.textContent || ''), null, 15000);
   const outside = asked.nl.filter(([z, x, y]) => { const s = 2 ** (z - 12), kx = Math.floor(x / s), ky = Math.floor(y / s); return ky !== ay || (kx !== ax && kx !== ax + 1); });
   check(asked.nl.length > 0 && outside.length === 0, `the Dutch service asked only for tiles in its coverage (${asked.nl.length} asked, ${outside.length} beyond)`);
   check(masks.length > 0 && masks.every((m) => m.endsWith(`/nl/12/${ax + 1}/${ay}.bin`)), `the border tile's mask fetched, and only it (${[...new Set(masks)].join(', ')})`);
   check(/Luchtfoto Beeldmateriaal Nederland \(PDOK\), CC BY 4\.0/.test(await credits(p)) && !/IGN|swisstopo|AGEA/.test(await credits(p)), 'the Netherlands\' credit in view, no other country\'s');
+  // the tiles as the handler gives them: the one inside whole, the border one cut to its west half
+  const alphas = await p.evaluate(async ([x, y]) => {
+    const { orthoTile } = await import('./ortho.js');
+    const at = async (tx) => {
+      const { data } = await orthoTile({ url: `ortho://nl/12/${tx}/${y}` });
+      const g = new OffscreenCanvas(256, 256).getContext('2d');
+      g.drawImage(data, 0, 0);
+      return [64, 192].map((px) => g.getImageData(px, 128, 1, 1).data[3]);
+    };
+    return [...await at(x), ...await at(x + 1)];
+  }, [ax, ay]);
+  check(alphas.join() === '255,255,255,0', `the tile inside drawn whole, the border tile only on the country's side (alpha west, east: ${alphas.join(', ')})`);
   // a switch of their own under Satellite: off, Satellite alone (to compare); on again, back
   const row = () => p.evaluate(() => { const i = document.querySelector('#i-aerial'); return i && !i.closest('li').hidden; });
   check(await row(), 'the aerial photos\' switch under Satellite, shown while it is on');
@@ -727,11 +757,11 @@ await section('national imagery: asked only inside its country\'s coverage, cred
   await p.click('.basecard[data-base=chart]');
   check(!(await row()) && await visible(p, 'ortho-nl') === 'none', 'over the chart base: the switch hidden, no photos');
   await p.click('.basecard[data-base=sat]');
-  // France, its coverage not published: its service never asked (its credit is by area: shown)
+  // France, its coverage not published: its service never asked, nor credited
   await p.evaluate(() => map.jumpTo({ center: [4.84, 45.76], zoom: 13 }));
   await p.waitForFunction(() => map.loaded() && map.areTilesLoaded(), null, { timeout: 60000 });
   await until(p, () => !/Beeldmateriaal/.test(document.querySelector('.credits-text')?.textContent || ''), null, 10000);
-  check(asked.fr.length === 0 && !/Beeldmateriaal/.test(await credits(p)), `beyond every coverage tile: its service never asked (${asked.fr.length}); the Netherlands' credit gone with it out of view`);
+  check(asked.fr.length === 0 && !/Beeldmateriaal|IGN/.test(await credits(p)), `beyond every coverage tile: its service never asked (${asked.fr.length}) nor credited; the Netherlands' credit gone with it out of view`);
   check(p.errors.length === 0, `no page errors ${p.errors.join(' | ')}`);
   await nctx.close();
 });

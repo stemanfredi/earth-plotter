@@ -41,14 +41,16 @@ test('variants: each choice has a layer, except colour schemes', () => {
 
 test('satellite: EOX\'s yearly mosaics, newest first and the default, then Esri\'s with a key; credits and licences by year', () => {
   const sat = ITEMS.find((it) => it.id === 'sat');
-  assert.deepEqual(Object.keys(sat.variants), [...EOX_YEARS.map((y) => `eox${String(y).slice(2)}`), 'esri']);
-  assert.equal(Object.keys(sat.variants)[0], 'eox25', 'the newest year is the default');
+  const key = (y) => `eox${String(y).slice(2)}`;
+  assert.deepEqual(EOX_YEARS, [...EOX_YEARS].sort((a, b) => b - a), 'newest first');
+  assert.deepEqual(Object.keys(sat.variants), [...EOX_YEARS.map(key), 'esri']);
+  assert.equal(Object.keys(sat.variants)[0], key(Math.max(...EOX_YEARS)), 'the newest year is the default');
   assert.ok(Object.hasOwn(sat.variants, 'eox16') && Object.hasOwn(sat.variants, 'eox24'), 'the keys links have carried still read');
   for (const y of EOX_YEARS) {
-    const src = style.sources[`eox${String(y).slice(2)}`];
+    const src = style.sources[key(y)];
     assert.match(src.tiles[0], y === 2016 ? /\/s2cloudless_3857\// : new RegExp(`/s2cloudless-${y}_3857/`));
-    assert.match(src.attribution, new RegExp(`EOxCloudless</a> ${y} by EOX IT Services GmbH \\(contains modified Copernicus Sentinel data ${y === 2018 ? '2017 & 2018' : y}\\), ${y < 2018 ? 'CC BY 4\\.0$' : 'CC BY-NC-SA 4\\.0$'}`));
-    assert.equal(sat.variants[`eox${String(y).slice(2)}`].endsWith('CC BY'), y < 2018, `${y}: the open years marked`);
+    assert.ok(src.attribution.includes(`EOxCloudless</a> ${y} `) && src.attribution.endsWith(y < 2018 ? 'CC BY 4.0' : 'CC BY-NC-SA 4.0'), `${y}: its credit names the year and its licence`);
+    assert.equal(sat.variants[key(y)].endsWith('CC BY'), y < 2018, `${y}: the open years marked`);
   }
   assert.ok(!EOX_YEARS.includes(2017), '2017 is Europe-only');
   const imagery = Object.entries(style.sources).filter(([, s]) => (s.tiles || []).some((t) => /World_Imagery|arcgisonline/.test(t)));

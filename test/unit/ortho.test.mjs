@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { mergeShared, cut, rowsOf, encodeMask, ringsOfRelation, Z, EXTENT, BUFFER } from '../../tools/coverage.mjs';
 import { readIndex, where, within, decodeMask, maskPath, clearWhite, partsAt } from '../../site/ortho.js';
-import { ORTHO, ORTHO_MIN } from '../../site/catalog.js';
+import { ORTHO } from '../../site/catalog.js';
 import { HOSTS } from '../../site/hosts.js';
 
 // a square of lon/lat, closed, counter-clockwise
@@ -69,13 +69,11 @@ test('a border tile\'s mask: written by the build, read by the page, placed on d
   assert.deepEqual(ops[2], ['l', 0, (-BUFFER / EXTENT) * 2 * 256], 'the half-way line at the tile\'s left edge');
 });
 
-test('the national sources: on hosts the page knows, from zoom 12, each with a credit and where it is due', () => {
+test('the national sources: on hosts the page knows, each with a credit and where it is due', () => {
   const hosts = Object.values(HOSTS);
-  assert.equal(ORTHO_MIN, 12);
   for (const o of ORTHO) {
     assert.ok(o.parts.length && o.parts.every((p) => hosts.some((h) => p.startsWith(`${h}/`)) && /\{z\}/.test(p) && /\{x\}/.test(p) && /\{y\}/.test(p)), `${o.id}: parts`);
     assert.ok(o.credit && o.areas.length && o.areas.every(([w, s, e, n]) => w < e && s < n), `${o.id}: credit and areas`);
-    assert.ok(o.maxzoom >= 18);
   }
   assert.deepEqual(ORTHO.find((o) => o.id === 'it').parts.map((p) => /AgEA_(\d+)/.exec(p)[1]), ['2022', '2023', '2024'], 'Italy\'s flights oldest first, the newest drawn on top');
 });

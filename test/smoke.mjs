@@ -620,25 +620,24 @@ await section('the page without a connection, and a new version', async () => {
 await section('Esri\'s imagery with the visitor\'s key: checked first, sent only to Esri, with the page\'s origin', async () => {
   // Esri's two services stood in for (never the real ones: no key of anyone's in a test): the check
   // accepts one made-up key from this page's origin, refuses any other; the tiles record how they came
-  const ectx = await browser.newContext({ viewport: { width: 1280, height: 800 }, serviceWorkers: 'block', permissions: ['clipboard-read', 'clipboard-write'] });
+  const ectx = await browser.newContext({ viewport: { width: 1280, height: 800 }, serviceWorkers: 'block' });
   const GOOD = 'TEST-ACCEPTED-KEY-0001', BAD = 'TEST-REFUSED-KEY-0002', origin = new URL(base).origin;
   const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkqF9fDwAEOwH6LNq9twAAAABJRU5ErkJggg==', 'base64');
   const checks = [], tiles = [], strays = [];
-  await ectx.route('https://basemapstyles-api.arcgis.com/**', (route) => {
+  await ectx.route(`${HOSTS.esriStyles}/**`, (route) => {
     const r = route.request(), ok = r.url().includes(`token=${GOOD}`) && r.headers().referer === `${origin}/`;
     checks.push(r.headers().referer);
     route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(ok ? { version: 8, sources: {}, layers: [] } : { error: { code: 498, message: 'Token Invalid.', details: [] } }) });
   });
-  await ectx.route('https://ibasemaps-api.arcgis.com/**', (route) => {
-    const r = route.request();
-    if (/MapServer\?f=json/.test(r.url())) return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ copyrightText: 'Source: test providers' }) });
-    tiles.push({ url: r.url(), referer: r.headers().referer });
+  await ectx.route(`${HOSTS.esriTiles}/**`, (route) => {
+    tiles.push({ url: route.request().url(), referer: route.request().headers().referer });
     return route.fulfill({ status: 200, contentType: 'image/png', body: PNG });
   });
-  // the key nowhere but Esri's hosts; no Referer anywhere else
+  // the key nowhere but Esri's two hosts; no Referer anywhere else
+  const esriHosts = new Set([HOSTS.esriStyles, HOSTS.esriTiles].map((u) => new URL(u).host));
   ectx.on('request', (r) => {
     const u = new URL(r.url());
-    if (/(^|\.)arcgis\.com$/.test(u.host)) return;
+    if (esriHosts.has(u.host)) return;
     if (r.url().includes(GOOD) || r.url().includes(BAD) || (u.origin !== origin && r.headers().referer)) strays.push(r.url().slice(0, 80));
   });
   const p = await open('#v=10/40.83/14.25/0&on=sat&var=sat:esri', ectx, 'layers', ['base']);
@@ -652,7 +651,9 @@ await section('Esri\'s imagery with the visitor\'s key: checked first, sent only
   const use = async (key) => { await p.fill('.keybox input', key); await p.click('.keyrow button'); };
   await use(BAD);
   const refused = await until(p, () => /did not accept/.test(document.querySelector('.keybox')?.textContent || ''), null, 10000);
-  check(refused && await visible(p, 'eox25') === 'visible' && tiles.length === 0, 'a refused key: said so, EOX\'s newest still drawn, no tile asked of Esri');
+  check(refused && await p.inputValue('.keybox input') === BAD && !(await p.evaluate(() => localStorage.getItem('earthplotter.esri')))
+    && await visible(p, 'eox25') === 'visible' && tiles.length === 0,
+  'a refused key: said so, still in the field, not kept; EOX\'s newest still drawn, no tile asked of Esri');
   await use(GOOD);
   await until(p, () => /Your key is in use/.test(document.querySelector('.keybox')?.textContent || ''), null, 10000);
   await p.waitForFunction(() => map.loaded() && map.areTilesLoaded(), null, { timeout: 30000 });
@@ -660,8 +661,8 @@ await section('Esri\'s imagery with the visitor\'s key: checked first, sent only
   check(tiles.length > 0 && tiles.every((t) => t.url.endsWith(`?token=${GOOD}`) && t.referer === `${origin}/`),
     `Esri's tiles: each with the key and the page's origin as referrer (${tiles.length}, ${tiles[0]?.referer})`);
   check(checks.every((r) => r === `${origin}/`), `the check sends the page's origin as referrer (${[...new Set(checks)].join(', ')})`);
-  await until(p, () => /Powered by Esri · Source: test providers/.test(document.querySelector('.credits-text')?.textContent || ''), null, 10000);
-  check(true, 'Esri\'s credit: "Powered by Esri" and the service\'s own text, asked with the key');
+  await until(p, () => /Powered by Esri · Source: Esri/.test(document.querySelector('.credits-text')?.textContent || ''), null, 10000);
+  check(/Powered by Esri · Source: Esri/.test(await p.evaluate(() => document.querySelector('.credits-text')?.textContent || '')), 'Esri\'s credit: "Powered by Esri" and its providers');
   check(/Esri World Imagery, with your own ArcGIS key/.test(await about()) && /Esri's terms of use/.test(await about()) && !/EOxCloudless/.test(await about()),
     'with the key accepted, the ⓘ names Esri\'s imagery and its terms');
   check(!p.url().includes(GOOD) && !(await p.evaluate(() => location.hash)).includes('token'), 'the key is not in the page\'s address');

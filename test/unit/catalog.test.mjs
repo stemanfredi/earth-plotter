@@ -14,7 +14,9 @@ test('every menu item has a group and layers; every item layer has an item', () 
   assert.equal(ids.size, ITEMS.length, 'duplicate item id');
   for (const it of ITEMS) {
     assert.ok(groups.has(it.group), `${it.id}: unknown group ${it.group}`);
-    assert.ok(it.info?.src && it.info?.lic && it.info?.res, `${it.id}: provenance incomplete`);
+    const info = it.infoOf?.(Object.keys(it.variants)[0]) ?? it.info; // an item whose ⓘ follows its variant: its default's
+    assert.ok(info?.src && info?.lic && info?.res, `${it.id}: provenance incomplete`);
+    if (it.infoOf) for (const v of Object.keys(it.variants)) assert.ok(it.infoOf(v)?.src, `${it.id}: ${v} without provenance`);
     if (!NO_LAYERS.has(it.id)) assert.ok(style.layers.some((l) => l.metadata?.item === it.id), `${it.id}: no layers`);
   }
   for (const l of style.layers) if (l.metadata?.item) assert.ok(ids.has(l.metadata.item), `${l.id}: unknown item`);
@@ -135,7 +137,7 @@ test('every overlay drawn in colours or symbols has a legend, and Europe-only la
     if (it.tiles) for (const v of Object.keys(it.variants || { all: 1 })) assert.ok(it.tiles[v], `${it.id} ${v}: no tiles`);
   }
   // EMODnet's and EMSA's data cover European seas, but for the UKHO's wrecks (worldwide)
-  for (const it of ITEMS) if (it.group !== 'labels' && /EMODnet|EMSA/.test(it.info.src) && !/worldwide/.test(it.info.res)) assert.match(it.label, /\(Europe\)$/, `${it.id}: Europe only, not in its name`);
+  for (const it of ITEMS) if (it.group !== 'labels' && it.info && /EMODnet|EMSA/.test(it.info.src) && !/worldwide/.test(it.info.res)) assert.match(it.label, /\(Europe\)$/, `${it.id}: Europe only, not in its name`);
 });
 
 test('the isobaths\' pictures: what lies between EMODnet depth and the isobaths is a sea picture, ocean data or seagrass, and every sea picture is there', () => {

@@ -316,10 +316,9 @@ const OSM = { lic: 'ODbL · © OpenStreetMap contributors', url: 'https://openfr
 export const ITEMS = [
   { id: 'chart', group: 'base', label: 'Chart', on: true,
     info: { ...OSM, src: 'OpenStreetMap via OpenFreeMap (OpenMapTiles schema)', res: 'Coastline from OSM water polygons; generalised below zoom 7' } },
-  { id: 'sat', group: 'base', label: 'Satellite', opacity: 1,
+  { id: 'sat', group: 'base', label: 'Satellite', kind: 'imagery', opacity: 1,
     // first = default; Esri's only with the visitor's own key (esri.js), EOX's newest until it is accepted
     variants: { ...Object.fromEntries(EOX_YEARS.map((y) => [eoxKey(y), `Sentinel-2 ${y}${eoxOpen(y) ? ' · CC BY' : ''}`])), esri: 'Esri World Imagery · your key' },
-    info: { src: 'EOX Sentinel-2 cloudless: one cloud-free mosaic of the world a year, from Copernicus Sentinel-2; or Esri World Imagery, with your own ArcGIS key', lic: 'EOX: 2016 CC BY 4.0; from 2018 CC BY-NC-SA 4.0, non-commercial use only. Esri: with your own key, under Esri\'s terms', res: 'Sentinel-2: 10 m: coastlines, fields, rivers and roads, not single buildings. Esri: up to about 0.3–1 m, varies by place', url: 'https://cloudless.eox.at' },
     // what its ⓘ says of the variant drawn (app.js: Esri's only once a key is accepted)
     infoOf: (variant) => {
       if (variant === 'esri') {

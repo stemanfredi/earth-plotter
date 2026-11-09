@@ -123,7 +123,7 @@ const map = new maplibregl.Map({
   // to keep (offline.js)
   transformRequest: (url, type) => {
     if (type === 'Glyphs') glyphsAsked.add(new URL(url).href);
-    return esri.request(url);
+    return esri.request(url) ?? { url, referrerPolicy: 'no-referrer' };
   },
 });
 map.touchZoomRotate.disableRotation();
@@ -262,14 +262,13 @@ const layersOf = {};
 for (const l of style.layers) if (l.metadata?.item) (layersOf[l.metadata.item] ||= []).push(l);
 const baseDependent = Object.keys(layersOf).filter((k) => layersOf[k].some((l) => l.metadata.base));
 
-// the variant drawn: the one chosen, but Esri's imagery without an accepted key (esri.js), which
-// draws EOX's newest year until one is
-const shownVariant = (id) => (id === 'sat' && state.variant.sat === 'esri' && !esri.usable() ? eoxKey(EOX_YEARS[0]) : state.variant[id]);
+// the variant drawn: the one chosen, unless its kind draws another (KINDS.imagery)
+const drawnVariant = (id) => kindOf(id)?.drawn?.(id) ?? state.variant[id];
 function applyItem(id) {
   const it = byId[id];
   const on = state.on.has(id);
   for (const l of layersOf[id] || []) {
-    const vis = on && (!l.metadata.variant || l.metadata.variant === shownVariant(id))
+    const vis = on && (!l.metadata.variant || l.metadata.variant === drawnVariant(id))
       && (!l.metadata.base || state.on.has(l.metadata.base)); // e.g. depth shading only over the chart base
     map.setLayoutProperty(l.id, 'visibility', vis ? 'visible' : 'none');
     const prop = OPACITY_PROP[l.type];
@@ -414,6 +413,13 @@ function classesOf(urls) {
 }
 
 const KINDS = {
+  // Satellite: EOX's yearly mosaics, or Esri's imagery with the visitor's key, its panel under the
+  // choice (esri.js); EOX's newest drawn until a key is accepted
+  imagery: {
+    drawn: (id) => (state.variant[id] === 'esri' && !esri.usable() ? eoxKey(EOX_YEARS[0]) : state.variant[id]),
+    controls: () => esriBox.el,
+    show(id) { esriBox.show(state.variant[id] === 'esri'); applyItem(id); },
+  },
   // GEBCO's depths, drawn by the depth shading (clip.js); its values from its Zarr store
   gebco: {
     // the depth shading's legend: while the chart is under it, zoomed out (where the shading is)
@@ -666,7 +672,7 @@ onConnection(() => { connection(); renderStatus(); });
 connection();
 function itemStatus(id) {
   for (const l of layersOf[id] || []) {
-    if (l.metadata.variant && l.metadata.variant !== shownVariant(id)) continue;
+    if (l.metadata.variant && l.metadata.variant !== drawnVariant(id)) continue;
     const s = health[l.source];
     // without a connection: the layers saved areas keep fail only beyond them; the others say why
     if (s?.err && noConnection()) { if (KEPT_SOURCES.has(l.source)) continue; return { cls: 'error', msg: 'No connection: not kept in offline areas' }; }
@@ -687,65 +693,18 @@ const frame = createFrame({ left: $('#side'), right: $('#props'), onChange: () =
 // ---- layers panel -----------------------------------------------------------
 const menu = $('#menu');
 const rows = {};
-// Esri's imagery with the visitor's own key (esri.js, docs/esri-key.md): under Satellite's choice
-// while it is chosen. Without a key Esri accepted, it says what is needed and EOX's newest is drawn.
-const esriBox = h('div', { class: 'keybox' });
-let esriBusy = false, esriNote = ''; // an answer awaited; what could not be done
-function renderEsri() {
-  esriBox.hidden = state.variant.sat !== 'esri';
-  if (esriBox.hidden) return;
-  const k = esri.held(), here = location.origin, newest = `Sentinel-2 ${EOX_YEARS[0]}`;
-  const field = h('input', { type: 'password', autocomplete: 'off', spellcheck: 'false', 'aria-label': 'Your ArcGIS key', placeholder: 'Paste your ArcGIS key',
-    onkeydown: (e) => { if (e.key === 'Enter') { e.preventDefault(); submit(); } } });
-  const submit = () => { const key = field.value.trim(); if (key && !esriBusy) checkEsri(key); };
-  const status = k?.state === 'ok' ? `Your key is in use, as Esri accepted it on ${new Date(k.checked).toLocaleDateString()}.`
-    : k?.state === 'refused' ? `Esri did not accept the key: wrong, expired, without the Basemaps privilege, or not allowed on this site. Showing ${newest}.`
-      : `Esri's imagery needs your own free ArcGIS key. Showing ${newest} until Esri accepts one.`;
-  esriBox.replaceChildren(...[
-    h('p', { class: 'note', role: 'status' }, status, esriNote ? ` ${esriNote}` : ''),
-    k?.state === 'ok'
-      ? h('div', { class: 'keyrow' }, h('button', { type: 'button', class: 'small', onclick: removeEsri }, 'Remove key'))
-      : h('div', { class: 'keyrow' }, field, h('button', { type: 'button', class: 'small', disabled: esriBusy, onclick: submit }, esriBusy ? 'Checking…' : 'Use')),
-    k?.state === 'ok' ? null : h('p', { class: 'note' }, 'The key\'s referrers must include ', h('code', {}, here), ' ',
-      h('button', { type: 'button', class: 'small link', onclick: () => navigator.clipboard?.writeText(here).then(() => note(`${here} copied`), () => {}) }, 'Copy')),
-    h('p', { class: 'note' }, 'The key stays in this browser; it and the imagery requests go to Esri. ',
-      h('a', { href: esri.ESRI_DOC, target: '_blank', rel: 'noopener' }, 'How to get a key'))].filter(Boolean));
-}
-// what follows a key's answer: the tiles asked for again (with the key, or EOX's instead), the
-// panel, the row's state and Esri's credit
-function esriChanged() {
+// Esri's imagery with the visitor's own key (esri.js, docs/esri-key.md): its panel, under Satellite's
+// choice while it is chosen (KINDS.imagery). A key accepted or forgotten: Esri's tiles asked for
+// again (with the key, or EOX's newest drawn instead), what draws them refreshed, the ⓘ and the row
+const esriBox = esri.keyBox({ fallback: `Sentinel-2 ${EOX_YEARS[0]}`, onChange: () => {
   map.getSource('esri')?.setTiles([esri.ESRI_TILES]);
-  refresh('sat');
-  renderEsri();
-  infoAgain('sat');
-  renderStatus();
-  creditEsri();
-}
-async function checkEsri(key) {
-  esriBusy = true; esriNote = ''; renderEsri();
-  try { await esri.use(key); } catch (e) { esriNote = `Esri could not be asked (${e.message}): try again.`; }
-  esriBusy = false;
-  esriChanged();
-}
-function removeEsri() { esri.forget(); esriNote = ''; esriChanged(); }
-// the key held asked about again: at the start with Esri's imagery chosen, and when it is chosen
-async function recheckEsri() {
-  if (!esri.held() || noConnection()) return;
-  const was = esri.held().state;
-  if ((await esri.recheck()) !== was) esriChanged(); else creditEsri();
-}
-async function creditEsri() {
-  const text = await esri.credit();
-  const src = map.getSource('esri');
-  if (!text || !src) return;
-  src.attribution = text;
-  renderCredits();
-}
+  for (const id of itemsOfSource.esri || []) refresh(id);
+  renderMenu();
+} });
 function setVariant(id, v) {
   state.variant[id] = v;
   refresh(id);
   if (id === 'depth') depthColours();
-  if (id === 'sat') { renderEsri(); infoAgain('sat'); if (v === 'esri') recheckEsri(); }
   writeHash();
   renderMenu();
 }
@@ -753,17 +712,15 @@ function setVariant(id, v) {
 // The panel's controls are built with the state's values and kept so by their own changes: the
 // opacity, the variants, the periods and the menus are written by their controls alone (readHash
 // runs before this, a view applied reloads the page); renderMenu follows what changes beside them.
-// provenance (and the opacity slider) behind an item's ⓘ
-// an item whose source follows its variant (Satellite: EOX's year, or Esri's with a key) has its ⓘ
-// text built again when the variant drawn changes (infoAgain)
-const infoFills = {};
-const infoAgain = (id) => { for (const fill of infoFills[id] || []) fill(); };
+// provenance (and the opacity slider) behind an item's ⓘ; one whose source follows its variant
+// (Satellite: EOX's year, or Esri's with a key) written again by renderMenu
+const variantInfos = [];
 function infoBlock(it) {
   const opacity = it.opacity != null ? h('label', { class: 'opacity' }, h('span', {}, it.id === 'relief' ? 'Strength' : 'Opacity'),
     h('input', { type: 'range', min: 0, max: 1, step: 0.05, value: state.opacity[it.id], oninput: (e) => { state.opacity[it.id] = +e.target.value; applyItem(it.id); writeHash(); } })) : null;
   const text = h('div', {});
   const fill = () => {
-    const info = it.infoOf?.(shownVariant(it.id)) ?? it.info;
+    const info = it.infoOf?.(drawnVariant(it.id)) ?? it.info;
     text.replaceChildren(...[
       h('p', {}, h('b', {}, 'Source '), info.src),
       h('p', {}, h('b', {}, 'Licence '), info.lic),
@@ -771,7 +728,7 @@ function infoBlock(it) {
       info.url ? h('p', {}, h('a', { href: info.url, target: '_blank', rel: 'noopener noreferrer' }, info.url.replace(/^https:\/\/(www\.)?/, '').replace(/\/.*$/, ''))) : null].filter(Boolean));
   };
   fill();
-  if (it.infoOf) (infoFills[it.id] ||= []).push(fill);
+  if (it.infoOf) variantInfos.push(fill);
   return h('div', { class: 'info', hidden: true }, opacity, text);
 }
 function moreButton(label, onclick) {
@@ -800,8 +757,7 @@ function controlsOf(it) {
   const kind = kindOf(it.id)?.controls;
   if (!it.variants && !kind) return null;
   return h('div', { class: 'controls', hidden: !state.on.has(it.id) }, // the time and depth: at the panel's head
-    it.variants ? select(`${it.label} variant`, Object.entries(it.variants), state.variant[it.id], (v) => setVariant(it.id, v), { class: 'variant' }) : null, kind?.(it),
-    it.id === 'sat' ? esriBox : null);
+    it.variants ? select(`${it.label} variant`, Object.entries(it.variants), state.variant[it.id], (v) => setVariant(it.id, v), { class: 'variant' }) : null, kind?.(it));
 }
 function itemRow(it) {
   const input = h('input', { type: 'checkbox', role: 'switch', class: 'switch', id: `i-${it.id}`, checked: state.on.has(it.id), onchange: (e) => setOn(it.id, e.target.checked) });
@@ -867,6 +823,7 @@ function renderMenu() {
     if (it.overlay && r) r.row.hidden = !state.on.has(it.overlay); // shown while what it goes over is
   }
   for (const render of sourceRows) render();
+  for (const fill of variantInfos) fill();
   renderWhen();
   for (const g of groupEls) {
     const n = g._items.filter((it) => state.on.has(it.id)).length;
@@ -1303,7 +1260,7 @@ function exportPng(b) {
 function drawnItems() {
   const z = map.getZoom();
   return ITEMS.filter((it) => (layersOf[it.id] || []).some((l) => drawn(l, z)))
-    .map((it) => ({ ...it, info: it.infoOf?.(shownVariant(it.id)) ?? it.info, variant: variantsOf(it) && shownVariant(it.id) })); // the variant drawn, its key as the file's view and item.json's at.variant, and its provider
+    .map((it) => ({ ...it, info: it.infoOf?.(drawnVariant(it.id)) ?? it.info, variant: variantsOf(it) && drawnVariant(it.id) })); // the variant drawn, its key as the file's view and item.json's at.variant, and its provider
 }
 const exportZip = gisExport({ map, layersOf, layerDrawn: drawn, kindOf, drawing, display, profiled, clips: { sea: seaClip, land: landClip }, cmemsDrawn, snapshot, onFrame, download });
 
@@ -1321,8 +1278,6 @@ map.on('load', () => {
   applyData();
   for (const it of ITEMS) refresh(it.id);
   depthColours(); // the labels' paint with it
-  renderEsri();
-  if (state.variant.sat === 'esri') recheckEsri();
   drawing.addIcons();
   drawing.saving.restore(); // its view, if the address had none, is already in it
   drawing.render();

@@ -8,7 +8,7 @@ import { HOSTS } from './hosts.js';
 import { fetchOk, fetchBytes, tileUrl, lru } from './net.js';
 import { tileBounds, tileXY, boxesMeet, MAX_LAT } from './geo.js';
 
-export const RELEASE = 'coverage-2026-2'; // the coverage's folder on the data host (tools/coverage.mjs writes it); a new build, a new folder: the files are cached as immutable
+export const RELEASE = 'coverage-2026'; // the coverage's folder on the data host (tools/coverage.mjs writes it)
 export const COVERAGE = `${HOSTS.geodata}/${RELEASE}`;
 const byId = Object.fromEntries(ORTHO.map((o) => [o.id, o]));
 

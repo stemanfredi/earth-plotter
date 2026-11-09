@@ -11,7 +11,8 @@ built at load from a catalogue of layers; a few layers are not fetched as
 they are but made in the page, in a worker, from raw data. A drawing module
 owns everything the user draws, as a document with its own file format. Two
 exports describe the view from one snapshot of the page's state. Nothing
-runs anywhere else: no backend, no keys, no build.
+runs anywhere else: no backend and no build. No layer needs a key, but one
+optional choice: Esri's imagery takes the visitor's own (docs/esri-key.md).
 
 ## Ideas that shape it
 

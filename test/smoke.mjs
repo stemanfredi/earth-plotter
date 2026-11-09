@@ -645,6 +645,10 @@ await section('Esri\'s imagery with the visitor\'s key: checked first, sent only
   const box = () => p.evaluate(() => { const b = document.querySelector('.keybox'); return b && !b.hidden ? b.textContent : null; });
   check(/needs your own free ArcGIS key/.test(await box() || '') && !/null/.test(await box() || '') && await visible(p, 'eox25') === 'visible' && await visible(p, 'esri') === 'none' && tiles.length === 0,
     'Esri chosen without a key: the panel asks for one, EOX\'s newest is drawn, no tile asked of Esri');
+  // the base's ⓘ text: what is drawn, not every choice
+  const about = () => p.evaluate(() => [...document.querySelectorAll('.info')].map((e) => e.textContent).find((t) => /EOxCloudless|Esri World Imagery, with/.test(t)) || '');
+  check(/EOxCloudless 2025 by EOX/.test(await about()) && /CC BY-NC-SA 4\.0: non-commercial/.test(await about()) && !/Esri/.test(await about()),
+    `without an accepted key, the ⓘ names what is drawn: EOX's 2025, its licence (${(await about()).slice(0, 60)}…)`);
   const use = async (key) => { await p.fill('.keybox input', key); await p.click('.keyrow button'); };
   await use(BAD);
   await until(p, () => /did not accept/.test(document.querySelector('.keybox')?.textContent || ''), null, 10000);
@@ -658,6 +662,8 @@ await section('Esri\'s imagery with the visitor\'s key: checked first, sent only
   check(checks.every((r) => r === `${origin}/`), `the check sends the page's origin as referrer (${[...new Set(checks)].join(', ')})`);
   await until(p, () => /Powered by Esri · Source: test providers/.test(document.querySelector('.credits-text')?.textContent || ''), null, 10000);
   check(true, 'Esri\'s credit: "Powered by Esri" and the service\'s own text, asked with the key');
+  check(/Esri World Imagery, with your own ArcGIS key/.test(await about()) && /Esri's terms of use/.test(await about()) && !/EOxCloudless/.test(await about()),
+    'with the key accepted, the ⓘ names Esri\'s imagery and its terms');
   check(!p.url().includes(GOOD) && !(await p.evaluate(() => location.hash)).includes('token'), 'the key is not in the page\'s address');
   // the key kept in this browser: the page started again asks Esri once more, and draws it
   const before = checks.length;

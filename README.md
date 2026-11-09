@@ -31,10 +31,10 @@ roots. Read a line's elevation profile, at sea and on land. Export the view as a
 that QGIS opens, or your drawing as GeoJSON. Install the page as an app on a
 phone.
 
-Everything runs in your browser. There is no account, no key and no server
-of its own: the page fetches each layer from its provider as you look at it.
-Esri's sharper satellite imagery is optional, with your own free ArcGIS key:
-[docs/esri-key.md](docs/esri-key.md).
+Everything runs in your browser, with no server of its own: the page fetches
+each layer from its provider as you look at it. Every layer works without an
+account or a key, but one optional choice: Esri's sharper satellite imagery,
+which needs your own free ArcGIS key ([docs/esri-key.md](docs/esri-key.md)).
 
 ## Privacy
 

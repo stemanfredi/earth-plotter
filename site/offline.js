@@ -2,7 +2,7 @@
 // connection: the base map, the relief and land contours, the depths and isobaths, the seamarks.
 // The page fetches every file of the area into its cache, at the style's own addresses (style.js),
 // and a fresh clipping worker the files of the cut elevation; the service worker (sw.js) answers
-// the map from the finished areas. Only the hosts in hosts.js OFFLINE are kept: never Esri's.
+// the map from the finished areas. Only the hosts in hosts.js OFFLINE are kept: never the imagery.
 
 import { h, editInPlace } from './dom.js';
 import { slug } from './format.js';

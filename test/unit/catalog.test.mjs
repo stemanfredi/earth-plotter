@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { GROUPS, ITEMS, DEPTH_SCHEMES, DEM_TILES, EMODNET_DEPTH_STOPS, domainEnd, gibsDomainUrl, CMEMS, drawsOf, DENSITY, densityTiles } from '../../site/catalog.js';
+import { GROUPS, ITEMS, EOX_YEARS, DEPTH_SCHEMES, DEM_TILES, EMODNET_DEPTH_STOPS, domainEnd, gibsDomainUrl, CMEMS, drawsOf, DENSITY, densityTiles } from '../../site/catalog.js';
 import { cmemsStyle } from '../../site/cmems.js';
 import { buildStyle, SEA_PICTURES } from '../../site/style.js';
 import { CSP_HOSTS } from '../../tools/deps.mjs';
@@ -37,6 +37,20 @@ test('variants: each choice has a layer, except colour schemes', () => {
     }
   }
   assert.deepEqual(Object.keys(ITEMS.find((i) => i.id === 'depth').variants), Object.keys(DEPTH_SCHEMES));
+});
+
+test('satellite: EOX\'s yearly mosaics, newest first and the default; credits and licences by year', () => {
+  const sat = ITEMS.find((it) => it.id === 'sat');
+  assert.deepEqual(Object.keys(sat.variants), EOX_YEARS.map((y) => `eox${String(y).slice(2)}`));
+  assert.equal(Object.keys(sat.variants)[0], 'eox25', 'the newest year is the default');
+  assert.ok(Object.hasOwn(sat.variants, 'eox16') && Object.hasOwn(sat.variants, 'eox24'), 'the keys links have carried still read');
+  for (const y of EOX_YEARS) {
+    const src = style.sources[`eox${String(y).slice(2)}`];
+    assert.match(src.tiles[0], y === 2016 ? /\/s2cloudless_3857\// : new RegExp(`/s2cloudless-${y}_3857/`));
+    assert.match(src.attribution, new RegExp(`EOxCloudless</a> ${y} by EOX IT Services GmbH \\(contains modified Copernicus Sentinel data ${y === 2018 ? '2017 & 2018' : y}\\), ${y < 2018 ? 'CC BY 4\\.0$' : 'CC BY-NC-SA 4\\.0$'}`));
+    assert.equal(sat.variants[`eox${String(y).slice(2)}`].endsWith('CC BY'), y < 2018, `${y}: the open years marked`);
+  }
+  assert.ok(!Object.values(style.sources).some((s) => (s.tiles || []).some((t) => /arcgisonline|ibasemaps|World_Imagery/.test(t))), 'no Esri imagery without a key');
 });
 
 test('every remote source host is allowed by the CSP', () => {

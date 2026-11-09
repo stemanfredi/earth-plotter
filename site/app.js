@@ -1,7 +1,7 @@
 import * as maplibregl from './vendor/maplibre-gl.mjs';
 import mlcontour from './vendor/maplibre-contour.mjs';
-import { GROUPS, ITEMS, GIBS, DEM_TILES, DEM_SEA_MAX, DEPTH_ZMAX, DEPTH_SOURCES, DEM_LAND_MAX, OMT_TILEJSON, DEPTH_SCHEMES, NO_DEPTH, DENSITY, ESRI_META, gibsTiles, gibsDomainUrl, domainEnd, densityTiles, CMEMS, CMEMS_DEPTHS, CLASS_LABELS, EMODNET_DEPTH_STOPS, SEAGRASS } from './catalog.js';
-import { buildStyle, depthRamp, OPACITY_PROP, SEA_PICTURES, LOCATION_LAYERS, INK, esriAttribution } from './style.js';
+import { GROUPS, ITEMS, GIBS, DEM_TILES, DEM_SEA_MAX, DEPTH_ZMAX, DEPTH_SOURCES, DEM_LAND_MAX, OMT_TILEJSON, DEPTH_SCHEMES, NO_DEPTH, DENSITY, gibsTiles, gibsDomainUrl, domainEnd, densityTiles, CMEMS, CMEMS_DEPTHS, CLASS_LABELS, EMODNET_DEPTH_STOPS, SEAGRASS } from './catalog.js';
+import { buildStyle, depthRamp, OPACITY_PROP, SEA_PICTURES, LOCATION_LAYERS, INK } from './style.js';
 import { cmemsTile, partTimes, partLevels, domainOf, cmemsLegend, partIn } from './cmems.js';
 import { workerClipper } from './clip.js';
 import { drawRamp, drawColormap, drawClasses, wmsClasses } from './legend.js';
@@ -127,8 +127,8 @@ $('#nostart').remove(); // started (index.html)
 
 // ---- bottom row: credits; time shown, cursor position, the scale
 // One scale bar, in the display's units (the switch beside it); the PNG export draws a double
-// one, km and NM (png.js). Credits are always on screen (Esri: data attribution "always visible";
-// OSM likewise), on one line: what does not fit fades at its end and is scrolled sideways.
+// one, km and NM (png.js). Credits are always on screen (OpenStreetMap asks for its
+// credit to be seen), on one line: what does not fit fades at its end and is scrolled sideways.
 const statusEl = $('#status');
 const posEl = h('div', { class: 'pos', id: 'pos', 'aria-live': 'off' });
 // the time the layers show: a chip that is the date field, the field covering it unseen (so every
@@ -276,7 +276,7 @@ function setOn(id, on) {
   }
   on ? state.on.add(id) : state.on.delete(id);
   refresh(id);
-  if (it.group === 'base') { for (const k of baseDependent) applyItem(k); renderLegends(); creditEsri(); }
+  if (it.group === 'base') { for (const k of baseDependent) applyItem(k); renderLegends(); }
   if (id === 'graticule') updateGraticule();
   if (id === 'depth') shoreFill();
   labelPaint(); // the isobaths' colour follows what is under them
@@ -353,19 +353,6 @@ function labelPaint() {
 }
 const LINE_IDS = style.layers.filter((l) => /^isobaths(-\d+)?$/.test(l.id) && l.type === 'line').map((l) => l.id);
 const chartLineColour = Object.fromEntries(LINE_IDS.map((id) => [id, style.layers.find((l) => l.id === id).paint['line-color']]));
-// Esri imagery credits: the service's current copyrightText (providers get renamed: Maxar → Vantor)
-let esriCredited = false;
-async function creditEsri() {
-  if (esriCredited || !(state.on.has('sat') && state.variant.sat === 'esri')) return;
-  esriCredited = true;
-  try {
-    const text = (await (await fetchOk(ESRI_META)).json()).copyrightText;
-    if (!text) return;
-    const src = map.getSource('esri');
-    src.attribution = esriAttribution(text);
-    renderCredits();
-  } catch { esriCredited = false; } // keep the built-in text; retry on the next switch
-}
 // ---- layers from a data service, by kind (catalog.js item.kind) ------------------------------
 // A kind points its item's source at the map's state and says what of that state the item uses;
 // the rest of the app asks the kind, never the item's id:
@@ -697,7 +684,6 @@ function setVariant(id, v) {
   state.variant[id] = v;
   refresh(id);
   if (id === 'depth') depthColours();
-  if (id === 'sat') creditEsri();
   writeHash();
   renderMenu();
 }
@@ -1113,7 +1099,7 @@ function scaleText() {
 
 // ---- credits, and the exports (PNG: png.js; GIS: below) ----------------------------------------
 // the credits of what is drawn: each shown source's own (catalog.js), once, the base map's first
-// (OpenStreetMap and Esri ask for theirs to be seen, and a line that does not fit scrolls from its start)
+// (OpenStreetMap asks for its own to be seen, and a line that does not fit scrolls from its start)
 const baseSources = new Set(ITEMS.filter((it) => it.group === 'base').flatMap((it) => (layersOf[it.id] || []).map((l) => l.source)));
 // a style layer drawn at this zoom: shown, and within its zoom range (the seamarks from 9 …)
 function drawn(l, z) { return map.getLayoutProperty(l.id, 'visibility') !== 'none' && z >= (l.minzoom ?? 0) && z < (l.maxzoom ?? 24); }
@@ -1252,7 +1238,6 @@ map.on('load', () => {
   applyData();
   for (const it of ITEMS) refresh(it.id);
   depthColours(); // the labels' paint with it
-  creditEsri();
   drawing.addIcons();
   drawing.saving.restore(); // its view, if the address had none, is already in it
   drawing.render();

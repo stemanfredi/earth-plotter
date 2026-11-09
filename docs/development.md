@@ -64,8 +64,8 @@ Any static web server can serve `site/`. What a copy inherits:
 
 - **The providers are not yours.** Map tiles, imagery and ocean data are
   fetched from public services, each under its own terms. Most are open data
-  with attribution; two are not: Esri's imagery is used under Esri's terms of
-  use, and the 2024 Sentinel-2 mosaic allows no commercial use. Any provider
+  with attribution; one is not: the Sentinel-2 mosaics from 2018 on allow no
+  commercial use (a commercial copy keeps the 2016 or 2017 one). Any provider
   may change its service, limit requests or go away, and a copy is bound by
   the same terms as this one. The list is in the page, behind each layer's ⓘ,
   and below (Providers).
@@ -109,7 +109,7 @@ is a summary only.
 | Layer | Provider | Licence |
 |---|---|---|
 | Chart base, coastline, roads, buildings, names, boundaries | OpenStreetMap via OpenFreeMap (OpenMapTiles schema) | ODbL |
-| Satellite | Esri World Imagery, or EOX Sentinel-2 cloudless | Esri terms of use; EOX: CC BY 4.0 (2016) or CC BY-NC-SA 4.0 (2024, non-commercial) |
+| Satellite | EOX Sentinel-2 cloudless (EOxCloudless), one mosaic a year, 2016–2025 | CC BY 4.0 (2016, 2017); CC BY-NC-SA 4.0 from 2018 (non-commercial) |
 | Depth shading, isobaths, depth on click | GEBCO 2026 Grid (GEBCO Compilation Group), repacked as Zarr stores on the project's data host | Free to use and redistribute, with attribution |
 | Depth sources | GEBCO 2026 type identifier grid, likewise | As GEBCO |
 | Relief shading, land contours | AWS Terrain Tiles (Terrarium) | Open data, with attribution per source |

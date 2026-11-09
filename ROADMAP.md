@@ -40,8 +40,8 @@ Built 2026-10-30 (Download › Offline areas); what is still open:
   lists apps that cache its tiles. Asked; meanwhile the seamarks are saved
   two requests at a time, in the browser only: an area's file leaves them
   out.
-- **Left out on purpose**: imagery (Esri's terms forbid it; EOX's are
-  silent), forecasts and observations, the thematic layers, place search
+- **Left out on purpose**: imagery (EOX's terms are silent on keeping its
+  tiles: asked), forecasts and observations, the thematic layers, place search
   (its index cannot run in a page).
 
 ## Land and mountains

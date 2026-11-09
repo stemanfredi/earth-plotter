@@ -7,7 +7,6 @@ export const HOSTS = {
   openfreemap: 'https://tiles.openfreemap.org', // the OpenStreetMap base, and the fonts
   terrain: 'https://s3.amazonaws.com/elevation-tiles-prod', // AWS Terrain Tiles (Terrarium)
   eox: 'https://tiles.maps.eox.at', // Sentinel-2 cloudless
-  esri: 'https://server.arcgisonline.com', // World Imagery
   gibs: 'https://gibs.earthdata.nasa.gov', // NASA daily imagery
   openseamap: 'https://tiles.openseamap.org',
   emodnetHumanActivities: 'https://ows.emodnet-humanactivities.eu',
@@ -25,7 +24,7 @@ export const HOSTS = {
   geodata: 'https://geodata.earthplotter.org', // GEBCO's depths and the seagrass tiles (tools/gebco.mjs, tools/seagrass.mjs)
 };
 // The hosts whose files an area saved for use without a connection keeps (ROADMAP, Offline areas): the
-// base map and its fonts, the elevation, the depths, the seamarks. Never Esri's: its terms forbid it.
+// base map and its fonts, the elevation, the depths, the seamarks. Never the imagery (ROADMAP).
 // tools/deps.mjs writes their addresses into site/sw.js, which answers from a saved area for these only.
 export const OFFLINE = ['openfreemap', 'terrain', 'geodata', 'openseamap'];
 // the same as addresses a request starts with, by name

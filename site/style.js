@@ -1,12 +1,8 @@
 // The map's style, from the catalogue: every source, and every layer in draw order. A layer belongs
 // to a menu item through metadata.item; layers of a hidden item are set to visibility:none, and
 // MapLibre requests no tiles for a source whose layers are all hidden.
-import { DEM_CREDITS, SEAMARKS_MIN, CONTOURS_MIN, DEM_SEA_MAX, DEM_LAND_MAX, DEPTH_ZMAX, ISOBATH_MAX, OMT_TILEJSON, DENSITY, densityTiles, HA_CREDIT, GIBS, gibsTiles, CMEMS, ITEMS, DEPTH_SCHEMES, ISOBATH_ZOOMS, DEPTH_LEVELS, isMajorIsobath, NO_DEPTH, NO_DEPTH_M, SEAGRASS_ZOOMS, SEAGRASS_CLASSES } from './catalog.js';
+import { DEM_CREDITS, EOX_YEARS, eoxKey, eoxOpen, eoxData, eoxTiles, SEAMARKS_MIN, CONTOURS_MIN, DEM_SEA_MAX, DEM_LAND_MAX, DEPTH_ZMAX, ISOBATH_MAX, OMT_TILEJSON, DENSITY, densityTiles, HA_CREDIT, GIBS, gibsTiles, CMEMS, ITEMS, DEPTH_SCHEMES, ISOBATH_ZOOMS, DEPTH_LEVELS, isMajorIsobath, NO_DEPTH, NO_DEPTH_M, SEAGRASS_ZOOMS, SEAGRASS_CLASSES } from './catalog.js';
 import { HOSTS } from './hosts.js';
-import { escapeHtml } from './format.js';
-
-// Esri's credit: theirs, with the text its service gives (ESRI_META), escaped (it is set as markup)
-export const esriAttribution = (copyrightText) => `Powered by <a href="https://www.esri.com">Esri</a> · ${escapeHtml(copyrightText)}`;
 
 // the map's ink, for what is written on it and beside it (the legends, the picture's text)
 export const INK = '#2b3a46', SOFT = '#5d6d79';
@@ -42,14 +38,9 @@ function sources({ seaDemUrl, landDemUrl, isobathUrl, contourUrl, date, density 
       attribution: '<a href="https://emodnet.ec.europa.eu/en/seabed-habitats">EMODnet Seabed Habitats</a>' },
     isobaths: { type: 'vector', tiles: [isobathUrl], maxzoom: ISOBATH_MAX, attribution: ATTR_GEBCO }, // the sea clipper's own tiles, each cut with the coastline of its zoom (catalog.js)
     contours: { type: 'vector', tiles: [contourUrl], maxzoom: DEM_LAND_MAX, attribution: ATTR_DEM },
-    eox16: { type: 'raster', tileSize: 256, maxzoom: 14, attribution: 'Sentinel-2 cloudless 2016 by <a href="https://s2maps.eu">EOX IT Services GmbH</a> (contains modified Copernicus Sentinel data 2016), CC BY 4.0',
-      tiles: [`${HOSTS.eox}/wmts/1.0.0/s2cloudless_3857/default/g/{z}/{y}/{x}.jpg`] },
-    eox24: { type: 'raster', tileSize: 256, maxzoom: 14, attribution: 'Sentinel-2 cloudless 2024 by <a href="https://s2maps.eu">EOX IT Services GmbH</a> (contains modified Copernicus Sentinel data 2024), CC BY-NC-SA 4.0',
-      tiles: [`${HOSTS.eox}/wmts/1.0.0/s2cloudless-2024_3857/default/g/{z}/{y}/{x}.jpg`] },
-    // Esri asks for "Powered by Esri" plus the service's own copyrightText (app.js refreshes it from
-    // ESRI_META; this is the text it had on 2026-10-20)
-    esri: { type: 'raster', tileSize: 256, maxzoom: 18, attribution: esriAttribution('Source: Esri, Vantor, Earthstar Geographics, and the GIS User Community'),
-      tiles: [`${HOSTS.esri}/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}`] },
+    // the satellite mosaics, one source a year (catalog.js EOX_YEARS), credited as EOX asks
+    ...Object.fromEntries(EOX_YEARS.map((y) => [eoxKey(y), { type: 'raster', tileSize: 256, maxzoom: 14, tiles: [eoxTiles(y)],
+      attribution: `<a href="https://cloudless.eox.at">EOxCloudless</a> ${y} by EOX IT Services GmbH (contains modified Copernicus Sentinel data ${eoxData(y)}), ${eoxOpen(y) ? 'CC BY 4.0' : 'CC BY-NC-SA 4.0'}` }])),
     // the grid is 1 km: beyond zoom 10 the map overzooms instead of asking for more tiles
     traffic: { type: 'raster', tileSize: 256, maxzoom: 10, tiles: densityTiles('traffic', ...(density.traffic || ['all', DENSITY.traffic.defaultPeriod])),
       attribution: HA_CREDIT },
@@ -122,7 +113,7 @@ function layers() {
   const L = [
     { id: 'bg', type: 'background', paint: { 'background-color': C.land } },
 
-    raster('eox16', 'sat', 'eox16'), raster('eox24', 'sat', 'eox24'), raster('esri', 'sat', 'esri'),
+    ...EOX_YEARS.map((y) => raster(eoxKey(y), 'sat', eoxKey(y))),
 
     // land relief and contours sit under the sea fill: the vector coastline cuts them sharply
     { id: 'relief', type: 'hillshade', source: 'dem', ...m('relief'),

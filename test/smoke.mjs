@@ -9,7 +9,7 @@ import { readFile } from 'node:fs/promises';
 import { start, openPage, exportItem, unzip, settled, frames, until } from './browser.mjs';
 import { setSwVersion } from './serve.mjs';
 import { tileBounds } from '../site/geo.js';
-import { OFFLINE_PREFIXES } from '../site/hosts.js';
+import { HOSTS, OFFLINE_PREFIXES } from '../site/hosts.js';
 import { shellFiles } from '../tools/deps.mjs';
 
 const { browser, base, check, section, finish } = await start();
@@ -59,17 +59,16 @@ await section('the default view and the menu', async () => {
   await p.evaluate((z) => map.jumpTo({ zoom: z }), z0); // back as it was
   check(wide && close, `credits: the seamarks credited where they are drawn, not below zoom 9 (${wide}, ${close})`);
   await p.click('.basecard[data-base=sat]');
-  check((await visible(p, 'esri')) === 'visible' && (await visible(p, 'water')) === 'none', 'satellite replaces the chart base');
-  // the credits follow the base map a moment later (Esri's text is fetched): waited for, not timed
-  await until(p, () => /^Powered by Esri/.test(document.querySelector('.credits-text')?.textContent || ''), null, 10000);
+  check((await visible(p, 'eox25')) === 'visible' && (await visible(p, 'water')) === 'none', 'satellite replaces the chart base, at the newest year');
+  // the credits follow the base map a moment later: waited for, not timed
+  await until(p, () => /^EOxCloudless 2025/.test(document.querySelector('.credits-text')?.textContent || ''), null, 10000);
   const credits = await p.evaluate(() => document.querySelector('.credits-text')?.textContent || '');
-  const live = await p.evaluate(async () => (await (await fetch('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer?f=json')).json()).copyrightText);
-  check(credits.includes('Powered by Esri') && credits.includes(live), `Esri credits: "Powered by Esri" and the service's own text (${live})`, true);
+  check(/^EOxCloudless 2025 by EOX IT Services GmbH .*CC BY-NC-SA 4\.0/.test(credits), `satellite credits: EOX's, for the year shown (${credits.slice(0, 60)}…)`);
   // the base map's credit first, so a line cut at its end ("…") never cuts it
   await p.click('.basecard[data-base=chart]');
   await until(p, () => /^© OpenStreetMap/.test(document.querySelector('.credits-text')?.textContent || ''), null, 10000);
   const chartCredits = await p.evaluate(() => document.querySelector('.credits-text').textContent);
-  check(credits.startsWith('Powered by Esri') && chartCredits.startsWith('© OpenStreetMap'), `the base map's credit first (${credits.slice(0, 30)}… / ${chartCredits.slice(0, 30)}…)`);
+  check(credits.startsWith('EOxCloudless') && chartCredits.startsWith('© OpenStreetMap'), `the base map's credit first (${credits.slice(0, 30)}… / ${chartCredits.slice(0, 30)}…)`);
   await p.close();
 });
 
@@ -618,7 +617,7 @@ await section('the page without a connection, and a new version', async () => {
   await sctx.close();
 });
 
-await section('a saved area: served from it, online and without a connection; Esri never', async () => {
+await section('a saved area: served from it, online and without a connection; the imagery never', async () => {
   // an area saved by hand (the downloader comes later): every file of the saved hosts the view asked
   // for, put in a pack-… cache under its own address, as a saved area keeps them
   setSwVersion('c');
@@ -642,12 +641,12 @@ await section('a saved area: served from it, online and without a connection; Es
     navigator.serviceWorker.controller.postMessage('packs');
     return n;
   }, [...asked]);
-  // online: the area's files come from it; Esri's never pass through the worker
-  const fromWorker = [], esri = [];
-  actx.on('response', (r) => { if (isSaved(r.url()) && r.fromServiceWorker()) fromWorker.push(r.url()); if (/arcgisonline/.test(r.url())) esri.push(r.fromServiceWorker()); });
+  // online: the area's files come from it; the imagery's never pass through the worker
+  const fromWorker = [], imagery = [];
+  actx.on('response', (r) => { if (isSaved(r.url()) && r.fromServiceWorker()) fromWorker.push(r.url()); if (r.url().startsWith(HOSTS.eox)) imagery.push(r.fromServiceWorker()); });
   await ap.goto(base + view.replace('chart,', 'sat,'));
   await ap.waitForFunction(() => window.map?.loaded?.() && map.areTilesLoaded(), null, { timeout: 90000 });
-  check(put > 20 && fromWorker.length > 10 && esri.length > 0 && esri.every((w) => !w), `saved area: ${put} files saved; online, ${fromWorker.length} served from it; Esri's ${esri.length} tiles never through the worker`);
+  check(put > 20 && fromWorker.length > 10 && imagery.length > 0 && imagery.every((w) => !w), `saved area: ${put} files saved; online, ${fromWorker.length} served from it; the imagery's ${imagery.length} tiles never through the worker`);
   // without a connection: the same view drawn from the area, no request to a saved host failing; the
   // area first given what the online loads asked for since (work that ends after the map says its
   // tiles are loaded: a lake's shore read at lower zooms)

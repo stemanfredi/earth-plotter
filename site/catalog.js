@@ -127,7 +127,15 @@ export const EMODNET_DEPTH_STOPS = {
   multicolour: [[0, '#ff5f64'], [10, '#ff0007'], [50, '#ded634'], [150, '#bedc30'], [450, '#71e044'], [1000, '#3cc6bf'], [2000, '#3144d6'], [3500, '#31315f'], [6000, '#000038']],
   rainbow: [[0, '#db000e'], [5, '#ff0911'], [40, '#d4dc1f'], [200, '#3ac845'], [500, '#33b6c3'], [3000, '#326cc4'], [4800, '#382a93'], [5500, '#8547bc'], [6000, '#bf00dc']],
 };
-export const ESRI_META = `${HOSTS.esri}/ArcGIS/rest/services/World_Imagery/MapServer?f=json`;
+// EOX's Sentinel-2 cloudless mosaics, one a year, newest first (the first is Satellite's default):
+// 2016 and 2017 are CC BY 4.0; from 2018 CC BY-NC-SA 4.0, for non-commercial use only (EOX's FAQ and
+// its WMTS capabilities). Variant keys eoxYY, as links have always carried them (eox16, eox24).
+// 2016 and 2018..2025 are global; 2017 is Europe-only (blank elsewhere), so it is left out.
+export const EOX_YEARS = [...Array.from({ length: 8 }, (_, i) => 2025 - i), 2016];
+export const eoxKey = (year) => `eox${String(year).slice(2)}`;
+export const eoxOpen = (year) => year < 2018; // CC BY: any use, commercial included
+export const eoxData = (year) => (year === 2018 ? '2017 & 2018' : `${year}`); // the Sentinel-2 years in it, as EOX credits them
+export const eoxTiles = (year) => `${HOSTS.eox}/wmts/1.0.0/${year === 2016 ? 's2cloudless' : `s2cloudless-${year}`}_3857/default/g/{z}/{y}/{x}.jpg`;
 
 export const GIBS = {
   terra: { label: 'True colour · MODIS Terra', layer: 'MODIS_Terra_CorrectedReflectance_TrueColor', level: 9, ext: 'jpg' },
@@ -287,8 +295,8 @@ export const ITEMS = [
   { id: 'chart', group: 'base', label: 'Chart', on: true,
     info: { ...OSM, src: 'OpenStreetMap via OpenFreeMap (OpenMapTiles schema)', res: 'Coastline from OSM water polygons; generalised below zoom 7' } },
   { id: 'sat', group: 'base', label: 'Satellite', opacity: 1,
-    variants: { esri: 'Esri World Imagery (Esri terms)', eox16: 'Sentinel-2 2016 · EOX (CC BY)', eox24: 'Sentinel-2 2024 · EOX (non-commercial)' }, // first = default
-    info: { src: 'Esri World Imagery (default), or EOX Sentinel-2 cloudless', lic: 'EOX 2016: CC BY 4.0 · EOX 2024: CC BY-NC-SA 4.0 · Esri: Esri terms of use', res: 'Sentinel-2: 10 m · Esri: up to ~0.5 m, varies', url: 'https://s2maps.eu' } },
+    variants: Object.fromEntries(EOX_YEARS.map((y) => [eoxKey(y), `Sentinel-2 ${y}${eoxOpen(y) ? ' · CC BY' : ''}`])), // first = default
+    info: { src: 'EOX Sentinel-2 cloudless: one cloud-free mosaic of the world a year, from Copernicus Sentinel-2', lic: 'EOX: 2016 and 2017 CC BY 4.0; from 2018 CC BY-NC-SA 4.0, non-commercial use only', res: '10 m: coastlines, fields, rivers and roads, not single buildings; sharper zooms magnify it', url: 'https://cloudless.eox.at' } },
 
   { id: 'depth', group: 'sea', label: 'Depth shading', on: true, opacity: 1, maxzoom: DEPTH_ZMAX - 1, kind: 'gebco',
     variants: { atlas: 'Darker = deeper (atlas)', nautical: 'Darker = shallower (nautical chart)' },

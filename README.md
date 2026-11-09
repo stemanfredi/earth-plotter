@@ -33,12 +33,15 @@ phone.
 
 Everything runs in your browser. There is no account, no key and no server
 of its own: the page fetches each layer from its provider as you look at it.
+Esri's sharper satellite imagery is optional, with your own free ArcGIS key:
+[docs/esri-key.md](docs/esri-key.md).
 
 ## Privacy
 
 Drawings, saved areas and your location stay in your browser; tile requests
 tell each provider which area you are looking at, and place names you type go
-to the search provider. The About dialog in the page says in full what leaves
+to the search provider. An Esri key, if you add one, stays in your browser and
+goes only to Esri. The About dialog in the page says in full what leaves
 your browser and what stays in it; each layer's ⓘ names its provider.
 
 ## Hosting a copy

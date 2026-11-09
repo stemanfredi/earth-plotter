@@ -7,6 +7,8 @@ export const HOSTS = {
   openfreemap: 'https://tiles.openfreemap.org', // the OpenStreetMap base, and the fonts
   terrain: 'https://s3.amazonaws.com/elevation-tiles-prod', // AWS Terrain Tiles (Terrarium)
   eox: 'https://tiles.maps.eox.at', // Sentinel-2 cloudless
+  esriTiles: 'https://ibasemaps-api.arcgis.com', // World Imagery, with the visitor's own key (esri.js)
+  esriStyles: 'https://basemapstyles-api.arcgis.com', // where that key is checked (esri.js)
   gibs: 'https://gibs.earthdata.nasa.gov', // NASA daily imagery
   openseamap: 'https://tiles.openseamap.org',
   emodnetHumanActivities: 'https://ows.emodnet-humanactivities.eu',

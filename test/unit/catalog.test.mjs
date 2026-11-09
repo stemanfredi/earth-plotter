@@ -39,9 +39,9 @@ test('variants: each choice has a layer, except colour schemes', () => {
   assert.deepEqual(Object.keys(ITEMS.find((i) => i.id === 'depth').variants), Object.keys(DEPTH_SCHEMES));
 });
 
-test('satellite: EOX\'s yearly mosaics, newest first and the default; credits and licences by year', () => {
+test('satellite: EOX\'s yearly mosaics, newest first and the default, then Esri\'s with a key; credits and licences by year', () => {
   const sat = ITEMS.find((it) => it.id === 'sat');
-  assert.deepEqual(Object.keys(sat.variants), EOX_YEARS.map((y) => `eox${String(y).slice(2)}`));
+  assert.deepEqual(Object.keys(sat.variants), [...EOX_YEARS.map((y) => `eox${String(y).slice(2)}`), 'esri']);
   assert.equal(Object.keys(sat.variants)[0], 'eox25', 'the newest year is the default');
   assert.ok(Object.hasOwn(sat.variants, 'eox16') && Object.hasOwn(sat.variants, 'eox24'), 'the keys links have carried still read');
   for (const y of EOX_YEARS) {
@@ -50,7 +50,11 @@ test('satellite: EOX\'s yearly mosaics, newest first and the default; credits an
     assert.match(src.attribution, new RegExp(`EOxCloudless</a> ${y} by EOX IT Services GmbH \\(contains modified Copernicus Sentinel data ${y === 2018 ? '2017 & 2018' : y}\\), ${y < 2018 ? 'CC BY 4\\.0$' : 'CC BY-NC-SA 4\\.0$'}`));
     assert.equal(sat.variants[`eox${String(y).slice(2)}`].endsWith('CC BY'), y < 2018, `${y}: the open years marked`);
   }
-  assert.ok(!Object.values(style.sources).some((s) => (s.tiles || []).some((t) => /arcgisonline|ibasemaps|World_Imagery/.test(t))), 'no Esri imagery without a key');
+  assert.ok(!EOX_YEARS.includes(2017), '2017 is Europe-only');
+  const imagery = Object.entries(style.sources).filter(([, s]) => (s.tiles || []).some((t) => /World_Imagery|arcgisonline/.test(t)));
+  assert.deepEqual(imagery.map(([id]) => id), ['esri'], 'Esri\'s imagery: one source, the keyed one');
+  assert.match(imagery[0][1].tiles[0], /^https:\/\/ibasemaps-api\.arcgis\.com\//, 'the keyed host, not the keyless one');
+  assert.match(imagery[0][1].attribution, /^Powered by <a href="https:\/\/www\.esri\.com">Esri<\/a> · /);
 });
 
 test('every remote source host is allowed by the CSP', () => {

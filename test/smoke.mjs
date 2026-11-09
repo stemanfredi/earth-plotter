@@ -617,6 +617,63 @@ await section('the page without a connection, and a new version', async () => {
   await sctx.close();
 });
 
+await section('Esri\'s imagery with the visitor\'s key: checked first, sent only to Esri, with the page\'s origin', async () => {
+  // Esri's two services stood in for (never the real ones: no key of anyone's in a test): the check
+  // accepts one made-up key from this page's origin, refuses any other; the tiles record how they came
+  const ectx = await browser.newContext({ viewport: { width: 1280, height: 800 }, serviceWorkers: 'block', permissions: ['clipboard-read', 'clipboard-write'] });
+  const GOOD = 'TEST-ACCEPTED-KEY-0001', BAD = 'TEST-REFUSED-KEY-0002', origin = new URL(base).origin;
+  const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkqF9fDwAEOwH6LNq9twAAAABJRU5ErkJggg==', 'base64');
+  const checks = [], tiles = [], strays = [];
+  await ectx.route('https://basemapstyles-api.arcgis.com/**', (route) => {
+    const r = route.request(), ok = r.url().includes(`token=${GOOD}`) && r.headers().referer === `${origin}/`;
+    checks.push(r.headers().referer);
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(ok ? { version: 8, sources: {}, layers: [] } : { error: { code: 498, message: 'Token Invalid.', details: [] } }) });
+  });
+  await ectx.route('https://ibasemaps-api.arcgis.com/**', (route) => {
+    const r = route.request();
+    if (/MapServer\?f=json/.test(r.url())) return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ copyrightText: 'Source: test providers' }) });
+    tiles.push({ url: r.url(), referer: r.headers().referer });
+    return route.fulfill({ status: 200, contentType: 'image/png', body: PNG });
+  });
+  // the key nowhere but Esri's hosts; no Referer anywhere else
+  ectx.on('request', (r) => {
+    const u = new URL(r.url());
+    if (/(^|\.)arcgis\.com$/.test(u.host)) return;
+    if (r.url().includes(GOOD) || r.url().includes(BAD) || (u.origin !== origin && r.headers().referer)) strays.push(r.url().slice(0, 80));
+  });
+  const p = await open('#v=10/40.83/14.25/0&on=sat&var=sat:esri', ectx, 'layers', ['base']);
+  const box = () => p.evaluate(() => { const b = document.querySelector('.keybox'); return b && !b.hidden ? b.textContent : null; });
+  check(/needs your own free ArcGIS key/.test(await box() || '') && !/null/.test(await box() || '') && await visible(p, 'eox25') === 'visible' && await visible(p, 'esri') === 'none' && tiles.length === 0,
+    'Esri chosen without a key: the panel asks for one, EOX\'s newest is drawn, no tile asked of Esri');
+  const use = async (key) => { await p.fill('.keybox input', key); await p.click('.keyrow button'); };
+  await use(BAD);
+  await until(p, () => /did not accept/.test(document.querySelector('.keybox')?.textContent || ''), null, 10000);
+  check(await visible(p, 'eox25') === 'visible' && tiles.length === 0, 'a refused key: said so, EOX\'s newest still drawn, no tile asked of Esri');
+  await use(GOOD);
+  await until(p, () => /Your key is in use/.test(document.querySelector('.keybox')?.textContent || ''), null, 10000);
+  await p.waitForFunction(() => map.loaded() && map.areTilesLoaded(), null, { timeout: 30000 });
+  check(await visible(p, 'esri') === 'visible' && await visible(p, 'eox25') === 'none', 'an accepted key: Esri\'s imagery drawn');
+  check(tiles.length > 0 && tiles.every((t) => t.url.endsWith(`?token=${GOOD}`) && t.referer === `${origin}/`),
+    `Esri's tiles: each with the key and the page's origin as referrer (${tiles.length}, ${tiles[0]?.referer})`);
+  check(checks.every((r) => r === `${origin}/`), `the check sends the page's origin as referrer (${[...new Set(checks)].join(', ')})`);
+  await until(p, () => /Powered by Esri · Source: test providers/.test(document.querySelector('.credits-text')?.textContent || ''), null, 10000);
+  check(true, 'Esri\'s credit: "Powered by Esri" and the service\'s own text, asked with the key');
+  check(!p.url().includes(GOOD) && !(await p.evaluate(() => location.hash)).includes('token'), 'the key is not in the page\'s address');
+  // the key kept in this browser: the page started again asks Esri once more, and draws it
+  const before = checks.length;
+  await p.reload();
+  await p.waitForFunction(() => window.map?.isStyleLoaded?.(), null, { timeout: 90000 });
+  await until(p, () => /Your key is in use/.test(document.querySelector('.keybox')?.textContent || ''), null, 10000);
+  check(checks.length > before && await visible(p, 'esri') === 'visible', 'the key kept: asked about again at the start, Esri\'s imagery drawn');
+  await p.click('.keyrow button'); // Remove key
+  await until(p, () => /needs your own free ArcGIS key/.test(document.querySelector('.keybox')?.textContent || ''), null, 10000);
+  check(await visible(p, 'eox25') === 'visible' && await visible(p, 'esri') === 'none' && !(await p.evaluate(() => localStorage.getItem('earthplotter.esri'))),
+    'the key removed: forgotten in this browser, EOX\'s newest drawn');
+  check(strays.length === 0, `the key only to Esri, and no Referer to any other host ${strays.join(' | ')}`);
+  check(p.errors.length === 0, `no page errors ${p.errors.join(' | ')}`);
+  await ectx.close();
+});
+
 await section('a saved area: served from it, online and without a connection; the imagery never', async () => {
   // an area saved by hand (the downloader comes later): every file of the saved hosts the view asked
   // for, put in a pack-… cache under its own address, as a saved area keeps them

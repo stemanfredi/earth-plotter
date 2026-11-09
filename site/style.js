@@ -3,6 +3,7 @@
 // MapLibre requests no tiles for a source whose layers are all hidden.
 import { DEM_CREDITS, EOX_YEARS, eoxKey, eoxOpen, eoxData, eoxTiles, SEAMARKS_MIN, CONTOURS_MIN, DEM_SEA_MAX, DEM_LAND_MAX, DEPTH_ZMAX, ISOBATH_MAX, OMT_TILEJSON, DENSITY, densityTiles, HA_CREDIT, GIBS, gibsTiles, CMEMS, ITEMS, DEPTH_SCHEMES, ISOBATH_ZOOMS, DEPTH_LEVELS, isMajorIsobath, NO_DEPTH, NO_DEPTH_M, SEAGRASS_ZOOMS, SEAGRASS_CLASSES } from './catalog.js';
 import { HOSTS } from './hosts.js';
+import { ESRI_TILES, ESRI_CREDIT } from './esri.js';
 
 // the map's ink, for what is written on it and beside it (the legends, the picture's text)
 export const INK = '#2b3a46', SOFT = '#5d6d79';
@@ -41,6 +42,8 @@ function sources({ seaDemUrl, landDemUrl, isobathUrl, contourUrl, date, density 
     // the satellite mosaics, one source a year (catalog.js EOX_YEARS), credited as EOX asks
     ...Object.fromEntries(EOX_YEARS.map((y) => [eoxKey(y), { type: 'raster', tileSize: 256, maxzoom: 14, tiles: [eoxTiles(y)],
       attribution: `<a href="https://cloudless.eox.at">EOxCloudless</a> ${y} by EOX IT Services GmbH (contains modified Copernicus Sentinel data ${eoxData(y)}), ${eoxOpen(y) ? 'CC BY 4.0' : 'CC BY-NC-SA 4.0'}` }])),
+    // Esri's imagery with the visitor's key: app.js's transformRequest adds it (esri.js request)
+    esri: { type: 'raster', tileSize: 256, maxzoom: 19, tiles: [ESRI_TILES], attribution: ESRI_CREDIT },
     // the grid is 1 km: beyond zoom 10 the map overzooms instead of asking for more tiles
     traffic: { type: 'raster', tileSize: 256, maxzoom: 10, tiles: densityTiles('traffic', ...(density.traffic || ['all', DENSITY.traffic.defaultPeriod])),
       attribution: HA_CREDIT },
@@ -113,7 +116,7 @@ function layers() {
   const L = [
     { id: 'bg', type: 'background', paint: { 'background-color': C.land } },
 
-    ...EOX_YEARS.map((y) => raster(eoxKey(y), 'sat', eoxKey(y))),
+    ...EOX_YEARS.map((y) => raster(eoxKey(y), 'sat', eoxKey(y))), raster('esri', 'sat', 'esri'),
 
     // land relief and contours sit under the sea fill: the vector coastline cuts them sharply
     { id: 'relief', type: 'hillshade', source: 'dem', ...m('relief'),

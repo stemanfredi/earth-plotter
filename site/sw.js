@@ -50,6 +50,7 @@ const SHELL = [
   'draw/store.js',
   'draw/tools.js',
   'draw/tree.js',
+  'esri.js',
   'export.js',
   'favicon-32.png',
   'fields.js',

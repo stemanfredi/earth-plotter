@@ -1,6 +1,6 @@
 import * as maplibregl from './vendor/maplibre-gl.mjs';
 import mlcontour from './vendor/maplibre-contour.mjs';
-import { GROUPS, ITEMS, GIBS, DEM_TILES, DEM_SEA_MAX, DEPTH_ZMAX, DEPTH_SOURCES, DEM_LAND_MAX, OMT_TILEJSON, DEPTH_SCHEMES, NO_DEPTH, DENSITY, gibsTiles, gibsDomainUrl, domainEnd, densityTiles, CMEMS, CMEMS_DEPTHS, CLASS_LABELS, EMODNET_DEPTH_STOPS, SEAGRASS } from './catalog.js';
+import { GROUPS, ITEMS, EOX_YEARS, eoxKey, GIBS, DEM_TILES, DEM_SEA_MAX, DEPTH_ZMAX, DEPTH_SOURCES, DEM_LAND_MAX, OMT_TILEJSON, DEPTH_SCHEMES, NO_DEPTH, DENSITY, gibsTiles, gibsDomainUrl, domainEnd, densityTiles, CMEMS, CMEMS_DEPTHS, CLASS_LABELS, EMODNET_DEPTH_STOPS, SEAGRASS } from './catalog.js';
 import { buildStyle, depthRamp, OPACITY_PROP, SEA_PICTURES, LOCATION_LAYERS, INK } from './style.js';
 import { cmemsTile, partTimes, partLevels, domainOf, cmemsLegend, partIn } from './cmems.js';
 import { workerClipper } from './clip.js';
@@ -15,6 +15,7 @@ import { profileOf } from './draw/profile.js';
 import { circle } from './geodesy.js';
 import { norm360, norm180, tileXY, TILE, D2R } from './geo.js';
 import { fetchOk, lru } from './net.js';
+import * as esri from './esri.js';
 import { $, h, typing, NARROW, COMPACT, store, animate } from './dom.js';
 import { keyEntry, openKey, keyList } from './keys.js';
 import { note } from './menu.js';
@@ -115,11 +116,12 @@ const map = new maplibregl.Map({
   maxPitch: 0, pitchWithRotate: false, dragRotate: true, touchPitch: false,
   attributionControl: false, fadeDuration: 150,
   // MapLibre's workers set the page address as the referrer explicitly, past the page's
-  // no-referrer meta tag: ask for none on every request it makes. Its fonts' files noted, for an
-  // offline area to keep (offline.js)
+  // no-referrer meta tag: ask for none on every request it makes, but Esri's tiles, which carry
+  // the visitor's key and the page's origin (esri.js). Its fonts' files noted, for an offline area
+  // to keep (offline.js)
   transformRequest: (url, type) => {
     if (type === 'Glyphs') glyphsAsked.add(new URL(url).href);
-    return { url, referrerPolicy: 'no-referrer' };
+    return esri.request(url);
   },
 });
 map.touchZoomRotate.disableRotation();
@@ -258,11 +260,14 @@ const layersOf = {};
 for (const l of style.layers) if (l.metadata?.item) (layersOf[l.metadata.item] ||= []).push(l);
 const baseDependent = Object.keys(layersOf).filter((k) => layersOf[k].some((l) => l.metadata.base));
 
+// the variant drawn: the one chosen, but Esri's imagery without an accepted key (esri.js), which
+// draws EOX's newest year until one is
+const shownVariant = (id) => (id === 'sat' && state.variant.sat === 'esri' && !esri.usable() ? eoxKey(EOX_YEARS[0]) : state.variant[id]);
 function applyItem(id) {
   const it = byId[id];
   const on = state.on.has(id);
   for (const l of layersOf[id] || []) {
-    const vis = on && (!l.metadata.variant || l.metadata.variant === state.variant[id])
+    const vis = on && (!l.metadata.variant || l.metadata.variant === shownVariant(id))
       && (!l.metadata.base || state.on.has(l.metadata.base)); // e.g. depth shading only over the chart base
     map.setLayoutProperty(l.id, 'visibility', vis ? 'visible' : 'none');
     const prop = OPACITY_PROP[l.type];
@@ -659,7 +664,7 @@ onConnection(() => { connection(); renderStatus(); });
 connection();
 function itemStatus(id) {
   for (const l of layersOf[id] || []) {
-    if (l.metadata.variant && l.metadata.variant !== state.variant[id]) continue;
+    if (l.metadata.variant && l.metadata.variant !== shownVariant(id)) continue;
     const s = health[l.source];
     // without a connection: the layers saved areas keep fail only beyond them; the others say why
     if (s?.err && noConnection()) { if (KEPT_SOURCES.has(l.source)) continue; return { cls: 'error', msg: 'No connection: not kept in offline areas' }; }
@@ -680,10 +685,64 @@ const frame = createFrame({ left: $('#side'), right: $('#props'), onChange: () =
 // ---- layers panel -----------------------------------------------------------
 const menu = $('#menu');
 const rows = {};
+// Esri's imagery with the visitor's own key (esri.js, docs/esri-key.md): under Satellite's choice
+// while it is chosen. Without a key Esri accepted, it says what is needed and EOX's newest is drawn.
+const esriBox = h('div', { class: 'keybox' });
+let esriBusy = false, esriNote = ''; // an answer awaited; what could not be done
+function renderEsri() {
+  esriBox.hidden = state.variant.sat !== 'esri';
+  if (esriBox.hidden) return;
+  const k = esri.held(), here = location.origin, newest = `Sentinel-2 ${EOX_YEARS[0]}`;
+  const field = h('input', { type: 'password', autocomplete: 'off', spellcheck: 'false', 'aria-label': 'Your ArcGIS key', placeholder: 'Paste your ArcGIS key',
+    onkeydown: (e) => { if (e.key === 'Enter') { e.preventDefault(); submit(); } } });
+  const submit = () => { const key = field.value.trim(); if (key && !esriBusy) checkEsri(key); };
+  const status = k?.state === 'ok' ? `Your key is in use, as Esri accepted it on ${new Date(k.checked).toLocaleDateString()}.`
+    : k?.state === 'refused' ? `Esri did not accept the key: wrong, expired, without the Basemaps privilege, or not allowed on this site. Showing ${newest}.`
+      : `Esri's imagery needs your own free ArcGIS key. Showing ${newest} until Esri accepts one.`;
+  esriBox.replaceChildren(...[
+    h('p', { class: 'note', role: 'status' }, status, esriNote ? ` ${esriNote}` : ''),
+    k?.state === 'ok'
+      ? h('div', { class: 'keyrow' }, h('button', { type: 'button', class: 'small', onclick: removeEsri }, 'Remove key'))
+      : h('div', { class: 'keyrow' }, field, h('button', { type: 'button', class: 'small', disabled: esriBusy, onclick: submit }, esriBusy ? 'Checking…' : 'Use')),
+    k?.state === 'ok' ? null : h('p', { class: 'note' }, 'The key\'s referrers must include ', h('code', {}, here), ' ',
+      h('button', { type: 'button', class: 'small link', onclick: () => navigator.clipboard?.writeText(here).then(() => note(`${here} copied`), () => {}) }, 'Copy')),
+    h('p', { class: 'note' }, 'The key stays in this browser; it and the imagery requests go to Esri. ',
+      h('a', { href: esri.ESRI_DOC, target: '_blank', rel: 'noopener' }, 'How to get a key'))].filter(Boolean));
+}
+// what follows a key's answer: the tiles asked for again (with the key, or EOX's instead), the
+// panel, the row's state and Esri's credit
+function esriChanged() {
+  map.getSource('esri')?.setTiles([esri.ESRI_TILES]);
+  refresh('sat');
+  renderEsri();
+  renderStatus();
+  creditEsri();
+}
+async function checkEsri(key) {
+  esriBusy = true; esriNote = ''; renderEsri();
+  try { await esri.use(key); } catch (e) { esriNote = `Esri could not be asked (${e.message}): try again.`; }
+  esriBusy = false;
+  esriChanged();
+}
+function removeEsri() { esri.forget(); esriNote = ''; esriChanged(); }
+// the key held asked about again: at the start with Esri's imagery chosen, and when it is chosen
+async function recheckEsri() {
+  if (!esri.held() || noConnection()) return;
+  const was = esri.held().state;
+  if ((await esri.recheck()) !== was) esriChanged(); else creditEsri();
+}
+async function creditEsri() {
+  const text = await esri.credit();
+  const src = map.getSource('esri');
+  if (!text || !src) return;
+  src.attribution = text;
+  renderCredits();
+}
 function setVariant(id, v) {
   state.variant[id] = v;
   refresh(id);
   if (id === 'depth') depthColours();
+  if (id === 'sat') { renderEsri(); if (v === 'esri') recheckEsri(); }
   writeHash();
   renderMenu();
 }
@@ -727,7 +786,8 @@ function controlsOf(it) {
   const kind = kindOf(it.id)?.controls;
   if (!it.variants && !kind) return null;
   return h('div', { class: 'controls', hidden: !state.on.has(it.id) }, // the time and depth: at the panel's head
-    it.variants ? select(`${it.label} variant`, Object.entries(it.variants), state.variant[it.id], (v) => setVariant(it.id, v), { class: 'variant' }) : null, kind?.(it));
+    it.variants ? select(`${it.label} variant`, Object.entries(it.variants), state.variant[it.id], (v) => setVariant(it.id, v), { class: 'variant' }) : null, kind?.(it),
+    it.id === 'sat' ? esriBox : null);
 }
 function itemRow(it) {
   const input = h('input', { type: 'checkbox', role: 'switch', class: 'switch', id: `i-${it.id}`, checked: state.on.has(it.id), onchange: (e) => setOn(it.id, e.target.checked) });
@@ -1238,6 +1298,8 @@ map.on('load', () => {
   applyData();
   for (const it of ITEMS) refresh(it.id);
   depthColours(); // the labels' paint with it
+  renderEsri();
+  if (state.variant.sat === 'esri') recheckEsri();
   drawing.addIcons();
   drawing.saving.restore(); // its view, if the address had none, is already in it
   drawing.render();

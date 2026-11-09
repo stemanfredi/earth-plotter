@@ -22,7 +22,7 @@
   <meta property="og:image:alt" content="The Bay of Naples in Earth Plotter: depth shading, isobaths, relief and place names, beside the Draw panel">
   <meta name="twitter:card" content="summary_large_image">
   <!-- csp:start (written by tools/deps.mjs --write from site/hosts.js; do not edit by hand) -->
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; connect-src 'self' https://tiles.openfreemap.org https://s3.amazonaws.com/elevation-tiles-prod/ https://tiles.maps.eox.at https://gibs.earthdata.nasa.gov https://tiles.openseamap.org https://ows.emodnet-humanactivities.eu https://wmts.marine.copernicus.eu https://tiles.emodnet-bathymetry.eu https://drive.emodnet-geology.eu https://tiles.arcgis.com https://geo.vliz.be https://photon.komoot.io https://stac.marine.copernicus.eu https://s3.waw3-1.cloudferro.com https://geodata.earthplotter.org; worker-src 'self'; manifest-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; connect-src 'self' https://tiles.openfreemap.org https://s3.amazonaws.com/elevation-tiles-prod/ https://tiles.maps.eox.at https://ibasemaps-api.arcgis.com https://basemapstyles-api.arcgis.com https://gibs.earthdata.nasa.gov https://tiles.openseamap.org https://ows.emodnet-humanactivities.eu https://wmts.marine.copernicus.eu https://tiles.emodnet-bathymetry.eu https://drive.emodnet-geology.eu https://tiles.arcgis.com https://geo.vliz.be https://photon.komoot.io https://stac.marine.copernicus.eu https://s3.waw3-1.cloudferro.com https://geodata.earthplotter.org; worker-src 'self'; manifest-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
   <!-- csp:end -->
   <!-- the libraries, copied from npm by tools/deps.mjs (site/vendor/, with their licences) -->
   <link rel="stylesheet" href="vendor/maplibre-gl.css">
@@ -34,20 +34,21 @@
   <link rel="modulepreload" href="catalog.js">
   <link rel="modulepreload" href="hosts.js">
   <link rel="modulepreload" href="style.js">
-  <link rel="modulepreload" href="cmems.js">
+  <link rel="modulepreload" href="esri.js">
+  <link rel="modulepreload" href="dom.js">
+  <link rel="modulepreload" href="format.js">
   <link rel="modulepreload" href="geo.js">
+  <link rel="modulepreload" href="cmems.js">
   <link rel="modulepreload" href="net.js">
   <link rel="modulepreload" href="clip.js">
   <link rel="modulepreload" href="isobaths.js">
   <link rel="modulepreload" href="gebco.js">
   <link rel="modulepreload" href="zarr.js">
   <link rel="modulepreload" href="zip.js">
-  <link rel="modulepreload" href="format.js">
   <link rel="modulepreload" href="legend.js">
   <link rel="modulepreload" href="draw/drawing.js">
   <link rel="modulepreload" href="draw/document.js">
   <link rel="modulepreload" href="geodesy.js">
-  <link rel="modulepreload" href="dom.js">
   <link rel="modulepreload" href="draw/file.js">
   <link rel="modulepreload" href="draw/check.js">
   <link rel="modulepreload" href="draw/attach.js">
@@ -141,7 +142,7 @@
     <h2 id="about-title">Earth Plotter</h2>
     <p><b>Not for navigation.</b> Positions, depths and coastlines come from open datasets of varying accuracy; depths are a coarse elevation model, not soundings.</p>
     <p>Map data © OpenStreetMap contributors (ODbL), © OpenMapTiles, served by OpenFreeMap; depths GEBCO Compilation Group (2026) GEBCO 2026 Grid (doi:10.5285/4f68d5c7-45eb-f999-e063-7086abc036fa); land elevation Mapzen Terrain Tiles; ocean data generated using E.U. Copernicus Marine Service Information. Each layer's source, licence and resolution are behind its <b>ⓘ</b> in Layers.</p>
-    <p>Tile requests tell each provider which area you are viewing; a hidden layer makes none. A place name typed goes to the search provider with the map's centre, to a tenth of a degree; coordinates typed are read in this page. A line's elevation profile reads the depth and height tiles along that line. Your location, when you show it, stays in this page.</p>
+    <p>Tile requests tell each provider which area you are viewing; a hidden layer makes none. A place name typed goes to the search provider with the map's centre, to a tenth of a degree; coordinates typed are read in this page. A line's elevation profile reads the depth and height tiles along that line. Your location, when you show it, stays in this page. An Esri key, if you add one for Esri's imagery, stays in this browser until you remove it; it goes to Esri with each of its tiles, and with them this site's address (its origin only).</p>
     <p>Drawings stay in this browser: saved here as you go, never sent anywhere. Download › Drawing (GeoJSON) writes it as a file, with the view, to share or keep it; links do not carry drawings. Labels are written with the map's own fonts, fetched in blocks of characters, never as text. The page keeps its own files in this browser, so that it opens without a connection; areas saved for use without one (Download › Offline areas) stay in this browser too.</p>
     <h3>Keys</h3>
     <ul class="keys"></ul> <!-- keys.js -->

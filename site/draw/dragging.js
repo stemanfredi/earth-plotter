@@ -44,6 +44,9 @@ export class Dragging {
     window.addEventListener('pointermove', (e) => {
       const d = this.drag;
       if (!d) return;
+      // the mouse moving with no button down: its release was not seen (let go outside the window):
+      // the drag ends where it last was, rather than following the mouse about
+      if (e.pointerType === 'mouse' && e.pointerId === d.pointer && e.buttons === 0) { release(); return; }
       const pt = at(e);
       if (!d.moved && Math.hypot(pt.x - d.from.x, pt.y - d.from.y) < 3) return;
       d.moved = true;
@@ -61,7 +64,7 @@ export class Dragging {
       raf = requestAnimationFrame(() => move?.());
     });
     window.addEventListener('pointercancel', () => { if (this.drag) this.cancelDrag(); }); // taken by the browser: as a second finger
-    window.addEventListener('pointerup', () => {
+    const release = () => {
       const d = this.drag;
       if (!d) return;
       cancelAnimationFrame(raf);
@@ -71,7 +74,8 @@ export class Dragging {
       map.dragPan.enable();
       if (d.moved) this.pending = d.orig;
       if (!(d.moved && this.change(() => {}))) this.onChange('drag'); // one undo step, from the document before the drag (the change draws everything; else the drag's end does)
-    });
+    };
+    window.addEventListener('pointerup', release);
   }
   cancelDrag() {
     this.doc = JSON.parse(this.drag.orig);

@@ -397,6 +397,7 @@ export function offlineDialog({ map, fit, download }) {
   const open = () => { say(''); askConnection(); return render().catch((err) => console.error('offline areas:', err)).then(() => { if (!el.open) { el.showModal(); focusMain(); } }); };
   return {
     open,
-    openFile: async (file) => { if (saving) return; await open(); busy('Opening…', false, () => openAreaFile(file), 'Not opened'); },
+    // (asked again once the dialog is open: of two files dropped together, the first is by then being opened)
+    openFile: async (file) => { if (saving) return; await open(); if (saving) return; busy('Opening…', false, () => openAreaFile(file), 'Not opened'); },
   };
 }

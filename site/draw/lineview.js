@@ -77,7 +77,7 @@ export function createLineView(kit) {
     const open = profileShown.has(id);
     const head = foldHead('Elevation profile', open, () => { if (open) profileShown.delete(id); else profileShown.add(id); renderInspector(); });
     if (!open) return h('div', { class: 'fblock' }, head);
-    const tr = lineTrace(drawing.doc, el), key = JSON.stringify(tr.coords);
+    const tr = lineTrace(drawing.doc, el), key = `${ctx.surface?.() ?? ''}${JSON.stringify(tr.coords)}`; // read again when the line changes, or what its elevations are read from
     let p = profiles.get(id);
     if (!p || p.key !== key) {
       const mine = { key, prof: null, failed: false };

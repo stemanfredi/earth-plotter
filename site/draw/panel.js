@@ -32,7 +32,8 @@ const SYMBOL_TITLE = { diamond: 'Diamond', square: 'Square', triangle: 'Triangle
 
 // root: the left panel's Elements tab. ctx: { drawing, map, bar
 // (the bar, its tools here), props (the right panel: the inspector), foot and dock (tools.js), frame (frame.js), outputs, offlineItem, copyLink(), about() (files.js),
-// onImport(doc, view) (an imported document, the view it was made in), openDrawing(id), openArea(file), download(text, name), profile(trace) }
+// onImport(doc, view) (an imported document, the view it was made in), openDrawing(id), openArea(file), download(text, name), profile(trace),
+// surface() (what a profile's depths are read from: one shown is read again when it changes) }
 export function drawView(root, ctx) {
   const { drawing, map } = ctx;
   const F = fields({ note, units: drawing.units }), { field } = F; // fields.js: each applies on Enter or when left

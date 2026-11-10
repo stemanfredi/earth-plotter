@@ -580,6 +580,16 @@ await section('the elevation profile', async () => {
   const prof = await dw.evaluate(() => [document.querySelectorAll('svg.profile polyline').length, document.querySelector('.dinspect .fblock .fvalue[title*="lower bound"]')?.textContent || '']);
   const deepLength = await dw.evaluate(async (id) => { const { lineTrace } = await import('./draw/lines.js'); return lineTrace(drawing.doc, drawing.doc.lines.find((x) => x.id === id)).length; }, deepLine);
   check(prof[0] > 0 && /along the surface/.test(prof[1]) && deepLength > 25000, `a line's elevation profile: the chart and the length along the surface (${prof[1]})`);
+  // the depths' grid changed (Depth sources' choice) while the profile is shown: read again, from the other grid
+  const rangeOf = () => dw.evaluate(() => document.querySelector('svg.profile')?.getAttribute('aria-label') || '');
+  const setGrid = (g) => dw.evaluate((v) => { const s = [...document.querySelectorAll('select.variant')].find((el) => /Depth sources/.test(el.getAttribute('aria-label') || '')); s.value = v; s.dispatchEvent(new Event('change', { bubbles: true })); }, g);
+  const own = await rangeOf();
+  await setGrid('gebco');
+  const reread = await until(dw, (was) => { const now = document.querySelector('svg.profile')?.getAttribute('aria-label'); return !!now && now !== was; }, own, 60000);
+  const other = await rangeOf();
+  await setGrid('emodnet');
+  const back = await until(dw, (was) => document.querySelector('svg.profile')?.getAttribute('aria-label') === was, own, 60000);
+  check(reread && back, `a profile shown follows the depths' grid: EMODnet's (${own}), GEBCO's (${other}), and back (${back})`);
   // on land: the heights, above sea level (across the Matterhorn, 4,478 m)
   await dw.evaluate(async () => { const { addLine } = await import('./draw/document.js'); let l; drawing.change((d) => { l = addLine(d, [[7.62, 45.97], [7.70, 45.98]]); }); drawing.select([l.id]); });
   await dw.click('.dinspect button:has-text("Elevation profile")');

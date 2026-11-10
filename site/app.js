@@ -450,8 +450,9 @@ const KINDS = {
     legend: (id) => KINDS.classes.legend(id),
     // its choice, the grid the depths are read from: every source drawn from them asks for its tiles anew
     show(id) {
-      for (const [source, url] of Object.entries(seaUrls())) if (map.getSource(source).tiles[0] !== url) map.getSource(source).setTiles([url]);
-      depthPopup.remove(); // a depth read from the other grid
+      let changed = false;
+      for (const [source, url] of Object.entries(seaUrls())) if (map.getSource(source).tiles[0] !== url) { map.getSource(source).setTiles([url]); changed = true; }
+      if (changed) { depthPopup.remove(); drawPanel?.render('sel'); } // a depth shown, a line's profile shown (the inspector built again reads it anew): from the other grid
       applyItem(id);
       renderLegends();
     },
@@ -970,6 +971,7 @@ drawPanel = drawView($('#dview'), {
   openArea: (f) => offline.openFile(f),
   download: (text, name, type = 'application/geo+json') => download(new Blob([text], { type }), name),
   profile: (trace) => profileFor(trace),
+  surface: seaGrid, // what a profile's depths are read from: one shown is read again when it changes
 });
 
 // ---- find a place, about ------------------------------------------------------------------------
@@ -1084,8 +1086,10 @@ search(map, maplibregl.Marker, free); // the search box (find a place)
 const depthPopup = new maplibregl.Popup({ className: 'depthpop', maxWidth: '240px', focusAfterOpen: false });
 // The elevation profiles read (a line's Elevation profile pressed), by trace: the GIS export's surface
 // lengths come from these only, so that an export reads no tiles along lines nobody asked about
-const profiled = lru(64); // JSON of the trace's coordinates → promise of its profile
-const profileFor = (trace) => profiled(JSON.stringify(trace.coords), () => profileOf(trace, elevationAt, Math.max(DEM_SEA_MAX, DEM_LAND_MAX)));
+// Each grid the sea's depths can be read from has its own (seaGrid): a profile read from one is not the other's
+const profiledOf = Object.fromEntries(Object.keys(seaClips).map((grid) => [grid, lru(64)])); // grid → JSON of the trace's coordinates → promise of its profile
+const profiled = { peek: (key) => profiledOf[seaGrid()].peek(key) }; // the chosen grid's, for the export
+const profileFor = (trace) => profiledOf[seaGrid()](JSON.stringify(trace.coords), () => profileOf(trace, elevationAt, Math.max(DEM_SEA_MAX, DEM_LAND_MAX)));
 // What a clipper's tiles say at p ([lng, lat]), read at zoom z (at most its last, maxZoom): metres;
 // NaN where its shading shows nothing of its own. Many places of few tiles: each tile read once.
 function metresOf(clip, maxZoom) {

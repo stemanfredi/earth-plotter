@@ -16,7 +16,7 @@
 import { NO_DEPTH_M, OMT_MAX, ISOBATH_STEPS, ISOBATH_TRACE } from './catalog.js';
 import { traceLines, clipLines, encodeLines, EXTENT } from './isobaths.js';
 import { HOSTS } from './hosts.js';
-import { seaTile } from './gebco.js';
+import { seaTile, gebcoTile } from './gebco.js';
 import { latOf, tileBounds, TILE } from './geo.js';
 import { fetchOk, fetchBytes, tileUrl, lru } from './net.js';
 
@@ -298,7 +298,8 @@ const HEIGHTS = new Error('heights needed');
 const NEEDS_HEIGHTS = () => { throw HEIGHTS; };
 // remember false: each tile classifies its water bodies itself, none remembered (offline.js: an area
 // saved must hold what any tile asked first would read)
-export function clipper({ template, mode, omtTileJson, remember = true }) {
+// grid 'gebco': the sea's depths from GEBCO alone, everywhere (the Depth sources' other choice)
+export function clipper({ template, mode, omtTileJson, remember = true, grid = null }) {
   const omtTemplate = () => omtTemplateOf(omtTileJson);
   // 64 tiles each: a view and its surroundings (raw 256 kB, the sea's 512 kB: as read and as drawn; cut 320 kB: two clippers, two cuts of a sea tile)
   const rawCache = lru(64), cache = lru(64), waterLevel = remember ? new Map() : { has: () => false, get: () => undefined, set() {} }; // waterLevel: OSM id → DEPTH, FLAT or LAKE
@@ -306,7 +307,7 @@ export function clipper({ template, mode, omtTileJson, remember = true }) {
   // water is classified from, at lower zooms too; drawn the sea's depths blended from water cells
   // alone (gebco.js), so the shore's land cells do not pull them shallower; the land's its DEM, as it
   // is, for both
-  const tile = (z, x, y) => rawCache(`${z}/${x}/${y}`, () => (mode === 'sea' ? seaTile(z, x, y).then(({ raw, sea }) => ({ raw, drawn: sea }))
+  const tile = (z, x, y) => rawCache(`${z}/${x}/${y}`, () => (mode === 'sea' ? (grid === 'gebco' ? gebcoTile : seaTile)(z, x, y).then(({ raw, sea }) => ({ raw, drawn: sea }))
     : demMetres(tileUrl(template, z, x, y)).then((m) => ({ raw: m, drawn: m }))));
   const raw = (z, x, y) => tile(z, x, y).then((t) => t.raw);
   const drawn = (z, x, y) => tile(z, x, y).then((t) => t.drawn);
@@ -498,18 +499,18 @@ function clipWorker() {
 const ask = async (msg, signal) => clipWorker().ask(msg, signal); // throws while it is not to be started: this tile fails
 
 // MapLibre protocol handler and maplibre-contour hooks for one clipper (mode 'sea' or 'land')
-export function workerClipper({ template, mode, omtTileJson }) {
-  inits.push({ template, mode, omtTileJson });
+export function workerClipper({ template, mode, omtTileJson, grid = null, name = mode }) {
+  inits.push({ template, mode, omtTileJson, grid, name });
   if (worker) worker.init(inits.at(-1)); // else the next start sends every init once
   else clipWorker();
   return {
     protocol: async (params, abortController) => {
       if (abortController?.signal.aborted) throw new Error('aborted');
-      return { data: await ask({ mode, op: 'bitmap', zxy: zxy(params.url) }, abortController?.signal) };
+      return { data: await ask({ mode: name, op: 'bitmap', zxy: zxy(params.url) }, abortController?.signal) };
     },
-    getTile: async (url, ac) => ({ data: { elevation: await ask({ mode, op: 'contourElevation', zxy: zxy(url) }, ac?.signal) } }),
-    isobaths: async (params, abortController) => ({ data: (await ask({ mode, op: 'isobaths', zxy: zxy(params.url) }, abortController?.signal)).buffer }),
+    getTile: async (url, ac) => ({ data: { elevation: await ask({ mode: name, op: 'contourElevation', zxy: zxy(url) }, ac?.signal) } }),
+    isobaths: async (params, abortController) => ({ data: (await ask({ mode: name, op: 'isobaths', zxy: zxy(params.url) }, abortController?.signal)).buffer }),
     decodeImage: async (data) => ({ width: SIZE, height: SIZE, data: data.elevation }),
-    metres: (z, x, y) => ask({ mode, op: 'metres', zxy: [z, x, y] }),
+    metres: (z, x, y) => ask({ mode: name, op: 'metres', zxy: [z, x, y] }),
   };
 }

@@ -55,6 +55,8 @@ function writeHashNow() {
   if (!ready) return;
   const q = new URLSearchParams();
   viewToAddress(viewOf(), q, here());
+  // Depth sources' choice, the depths' grid, holds with its layer off: the link keeps it then too
+  if (seaGrid() === 'gebco' && !state.on.has('depthsource')) q.set('var', [q.get('var'), 'depthsource:gebco'].filter(Boolean).join(','));
   drawing.saving.viewChanged(); // saved with the drawing, for a page opened without a view
   setHash(q);
 }
@@ -77,16 +79,22 @@ let gibsDay = dayOf(state.time); // NASA daily: the day its sources draw (gibs.s
 // their neighbours (a contour tile reads 3 × 3 DEM tiles), not hundreds (200 per source: 100 MB)
 const demOpts = { url: DEM_TILES, encoding: 'terrarium', worker: false, cacheSize: 64 };
 const landDem = new mlcontour.DemSource({ ...demOpts, id: 'land', maxzoom: DEM_LAND_MAX });
-const seaClip = workerClipper({ mode: 'sea', omtTileJson: OMT_TILEJSON });
+// the sea from each grid the depths can be read from (Depth sources' choice): EMODnet's in European
+// seas, or GEBCO's everywhere. A tile's address names its grid, so a change of choice asks for new tiles
+const seaClips = { emodnet: workerClipper({ mode: 'sea', omtTileJson: OMT_TILEJSON }), gebco: workerClipper({ mode: 'sea', grid: 'gebco', name: 'sea-gebco', omtTileJson: OMT_TILEJSON }) };
+const seaGrid = () => state.variant.depthsource;
+const seaOf = (url) => seaClips[/^[\w-]+:\/\/(\w+)\//.exec(url)[1]];
+const seaClip = { metres: (...zxy) => seaClips[seaGrid()].metres(...zxy) }; // the grid chosen now: a depth asked for, an export
+const seaUrls = () => ({ 'dem-sea': `clip-sea://${seaGrid()}/{z}/{x}/{y}`, isobaths: `isobath://${seaGrid()}/{z}/{x}/{y}`, 'gebco-tid': `gebco-tid://${seaGrid()}/{z}/{x}/{y}` });
 const landClip = workerClipper({ template: DEM_TILES, mode: 'land', omtTileJson: OMT_TILEJSON });
 for (const [dem, clip] of [[landDem, landClip]]) { // the land contours; the isobaths are the sea clipper's own tiles (isobath://)
   dem.manager.getTile = clip.getTile;
   dem.manager.decodeImage = clip.decodeImage;
   dem.setupMaplibre(maplibregl); // registers the contour protocol
 }
-maplibregl.addProtocol('clip-sea', seaClip.protocol);
+maplibregl.addProtocol('clip-sea', (params, ac) => seaOf(params.url).protocol(params, ac));
 maplibregl.addProtocol('clip-land', landClip.protocol);
-maplibregl.addProtocol('isobath', seaClip.isobaths);
+maplibregl.addProtocol('isobath', (params, ac) => seaOf(params.url).isobaths(params, ac));
 maplibregl.addProtocol('cmems', cmemsTile);
 maplibregl.addProtocol('gebco-tid', tidTile);
 maplibregl.addProtocol('ortho', orthoTile);
@@ -103,9 +111,10 @@ maplibregl.addProtocol('seagrass', async ({ url }, ac) => {
 });
 const contourOpts = { contourLayer: 'contours', elevationKey: 'ele', levelKey: 'level', extent: 4096, buffer: 1 };
 const style = buildStyle({
-  seaDemUrl: 'clip-sea://{z}/{x}/{y}',
+  seaDemUrl: seaUrls()['dem-sea'],
   landDemUrl: 'clip-land://{z}/{x}/{y}',
-  isobathUrl: 'isobath://{z}/{x}/{y}',
+  isobathUrl: seaUrls().isobaths,
+  tidUrl: seaUrls()['gebco-tid'],
   // zoom → [interval] in metres
   contourUrl: landDem.contourProtocolUrl({ ...contourOpts, thresholds: { 9: [100, 500], 11: [50, 250], 12: [20, 100] } }),
   date: gibsDay,
@@ -417,7 +426,7 @@ function classesOf(urls) {
 // the grids the depth shading draws in view: EMODnet's too where the view meets its area
 function depthGrids() {
   const b = map.getBounds();
-  return EMODNET_AREA.some(([w, s, e, n]) => b.getWest() < e && b.getEast() > w && b.getSouth() < n && b.getNorth() > s) ? 'GEBCO 2026 · EMODnet 2024' : 'GEBCO 2026';
+  return seaGrid() !== 'gebco' && EMODNET_AREA.some(([w, s, e, n]) => b.getWest() < e && b.getEast() > w && b.getSouth() < n && b.getNorth() > s) ? 'GEBCO 2026 · EMODnet 2024' : 'GEBCO 2026';
 }
 
 const KINDS = {
@@ -439,6 +448,13 @@ const KINDS = {
   // its codes in the GIS export
   gebcotid: {
     legend: (id) => KINDS.classes.legend(id),
+    // its choice, the grid the depths are read from: every source drawn from them asks for its tiles anew
+    show(id) {
+      for (const [source, url] of Object.entries(seaUrls())) if (map.getSource(source).tiles[0] !== url) map.getSource(source).setTiles([url]);
+      depthPopup.remove(); // a depth read from the other grid
+      applyItem(id);
+      renderLegends();
+    },
     values: (it, box) => gebcoValues(box, 'tid'),
   },
   // EMODnet's depth, drawn by EMODnet (tiles); its values from its Zarr store
@@ -711,7 +727,7 @@ const esriBox = esri.keyBox({ fallback: `Sentinel-2 ${EOX_YEARS[0]}`, onChange: 
 } });
 function setVariant(id, v) {
   state.variant[id] = v;
-  refresh(id);
+  id === 'depthsource' ? KINDS.gebcotid.show(id) : refresh(id); // the depths' grid changes whether its layer is shown or not
   if (id === 'depth') depthColours();
   writeHash();
   renderMenu();
@@ -849,7 +865,8 @@ function renderZoom() {
     const on = state.on.has(it.id), low = it.minzoom && z < it.minzoom, high = it.maxzoom && z >= it.maxzoom + 1;
     r.row.classList.toggle('dim', !!(on && (low || high)));
     const hint = r.row.querySelector('.hint');
-    if (hint) hint.textContent = !on ? '' : low ? `zoom ${it.minzoom}+` : high ? `zoom ≤ ${it.maxzoom}` : '';
+    // Depth sources off with its other grid chosen: said on its row, since its choice holds all the same
+    if (hint) hint.textContent = !on ? (it.id === 'depthsource' && seaGrid() === 'gebco' ? 'GEBCO everywhere' : '') : low ? `zoom ${it.minzoom}+` : high ? `zoom ≤ ${it.maxzoom}` : '';
   }
   renderLegends();
 }
@@ -1080,7 +1097,7 @@ function metresOf(clip, maxZoom) {
   };
 }
 // the depth as the depth shading has it: negative below the sea surface; NaN on land, lakes, no data
-const depthAt = metresOf(seaClip, DEM_SEA_MAX);
+const depthAts = Object.fromEntries(Object.entries(seaClips).map(([grid, clip]) => [grid, metresOf(clip, DEM_SEA_MAX)])), depthAt = (p, z) => depthAts[seaGrid()](p, z);
 // the land's height as the relief shading has it (lakes their surface); NaN at sea
 const heightAt = metresOf(landClip, DEM_LAND_MAX);
 // the elevation at p: the sea's depth, else the land's height; a place fails (a gap in the profile,
@@ -1102,7 +1119,7 @@ map.on('click', async (e) => {
   const asked = ++depthAsked, box = map.getContainer();
   box.setAttribute('aria-busy', 'true'); // the depth being looked up (said done before its popup, if any)
   // the grid it comes from: EMODnet's where its cell here is its own (gebco.js), surveyed or interpolated; else GEBCO's with its source
-  const [v, code, emodnet] = await Promise.all([depthAt([lng, lat], z).catch(() => null), tidAt(lng, lat).catch(() => null), emodnetAt(lng, lat).catch(() => 3)]);
+  const [v, code, emodnet] = await Promise.all([depthAt([lng, lat], z).catch(() => null), tidAt(lng, lat).catch(() => null), seaGrid() === 'gebco' ? 3 : emodnetAt(lng, lat).catch(() => 3)]);
   if (asked === depthAsked) box.removeAttribute('aria-busy');
   if (asked !== depthAsked || !depthClicks()) return; // another click since, or a tool or the layers switched meanwhile
   if (v === null) { depthPopup.setLngLat(e.lngLat).setDOMContent(h('div', {}, h('b', {}, 'Depth not available'), h('small', {}, 'the depths could not be read'))).addTo(map); return; }

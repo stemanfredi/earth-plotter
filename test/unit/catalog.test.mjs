@@ -5,7 +5,7 @@ import { cmemsStyle } from '../../site/cmems.js';
 import { buildStyle, SEA_PICTURES } from '../../site/style.js';
 import { CSP_HOSTS } from '../../tools/deps.mjs';
 
-const style = buildStyle({ seaDemUrl: 'clip-sea://{z}/{x}/{y}', landDemUrl: 'clip-land://{z}/{x}/{y}', isobathUrl: 'c://a', contourUrl: 'c://b', date: '2026-10-19' });
+const style = buildStyle({ seaDemUrl: 'clip-sea://{z}/{x}/{y}', landDemUrl: 'clip-land://{z}/{x}/{y}', isobathUrl: 'c://a', tidUrl: 'gebco-tid://emodnet/{z}/{x}/{y}', contourUrl: 'c://b', date: '2026-10-19' });
 const NO_LAYERS = new Set(['legend']); // items that drive the page, not style layers
 
 test('every menu item has a group and layers; every item layer has an item', () => {

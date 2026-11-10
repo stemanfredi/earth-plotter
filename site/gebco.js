@@ -160,16 +160,17 @@ export async function seaTile(z, x, y) {
   return { raw: g.raw, sea: m.sea };
 }
 
-// MapLibre tile handler for gebco-tid://z/x/y: each cell coloured by the group of its code; land and
+// MapLibre tile handler for gebco-tid://grid/z/x/y: each cell coloured by the group of its code; land and
 // no data transparent. Over EMODnet's area the depths drawn are EMODnet's (seaTile), so the cell is
 // EMODnet's own account of it: its survey, or its interpolation (drawn as estimated); GEBCO's code
-// where the depth is GEBCO's, and nothing where EMODnet has land under OSM's sea
+// where the depth is GEBCO's, and nothing where EMODnet has land under OSM's sea. Grid 'gebco': GEBCO's
+// codes everywhere, as the depths then are
 const RGBA = new Uint8ClampedArray(128 * 4); // code × 4 → r, g, b, 255 of its group (alpha 0: not drawn)
 for (const { ranges, colour } of DEPTH_SOURCES) for (const [lo, hi] of ranges) for (let c = lo; c <= hi; c++) RGBA.set([...rgbOf(colour), 255], c * 4);
 const OWN_CODE = [0, DEPTH_SOURCES.find((g) => g.emodnet === 'surveyed').ranges[0][0], DEPTH_SOURCES.find((g) => g.emodnet === 'interpolated').ranges[0][0]]; // EMODnet's kind → a code of the group it is drawn as
 export async function tidTile({ url }) {
-  const [z, x, y] = /^gebco-tid:\/\/(\d+)\/(\d+)\/(\d+)$/.exec(url).slice(1).map(Number);
-  const where = tileIn(z, x, y), t = where && where < 1 ? pixelIn(z, x, y) : null; // on the area's edge: EMODnet's account where its depth weighs more
+  const [grid, ...zxy] = /^gebco-tid:\/\/(\w+)\/(\d+)\/(\d+)\/(\d+)$/.exec(url).slice(1), [z, x, y] = zxy.map(Number);
+  const where = grid === 'gebco' ? 0 : tileIn(z, x, y), t = where && where < 1 ? pixelIn(z, x, y) : null; // on the area's edge: EMODnet's account where its depth weighs more
   const [codes, own] = await Promise.all([gridTile(GEBCO_TID, 'tid', z, x, y, true), where ? gridTile(EMODNET_SOURCE, 'source', z, x, y, true) : null]), img = new ImageData(SIZE, SIZE);
   const d = img.data; // 65k cells a tile, on the page's thread: bytes written in place, nothing allocated per cell
   for (let p = 0, q = 0; p < codes.length; p++, q += 4) {

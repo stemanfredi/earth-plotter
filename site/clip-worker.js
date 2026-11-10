@@ -9,7 +9,7 @@ self.onmessage = async ({ data }) => {
     // the area's cache, each said to the page ({ stored: bytes, url })
     const { keep } = data.init;
     if (keep) fetchAllInto({ cache: caches.open(keep.cache), reload: keep.reload, stored: (stored, url) => self.postMessage({ stored, url }) });
-    clippers[data.init.mode] = clipper(data.init);
+    clippers[data.init.name ?? data.init.mode] = clipper(data.init); // name: a second clipper of a mode (the sea from GEBCO alone)
     return;
   }
   if (data.cancel) { running.get(data.cancel)?.abort(); return; }

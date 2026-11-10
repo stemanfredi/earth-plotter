@@ -99,6 +99,21 @@ surveyed, orange estimated or interpolated, blue read from a satellite
 image, grey from another grid. Where nothing is coloured, the grid has no
 depth of its own.
 
+## Comparing the two grids
+
+*Depth sources* has a choice: *EMODnet in European seas*, as described
+here, or *GEBCO everywhere*, which draws European seas from GEBCO too, as
+the page did before. The shading, the isobaths, the depth on a click and the
+layer itself all follow it, and a link keeps it. The choice stays when the
+layer is switched off; its row then says *GEBCO everywhere*.
+
+It is there so that the choice of grid can be checked by anyone, place by
+place, and for the places where EMODnet's estimate is the poorer one.
+EMODnet's own drawing of its grid is the layer *EMODnet depth (Europe)*.
+There is no third choice for EMODnet's grid alone: what is drawn in European
+seas is already that, but for the fallback and the fade to the shore, both
+of which a click names.
+
 ## The shore
 
 The grids' coastlines are not the base map's. The page cuts every depth to

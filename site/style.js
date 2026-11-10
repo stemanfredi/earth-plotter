@@ -25,7 +25,7 @@ const HALO = { 'text-halo-color': 'rgba(255,255,255,0.9)', 'text-halo-width': 1.
 const ARROWS_LAST = (id) => ({ solidAndVector: 1, vector: 2 })[Object.values(CMEMS[id])[0].vector] || 0;
 
 // ---- sources ----------------------------------------------------------------
-function sources({ seaDemUrl, landDemUrl, isobathUrl, contourUrl, date, density = {} }) {
+function sources({ seaDemUrl, landDemUrl, isobathUrl, tidUrl, contourUrl, date, density = {} }) {
   // credits: the names each provider asks for, short enough for one line; what each layer is
   // made from is behind its ⓘ
   const ATTR_OSM = '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> · <a href="https://www.openmaptiles.org/">OpenMapTiles</a> · <a href="https://openfreemap.org">OpenFreeMap</a>';
@@ -57,7 +57,7 @@ function sources({ seaDemUrl, landDemUrl, isobathUrl, contourUrl, date, density 
     ...Object.fromEntries(ITEMS.filter((it) => it.tiles).flatMap((it) => Object.entries(it.tiles).map(([v, tiles]) => [`ov-${it.id}-${v}`,
       { type: 'raster', tileSize: 256, maxzoom: it.tileMaxzoom ?? 18, tiles, attribution: it.credit || HA_CREDIT }]))),
     // GEBCO's type identifier grid, coloured by gebco.js (gebco-tid://); level 0 from zoom 8, then magnified
-    'gebco-tid': { type: 'raster', tileSize: 256, maxzoom: 11, tiles: ['gebco-tid://{z}/{x}/{y}'], attribution: ATTR_GEBCO },
+    'gebco-tid': { type: 'raster', tileSize: 256, maxzoom: 11, tiles: [tidUrl], attribution: ATTR_GEBCO },
     graticule: empty(),
     // the drawing (draw/drawing.js): what never depends on the zoom, what may, the marks (selection, the
     // line being drawn)

@@ -30,7 +30,7 @@ function sources({ seaDemUrl, landDemUrl, isobathUrl, tidUrl, contourUrl, date, 
   // made from is behind its ⓘ
   const ATTR_OSM = '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> · <a href="https://www.openmaptiles.org/">OpenMapTiles</a> · <a href="https://openfreemap.org">OpenFreeMap</a>';
   const ATTR_DEM = `<a href="${DEM_CREDITS}">Mapzen Terrain Tiles</a>`; // its sources' credits there
-  const ATTR_GEBCO = '<a href="https://www.gebco.net">GEBCO 2026 Grid</a> · <a href="https://emodnet.ec.europa.eu/en/bathymetry">EMODnet Bathymetry</a>'; // the sea's depths: EMODnet's in European seas (gebco.js)
+  const ATTR_GEBCO = '<a href="https://www.gebco.net">GEBCO 2026 Grid</a>'; // the sea's depths; EMODnet's credit beside it where its grid is read (app.js creditParts)
   const s = {
     omt: { type: 'vector', url: OMT_TILEJSON, attribution: ATTR_OSM },
     'dem-sea': { type: 'raster-dem', tiles: [seaDemUrl], encoding: 'terrarium', tileSize: 256, maxzoom: DEM_SEA_MAX, attribution: ATTR_GEBCO },
@@ -275,6 +275,8 @@ export const LOCATION_LAYERS = [
     paint: { 'circle-radius': 7, 'circle-color': '#1f5f86', 'circle-stroke-color': '#ffffff', 'circle-stroke-width': 2.5 } },
 ];
 
+// EMODnet's credit, said with GEBCO's of these sources while its grid is read in the view (app.js)
+export const ATTR_EMODNET = '<a href="https://emodnet.ec.europa.eu/en/bathymetry">EMODnet Bathymetry</a>', SEA_SOURCES = ['dem-sea', 'isobaths', 'gebco-tid'];
 // the colour pictures drawn above the depths' own layers and under the isobaths (layers() puts them there):
 // over one, the isobaths take a dark ink (app.js isobathInk). Ocean data is the same; seagrass, whose
 // meadows leave the depth shading seen round them, is not

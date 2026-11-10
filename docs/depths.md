@@ -107,7 +107,7 @@ one choice: *Depths in European seas* from *EMODnet*, as described here, or
 from *GEBCO*, as everywhere else and as the page drew them before. The
 shading, the isobaths, the depth on a click, a line's elevation profile and
 *Depth sources* all follow it, and a link keeps it. With GEBCO chosen the
-depth shading's legend names GEBCO alone, and so does a click.
+depth shading's legend names GEBCO alone, and so do a click and the credits.
 
 It is there so that the choice of grid can be checked by anyone, place by
 place, and for the places where EMODnet's estimate is the poorer one.

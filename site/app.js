@@ -1,7 +1,7 @@
 import * as maplibregl from './vendor/maplibre-gl.mjs';
 import mlcontour from './vendor/maplibre-contour.mjs';
 import { GROUPS, ITEMS, isBase, EOX_YEARS, eoxKey, GIBS, DEM_TILES, DEM_SEA_MAX, DEPTH_ZMAX, DEPTH_SOURCES, DEM_LAND_MAX, OMT_TILEJSON, DEPTH_SCHEMES, NO_DEPTH, DENSITY, gibsTiles, gibsDomainUrl, domainEnd, densityTiles, CMEMS, CMEMS_DEPTHS, CLASS_LABELS, EMODNET_AREA, EUROPE, GRIDS, SEAGRASS } from './catalog.js';
-import { buildStyle, depthRamp, OPACITY_PROP, SEA_PICTURES, LOCATION_LAYERS, INK } from './style.js';
+import { buildStyle, depthRamp, OPACITY_PROP, SEA_PICTURES, LOCATION_LAYERS, INK, ATTR_EMODNET, SEA_SOURCES } from './style.js';
 import { cmemsTile, partTimes, partLevels, domainOf, cmemsLegend, partIn } from './cmems.js';
 import { workerClipper } from './clip.js';
 import { drawRamp, drawColormap, drawClasses, wmsClasses } from './legend.js';
@@ -424,8 +424,15 @@ function classesOf(urls) {
 const meets = ([w1, s1, e1, n1], [w, s, e, n]) => w1 < e && e1 > w && s1 < n && n1 > s;
 // (a view on another copy of the world, a link's or one panned round it: moved by whole turns into this one)
 const viewBox = () => { const b = map.getBounds(), turn = 360 * Math.round((b.getWest() + b.getEast()) / 720); return [b.getWest() - turn, b.getSouth(), b.getEast() - turn, b.getNorth()]; };
+// whether EMODnet's grid is read in the view: its grid the one chosen, and the view meeting its area
+const emodnetRead = () => seaGrid() !== 'gebco' && EMODNET_AREA.some((a) => meets(viewBox(), a));
+// what the legend names: what the depths drawn in view are. EMODnet's alone with the view wholly in its
+// area (GEBCO's water where EMODnet has none near, a port, a lagoon, is the exception a click names);
+// both on the area's edge; GEBCO's beyond it, and wherever its grid is the one chosen
 function depthGrids() {
-  return seaGrid() !== 'gebco' && EMODNET_AREA.some((a) => meets(viewBox(), a)) ? 'GEBCO 2026 · EMODnet 2024' : 'GEBCO 2026';
+  if (!emodnetRead()) return 'GEBCO 2026';
+  const [w, s, e, n] = viewBox();
+  return EMODNET_AREA.some(([bw, bs, be, bn]) => w >= bw && e <= be && s >= bs && n <= bn) ? 'EMODnet 2024' : 'GEBCO 2026 · EMODnet 2024';
 }
 
 const KINDS = {
@@ -1215,7 +1222,9 @@ function creditParts() {
   const srcs = [], z = map.getZoom();
   for (const l of style.layers) if (l.source && drawn(l, z) && !srcs.includes(l.source) && shownHere(l.source)) srcs.push(l.source);
   srcs.sort((a, b) => baseSources.has(b) - baseSources.has(a));
-  const parts = [...new Set(srcs.map((s) => map.getSource(s)?.attribution).filter(Boolean))];
+  // the depths: GEBCO's credit (read everywhere: inland water is classified from it), and EMODnet's while its grid is read here
+  const credit = (s) => { const a = map.getSource(s)?.attribution; return a && SEA_SOURCES.includes(s) && emodnetRead() ? `${a} · ${ATTR_EMODNET}` : a; };
+  const parts = [...new Set(srcs.map(credit).filter(Boolean))];
   return parts.filter((p) => !parts.some((q) => q !== p && q.includes(p))); // a credit another holds: once
 }
 // a credit's markup, parsed in an inert document (no image loads, no handlers run)

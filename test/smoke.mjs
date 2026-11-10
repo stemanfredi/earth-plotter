@@ -527,11 +527,16 @@ await section('the depth on a click', async () => {
   // to GEBCO in the isobaths', the same click reads GEBCO's depth and says so, the isobaths' tiles are
   // asked anew from it, the other ⓘs' controls say GEBCO too, and the link keeps the choice
   const pickGrid = (page, layer, g) => page.evaluate(([id, v]) => document.querySelector(`#i-${id}`).closest('li').querySelector(`.gridpick button[data-v=${v}]`).click(), [layer, g]);
+  const creditsOf = () => dp.evaluate(() => document.querySelector('.credits-text')?.textContent || ''), creditsOwn = await creditsOf();
   await pickGrid(dp, 'isobaths', 'gebco');
   const switched = await until(dp, () => map.getSource('isobaths').tiles[0].startsWith('isobath://gebco/') && /[#&]grid=gebco/.test(location.hash)
     && ['depth', 'isobaths', 'depthsource'].every((id) => document.querySelector(`#i-${id}`).closest('li').querySelector('.gridpick button[aria-pressed=true]')?.dataset.v === 'gebco'));
   await settled(dp);
   const gebco = await at(8.3, 43.9);
+  // the credits name what is read: EMODnet's with its grid, GEBCO's alone once GEBCO is chosen
+  await until(dp, () => !/EMODnet/.test(document.querySelector('.credits-text')?.textContent || ''), null, 5000);
+  const creditsGebco = await creditsOf();
+  check(/GEBCO 2026 Grid · EMODnet Bathymetry/.test(creditsOwn) && /GEBCO 2026 Grid/.test(creditsGebco) && !/EMODnet/.test(creditsGebco), `the credits name the grids read: EMODnet's with its own (${creditsOwn.slice(-60)}), GEBCO's alone once it is chosen (${creditsGebco.slice(-40)})`);
   check(switched && /GEBCO 2026 · (surveyed|optical \(satellite image\)|estimated|other grids, unknown)$/.test(gebco) && !dp.errors.length, `the depths' grid set to GEBCO in a layer's ⓘ: the same click reads GEBCO's (${gebco}; switched ${switched}) ${dp.errors.join(' | ')}`);
   // isobaths over the shading take its colours up to its last zoom, then the style's blue again
   const ink = await dp.evaluate(() => [map.getPaintProperty('isobaths', 'line-color'), map.getStyle().layers.find((l) => l.id === 'depth').maxzoom]);

@@ -21,7 +21,7 @@ import { $, h, typing, NARROW, COMPACT, store, animate } from './dom.js';
 import { keyEntry, openKey, keyList } from './keys.js';
 import { note } from './menu.js';
 import { createFrame } from './frame.js';
-import { select, choice } from './fields.js';
+import { select } from './fields.js';
 import { search } from './search.js';
 import { gisExport } from './gis.js';
 import { chartCanvas, chartPng } from './png.js';
@@ -77,7 +77,7 @@ let gibsDay = dayOf(state.time); // NASA daily: the day its sources draw (gibs.s
 // their neighbours (a contour tile reads 3 × 3 DEM tiles), not hundreds (200 per source: 100 MB)
 const demOpts = { url: DEM_TILES, encoding: 'terrarium', worker: false, cacheSize: 64 };
 const landDem = new mlcontour.DemSource({ ...demOpts, id: 'land', maxzoom: DEM_LAND_MAX });
-// the sea from each grid the depths can be read from (catalog.js GRIDS, chosen in the depth layers' ⓘ):
+// the sea from each grid the depths can be read from (catalog.js GRIDS, chosen at the head of the Sea group):
 // EMODnet's in European seas, or GEBCO's everywhere. A tile's address names its grid, so a change of
 // choice asks for new tiles
 const seaClips = { emodnet: workerClipper({ mode: 'sea', omtTileJson: OMT_TILEJSON }), gebco: workerClipper({ mode: 'sea', grid: 'gebco', name: 'sea-gebco', omtTileJson: OMT_TILEJSON }) };
@@ -712,7 +712,7 @@ const menu = $('#menu');
 const rows = {};
 // Esri's imagery with the visitor's own key (esri.js, docs/esri-key.md): its panel, under Satellite's
 // choice while it is chosen (KINDS.imagery). A key accepted or forgotten: Esri's tiles asked for
-// again (with the key, or EOX's newest drawn instead), what draws them refreshed, the ⓘ and the row
+// again (with the key, or EOX's newest drawn instead), what draws them refreshed, the ⋯ and the row
 const esriBox = esri.keyBox({ fallback: `Sentinel-2 ${EOX_YEARS[0]}`, onChange: () => {
   map.getSource('esri')?.setTiles([esri.ESRI_TILES]);
   for (const id of itemsOfSource.esri || []) refresh(id);
@@ -729,20 +729,12 @@ function setVariant(id, v) {
 // The panel's controls are built with the state's values and kept so by their own changes: the
 // opacity, the variants, the periods and the menus are written by their controls alone (readHash
 // runs before this, a view applied reloads the page); renderMenu follows what changes beside them.
-// provenance (and the opacity slider) behind an item's ⓘ; one whose source follows its variant
+// provenance (and the opacity slider) behind an item's ⋯; one whose source follows its variant
 // (Satellite: EOX's year, or Esri's with a key) written again by renderMenu
 const variantInfos = [];
-// The grid the sea's depths are read from in European seas, chosen in the ⓘ of each layer drawn from
-// them (catalog.js grid: true), where the layer says its source: one choice, its control the same in
-// each. Every source drawn from the depths asks for its tiles anew; a depth shown, a line's profile
+// The grid the sea's depths are read from in European seas, chosen at the head of the Sea group
+// (gridRow). Every source drawn from the depths asks for its tiles anew; a depth shown, a line's profile
 // shown (the inspector built again reads it anew) are the other grid's
-const gridChoices = [], gridMores = [];
-// their ⓘ marked while the grid is not the usual one: the choice is behind it
-function markGrid() {
-  const other = state.grid !== GRIDS[0][0];
-  for (const b of gridMores) { b.classList.toggle('set', other); b.title = `${GRID_TITLE}${other ? `: ${GRIDS.find(([g]) => g === state.grid)[1]}` : ''}`; }
-}
-const MORE_TITLE = 'Source, licence, resolution, opacity', GRID_TITLE = `${MORE_TITLE}, the depths' grid`;
 function setGrid(g) {
   if (g === state.grid) return;
   state.grid = g;
@@ -751,21 +743,21 @@ function setGrid(g) {
   for (const [source, url] of Object.entries(seaUrls())) map.getSource(source).setTiles([url]);
   depthPopup.remove();
   drawPanel?.render('sel');
-  for (const fill of gridChoices) fill();
-  markGrid();
+  gridFill();
   renderLegends();
   writeHash();
 }
-function gridChoice() {
-  const box = h('div', { class: 'gridpick' });
-  const fill = () => box.replaceChildren(h('b', {}, 'Depths in European seas '), choice('Depths in European seas from', GRIDS, state.grid, setGrid));
-  fill();
-  gridChoices.push(fill);
-  return box;
-}
+// its one control, at the head of the Sea group (not a layer's: the shading, the isobaths, the depth
+// sources, a click and a profile all follow it, whichever of them is on)
+const gridBox = h('div', { class: 'gridpick' }), gridFill = () => gridBox.replaceChildren(select('Depths in European seas from', GRIDS.map(([v, text]) => [v, text]), state.grid, setGrid, { id: 'grid' }));
+const gridRow = () => { gridFill(); return h('li', { class: 'item pick' }, h('div', { class: 'line' }, h('label', { class: 'name', for: 'grid', title: 'The grid the sea\'s depths are read from in European seas: EMODnet\'s (about 115 m), or GEBCO\'s (about 460 m) as everywhere else' }, 'Depths in Europe'), gridBox)); };
+const sliders = {}; // item → its opacity sliders
 function infoBlock(it) {
-  const opacity = it.opacity != null ? h('label', { class: 'opacity' }, h('span', {}, it.id === 'relief' ? 'Strength' : 'Opacity'),
-    h('input', { type: 'range', min: 0, max: 1, step: 0.05, value: state.opacity[it.id], oninput: (e) => { state.opacity[it.id] = +e.target.value; applyItem(it.id); writeHash(); } })) : null;
+  // (an item of both Ocean data menus has a block under each: their sliders move together)
+  const slider = it.opacity != null ? h('input', { type: 'range', min: 0, max: 1, step: 0.05, value: state.opacity[it.id],
+    oninput: (e) => { state.opacity[it.id] = +e.target.value; for (const o of sliders[it.id]) o.value = e.target.value; applyItem(it.id); writeHash(); } }) : null;
+  if (slider) (sliders[it.id] ||= []).push(slider);
+  const opacity = slider ? h('label', { class: 'opacity' }, h('span', {}, it.id === 'relief' ? 'Strength' : 'Opacity'), slider) : null;
   const text = h('div', {});
   const fill = () => {
     const info = it.infoOf?.(drawnVariant(it.id)) ?? it.info;
@@ -778,27 +770,30 @@ function infoBlock(it) {
   };
   fill();
   if (it.infoOf) variantInfos.push(fill);
-  return h('div', { class: 'info', hidden: true }, opacity, it.grid ? gridChoice() : null, text);
+  return h('div', { class: 'info', hidden: true }, opacity, text);
 }
-function moreButton(label, onclick) {
-  return h('button', { class: 'more', type: 'button', title: MORE_TITLE, 'aria-label': `About ${label}`, 'aria-expanded': 'false', onclick }, icon(...UI_ICON.info));
+// a row's ⋯: what else it has, behind it (not an ⓘ, which is About's: there is a setting here too)
+function moreButton(label, onclick, opacity = true) {
+  return h('button', { class: 'more', type: 'button', title: opacity ? 'Opacity, source and licence' : 'Source and licence', 'aria-label': `More on ${label}`, 'aria-expanded': 'false', onclick }, icon(...UI_ICON.more));
 }
-// a ⓘ's click: its block shown or hidden
+// a ⋯'s click: its block shown or hidden
 const toggles = (info) => (e) => { info.hidden = !info.hidden; e.currentTarget.setAttribute('aria-expanded', String(!info.hidden)); };
-// A group whose items show one at a time (Base, Ocean data): one "Source and licence" row, its ⓘ
-// the provenance of whichever is on (what), kept so as that changes (renderMenu)
+// Items that show one at a time (the bases; the entries of an Ocean data menu): one ⋯ for whichever
+// is chosen (chosen(): its item, or null), as any row's; its block follows as that changes (renderMenu).
+// Returns { more, infos (the blocks, to put under the row), render }
 const sourceRows = [];
-function sourceRow(items, what) {
+function chosenMore(items, chosen, what) {
   const infos = items.map((it) => [it.id, infoBlock(it)]);
   const render = () => {
-    line.hidden = !items.some((it) => state.on.has(it.id)); // none on (Ocean data at None): nothing to show
-    for (const [id, el] of infos) el.hidden = !(more.getAttribute('aria-expanded') === 'true' && state.on.has(id));
+    const it = chosen();
+    more.hidden = !it; // none chosen (a menu at None): nothing to show
+    more.title = it?.opacity != null ? 'Opacity, source and licence' : 'Source and licence';
+    for (const [id, el] of infos) el.hidden = !(more.getAttribute('aria-expanded') === 'true' && it?.id === id);
   };
   const more = moreButton(what, (e) => { e.currentTarget.setAttribute('aria-expanded', String(e.currentTarget.getAttribute('aria-expanded') !== 'true')); render(); });
-  const line = h('div', { class: 'line' }, h('span', { class: 'name' }, 'Source and licence'), more);
   sourceRows.push(render);
   render();
-  return [line, ...infos.map(([, el]) => el)];
+  return { more, infos: infos.map(([, el]) => el), render };
 }
 // what the item shows (scheme, source, its kind's controls) sits under its row while it is on; none
 // for an item without them
@@ -810,8 +805,7 @@ function controlsOf(it) {
 }
 function itemRow(it) {
   const input = h('input', { type: 'checkbox', role: 'switch', class: 'switch', id: `i-${it.id}`, checked: state.on.has(it.id), onchange: (e) => setOn(it.id, e.target.checked) });
-  const info = infoBlock(it), controls = controlsOf(it), more = moreButton(it.label, toggles(info));
-  if (it.grid) gridMores.push(more);
+  const info = infoBlock(it), controls = controlsOf(it), more = moreButton(it.label, toggles(info), it.opacity != null);
   const row = h('li', { class: 'item' },
     h('div', { class: 'line' }, h('label', { class: 'name', for: input.id }, it.label, h('span', { class: 'hint' })), more, input),
     controls, info);
@@ -827,24 +821,27 @@ function baseBlock(all) {
     rows[it.id] = { row: card, card, controls: controlsOf(it) };
     return card;
   });
+  // under the cards the base chosen as a row like any other, but for its switch: its name, its ⋯, its controls
+  const name = h('span', { class: 'name' }), src = chosenMore(items, () => { const it = items.find((x) => state.on.has(x.id)); name.textContent = it?.label ?? ''; return it; }, 'this base');
   return h('div', {},
     h('div', { class: 'bases', role: 'group', 'aria-label': 'Base map' }, cards),
-    h('ul', {}, h('li', { class: 'item' }, ...items.map((it) => rows[it.id].controls), ...sourceRow(items, 'this base')), ...overlays.map(itemRow)));
+    h('ul', {}, h('li', { class: 'item' }, h('div', { class: 'line' }, name, src.more), ...items.map((it) => rows[it.id].controls), ...src.infos), ...overlays.map(itemRow)));
 }
 // Ocean data: two menus, colours and arrows, their entries under the sections' headings; the
-// source, licence and opacity of what is chosen behind one ⓘ, as for the base
+// source, licence and opacity of what each menu has chosen behind its ⋯, as a row's (the time and the depth: chips at the map's foot)
 const picks = {}; // slot → its menu
 function dataBlock(items, sections) {
   const pick = (slot, label) => {
-    picks[slot] = h('select', { 'aria-label': label, onchange: (e) => { state[slot] = e.target.value; applyData(); labelPaint(); writeHash(); renderMenu(); } },
+    picks[slot] = h('select', { id: `pick-${slot}`, 'aria-label': label, onchange: (e) => { state[slot] = e.target.value; applyData(); labelPaint(); writeHash(); renderMenu(); } },
       h('option', { value: '' }, 'None'),
       sections.map((sec) => {
         const es = ENTRIES[slot].filter((e) => e.it.section === sec);
         return es.length ? h('optgroup', { label: sec }, es.map((e) => h('option', { value: e.key, selected: e.key === state[slot] }, e.label))) : null;
       }));
-    return h('li', { class: 'item pick' }, h('label', { class: 'line' }, h('span', { class: 'name' }, label, h('span', { class: 'hint' })), picks[slot]));
+    const src = chosenMore(items, () => byId[entryOf(state[slot])?.id] ?? null, `the ${label.toLowerCase()} shown`);
+    return h('li', { class: 'item pick' }, h('div', { class: 'line' }, h('label', { class: 'name', for: picks[slot].id }, label, h('span', { class: 'hint' })), picks[slot], src.more), ...src.infos);
   };
-  return h('ul', {}, pick('colour', 'Colours'), pick('arrows', 'Arrows'), h('li', { class: 'item' }, ...sourceRow(items, 'the ocean data shown')));
+  return h('ul', {}, pick('colour', 'Colours'), pick('arrows', 'Arrows'));
 }
 // the Layers groups open: kept in this browser, as the panel's tab (frame.js), not in the link
 const GROUPS_OPEN = 'earthplotter.groups.open', keptOpen = store.json(GROUPS_OPEN);
@@ -854,14 +851,13 @@ function groupBlock(g) {
   const det = h('details', { 'data-group': g.id, open: groupsOpen.has(g.id),
     ontoggle: (e) => { e.target.open ? groupsOpen.add(g.id) : groupsOpen.delete(g.id); store.set(GROUPS_OPEN, JSON.stringify([...groupsOpen])); } },
     h('summary', {}, h('span', { class: 'gname' }, g.label), h('span', { class: 'count', title: 'Layers shown' })),
-    g.sections ? dataBlock(items, g.sections) : g.exclusive ? baseBlock(items) : h('ul', {}, items.map(itemRow)));
+    g.sections ? dataBlock(items, g.sections) : g.exclusive ? baseBlock(items) : h('ul', {}, g.id === 'sea' ? gridRow() : null, items.map(itemRow)));
   det._items = items;
   det._exclusive = g.exclusive;
   return det;
 }
 const groupEls = GROUPS.map(groupBlock);
 menu.append(...groupEls);
-markGrid();
 
 // the panel and what follows the state (the time line, status marks, legends), after a change of
 // what is on or how it is drawn; a step of the time or the depth renders the time line alone, a

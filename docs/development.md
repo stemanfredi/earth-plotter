@@ -68,7 +68,7 @@ Any static web server can serve `site/`. What a copy inherits:
   commercial use (a commercial copy keeps the 2016 one). Esri's imagery is
   shown only with a visitor's own ArcGIS key (docs/esri-key.md). Any provider
   may change its service, limit requests or go away, and a copy is bound by
-  the same terms as this one. The list is in the page, behind each layer's ⓘ,
+  the same terms as this one. The list is in the page, behind each layer's ⋯,
   and below (Providers).
 - **What a copy cannot promise:** that the providers stay available, or that
   the data is as current as the original. A source that fails is marked in
@@ -116,7 +116,7 @@ Every host in one place).
 The map data and imagery are not part of this repository. The browser fetches
 them from each provider, and each layer stays under its provider's licence.
 The page is the reference for coverage, resolution and periods (each layer's
-ⓘ); they are defined in `site/catalog.js`, as are the credits, so this table
+⋯); they are defined in `site/catalog.js`, as are the credits, so this table
 is a summary only.
 
 | Layer | Provider | Licence |

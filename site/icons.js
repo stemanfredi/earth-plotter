@@ -24,6 +24,7 @@ export const UI_ICON = {
   compass: [['m12 3 4 9h-8z', 'var(--err)'], 'm12 21-4-9h8z'],
   locate: ['M19 12a7 7 0 1 1-14 0 7 7 0 0 1 14 0z', 'M12 2v3M12 19v3M2 12h3M19 12h3', ['M14 12a2 2 0 1 1-4 0 2 2 0 0 1 4 0z', 'currentColor']], // a dot in sights
   info: ['M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18z', 'M12 11v5', 'M12 8h.01'],
+  more: ['M5 12h.01', 'M12 12h.01', 'M19 12h.01'], // ⋯: what else a row has (a layer's opacity, its source)
   ruler: ['M3 17 17 3l4 4L7 21z', 'm7 13 2 2M10 10l2 2M13 7l2 2'],
   layers: ['m12 3 9 5-9 5-9-5z', 'm3 13 9 5 9-5'],
   elements: [['M4 5.2a.8.8 0 1 0 0 1.6a.8.8 0 1 0 0-1.6z', 'currentColor'], 'M8 6h13', 'M4 8v2a2 2 0 0 0 2 2h2', 'M4 10v6a2 2 0 0 0 2 2h2', ['M10 11.2a.8.8 0 1 0 0 1.6a.8.8 0 1 0 0-1.6z', 'currentColor'], ['M10 17.2a.8.8 0 1 0 0 1.6a.8.8 0 1 0 0-1.6z', 'currentColor'], 'M14 12h7', 'M14 18h7'],

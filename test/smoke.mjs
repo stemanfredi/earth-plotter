@@ -260,7 +260,7 @@ await section('Copernicus layers, the time line, About, the manifest, my locatio
   await until(cm, () => document.querySelectorAll('#legends canvas[data-legend=waves], #legends canvas[data-legend=currents]').length === 2, null, 30000);
   const cmBroken = await cm.evaluate(() => [...document.querySelectorAll('.item.error, .item.partial')].map((r) => `${r.querySelector('.name').textContent} (${r.title})`));
   check(cmBroken.length === 0 && cm.errors.length === 0, `Copernicus waves and currents load ${cmBroken.join(', ')} ${cm.errors.join(' | ')}`, true);
-  const [cmPicks, cmLink] = await cm.evaluate(() => [[...document.querySelectorAll('.pick select')].map((s) => s.value).join(' '), location.hash]);
+  const [cmPicks, cmLink] = await cm.evaluate(() => [[...document.querySelectorAll('#pick-colour, #pick-arrows')].map((s) => s.value).join(' '), location.hash]);
   check(cmPicks === 'waves:height currents:surface' && /col=waves:height/.test(cmLink) && /arr=currents:surface/.test(cmLink) && !/on=[^&]*waves/.test(cmLink),
     `the link's entries are in the menus and stay in the link: colours, arrows ${cmPicks}`);
   check(await cm.evaluate(() => document.querySelectorAll('#legends canvas[data-legend=waves], #legends canvas[data-legend=currents]').length === 2), 'Copernicus legends shown', true);
@@ -523,14 +523,13 @@ await section('the depth on a click', async () => {
   };
   const sea = await at(8.3, 43.9), land = await at(8.0, 44.2);
   check(/^\d+ m\d+°[\d.]+′[NS] \d+°[\d.]+′[EW]EMODnet 2024 · (surveyed|interpolated: no soundings here)$/.test(sea) && !land && !dp.errors.length, `a click on the sea gives its depth, the place and the source (${sea}); on land, nothing ${dp.errors.join(' | ')}`);
-  // the depths' grid, chosen in the ⓘ of the layers drawn from them (the same control in each): set
-  // to GEBCO in the isobaths', the same click reads GEBCO's depth and says so, the isobaths' tiles are
-  // asked anew from it, the other ⓘs' controls say GEBCO too, and the link keeps the choice
-  const pickGrid = (page, layer, g) => page.evaluate(([id, v]) => document.querySelector(`#i-${id}`).closest('li').querySelector(`.gridpick button[data-v=${v}]`).click(), [layer, g]);
+  // the depths' grid, chosen once in the menu at the head of the Sea group: set to GEBCO, the same click
+  // reads GEBCO's depth and says so, the isobaths' tiles are asked anew from it, and the link keeps the choice
+  const pickGrid = (page, g) => page.evaluate((v) => { const s = document.querySelector('#grid'); s.value = v; s.dispatchEvent(new Event('change')); }, g);
   const creditsOf = () => dp.evaluate(() => document.querySelector('.credits-text')?.textContent || ''), creditsOwn = await creditsOf();
-  await pickGrid(dp, 'isobaths', 'gebco');
+  await pickGrid(dp, 'gebco');
   const switched = await until(dp, () => map.getSource('isobaths').tiles[0].startsWith('isobath://gebco/') && /[#&]grid=gebco/.test(location.hash)
-    && ['depth', 'isobaths', 'depthsource'].every((id) => document.querySelector(`#i-${id}`).closest('li').querySelector('.gridpick button[aria-pressed=true]')?.dataset.v === 'gebco'));
+    && document.querySelectorAll('.gridpick select').length === 1 && document.querySelector('#grid').value === 'gebco');
   await settled(dp);
   const gebco = await at(8.3, 43.9);
   // the credits name what is read: EMODnet's with its grid, GEBCO's alone once GEBCO is chosen
@@ -601,7 +600,7 @@ await section('the elevation profile', async () => {
   check(prof[0] > 0 && /along the surface/.test(prof[1]) && deepLength > 25000, `a line's elevation profile: the chart and the length along the surface (${prof[1]})`);
   // the depths' grid changed (a depth layer's ⓘ) while the profile is shown: read again, from the other grid
   const rangeOf = () => dw.evaluate(() => document.querySelector('svg.profile')?.getAttribute('aria-label') || '');
-  const setGrid = (g) => dw.evaluate((v) => document.querySelector(`#i-depth`).closest('li').querySelector(`.gridpick button[data-v=${v}]`).click(), g);
+  const setGrid = (g) => dw.evaluate((v) => { const s = document.querySelector('#grid'); s.value = v; s.dispatchEvent(new Event('change')); }, g);
   const own = await rangeOf();
   await setGrid('gebco');
   const reread = await until(dw, (was) => { const now = document.querySelector('svg.profile')?.getAttribute('aria-label'); return !!now && now !== was; }, own, 60000);

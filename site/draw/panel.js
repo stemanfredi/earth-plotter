@@ -195,7 +195,11 @@ export function drawView(root, ctx) {
   const commonTop = (kind, id) => {
     const el = now(id);
     title = `${kindTitle(drawing.doc, kind, el)} · ${shownName(drawing.doc, kind, el, drawing.units())}`;
-    return [ruleRow(id)?.row, kind === 'label' ? null : row('Name', textField(id, 'name', 'Name'))]; // a label is its text
+    // what it is in and what it is for, beside its name: the point holding it, its group, whether a guide
+    // (supporting geometry: faint, out of the totals; a measurement is one of its own; unticked, either is part of the drawing)
+    const guide = kind !== 'label' && kind !== 'group' ? guideRow(el.guide, (v) => set(id, (x) => setGuide(x, v))) : null;
+    return [ruleRow(id)?.row, kind === 'label' ? null : row('Name', textField(id, 'name', 'Name')), // a label is its text
+      kind === 'circle' || (kind === 'line' && el.closed) ? pointRow(id) : null, holderOf(drawing.doc, el) ? null : groupRow([id]), guide]; // a Point row: on what a point can hold
   };
   const ruleActs = (id) => ruleRow(id)?.acts ?? [];
   // and its foot: the group it is in (a shape: its point), Guide, its data (Delete: in the head)
@@ -208,13 +212,7 @@ export function drawView(root, ctx) {
   const guideRow = (value, put) => row('Guide', check(value, put, { 'aria-label': 'Guide', title: 'Faint and dashed, out of the totals' }));
   // Detach: the element (what: its part, for the label) free, where it is
   const detachX = (what, onclick) => h('button', { type: 'button', class: 'x', title: 'Free, where it is', 'aria-label': `Detach ${what}`, onclick }, icon(...UI_ICON.detach));
-  const commonBottom = (kind, id) => {
-    const el = now(id);
-    // Guide (supporting geometry: faint, out of the totals): a measurement is a guide of its own;
-    // unticking Guide makes either part of the drawing
-    const guide = kind !== 'label' && kind !== 'group' ? guideRow(el.guide, (v) => set(id, (x) => setGuide(x, v))) : null; // unticked: part of the drawing (a measurement too)
-    return [kind === 'circle' || (kind === 'line' && el.closed) ? pointRow(id) : null, holderOf(drawing.doc, el) ? null : groupRow([id]), guide, dataBlock(id)]; // a Point row: on what a point can hold
-  };
+  const commonBottom = (kind, id) => [dataBlock(id)];
   // A shape's point: the one holding it (it moves and turns with it), and Detach (free, in the
   // point's group); free (a circle, a closed line: canHold), Attach to… (the next click on a point)
   function pointRow(id) {
@@ -410,9 +408,9 @@ export function drawView(root, ctx) {
     between ? row('Bearing 1→2', fvalue(norm360(between.azi).toFixed(1), { title: `From ${label(xs[0].kind, xs[0].el)} to ${label(xs[1].kind, xs[1].el)}` }), funit('°T')) : null,
     ...sharedRows(flat(xs)),
     flat(xs).some((x) => x.kind === 'label') ? leaderRow(flat(xs).filter((x) => x.kind === 'label')) : null,
+    groupRow(tops(xs)), // a point's shapes stay its
     actionsRow(connectBtn(flat(xs))),
     lookBlock(xs),
-    groupRow(tops(xs)), // a point's shapes stay its
   ];
   }
 
@@ -438,7 +436,6 @@ export function drawView(root, ctx) {
       row('Created', fvalue(when(drawing.doc.created), { title: 'Last change: ' + when(drawing.doc.modified) })),
       lookBlock([{ kind: 'drawing', el: drawing.doc }], LOOK_FIELDS.drawing, 'Display', [
         offsetElsewhere.length ? h('p', { class: 'note' }, 'Offset also set on ', ...offsetElsewhere.map((x) => link(x.el.id))) : null,
-        row('Units', choice('Distance units', [['km', 'km', 'Kilometres'], ['nm', 'NM', 'Nautical miles']], ctx.display.units, (v) => ctx.setDisplay({ units: v }))),
         row('Leg bearings', check(ctx.display.bearings, (v) => ctx.setDisplay({ bearings: v }), { 'aria-label': 'Leg bearings', title: 'Beside each length on the map' }))]),
       n > 1 ? totalsBlock(keys.length ? by : null, groupName) : null,
       drawing.saving.failed ? h('p', { class: 'note warn' }, 'This browser does not let the drawing be saved (storage full or turned off): Download › Drawing (GeoJSON) keeps it as a file.') : null,

@@ -101,10 +101,11 @@ depth of its own.
 
 ## Comparing the two grids
 
-Each layer drawn from the depths (*Depth shading*, *Isobaths*, *Depth
-sources*) says its source behind its ⓘ, and there, in each of them, is the
-one choice: *Depths in European seas* from *EMODnet*, as described here, or
-from *GEBCO*, as everywhere else and as the page drew them before. The
+At the head of the *Sea* group, in Layers, is the one choice: *Depths in
+Europe* from *EMODnet*, as described here, or from *GEBCO*, as everywhere
+else and as the page drew them before. Each layer drawn from the depths
+(*Depth shading*, *Isobaths*, *Depth sources*) says its source behind its
+⋯. The
 shading, the isobaths, the depth on a click, a line's elevation profile and
 *Depth sources* all follow it, and a link keeps it. With GEBCO chosen the
 depth shading's legend names GEBCO alone, and so do a click and the credits.

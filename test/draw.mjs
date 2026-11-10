@@ -946,7 +946,7 @@ await section('paging, Properties in place', async () => {
   await dw.keyboard.type('40.33');
   await dw.keyboard.press('Tab');
   const inList = await focused();
-  check(afterTab === 'Path' && clicked === 2 && inList === 'Vertex 2 longitude', `Properties in place: Tab from a field applied (${afterTab}), a click into the next (Offset ${clicked}), Tab in a list (${inList})`);
+  check(afterTab === 'In group' && clicked === 2 && inList === 'Vertex 2 longitude', `Properties in place: Tab from a field applied (${afterTab}), a click into the next (Offset ${clicked}), Tab in a list (${inList})`);
   await dw.evaluate((id) => drawing.remove([id]), fl);
   check(!dw.errors.length, `drawing: no errors ${dw.errors.join(' | ')}`);
   await dw.close();

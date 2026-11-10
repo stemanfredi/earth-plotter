@@ -27,7 +27,7 @@ const ARROWS_LAST = (id) => ({ solidAndVector: 1, vector: 2 })[Object.values(CME
 // ---- sources ----------------------------------------------------------------
 function sources({ seaDemUrl, landDemUrl, isobathUrl, tidUrl, contourUrl, date, density = {} }) {
   // credits: the names each provider asks for, short enough for one line; what each layer is
-  // made from is behind its ⓘ
+  // made from is behind its ⋯
   const ATTR_OSM = '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> · <a href="https://www.openmaptiles.org/">OpenMapTiles</a> · <a href="https://openfreemap.org">OpenFreeMap</a>';
   const ATTR_DEM = `<a href="${DEM_CREDITS}">Mapzen Terrain Tiles</a>`; // its sources' credits there
   const ATTR_GEBCO = '<a href="https://www.gebco.net">GEBCO 2026 Grid</a>'; // the sea's depths; EMODnet's credit beside it where its grid is read (app.js creditParts)

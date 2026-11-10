@@ -105,10 +105,15 @@ body.loading .spin { visibility: visible; animation: spin .8s linear infinite; }
 .item { padding: 0 8px 0 12px; }
 .item .line { display: flex; align-items: center; gap: 6px; min-height: var(--row); }
 /* Ocean data: a menu for colours, one for arrows */
-.pick .line { gap: 8px; padding-right: 8px; }
-.pick .name { flex: none; width: 60px; }
-.pick select { flex: 1; min-width: 0; padding: 2px 8px; }
+.pick .line { gap: 8px; padding-right: 4px; }
+.pick :is(select, input) { flex: 1; min-width: 0; padding: 2px 8px; }
+.pick .more[hidden] + *, .pick .line > :last-child:not(.more) { margin-right: 4px; }
 .item label.name { flex: 1; cursor: pointer; align-self: stretch; display: flex; align-items: center; gap: 8px; }
+.item .line > span.name { flex: 1; } /* a row without a switch: the base chosen */
+.item.pick label.name { flex: none; width: 60px; } /* Ocean data: Colours, Arrows */
+/* the depths' grid, at the head of Sea: its name, its menu */
+.item.pick label.name:has(+ .gridpick) { width: auto; white-space: nowrap; }
+.gridpick { flex: 1; min-width: 0; display: flex; margin-right: 4px; }
 .item .hint { font-size: 11px; color: var(--soft); font-family: var(--mono); } /* why it draws nothing here: said before it is switched on */
 .item.dim .hint { color: var(--warn); }
 .item.dim label.name { color: var(--soft); }
@@ -127,7 +132,6 @@ body.loading .spin { visibility: visible; animation: spin .8s linear infinite; }
 :is(.more, .deye, .hact, .x, .dfold:not(.none)):hover { background: var(--hover); color: var(--ink); } /* .dfold.none: the room of a fold, not a button */
 :is(.more, .deye, .hact, .x) svg { width: 16px; height: 16px; }
 .more[aria-expanded="true"] { background: var(--sel); color: var(--accent); }
-.more.set { color: var(--accent); } /* a choice behind it that is not the usual one (the depths' grid) */
 .controls { display: grid; gap: 6px; padding: 0 8px 8px 0; }
 .controls select { width: 100%; padding: 2px 8px; }
 .keybox { display: grid; gap: 4px; }
@@ -147,7 +151,6 @@ body.loading .spin { visibility: visible; animation: spin .8s linear infinite; }
 .info { margin: 0 8px 8px 0; padding: 6px 8px; background: var(--bg2); border-left: 2px solid var(--accent); font-size: 12px; color: var(--soft); }
 .info p { margin: 2px 0; }
 .info .opacity { margin: 0 0 4px; }
-.info .gridpick { display: grid; gap: 4px; margin: 0 0 6px; }
 .info b { color: var(--ink); font-weight: 600; }
 .info a { color: var(--accent); }
 

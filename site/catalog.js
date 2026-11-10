@@ -145,7 +145,7 @@ export const eoxData = (year) => (year === 2018 ? '2017 & 2018' : `${year}`); //
 // three flights, oldest first, each transparent outside its own); osm: the OpenStreetMap boundary
 // relations its coverage is built from (France: the metropole and its five overseas departments, the
 // whole being too large for one request); bounds: the only area asked, where the boundary holds more
-// than the service covers (the Netherlands' also holds its Caribbean islands); src, lic: the layer's ⓘ;
+// than the service covers (the Netherlands' also holds its Caribbean islands); src, lic: the layer's ⋯;
 // white: its service paints white where it has no imagery (at sea, beyond its border), cleared by the page;
 // partBounds: where each part has imagery at all, [w, s, e, n] (from its capabilities): not asked beyond
 export const ORTHO_MIN = 12;
@@ -317,13 +317,13 @@ export const GROUPS = [
 export const isBase = (it) => !!GROUPS.find((g) => g.id === it.group)?.exclusive && !it.overlay;
 
 // what most of one provider's layers share: their licence and where to read more
-// a Copernicus Marine product's page, which its licence asks to cite: each layer's ⓘ links to its global
+// a Copernicus Marine product's page, which its licence asks to cite: each layer's ⋯ links to its global
 // product's (the regional ones are named in its source)
 const product = (id) => `https://data.marine.copernicus.eu/product/${id}/description`;
 const COPERNICUS = { lic: 'Copernicus Marine Service licence: free, attribution required ("Generated using E.U. Copernicus Marine Service Information"; the products are named above)', url: 'https://marine.copernicus.eu' };
 const EMODNET_LIC = 'EMODnet open data, CC BY 4.0: attribution required';
 const GEBCO_LIC = 'GEBCO terms: free to use and redistribute, with attribution';
-// where the depths' two grids, their choice and their limits are explained: the depth layers' ⓘ links to it
+// where the depths' two grids, their choice and their limits are explained: the depth layers' ⋯ links to it
 const DEPTHS_DOC = ['How the depths are made', 'https://github.com/stemanfredi/earth-plotter/blob/main/docs/depths.md'];
 // where a Europe-only layer (europe: true) may have something to draw, generously: [west, south, east, north]
 export const EUROPE = [-45, 20, 70, 90];
@@ -336,7 +336,7 @@ export const ITEMS = [
   { id: 'sat', group: 'base', label: 'Satellite', kind: 'imagery', opacity: 1,
     // first = default; Esri's only with the visitor's own key (esri.js), EOX's newest until it is accepted
     variants: { ...Object.fromEntries(EOX_YEARS.map((y) => [eoxKey(y), `Sentinel-2 ${y} · ${eoxOpen(y) ? 'CC BY' : 'non-commercial'}`])), esri: 'Esri World Imagery · your key' },
-    // what its ⓘ says of the variant drawn (app.js: Esri's only once a key is accepted)
+    // what its ⋯ says of the variant drawn (app.js: Esri's only once a key is accepted)
     infoOf: (variant) => {
       if (variant === 'esri') {
         return { src: 'Esri World Imagery, with your own ArcGIS key: Esri and its data providers, as the credits name them (Powered by Esri)',
@@ -356,16 +356,16 @@ export const ITEMS = [
       lic: `${ORTHO.map((o) => o.lic).join('; ')}. Cut to each country with OpenStreetMap's boundaries (ODbL)`,
       res: '8–25 cm: single buildings, cars and boats. Flown every one to three years; Italy\'s in three parts, 2022, 2023 and 2024. From zoom 12' } },
 
-  // grid: the three layers drawn from the sea's depths. Their ⓘ, where each says its source, holds the
-  // choice of the grid read in European seas (GRIDS; app.js seaGrid): one choice, the same in all three
-  { id: 'depth', group: 'sea', label: 'Depth shading', on: true, opacity: 1, maxzoom: DEPTH_ZMAX - 1, kind: 'gebco', grid: true,
+  // the three layers drawn from the sea's depths: the grid read in European seas is chosen once, at the
+  // head of their group (GRIDS; app.js gridRow)
+  { id: 'depth', group: 'sea', label: 'Depth shading', on: true, opacity: 1, maxzoom: DEPTH_ZMAX - 1, kind: 'gebco',
     variants: { atlas: 'Darker = deeper (atlas)', nautical: 'Darker = shallower (nautical chart)' },
     info: { src: 'GEBCO 2026 Grid (GEBCO Compilation Group); in European seas EMODnet Bathymetry\'s DTM 2024', lic: `${GEBCO_LIC} · EMODnet: CC BY 4.0`, res: 'GEBCO\'s cells are about 460 m (15 arc-seconds), worldwide; EMODnet\'s, in European seas, about 115 m. Much of the seabed is interpolated, not surveyed: a click on the water says how the depth there was obtained, and Depth sources shows it. In tidal European seas the depths are from lowest astronomical tide, as on charts. Lakes are grey: no depth data. Off above zoom 12: the data has no more detail. Not for navigation', url: 'https://www.gebco.net', more: DEPTHS_DOC } },
-  { id: 'isobaths', group: 'sea', label: 'Isobaths', on: true, opacity: 1, minzoom: 2, grid: true,
+  { id: 'isobaths', group: 'sea', label: 'Isobaths', on: true, opacity: 1, minzoom: 2,
     info: { src: 'Contoured in your browser from the depth shading\'s depths: GEBCO 2026, and EMODnet 2024 in European seas (maplibre-contour)', lic: 'As GEBCO and EMODnet', res: 'At the depths nautical charts use, more of them as you zoom in: 3000 and 5000 m from zoom 2, down to 5 m from zoom 10. Indicative only: as coarse as the grid beneath (about 460 m worldwide; about 115 m in European seas), smoothed shapes, not surveyed soundings. Cut to the OSM coastline, so the lines end on the shore. Not for navigation', url: 'https://github.com/onthegomap/maplibre-contour', more: DEPTHS_DOC } },
   { id: 'seamarks', group: 'sea', label: 'Seamarks', minzoom: SEAMARKS_MIN, opacity: 1,
     info: { src: 'OpenSeaMap seamark overlay', lic: 'CC BY-SA 2.0 · OpenSeaMap contributors', res: 'Crowd-sourced; completeness varies. Not an official chart', url: 'https://openseamap.org' } },
-  { id: 'depthsource', group: 'sea', label: 'Depth sources', opacity: 0.6, kind: 'gebcotid', legendSub: 'where the depths come from', grid: true,
+  { id: 'depthsource', group: 'sea', label: 'Depth sources', opacity: 0.6, kind: 'gebcotid', legendSub: 'where the depths come from',
     legend: () => DEPTH_SOURCES.map(({ label, colour }) => ({ label, colour })), // GEBCO's type identifier grid, by group, and EMODnet's own account in its area (gebco.js draws it)
     info: { src: 'GEBCO 2026 type identifier grid (GEBCO Compilation Group); in European seas EMODnet Bathymetry\'s DTM 2024, its flag of interpolated cells', lic: `${GEBCO_LIC} · EMODnet: CC BY 4.0`, res: 'How each cell\'s depth was obtained, worldwide: surveyed (echo sounders, lidar, soundings); optical (read from the water\'s colour in a satellite image: a few metres at most, and less in turbid water, where a 10 m harbour can read 3 m); estimated (interpolated, or predicted from satellite gravity); or taken from another grid, of unknown origin. In European seas, EMODnet\'s own account of each of its cells: surveyed, or interpolated (shown as estimated). The depth shading and isobaths are only as good as their source here. GEBCO\'s codes go in the GIS export', url: 'https://www.gebco.net', more: DEPTHS_DOC } },
   { id: 'substrate', group: 'sea', label: 'Seabed substrate (Europe)', europe: true, opacity: 0.8, kind: 'classes',

@@ -7,7 +7,7 @@
 A free map of the world's land and sea in your browser, from open data. It
 draws the OpenStreetMap base map with relief and contours, depth shading and
 isobaths, satellite imagery (and, in some countries, their national aerial
-photos: the layer's ⓘ names them), seamarks, shipping density, ocean data from
+photos: the layer's ⋯ names them), seamarks, shipping density, ocean data from
 Copernicus Marine and NASA's daily imagery. Measure and draw on it, export the
 view as GIS data, and save areas to use without a connection.
 
@@ -43,7 +43,7 @@ Drawings, saved areas and your location stay in your browser; tile requests
 tell each provider which area you are looking at, and place names you type go
 to the search provider. An Esri key, if you add one, stays in your browser and
 goes only to Esri. The About dialog in the page says in full what leaves
-your browser and what stays in it; each layer's ⓘ names its provider.
+your browser and what stays in it; each layer's ⋯ names its provider.
 
 ## Hosting a copy
 

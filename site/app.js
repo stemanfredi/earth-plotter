@@ -1,6 +1,6 @@
 import * as maplibregl from './vendor/maplibre-gl.mjs';
 import mlcontour from './vendor/maplibre-contour.mjs';
-import { GROUPS, ITEMS, isBase, EOX_YEARS, eoxKey, GIBS, DEM_TILES, DEM_SEA_MAX, DEPTH_ZMAX, DEPTH_SOURCES, DEM_LAND_MAX, OMT_TILEJSON, DEPTH_SCHEMES, NO_DEPTH, DENSITY, gibsTiles, gibsDomainUrl, domainEnd, densityTiles, CMEMS, CMEMS_DEPTHS, CLASS_LABELS, EMODNET_DEPTH_STOPS, SEAGRASS } from './catalog.js';
+import { GROUPS, ITEMS, isBase, EOX_YEARS, eoxKey, GIBS, DEM_TILES, DEM_SEA_MAX, DEPTH_ZMAX, DEPTH_SOURCES, DEM_LAND_MAX, OMT_TILEJSON, DEPTH_SCHEMES, NO_DEPTH, DENSITY, gibsTiles, gibsDomainUrl, domainEnd, densityTiles, CMEMS, CMEMS_DEPTHS, CLASS_LABELS, EMODNET_DEPTH_STOPS, EMODNET_BOX, SEAGRASS } from './catalog.js';
 import { buildStyle, depthRamp, OPACITY_PROP, SEA_PICTURES, LOCATION_LAYERS, INK } from './style.js';
 import { cmemsTile, partTimes, partLevels, domainOf, cmemsLegend, partIn } from './cmems.js';
 import { workerClipper } from './clip.js';
@@ -26,7 +26,7 @@ import { search } from './search.js';
 import { gisExport } from './gis.js';
 import { chartCanvas, chartPng } from './png.js';
 import { cmemsValues, emodnetValues, gebcoValues } from './values.js';
-import { tidTile, tidAt } from './gebco.js';
+import { tidTile, tidAt, emodnetAt } from './gebco.js';
 import { offlineDialog, KEPT_SOURCES, noConnection, onConnection, glyphsAsked } from './offline.js';
 import { icon, UI_ICON } from './icons.js';
 import { byId, DATA, variantsOf, entryOf, ENTRIES, hour, defaultsOf, initialState, readAddress, viewToAddress, hashOf, KNOWN } from './address.js';
@@ -414,6 +414,12 @@ function classesOf(urls) {
   });
 }
 
+// the grids the depth shading draws in view: EMODnet's too where the view meets its area
+function depthGrids() {
+  const b = map.getBounds(), [w, s, e, n] = EMODNET_BOX;
+  return b.getWest() < e && b.getEast() > w && b.getSouth() < n && b.getNorth() > s ? 'GEBCO 2026 · EMODnet 2024' : 'GEBCO 2026';
+}
+
 const KINDS = {
   // Satellite: EOX's yearly mosaics, or Esri's imagery with the visitor's key, its panel under the
   // choice (esri.js); EOX's newest drawn until a key is accepted
@@ -425,8 +431,8 @@ const KINDS = {
   // GEBCO's depths, drawn by the depth shading (clip.js); its values from its Zarr store
   gebco: {
     // the depth shading's legend: while the chart is under it, zoomed out (where the shading is)
-    legend: () => (state.on.has('chart') && map.getZoom() < DEPTH_ZMAX ? { key: state.variant.depth,
-      paint: (el) => drawRamp(el, 'Depth shading', 'm · GEBCO 2026', depthStops(), 'metres', { colour: NO_DEPTH, label: 'lakes: no depth · lagoons: shown as 0–5 m' }) } : null),
+    legend: () => (state.on.has('chart') && map.getZoom() < DEPTH_ZMAX ? { key: `${state.variant.depth}|${depthGrids()}`,
+      paint: (el) => drawRamp(el, 'Depth shading', `m · ${depthGrids()}`, depthStops(), 'metres', { colour: NO_DEPTH, label: 'lakes: no depth · lagoons: shown as 0–5 m' }) } : null),
     values: (it, box) => gebcoValues(box),
   },
   // where GEBCO's depths come from (its type identifier grid, drawn by gebco.js): a classed layer,
@@ -1095,16 +1101,17 @@ map.on('click', async (e) => {
   const { lng, lat } = e.lngLat, z = Math.min(DEM_SEA_MAX, Math.floor(map.getZoom()) + 1); // 256 px DEM tiles at z show at map zoom z − 1
   const asked = ++depthAsked, box = map.getContainer();
   box.setAttribute('aria-busy', 'true'); // the depth being looked up (said done before its popup, if any)
-  const [v, code] = await Promise.all([depthAt([lng, lat], z).catch(() => null), tidAt(lng, lat).catch(() => null)]);
+  // the grid it comes from: EMODnet's where its cell here is its own (gebco.js), surveyed or interpolated; else GEBCO's with its source
+  const [v, code, emodnet] = await Promise.all([depthAt([lng, lat], z).catch(() => null), tidAt(lng, lat).catch(() => null), emodnetAt(lng, lat).catch(() => 3)]);
   if (asked === depthAsked) box.removeAttribute('aria-busy');
   if (asked !== depthAsked || !depthClicks()) return; // another click since, or a tool or the layers switched meanwhile
-  if (v === null) { depthPopup.setLngLat(e.lngLat).setDOMContent(h('div', {}, h('b', {}, 'Depth not available'), h('small', {}, 'GEBCO 2026 could not be read'))).addTo(map); return; }
+  if (v === null) { depthPopup.setLngLat(e.lngLat).setDOMContent(h('div', {}, h('b', {}, 'Depth not available'), h('small', {}, 'the depths could not be read'))).addTo(map); return; }
   if (!Number.isFinite(v)) { depthPopup.remove(); return; } // land, a lake, inland water: no depth here
   const source = DEPTH_SOURCES.find(({ ranges }) => ranges.some(([a, b]) => code >= a && code <= b));
   // −1: shallower than 1 m, or sea the data calls dry (clip.js)
   const depth = fmtDepth(v).replace(/^u/, 'U');
   depthPopup.setLngLat(e.lngLat).setDOMContent(h('div', {}, h('b', {}, depth), h('span', { class: 'at' }, fmtPos(lat, lng)),
-    h('small', {}, ['GEBCO 2026', source?.label.toLowerCase()].filter(Boolean).join(' · ')))).addTo(map);
+    h('small', {}, emodnet === 3 ? ['GEBCO 2026', source?.label.toLowerCase()].filter(Boolean).join(' · ') : `EMODnet 2024 · ${['none here: from the water beside it', 'surveyed', 'interpolated: no soundings here'][emodnet]}`))).addTo(map);
 });
 // cursor position readout
 map.on('mousemove', (e) => { posEl.textContent = fmtPos(e.lngLat.lat, e.lngLat.lng); });
@@ -1171,6 +1178,7 @@ function renderCredits() {
 }
 map.on('styledata', renderCredits);
 map.on('sourcedata', (e) => { if (!e.tile) renderCredits(); });
+map.on('moveend', renderLegends); // the depth shading's says the grids in view
 map.on('moveend', renderCredits); // a layer's zoom range entered or left, a country's imagery come into view or gone
 map.on('idle', renderCredits); // a country's coverage read (by its first tiles)
 // An export from button b: after before() (a library to load), the map's next frame, after pending

@@ -110,22 +110,22 @@ test('build: a synthetic world → both stores, every cell and every level as za
 
 test('gridTile: one pass gives the plain blend and the water-only blend of the same cells', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'gebco-'));
-  // a world of 1200 × 2400 cells, so its rows reach the tiles' northernmost latitude at zoom 8 (level 0
-  // read as GEBCO's 15″ cells): sea 500 m deep west of the meridian, land 500 m high east of it
-  world(dir, 'elevation', 'gebco_2026', 600, Int16Array, (r, c) => (c < 1200 ? -500 : 500));
+  // a world of 1200 × 2400 cells of 0.15° (its store says so: gebco.js reads a grid as its store
+  // describes it): sea 500 m deep west of 0.6° W, land 500 m high east of it
+  world(dir, 'elevation', 'gebco_2026', 600, Int16Array, (r, c) => (c < 1196 ? -500 : 500));
   await build(dir, 'elevation', { workers: 2, levels: 1, log: () => {} });
   // the store served as the data host serves it: plain files
   const server = createServer((req, res) => { try { res.end(readFileSync(join(dir, decodeURIComponent(new URL(req.url, 'http://x').pathname)))); } catch { res.statusCode = 404; res.end(); } });
   await new Promise((ok) => server.listen(0, '127.0.0.1', ok));
   try {
     const url = `http://127.0.0.1:${server.address().port}/zarr/gebco-2026/elevation.zarr`;
-    const { raw, sea } = await gridTile(url, 'elevation', 8, 3, 0, false); // columns 1012–1349: across the shore
+    const { raw, sea } = await gridTile(url, 'elevation', 8, 127, 100, false); // 1.4° W to the meridian: across the shore
     assert.equal(raw.length, 65536); assert.equal(sea.length, 65536);
     // the water's weight w from the plain blend (500 − 1000 w): from half of it, the water's depth
     // alone; below, its depth fading to the shore (−1000 w = raw − 500), never a jump to −500
     let shore = 0, fading = 0;
     for (let p = 0; p < raw.length; p++) {
-      if (Math.abs(raw[p] - 500) < 1e-2) near(sea[p], 500, 1e-2, `${p}: all land, drawn as read`);
+      if (Math.abs(raw[p] - 500) < 1e-2) assert.ok(Math.abs(sea[p] - 500) < 1e-2 || Math.abs(sea[p]) < 1e-2, `${p}: all land, drawn as read (or the last trace of water, faded to nothing): ${sea[p]}`);
       else if (raw[p] <= 0) { near(sea[p], -500, 1e-2, `${p}: water half the weight or more (${raw[p]}): the water's depth alone`); if (raw[p] > -499) shore++; }
       else { near(sea[p], raw[p] - 500, 1e-2, `${p}: little water in reach (${raw[p]}): its depth faded`); fading++; }
     }

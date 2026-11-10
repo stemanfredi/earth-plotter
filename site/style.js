@@ -30,7 +30,7 @@ function sources({ seaDemUrl, landDemUrl, isobathUrl, contourUrl, date, density 
   // made from is behind its ⓘ
   const ATTR_OSM = '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> · <a href="https://www.openmaptiles.org/">OpenMapTiles</a> · <a href="https://openfreemap.org">OpenFreeMap</a>';
   const ATTR_DEM = `<a href="${DEM_CREDITS}">Mapzen Terrain Tiles</a>`; // its sources' credits there
-  const ATTR_GEBCO = '<a href="https://www.gebco.net">GEBCO 2026 Grid</a>'; // the sea's depths (gebco.js)
+  const ATTR_GEBCO = '<a href="https://www.gebco.net">GEBCO 2026 Grid</a> · <a href="https://emodnet.ec.europa.eu/en/bathymetry">EMODnet Bathymetry</a>'; // the sea's depths: EMODnet's in European seas (gebco.js)
   const s = {
     omt: { type: 'vector', url: OMT_TILEJSON, attribution: ATTR_OSM },
     'dem-sea': { type: 'raster-dem', tiles: [seaDemUrl], encoding: 'terrarium', tileSize: 256, maxzoom: DEM_SEA_MAX, attribution: ATTR_GEBCO },
@@ -57,7 +57,7 @@ function sources({ seaDemUrl, landDemUrl, isobathUrl, contourUrl, date, density 
     ...Object.fromEntries(ITEMS.filter((it) => it.tiles).flatMap((it) => Object.entries(it.tiles).map(([v, tiles]) => [`ov-${it.id}-${v}`,
       { type: 'raster', tileSize: 256, maxzoom: it.tileMaxzoom ?? 18, tiles, attribution: it.credit || HA_CREDIT }]))),
     // GEBCO's type identifier grid, coloured by gebco.js (gebco-tid://); level 0 from zoom 8, then magnified
-    'gebco-tid': { type: 'raster', tileSize: 256, maxzoom: 10, tiles: ['gebco-tid://{z}/{x}/{y}'], attribution: ATTR_GEBCO },
+    'gebco-tid': { type: 'raster', tileSize: 256, maxzoom: 11, tiles: ['gebco-tid://{z}/{x}/{y}'], attribution: ATTR_GEBCO },
     graticule: empty(),
     // the drawing (draw/drawing.js): what never depends on the zoom, what may, the marks (selection, the
     // line being drawn)

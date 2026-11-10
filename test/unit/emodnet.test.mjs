@@ -1,0 +1,62 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { createServer } from 'node:http';
+import { near } from './helpers.mjs';
+import { mergeBlock, Q, SURVEYED, INTERPOLATED, FROM_GEBCO } from '../../tools/emodnet.mjs';
+import { gridTile } from '../../site/gebco.js';
+import { tileXY } from '../../site/geo.js';
+
+// One block of EMODnet's grid as the store holds it (tools/emodnet.mjs), from a made-up EMODnet chunk and GEBCO grid
+test('mergeBlock: EMODnet\'s water whole, surveyed or interpolated; land beside it; GEBCO\'s only where EMODnet has no water in reach', () => {
+  const EC = 1000, e = new Float32Array(EC * EC), f = new Float32Array(EC * EC);
+  for (let r = 0; r < EC; r++) {
+    for (let c = 0; c < EC; c++) {
+      const k = r * EC + c;
+      if (c < 500) { e[k] = -20; f[k] = r < 500 ? 0 : NaN; } // surveyed: flag 0, or no flag at all
+      else if (c < 600) { e[k] = -3; f[k] = 1; } // interpolated: its own all the same
+      else { e[k] = NaN; f[k] = NaN; } // no value
+      if (c >= 700 && c < 720 && r >= 100 && r < 120) { e[k] = 0; f[k] = 1; } // a guess of 0 m: no water
+    }
+  }
+  // GEBCO: 100 m deep, land (50 m) from its column 46045 (the block's columns from about 940)
+  const { values, source, stats } = mergeBlock(27, 45, e, f, (r, c) => (c >= 46045 ? 50 : -100));
+  const at = (i, j) => [values[i * EC + j] / Q, source[i * EC + j]];
+  assert.deepEqual(at(100, 100), [-20, SURVEYED], 'no flag: surveyed'); // rows from the north: EMODnet's from the south
+  assert.deepEqual(at(900, 100), [-20, SURVEYED], 'flag 0: surveyed');
+  assert.deepEqual(at(500, 550), [-3, INTERPOLATED], 'interpolated: EMODnet\'s too, and said so');
+  assert.deepEqual(at(500, 602), [100, 0], 'no value, EMODnet\'s water in reach: land (the page fades the water beside it)');
+  assert.deepEqual(at(500, 700), [-100, FROM_GEBCO], 'no value and no water of its in reach: GEBCO\'s, and said so');
+  assert.deepEqual(at(890, 710), [-100, FROM_GEBCO], 'a guess of 0 m far from its water: GEBCO\'s sea'); // its rows 100–119 from the south
+  assert.deepEqual(at(500, 990), [100, 0], 'GEBCO\'s land: land, one value');
+  assert.equal(stats.surveyed, 500 * EC); assert.equal(stats.interpolated, 100 * EC);
+  assert.equal(stats.steps, 0, 'EMODnet\'s water and GEBCO\'s never side by side: land between them');
+});
+
+// a regional store, as tools/emodnet.mjs writes it: 10 × 10 cells of 1° from 10° N, 0° E, in quarter
+// metres (−10 m), chunks of 5 × 5, uncompressed; the south-east chunk land (100 m)
+test('gridTile: a regional grid as its store describes it; NaN beyond it', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'merged-')), store = join(dir, 'm.zarr');
+  mkdirSync(join(store, '0', 'elevation'), { recursive: true });
+  const meta = { '0/elevation/.zarray': { zarr_format: 2, shape: [10, 10], chunks: [5, 5], dtype: '<i2', compressor: null, fill_value: 400, order: 'C', filters: null },
+    '0/elevation/.zattrs': { scale_factor: 0.25, cell_size_degrees: 1, north: 10, west: 0 } };
+  writeFileSync(join(store, '.zmetadata'), JSON.stringify({ zarr_consolidated_format: 1, metadata: meta }));
+  for (const name of ['0.0', '0.1', '1.0']) writeFileSync(join(store, '0', 'elevation', name), new Uint8Array(new Int16Array(25).fill(-40).buffer));
+  writeFileSync(join(store, '0', 'elevation', '1.1'), new Uint8Array(new Int16Array(25).fill(400).buffer));
+  const server = createServer((req, res) => { try { res.end(readFileSync(join(dir, new URL(req.url, 'http://x').pathname))); } catch { res.statusCode = 404; res.end(); } });
+  await new Promise((ok) => server.listen(0, '127.0.0.1', ok));
+  try {
+    const url = `http://127.0.0.1:${server.address().port}/m.zarr`, z = 3, { x, y } = tileXY(0, 10, z);
+    const { raw, sea } = await gridTile(url, 'elevation', z, Math.floor(x), Math.floor(y), false); // 0°–45° E, 0°–41° N
+    const px = (lon, lat) => { const t = tileXY(lon, lat, z); return Math.floor((t.y % 1) * 256) * 256 + Math.floor((t.x % 1) * 256); };
+    near(raw[px(3, 7)], -10, 1e-3, 'inside, the store\'s scale applied');
+    assert.ok(Number.isNaN(raw[px(20, 7)]) && Number.isNaN(raw[px(3, 30)]), 'beyond the grid: NaN');
+    near(raw[px(7.5, 2.5)], 100, 1e-3, 'the land chunk');
+    near(sea[px(3, 7)], -10, 1e-3);
+  } finally {
+    server.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

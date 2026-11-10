@@ -54,6 +54,8 @@ itself, and how to set it up: [docs/development.md](docs/development.md).
 ## More
 
 - [docs/architecture.md](docs/architecture.md): how the code is shaped, and why.
+- [docs/depths.md](docs/depths.md): where the depths and isobaths come from,
+  and how far to trust them.
 - [docs/drawing-ui.md](docs/drawing-ui.md) and
   [docs/drawing-format.md](docs/drawing-format.md): the drawing tools and
   their file.

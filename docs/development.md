@@ -76,11 +76,11 @@ Any static web server can serve `site/`. What a copy inherits:
 
 Two things are the project's own and need replacing in a copy:
 
-- **The data host.** GEBCO's depths, the seagrass tiles and the national
+- **The data host.** GEBCO's and EMODnet's depths, the seagrass tiles and the national
   imagery's coverage are read from the host named in `site/hosts.js`; a copy
   changes that one line. What the host must do:
   - serve, over HTTPS, the folders the data builds write, each as it is at the
-    host's root: `gebco-2026/`, `seagrass-2025/`, `coverage-2026/` (no
+    host's root: `gebco-2026/`, `emodnet-2024/`, `seagrass-2025/`, `coverage-2026/` (no
     listing, no function, no key; content types are not needed: the page reads
     every file as bytes);
   - answer a file it does not have with 404 (or 403): the page reads that as
@@ -89,12 +89,14 @@ Two things are the project's own and need replacing in a copy:
     `http://127.0.0.1:8099` for the browser tests;
   - not keep `coverage-2026/` cached for long, here or in browsers: it is
     replaced when rebuilt, and an old copy draws the old coverage. After a
-    rebuild, clear any cached copies. `gebco-2026/` and `seagrass-2025/` never
-    change: a new release is a new folder, which the page is changed to read.
+    rebuild, clear any cached copies. `gebco-2026/`, `emodnet-2024/` and
+    `seagrass-2025/` never change: a new release is a new folder, which the page is changed to read.
 - **The data builds.** Each tool says how to run it at its top, and writes one
   folder (above) to copy to the host:
   - `tools/gebco.mjs`: GEBCO's grids, downloaded (about 11 GB) and built into
     two Zarr stores (3.9 GB), then verified against the grids;
+  - `tools/emodnet.mjs`: EMODnet's depth model, downloaded (7.3 GB) and built
+    into two Zarr stores (2.9 GB), GEBCO's stores beside it;
   - `tools/seagrass.mjs`: EMODnet's seagrass product, downloaded and cut into
     tiles (needs `unzip`);
   - `tools/coverage.mjs`: OpenStreetMap's national boundaries, cut into the
@@ -121,8 +123,8 @@ is a summary only.
 | Satellite | EOX Sentinel-2 cloudless (EOxCloudless), one mosaic a year: 2025 to 2018, and 2016 (2017 covers only Europe) | CC BY 4.0 (2016); CC BY-NC-SA 4.0 from 2018 (non-commercial) |
 | Satellite, with the visitor's own key | Esri World Imagery, keyed (docs/esri-key.md) | Esri's terms, under the visitor's own ArcGIS account |
 | National aerial photos (over Satellite, from zoom 12, inside each country) | National aerial imagery: IGN BD ORTHO (France and its overseas departments), swisstopo SWISSIMAGE (Switzerland), Beeldmateriaal Nederland via PDOK (the Netherlands), AGEA 2022–2024 (Italy); each cut to its country with masks built from OpenStreetMap's boundaries, on the project's data host | Licence Ouverte 2.0; swisstopo's free use with attribution; CC BY 4.0; CC BY 4.0. The masks: ODbL |
-| Depth shading, isobaths, depth on click | GEBCO 2026 Grid (GEBCO Compilation Group), repacked as Zarr stores on the project's data host | Free to use and redistribute, with attribution |
-| Depth sources | GEBCO 2026 type identifier grid, likewise | As GEBCO |
+| Depth shading, isobaths, depth on click | GEBCO 2026 Grid (GEBCO Compilation Group); in European seas EMODnet Bathymetry's DTM 2024. Repacked as Zarr stores on the project's data host | GEBCO: free to use and redistribute, with attribution; EMODnet: CC BY 4.0 |
+| Depth sources | GEBCO 2026 type identifier grid; in European seas EMODnet's flag of interpolated cells, likewise | As above |
 | Relief shading, land contours | AWS Terrain Tiles (Terrarium) | Open data, with attribution per source |
 | Seamarks | OpenSeaMap | CC BY-SA 2.0 |
 | EMODnet depth (Europe) | EMODnet Bathymetry (tiles; values from its Zarr store, listed in EDITO's catalogue) | CC BY 4.0 |

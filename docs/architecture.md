@@ -35,11 +35,12 @@ from this file.
 **One coastline.** Depth shading, isobaths, relief and land contours are
 drawn from elevation tiles that the page cuts to the OpenStreetMap coastline
 before MapLibre sees them (`site/clip.js`, in a Web Worker so the map stays
-responsive). The sea's tiles are sampled from GEBCO's grid (`site/gebco.js`,
-reading a Zarr store the project publishes); the land's come from a public
-DEM. Inland water is classified per water body from the elevation along its
+responsive). The sea's tiles are sampled from GEBCO's grid, and in European
+seas from EMODnet's, whole (`site/gebco.js`, reading Zarr stores the project
+publishes; which grid, and why: [depths.md](depths.md)); the land's come from
+a public DEM. Inland water is classified per water body from the elevation along its
 shore: at sea level, a lake with no depth, or a sea with its own surface
-(the Caspian). The depths are drawn as GEBCO has them, no filter; the
+(the Caspian). The depths are drawn as the grids have them, no filter; the
 isobaths trace them half a metre shallower, so that a flat of whole metres
 is never traced cell by cell. The isobaths are traced from the depths uncut,
 at the zoom where the data has its last detail, and cut in vector space
@@ -128,5 +129,5 @@ once, in the page's About dialog (`site/index.html`); the README sums it up.
 | A line's elevation profile | `site/draw/profile.js`, `profileFor` in `site/app.js` |
 | Geodesy and map maths | `site/geodesy.js`, `site/geo.js` |
 | The page's files and the offline areas kept for use without a connection | `site/sw.js`, `site/offline.js` |
-| The data builds | `tools/gebco.mjs`, `tools/seagrass.mjs`, `tools/coverage.mjs` |
+| The data builds | `tools/gebco.mjs`, `tools/emodnet.mjs`, `tools/seagrass.mjs`, `tools/coverage.mjs` |
 | The tests | `test/`: each says what it covers at its top |

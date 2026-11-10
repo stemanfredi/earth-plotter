@@ -14,8 +14,12 @@ reference for what it does; what was learned on the way is in
   Interpolated areas of sparse data can show the pattern of the data's own
   grid; smoothing only there would remove it without touching real detail.
   None seen so far: only if one appears.
-- **EMODnet's depths: parked** (2026-11-04) on the branch `emodnet-depth`;
-  why, and what a version must do: docs/takeaways.md.
+- **Better depths beyond Europe.** In European seas the depths are EMODnet's
+  (docs/depths.md says why, and why its grid is read whole). Elsewhere GEBCO's
+  cells read from satellite images still draw steps beside sounded cells
+  (north-west Australia and Newfoundland have most);
+  national open grids (NOAA, Canada, Australia) could replace them region by
+  region, each whole, as EMODnet does.
 - **Smoke's retry only on the weekly run.** On a push, a failed smoke run
   is run again after a minute, and a pass on the retry is only a warning on
   the run. Provider failures are warnings on a push anyway, so the retry

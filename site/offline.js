@@ -216,6 +216,8 @@ Map data © OpenStreetMap contributors (ODbL), © OpenMapTiles (CC BY 4.0), serv
 Land elevation: Mapzen Terrain Tiles (AWS Open Data; sources and their credits:
 ${DEM_CREDITS}).
 Depths: GEBCO Compilation Group (2026) GEBCO 2026 Grid (doi:10.5285/4f68d5c7-45eb-f999-e063-7086abc036fa).
+In European seas: EMODnet Bathymetry Consortium (2024) EMODnet Digital Bathymetry (DTM 2024)
+(doi:10.12770/cf51df64-56f9-4a99-b1aa-36b8d7b743a1), CC BY 4.0.
 Fonts: Noto Sans, SIL Open Font License 1.1.
 Not for navigation.
 `;

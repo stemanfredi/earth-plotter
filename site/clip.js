@@ -16,7 +16,7 @@
 import { NO_DEPTH_M, OMT_MAX, ISOBATH_STEPS, ISOBATH_TRACE } from './catalog.js';
 import { traceLines, clipLines, encodeLines, EXTENT } from './isobaths.js';
 import { HOSTS } from './hosts.js';
-import { gebcoTile } from './gebco.js';
+import { seaTile } from './gebco.js';
 import { latOf, tileBounds, TILE } from './geo.js';
 import { fetchOk, fetchBytes, tileUrl, lru } from './net.js';
 
@@ -306,7 +306,7 @@ export function clipper({ template, mode, omtTileJson, remember = true }) {
   // water is classified from, at lower zooms too; drawn the sea's depths blended from water cells
   // alone (gebco.js), so the shore's land cells do not pull them shallower; the land's its DEM, as it
   // is, for both
-  const tile = (z, x, y) => rawCache(`${z}/${x}/${y}`, () => (mode === 'sea' ? gebcoTile(z, x, y).then(({ raw, sea }) => ({ raw, drawn: sea }))
+  const tile = (z, x, y) => rawCache(`${z}/${x}/${y}`, () => (mode === 'sea' ? seaTile(z, x, y).then(({ raw, sea }) => ({ raw, drawn: sea }))
     : demMetres(tileUrl(template, z, x, y)).then((m) => ({ raw: m, drawn: m }))));
   const raw = (z, x, y) => tile(z, x, y).then((t) => t.raw);
   const drawn = (z, x, y) => tile(z, x, y).then((t) => t.drawn);

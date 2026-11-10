@@ -80,6 +80,32 @@ in the history, not here.
   - Every chunk of a store must exist: a saved offline area cannot hold a
     file that is not there. Land as one value, not its heights, halved the
     store (4.9 GB to 2.8 GB).
+- **One depth grid per region, whole** (November 2026). The isobaths west
+  of Salamis drew a 14 m bank in 40 m of water: GEBCO 2026 mixes its sources
+  cell by cell, and its cells read from satellite images (type 16) stand
+  beside sounded ones as steps. On the shelf worldwide, neighbouring cells
+  step by 10 m and half their depth in under 1 % of pairs within one kind
+  of source, in 8–14 % across kinds. So in European seas the page reads
+  EMODnet's grid whole, its interpolated cells too (tools/emodnet.mjs), and
+  says on a click, and in *Depth sources*, which a cell is. The whole
+  account, for a reader: [depths.md](depths.md).
+  - A grid compiled by one hand is smoother than a merge of two, ours or
+    GEBCO's: the merge above took EMODnet's surveys only, and would have
+    left Salamis as it was.
+  - GEBCO's "surveyed" (type 17) includes what EMODnet itself flags as
+    interpolated: 59 % of the Aegean's surveyed shelf cells.
+  - Nothing EMODnet publishes tells a good interpolation (Salamis, as
+    charts have it) from a blind one (the Gulf of La Spezia, 1–5 m where
+    charts have 6–8): same flag, same source reference, same count. No rule
+    of ours would be more than a guess: the depths stay EMODnet's, marked.
+  - The coastline as a depth of 0 m does not help: held out against
+    EMODnet's surveys, a ramp from the shore reads 5–7 m too shallow in the
+    first 115 m, where the fade drawn now reads 2–14 m too deep; a concave
+    profile halves the error on steep coasts and worsens flat ones. The
+    seabed drops at the waterline faster than any one rule says.
+  - Towards the edge of EMODnet's area little is its own: off West Africa
+    GEBCO 2026 marks survey tracks where EMODnet's grid is marked
+    interpolated. Not compared further.
 
 - **Copernicus's records can be read as series in a page** (2026-11-06).
   Beside the store the GIS export reads (`timeChunked`: one time over a wide

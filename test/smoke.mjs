@@ -500,7 +500,8 @@ await section('EMODnet and the depth sources', async () => {
 });
 
 await section('the depth on a click', async () => {
-  // a click on the sea says its depth (GEBCO, rounded towards shallower) and its source; on land, nothing
+  // a click on the sea says its depth (rounded towards shallower), the grid it is from (EMODnet's in
+  // European seas) and how it was obtained; on land, nothing
   const dp = await open('#v=9/43.9/8.3/0&on=chart,coastline,depth,isobaths', ctx, 'elements');
   const at = async (lng, lat) => {
     const { x, y } = await dp.evaluate(([a, b]) => map.project([a, b]), [lng, lat]);
@@ -510,24 +511,31 @@ await section('the depth on a click', async () => {
     return dp.evaluate(() => document.querySelector('.depthpop .maplibregl-popup-content > div')?.textContent || '');
   };
   const sea = await at(8.3, 43.9), land = await at(8.0, 44.2);
-  check(/^\d+ m\d+°[\d.]+′[NS] \d+°[\d.]+′[EW]GEBCO 2026 · (surveyed|estimated|other grids, unknown)$/.test(sea) && !land && !dp.errors.length, `a click on the sea gives its depth, the place and the source (${sea}); on land, nothing ${dp.errors.join(' | ')}`);
+  check(/^\d+ m\d+°[\d.]+′[NS] \d+°[\d.]+′[EW]EMODnet 2024 · (surveyed|interpolated: no soundings here)$/.test(sea) && !land && !dp.errors.length, `a click on the sea gives its depth, the place and the source (${sea}); on land, nothing ${dp.errors.join(' | ')}`);
   // isobaths over the shading take its colours up to its last zoom, then the style's blue again
   const ink = await dp.evaluate(() => [map.getPaintProperty('isobaths', 'line-color'), map.getStyle().layers.find((l) => l.id === 'depth').maxzoom]);
   check(Array.isArray(ink[0]) && ink[0][0] === 'step' && ink[0][3] === ink[1] && ink[0][4] === '#335f97', `isobaths: the shading's colours up to zoom ${ink[1]}, its deepest blue above (${JSON.stringify(ink[0]).slice(0, 80)})`);
   await dp.close();
   // cut in vector space with the base map's coastline: at a harbour zoom the lines are there, from
   // zoom 14 tiles (the source's last), and no vertex of theirs in the view lies on land (the base
-  // map's own water polygons say where the sea is)
+  // map's own water polygons say where the sea is); a line's end on the shore, rounded to the tile's
+  // grid (0.6 m at zoom 14), may fall a hair outside it: within a metre of the shore is on it
   const hz = await open('#v=15.5/44.0267/9.8508/0&on=chart,coastline,isobaths', ctx, 'elements');
   const traced = await hz.evaluate(() => {
     const polys = map.querySourceFeatures('omt', { sourceLayer: 'water' }).flatMap((f) => { const g = f.toJSON().geometry; return g.type === 'Polygon' ? [g.coordinates] : g.type === 'MultiPolygon' ? g.coordinates : []; });
     const inRing = ([x, y], ring) => { let c = false; for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) { const [xi, yi] = ring[i], [xj, yj] = ring[j]; if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) c = !c; } return c; };
     const inWater = (q) => polys.some((poly) => inRing(q, poly[0]) && !poly.slice(1).some((h) => inRing(q, h)));
+    const mx = 111320 * Math.cos((map.getCenter().lat * Math.PI) / 180), my = 110950; // metres a degree
+    const onShore = ([x, y]) => polys.some((poly) => poly.some((ring) => ring.some((p, i) => {
+      if (!i) return false;
+      const ax = (ring[i - 1][0] - x) * mx, ay = (ring[i - 1][1] - y) * my, dx = (p[0] - x) * mx - ax, dy = (p[1] - y) * my - ay, t = Math.max(0, Math.min(1, -(ax * dx + ay * dy) / (dx * dx + dy * dy || 1)));
+      return Math.hypot(ax + t * dx, ay + t * dy) < 1;
+    })));
     const b = map.getBounds(), inView = ([x, y]) => x > b.getWest() && x < b.getEast() && y > b.getSouth() && y < b.getNorth();
     let pts = 0, land = 0;
     for (const f of map.querySourceFeatures('isobaths', { sourceLayer: 'contours' })) {
       const g = f.toJSON().geometry;
-      for (const q of (g.type === 'LineString' ? [g.coordinates] : g.coordinates).flat().filter(inView)) { pts++; if (!inWater(q)) land++; }
+      for (const q of (g.type === 'LineString' ? [g.coordinates] : g.coordinates).flat().filter(inView)) { pts++; if (!inWater(q) && !onShore(q)) land++; }
     }
     return [map.getSource('isobaths').maxzoom, pts, land];
   });

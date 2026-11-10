@@ -78,33 +78,28 @@ Two things are the project's own and need replacing in a copy:
 
 - **The data host.** GEBCO's depths, the seagrass tiles and the national
   imagery's coverage are read from the host named in `site/hosts.js`; a copy
-  changes that one line. The host must be a static file server (any object
-  storage with a public bucket does) serving the folders the three tools
-  build, `gebco-2026/` (two Zarr stores: small files, fetched whole, no range
-  requests), `seagrass-2025/` (`{z}/{x}/{y}.pbf` and `index.json`) and
-  `coverage-2026/` (per country, `index.json` and `12/{x}/{y}.bin`), over HTTPS, with cross-origin reads
-  allowed from the page's origin and, for the browser tests, from
-  `http://127.0.0.1:8099`. The page reads every file as bytes itself, so
-  content types are not needed, and the files are stored as they are. The
-  release is in each path, so the files can be cached as immutable. Nothing
-  else: no listing, no function, no key. The storage used here is one of many
-  possible; its details change often and are not documented here.
-- **The data builds.** `tools/gebco.mjs` downloads GEBCO's grids and builds
-  the two Zarr stores (and verifies them); `tools/seagrass.mjs` builds the
-  seagrass tiles from EMODnet's downloadable product (its map service takes a
-  minute or more a tile, which is why it is not used live); `tools/coverage.mjs`
-  cuts OpenStreetMap's national boundaries into the masks the national imagery
-  is clipped with (its services draw white, or older imagery, beyond their
-  borders), and marks the tiles with sea in them, where a service's white may
-  be its "no imagery" and is cleared (from France's and the Netherlands' own
-  land outlines and Natural Earth's countries; read only, not published).
-  Each says how to run it at its top. Each writes one folder named
-  by its release (`DIR/zarr/gebco-2026/`, `DIR/tiles/seagrass-2025/`,
-  `DIR/tiles/coverage-2026/`, site/ortho.js RELEASE), which is copied to the
-  data host's root as it is. The coverage, built again, replaces its folder:
-  its files are cached as immutable, so the CDN's copies are purged after, all
-  of them (a purge by address misses the copies kept per page origin: the
-  host answers `Vary: Origin`).
+  changes that one line. What the host must do:
+  - serve, over HTTPS, the folders the data builds write, each as it is at the
+    host's root: `gebco-2026/`, `seagrass-2025/`, `coverage-2026/` (no
+    listing, no function, no key; content types are not needed: the page reads
+    every file as bytes);
+  - answer a file it does not have with 404 (or 403): the page reads that as
+    empty (a land-free chunk, a tile without seagrass);
+  - allow cross-origin reads from the page's origin, and from
+    `http://127.0.0.1:8099` for the browser tests;
+  - not keep `coverage-2026/` cached for long, here or in browsers: it is
+    replaced when rebuilt, and an old copy draws the old coverage. After a
+    rebuild, clear any cached copies. `gebco-2026/` and `seagrass-2025/` never
+    change: a new release is a new folder, which the page is changed to read.
+- **The data builds.** Each tool says how to run it at its top, and writes one
+  folder (above) to copy to the host:
+  - `tools/gebco.mjs`: GEBCO's grids, downloaded (about 11 GB) and built into
+    two Zarr stores (3.9 GB), then verified against the grids;
+  - `tools/seagrass.mjs`: EMODnet's seagrass product, downloaded and cut into
+    tiles (needs `unzip`);
+  - `tools/coverage.mjs`: OpenStreetMap's national boundaries, cut into the
+    masks the national imagery is clipped with, and the tiles with sea in
+    them, where a service's white is cleared (needs about 4 GB of memory).
 - **The preview.** `tools/preview.mjs` takes `site/preview.jpg` again (the
   README's picture and shared links'), after a change to what the page shows.
 

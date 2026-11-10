@@ -152,7 +152,7 @@ function layers() {
     // colour fills are chart-only: over satellite the image shows the water; isobaths still draw
     { id: 'depth', type: 'color-relief', source: 'dem-sea', maxzoom: DEPTH_ZMAX, metadata: { item: 'depth', base: 'chart' }, paint: { 'color-relief-color': depthRamp(DEPTH_SCHEMES.atlas) } },
     raster('gebco-tid', 'depthsource'),
-    ...overlayLayers(['emodnetdepth', 'substrate']),
+    ...overlayLayers(['substrate']),
     ...Object.keys(GIBS).map((k) => raster(`gibs-${k}`, 'gibs', k)),
     // colours, then the layers that can draw arrows (currents, then wind), whose arrows go over them
     ...Object.keys(CMEMS).sort((a, b) => ARROWS_LAST(a) - ARROWS_LAST(b)).map((id) => raster(`cmems-${id}`, id)),
@@ -275,7 +275,7 @@ export const LOCATION_LAYERS = [
     paint: { 'circle-radius': 7, 'circle-color': '#1f5f86', 'circle-stroke-color': '#ffffff', 'circle-stroke-width': 2.5 } },
 ];
 
-// the colour pictures drawn above EMODnet depth and under the isobaths (layers() puts them there):
+// the colour pictures drawn above the depths' own layers and under the isobaths (layers() puts them there):
 // over one, the isobaths take a dark ink (app.js isobathInk). Ocean data is the same; seagrass, whose
 // meadows leave the depth shading seen round them, is not
 export const SEA_PICTURES = ['substrate', 'traffic', 'routes', 'worlddensity'];

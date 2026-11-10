@@ -1,6 +1,6 @@
 import * as maplibregl from './vendor/maplibre-gl.mjs';
 import mlcontour from './vendor/maplibre-contour.mjs';
-import { GROUPS, ITEMS, isBase, EOX_YEARS, eoxKey, GIBS, DEM_TILES, DEM_SEA_MAX, DEPTH_ZMAX, DEPTH_SOURCES, DEM_LAND_MAX, OMT_TILEJSON, DEPTH_SCHEMES, NO_DEPTH, DENSITY, gibsTiles, gibsDomainUrl, domainEnd, densityTiles, CMEMS, CMEMS_DEPTHS, CLASS_LABELS, EMODNET_DEPTH_STOPS, EMODNET_AREA, GRIDS, SEAGRASS } from './catalog.js';
+import { GROUPS, ITEMS, isBase, EOX_YEARS, eoxKey, GIBS, DEM_TILES, DEM_SEA_MAX, DEPTH_ZMAX, DEPTH_SOURCES, DEM_LAND_MAX, OMT_TILEJSON, DEPTH_SCHEMES, NO_DEPTH, DENSITY, gibsTiles, gibsDomainUrl, domainEnd, densityTiles, CMEMS, CMEMS_DEPTHS, CLASS_LABELS, EMODNET_AREA, EUROPE, GRIDS, SEAGRASS } from './catalog.js';
 import { buildStyle, depthRamp, OPACITY_PROP, SEA_PICTURES, LOCATION_LAYERS, INK } from './style.js';
 import { cmemsTile, partTimes, partLevels, domainOf, cmemsLegend, partIn } from './cmems.js';
 import { workerClipper } from './clip.js';
@@ -309,9 +309,8 @@ function shoreFill() {
 const depthStops = () => DEPTH_SCHEMES[state.variant.depth];
 // Isobaths and their labels in what reads on what is under them (contrast 3:1 at least, measured
 // against each scheme's colour at each depth): the topmost picture decides.
-//   a colour picture (Ocean data, EMODnet, densities, depth sources): dark ink, the one colour that
+//   a colour picture (Ocean data, densities, depth sources): dark ink, the one colour that
 //     reads across their scales, which run from dark blue to yellow and red
-//     (EMODnet depth: as they, but white over its dark blues from 1000 m, both its schemes)
 //   satellite: light, on a dark halo
 //   atlas shading: navy over its pale blues down to 1500 m, white over its dark blues from 2000 m
 //   nautical shading, all pale: a darker blue than on white
@@ -321,16 +320,14 @@ const ATLAS_SPLIT_M = 2000;
 const byDepth = (shallow, deep, at = ATLAS_SPLIT_M) => ['step', ['abs', ['get', 'ele']], shallow, at, deep];
 const ISOBATH_INK = {
   picture: { line: 'rgba(43,58,70,0.7)', text: INK, halo: LIGHT_HALO },
-  emodnet: { line: byDepth('rgba(43,58,70,0.7)', '#ffffff', 1000), text: byDepth(INK, '#ffffff', 1000), halo: byDepth(LIGHT_HALO, DARK_HALO, 1000) },
   sat: { line: '#bfe0ff', text: '#cfe6ff', halo: DARK_HALO },
   atlas: { line: byDepth('#22436a', '#ffffff'), text: byDepth('#22436a', '#ffffff'), halo: byDepth(LIGHT_HALO, 'rgba(20,45,80,0.85)') },
   nautical: { line: '#3d6a91', text: '#3d6a91', halo: LIGHT_HALO },
 };
-const PICTURES = new Set(SEA_PICTURES); // drawn above EMODnet depth (style.js)
+const PICTURES = new Set(SEA_PICTURES); // drawn above the depths' layers (style.js)
 const isPicture = (id) => state.on.has(id) && (PICTURES.has(id) || (byId[id].group === 'data' && drawnAs(id) !== 'arrows'));
 function isobathInk() {
   if (ITEMS.some((it) => isPicture(it.id))) return ISOBATH_INK.picture;
-  if (state.on.has('emodnetdepth')) return ISOBATH_INK.emodnet;
   if (state.on.has('depthsource')) return ISOBATH_INK.picture;
   if (state.on.has('sat')) return ISOBATH_INK.sat;
   const plain = { line: chartLineColour[LINE_IDS[0]], text: chartLabelPaint[LABEL_IDS[0]]['text-color'], halo: LIGHT_HALO };
@@ -424,9 +421,11 @@ function classesOf(urls) {
 }
 
 // the grids the depth shading draws in view: EMODnet's too where the view meets its area
+// two boxes [west, south, east, north] meet; the view's box
+const meets = ([w1, s1, e1, n1], [w, s, e, n]) => w1 < e && e1 > w && s1 < n && n1 > s;
+const viewBox = () => { const b = map.getBounds(); return [b.getWest(), b.getSouth(), b.getEast(), b.getNorth()]; };
 function depthGrids() {
-  const b = map.getBounds();
-  return seaGrid() !== 'gebco' && EMODNET_AREA.some(([w, s, e, n]) => b.getWest() < e && b.getEast() > w && b.getSouth() < n && b.getNorth() > s) ? 'GEBCO 2026 · EMODnet 2024' : 'GEBCO 2026';
+  return seaGrid() !== 'gebco' && EMODNET_AREA.some((a) => meets(viewBox(), a)) ? 'GEBCO 2026 · EMODnet 2024' : 'GEBCO 2026';
 }
 
 const KINDS = {
@@ -442,21 +441,15 @@ const KINDS = {
     // the depth shading's legend: while the chart is under it, zoomed out (where the shading is)
     legend: () => (state.on.has('chart') && map.getZoom() < DEPTH_ZMAX ? { key: `${state.variant.depth}|${depthGrids()}`,
       paint: (el) => drawRamp(el, 'Depth shading', `m · ${depthGrids()}`, depthStops(), 'metres', { colour: NO_DEPTH, label: 'lakes: no depth · lagoons: shown as 0–5 m' }) } : null),
-    values: (it, box) => gebcoValues(box),
+    // the grids it draws: GEBCO's cells, and EMODnet's own (from EMODnet's store) where the view meets
+    // its area and its grid is the one read there; each left out on its own (a view too wide for EMODnet's)
+    values: (it, box) => [gebcoValues(box), ...(it.at.grid !== 'gebco' && EMODNET_AREA.some((a) => meets(box, a)) ? [emodnetValues(box)] : [])],
   },
   // where GEBCO's depths come from (its type identifier grid, drawn by gebco.js): a classed layer,
   // its codes in the GIS export
   gebcotid: {
     legend: (id) => KINDS.classes.legend(id),
     values: (it, box) => gebcoValues(box, 'tid'),
-  },
-  // EMODnet's depth, drawn by EMODnet (tiles); its values from its Zarr store
-  emodnet: {
-    legend(id) {
-      const v = state.variant[id], stops = EMODNET_DEPTH_STOPS[v];
-      return { key: v, paint: (el) => drawRamp(el, byId[id].label, 'm · not linear', stops, 'metres') };
-    },
-    values: (it, box) => emodnetValues(box),
   },
   // a classed layer its service draws (seabed substrate): its legend, the service's classes and colours
   classes: {
@@ -736,7 +729,13 @@ const variantInfos = [];
 // them (catalog.js grid: true), where the layer says its source: one choice, its control the same in
 // each. Every source drawn from the depths asks for its tiles anew; a depth shown, a line's profile
 // shown (the inspector built again reads it anew) are the other grid's
-const gridChoices = [];
+const gridChoices = [], gridMores = [];
+// their ⓘ marked while the grid is not the usual one: the choice is behind it
+function markGrid() {
+  const other = state.grid !== GRIDS[0][0];
+  for (const b of gridMores) { b.classList.toggle('set', other); b.title = `${GRID_TITLE}${other ? `: ${GRIDS.find(([g]) => g === state.grid)[1]}` : ''}`; }
+}
+const MORE_TITLE = 'Source, licence, resolution, opacity', GRID_TITLE = `${MORE_TITLE}, the depths' grid`;
 function setGrid(g) {
   if (g === state.grid) return;
   state.grid = g;
@@ -744,6 +743,7 @@ function setGrid(g) {
   depthPopup.remove();
   drawPanel?.render('sel');
   for (const fill of gridChoices) fill();
+  markGrid();
   renderLegends();
   writeHash();
 }
@@ -764,14 +764,15 @@ function infoBlock(it) {
       h('p', {}, h('b', {}, 'Source '), info.src),
       h('p', {}, h('b', {}, 'Licence '), info.lic),
       h('p', {}, h('b', {}, 'Resolution '), info.res),
-      info.url ? h('p', {}, h('a', { href: info.url, target: '_blank', rel: 'noopener noreferrer' }, info.url.replace(/^https:\/\/(www\.)?/, '').replace(/\/.*$/, ''))) : null].filter(Boolean));
+      info.url ? h('p', {}, h('a', { href: info.url, target: '_blank', rel: 'noopener noreferrer' }, info.url.replace(/^https:\/\/(www\.)?/, '').replace(/\/.*$/, ''))) : null,
+      info.more ? h('p', {}, h('a', { href: info.more[1], target: '_blank', rel: 'noopener noreferrer' }, info.more[0])) : null].filter(Boolean)); // the long account, in the project's documents
   };
   fill();
   if (it.infoOf) variantInfos.push(fill);
   return h('div', { class: 'info', hidden: true }, opacity, it.grid ? gridChoice() : null, text);
 }
 function moreButton(label, onclick) {
-  return h('button', { class: 'more', type: 'button', title: 'Source, licence, resolution, opacity', 'aria-label': `About ${label}`, 'aria-expanded': 'false', onclick }, icon(...UI_ICON.info));
+  return h('button', { class: 'more', type: 'button', title: MORE_TITLE, 'aria-label': `About ${label}`, 'aria-expanded': 'false', onclick }, icon(...UI_ICON.info));
 }
 // a ⓘ's click: its block shown or hidden
 const toggles = (info) => (e) => { info.hidden = !info.hidden; e.currentTarget.setAttribute('aria-expanded', String(!info.hidden)); };
@@ -800,9 +801,10 @@ function controlsOf(it) {
 }
 function itemRow(it) {
   const input = h('input', { type: 'checkbox', role: 'switch', class: 'switch', id: `i-${it.id}`, checked: state.on.has(it.id), onchange: (e) => setOn(it.id, e.target.checked) });
-  const info = infoBlock(it), controls = controlsOf(it);
+  const info = infoBlock(it), controls = controlsOf(it), more = moreButton(it.label, toggles(info));
+  if (it.grid) gridMores.push(more);
   const row = h('li', { class: 'item' },
-    h('div', { class: 'line' }, h('label', { class: 'name', for: input.id }, it.label, h('span', { class: 'hint' })), moreButton(it.label, toggles(info)), input),
+    h('div', { class: 'line' }, h('label', { class: 'name', for: input.id }, it.label, h('span', { class: 'hint' })), more, input),
     controls, info);
   rows[it.id] = { row, controls };
   return row;
@@ -842,7 +844,7 @@ function groupBlock(g) {
   const items = ITEMS.filter((it) => it.group === g.id);
   const det = h('details', { 'data-group': g.id, open: groupsOpen.has(g.id),
     ontoggle: (e) => { e.target.open ? groupsOpen.add(g.id) : groupsOpen.delete(g.id); store.set(GROUPS_OPEN, JSON.stringify([...groupsOpen])); } },
-    h('summary', {}, h('span', { class: 'gname' }, g.label), h('span', { class: 'count', title: 'Layers on' })),
+    h('summary', {}, h('span', { class: 'gname' }, g.label), h('span', { class: 'count', title: 'Layers shown' })),
     g.sections ? dataBlock(items, g.sections) : g.exclusive ? baseBlock(items) : h('ul', {}, items.map(itemRow)));
   det._items = items;
   det._exclusive = g.exclusive;
@@ -850,6 +852,7 @@ function groupBlock(g) {
 }
 const groupEls = GROUPS.map(groupBlock);
 menu.append(...groupEls);
+markGrid();
 
 // the panel and what follows the state (the time line, status marks, legends), after a change of
 // what is on or how it is drawn; a step of the time or the depth renders the time line alone, a
@@ -864,23 +867,35 @@ function renderMenu() {
   for (const render of sourceRows) render();
   for (const fill of variantInfos) fill();
   renderWhen();
-  for (const g of groupEls) {
-    const n = g._items.filter((it) => state.on.has(it.id)).length;
-    g.querySelector('.count').textContent = g._exclusive || !n ? '' : String(n);
-  }
   renderStatus();
   renderZoom();
 }
-// a layer on, out of its zoom range: greyed out, "zoom 9+"; the legends (depth shading's goes above zoom 12)
+// Why a layer, on or not, draws nothing in this view: out of its zoom range ("zoom 9+"), over a base
+// it is not drawn over ("chart only": the depth shading over Satellite), or (europe) with the view
+// outside European seas (true: its name says "(Europe)", no more is written). '' where it draws.
+const onlyOver = (it) => { const ls = layersOf[it.id] || [], base = ls.length && ls.every((l) => l.metadata.base) ? ls[0].metadata.base : null; return base && !state.on.has(base) ? base : null; };
+function notDrawn(it, z = map.getZoom()) {
+  if (it.minzoom && z < it.minzoom) return `zoom ${it.minzoom}+`;
+  if (it.maxzoom && z >= it.maxzoom + 1) return `zoom ≤ ${it.maxzoom}`;
+  if (onlyOver(it)) return `${byId[onlyOver(it)].label.toLowerCase()} only`;
+  return it.europe && !meets(viewBox(), EUROPE);
+}
+// after a move (a zoom, a pan): each row's hint, there before the layer is switched on; a layer on
+// that draws nothing greyed out; each group's count of the layers on that draw; the legends (the
+// depth shading's goes above zoom 12, a Europe-only layer's outside Europe)
 function renderZoom() {
   const z = map.getZoom();
   for (const it of ITEMS) {
     const r = rows[it.id];
     if (!r) continue;
-    const on = state.on.has(it.id), low = it.minzoom && z < it.minzoom, high = it.maxzoom && z >= it.maxzoom + 1;
-    r.row.classList.toggle('dim', !!(on && (low || high)));
+    const why = notDrawn(it, z);
+    r.row.classList.toggle('dim', !!(state.on.has(it.id) && why));
     const hint = r.row.querySelector('.hint');
-    if (hint) hint.textContent = !on ? '' : low ? `zoom ${it.minzoom}+` : high ? `zoom ≤ ${it.maxzoom}` : '';
+    if (hint) hint.textContent = typeof why === 'string' ? why : '';
+  }
+  for (const g of groupEls) {
+    const n = g._items.filter((it) => state.on.has(it.id) && !notDrawn(it, z)).length;
+    g.querySelector('.count').textContent = g._exclusive || !n ? '' : String(n);
   }
   renderLegends();
 }
@@ -910,7 +925,7 @@ async function paintLegend(id, el, spec) {
 function renderLegends() {
   const want = [];
   for (const it of ITEMS) {
-    const spec = state.on.has(it.id) && kindOf(it.id)?.legend?.(it.id);
+    const spec = state.on.has(it.id) && !(it.europe && notDrawn(it) === true) && kindOf(it.id)?.legend?.(it.id);
     if (spec) { paintLegend(it.id, legendEl(it.id), spec); want.push(it.id); }
   }
   legendWant = want;
@@ -1271,7 +1286,7 @@ function snapshot(src) {
   const timed = timeOn().length > 0, hr = hourly(), mo = monthly(), depth = depthOn().length ? state.depth : null, t = state.time;
   // each layer with what it is drawn with: at (its variant, the time and depth: its values are read at these), and for
   // item.json its period (density), its day (NASA daily), what it draws (colours, arrows: Copernicus)
-  const layers = drawnItems().map((it) => ({ ...it, assets: [], at: { variant: state.variant[it.id], t, depth: state.depth },
+  const layers = drawnItems().map((it) => ({ ...it, assets: [], at: { variant: state.variant[it.id], t, depth: state.depth, grid: state.grid },
     period: DENSITY[it.id] ? state.period[it.id] : undefined, date: it.kind === 'gibs' ? gibsDay : undefined, draws: it.kind === 'cmems' ? drawnAs(it.id) : undefined }));
   return {
     when, name: exportName(when, c.lat, c.lng), at: fmtPos(c.lat, c.lng), lat: c.lat,
@@ -1333,7 +1348,7 @@ map.on('load', () => {
 map.on('moveend', writeHash);
 let moveRaf = 0; // once per frame while moving: the graticule's edge labels follow the frame, the scale bar the view
 map.on('move', () => { cancelAnimationFrame(moveRaf); moveRaf = requestAnimationFrame(() => { updateGraticule(); scaleText(); }); });
-map.on('zoomend', renderZoom);
+map.on('moveend', renderZoom); // a zoom, and a pan: into or out of European seas
 // the Layers tab's spinner: the map's layers loading for longer than a moment (the sources set here,
 // the drawing's, the graticule, my location, as the pointer or the map moves, load nothing: they
 // blinked it)

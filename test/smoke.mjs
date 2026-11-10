@@ -183,6 +183,17 @@ await section('a zoom', async () => {
   await settled(zm);
   const z13 = await zoomed();
   check(z8.join() === 'zoom 9+,true,true' && z13.join() === ',false,false', `a zoom updates the hints and legends (zoom 8: ${z8}; 13.5: ${z13})`);
+  // what else draws nothing says so: a Europe-only layer greyed out and without its legend beyond Europe (a pan
+  // alone), the depth shading over Satellite; a group counts the layers that draw; a hint is there before the switch
+  const row = (id) => `[...document.querySelector('.item:has(#i-${id})').classList].includes('dim') + ':' + document.querySelector('.item:has(#i-${id}) .hint').textContent`;
+  const state = () => zm.evaluate(`[${row('substrate')}, ${row('depth')}, ${row('seamarks')}, document.querySelector('details[data-group=sea] .count').textContent, !!document.querySelector('#legends canvas[data-legend=substrate]')].join()`);
+  await zm.evaluate(() => { document.querySelector('#i-substrate').click(); document.querySelector('#i-seamarks').click(); map.jumpTo({ zoom: 8 }); }); // seamarks switched off: its hint stays
+  await settled(zm);
+  const europe = await state();
+  await zm.evaluate(() => { map.jumpTo({ center: [-77.5, 25] }); document.querySelector('#i-sat').click(); });
+  await settled(zm);
+  const beyond = await state();
+  check(europe === 'false:,false:,false:zoom 9+,2,true' && beyond === 'true:,true:chart only,false:zoom 9+,,false', `a layer that draws nothing here says so (Europe, chart: ${europe}; the Bahamas, Satellite: ${beyond})`);
   await zm.close();
 });
 
@@ -481,8 +492,8 @@ await section('export parity', async () => {
 });
 
 await section('EMODnet and the depth sources', async () => {
-  // EMODnet: depth and its values, seabed substrate with its classes, the human activities overlays
-  const em = await open('#v=9/52.6/3.2/0&on=chart,coastline,emodnetdepth,substrate,cables,windfarms,wrecks,worlddensity,depthsource,legend', ctx, 'elements');
+  // EMODnet: the depth shading's values from its grid, seabed substrate with its classes, the human activities overlays
+  const em = await open('#v=9/52.6/3.2/0&on=chart,coastline,depth,substrate,cables,windfarms,wrecks,worlddensity,depthsource,legend', ctx, 'elements');
   // the legends drawn from what the services say (their classes)
   await until(em, () => ['substrate', 'depthsource'].every((id) => document.querySelector(`#legends canvas[data-legend=${id}]`)?.getAttribute('aria-label')?.includes(',')), null, 30000);
   const [emBroken, emClasses] = await em.evaluate(() => [[...document.querySelectorAll('.item.error, .item.partial')].map((r) => `${r.querySelector('.name').textContent} (${r.title})`),

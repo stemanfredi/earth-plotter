@@ -111,7 +111,8 @@ depth shading's legend names GEBCO alone, and so does a click.
 
 It is there so that the choice of grid can be checked by anyone, place by
 place, and for the places where EMODnet's estimate is the poorer one.
-EMODnet's own drawing of its grid is the layer *EMODnet depth (Europe)*.
+The GIS export of a view in European seas holds both: GEBCO's cells, and
+with EMODnet chosen its own grid's too.
 There is no third choice for EMODnet's grid alone: what is drawn in European
 seas is already that, but for the fallback and the fade to the shore, both
 of which a click names.
@@ -130,6 +131,24 @@ waterline faster than a slope; the fade drawn now reads 2 to 14 m too deep
 there. A curved profile is better on steep coasts and worse on flat ones. No
 single rule fits, so the simplest is kept, and the 5 m and 10 m lines close
 to a steep shore are the least certain on the map.
+
+Land below sea level is never tinted, and sea a grid calls dry is drawn in
+the shallowest class. Inland water is classed once per water body, from the
+grid at its shore: at sea level (limans, lagoons, harbour basins) it is drawn
+flat in the shallowest class, its depth unknown; lakes above it are grey,
+with no depth data. The Caspian's depths are measured from its surface
+(−28 m), not from sea level.
+
+## The isobaths' depths
+
+The lines are at the depths nautical charts use, more of them as the map is
+zoomed in: 3000 and 5000 m from zoom 2 (ridges, trenches, abyssal plains);
+200 m (the shelf edge) and every 1000 m from zoom 4; 20, 50, 100 and 500 m
+from zoom 6; 10, 30, 300, 1500 and 2500 m from zoom 8; 5 m from zoom 10.
+They are traced on the depths as the grids have them, to zoom 12 (about 38 m
+per pixel), and cut to the coastline as the base map draws it at each zoom;
+above zoom 14 both are magnified together. The depth shading stops above
+zoom 12, where the data has no more detail.
 
 ## Where the two grids meet
 

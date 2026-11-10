@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { GROUPS, ITEMS, EOX_YEARS, DEPTH_SCHEMES, DEM_TILES, EMODNET_DEPTH_STOPS, domainEnd, gibsDomainUrl, CMEMS, drawsOf, DENSITY, densityTiles } from '../../site/catalog.js';
+import { GROUPS, ITEMS, EOX_YEARS, DEPTH_SCHEMES, DEM_TILES, domainEnd, gibsDomainUrl, CMEMS, drawsOf, DENSITY, densityTiles } from '../../site/catalog.js';
 import { cmemsStyle } from '../../site/cmems.js';
 import { buildStyle, SEA_PICTURES } from '../../site/style.js';
 import { CSP_HOSTS } from '../../tools/deps.mjs';
@@ -131,19 +131,21 @@ test('Copernicus colours and arrows: what each draws, styles, arrows drawn over 
 
 test('every overlay drawn in colours or symbols has a legend, and Europe-only layers say so', () => {
   for (const it of ITEMS.filter((i) => i.tiles || i.kind === 'classes')) {
-    const legend = it.kind === 'classes' ? it.legend : it.kind === 'emodnet' ? EMODNET_DEPTH_STOPS : null;
+    const legend = it.kind === 'classes' ? it.legend : null;
     assert.ok(legend, `${it.id}: no legend`);
     if (it.kind === 'classes') for (const v of Object.keys(it.variants || { all: 1 })) assert.ok(it.legend(v), `${it.id} ${v}: no legend`);
     if (it.tiles) for (const v of Object.keys(it.variants || { all: 1 })) assert.ok(it.tiles[v], `${it.id} ${v}: no tiles`);
   }
   // EMODnet's and EMSA's data cover European seas, but for the UKHO's wrecks (worldwide)
   for (const it of ITEMS) if (it.group !== 'labels' && it.info && /EMODnet|EMSA/.test(it.info.src) && !/worldwide/.test(it.info.res)) assert.match(it.label, /\(Europe\)$/, `${it.id}: Europe only, not in its name`);
+  // and the page knows it (greyed out, no legend, with the view elsewhere): the flag and the name go together
+  for (const it of ITEMS) assert.equal(!!it.europe, /\(Europe\)$/.test(it.label), `${it.id}: its name and its europe flag disagree`);
 });
 
-test('the isobaths\' pictures: what lies between EMODnet depth and the isobaths is a sea picture, ocean data or seagrass, and every sea picture is there', () => {
+test('the isobaths\' pictures: what lies between the depth sources and the isobaths is a sea picture, ocean data or seagrass, and every sea picture is there', () => {
   const group = Object.fromEntries(ITEMS.map((it) => [it.id, it.group]));
   const ids = style.layers.map((l) => l.metadata?.item ?? null);
-  const from = ids.lastIndexOf('emodnetdepth'), to = style.layers.findIndex((l) => l.id.startsWith('isobaths'));
+  const from = ids.lastIndexOf('depthsource'), to = style.layers.findIndex((l) => l.id.startsWith('isobaths'));
   const between = [...new Set(ids.slice(from + 1, to))];
   assert.deepEqual(between.filter((it) => !SEA_PICTURES.includes(it) && group[it] !== 'data' && it !== 'seagrass'), []);
   assert.deepEqual(SEA_PICTURES.filter((it) => !between.includes(it)), []);

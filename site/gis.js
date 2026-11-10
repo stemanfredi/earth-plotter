@@ -98,8 +98,9 @@ export function gisExport({ map, layersOf, layerDrawn, kindOf, drawing, display,
       }
       // the values of each layer drawn whose kind has them (Copernicus), as the view was captured
       const xs = corners.map((p) => p[0]), ys = corners.map((p) => p[1]), box = [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)];
-      const values = (await Promise.all(layers.filter((l) => kindOf(l.id)?.values).map((l) => kindOf(l.id).values(l, box)
-        .then((rs) => { l.assets.push(...rs.map((r) => r.key)); return rs; }, (e) => { console.warn(`${l.label} values:`, e.message); left.push(`${l.label} values (${e.message})`); return []; })))).flat();
+      // (a kind's values: one promise, or several, each left out on its own: the depth shading's two grids)
+      const values = (await Promise.all(layers.filter((l) => kindOf(l.id)?.values).flatMap((l) => [kindOf(l.id).values(l, box)].flat().map((p) => p
+        .then((rs) => { l.assets.push(...rs.map((r) => r.key)); return rs; }, (e) => { console.warn(`${l.label} values:`, e.message); left.push(`${l.label} values (${e.message})`); return []; }))))).flat();
       // a Copernicus layer's time and level as drawn (the part on top in the view: its own step and level)
       for (const l of layers.filter((l) => l.kind === 'cmems')) {
         const { time, level, month } = await cmemsDrawn(l.id, l.at, box); // the part drawn over the view

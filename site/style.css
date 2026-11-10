@@ -109,7 +109,8 @@ body.loading .spin { visibility: visible; animation: spin .8s linear infinite; }
 .pick .name { flex: none; width: 60px; }
 .pick select { flex: 1; min-width: 0; padding: 2px 8px; }
 .item label.name { flex: 1; cursor: pointer; align-self: stretch; display: flex; align-items: center; gap: 8px; }
-.item .hint { font-size: 11px; color: var(--warn); font-family: var(--mono); }
+.item .hint { font-size: 11px; color: var(--soft); font-family: var(--mono); } /* why it draws nothing here: said before it is switched on */
+.item.dim .hint { color: var(--warn); }
 .item.dim label.name { color: var(--soft); }
 .item.error .name { color: var(--err); }
 .item.error .hint::after, .item.partial .hint::after { content: "⚠"; margin-left: 4px; color: var(--err); }
@@ -126,6 +127,7 @@ body.loading .spin { visibility: visible; animation: spin .8s linear infinite; }
 :is(.more, .deye, .hact, .x, .dfold:not(.none)):hover { background: var(--hover); color: var(--ink); } /* .dfold.none: the room of a fold, not a button */
 :is(.more, .deye, .hact, .x) svg { width: 16px; height: 16px; }
 .more[aria-expanded="true"] { background: var(--sel); color: var(--accent); }
+.more.set { color: var(--accent); } /* a choice behind it that is not the usual one (the depths' grid) */
 .controls { display: grid; gap: 6px; padding: 0 8px 8px 0; }
 .controls select { width: 100%; padding: 2px 8px; }
 .keybox { display: grid; gap: 4px; }

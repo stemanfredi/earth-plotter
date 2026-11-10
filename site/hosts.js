@@ -18,7 +18,6 @@ export const HOSTS = {
   openseamap: 'https://tiles.openseamap.org',
   emodnetHumanActivities: 'https://ows.emodnet-humanactivities.eu',
   copernicusWmts: 'https://wmts.marine.copernicus.eu',
-  emodnetBathymetry: 'https://tiles.emodnet-bathymetry.eu', // EMODnet depth
   emodnetGeology: 'https://drive.emodnet-geology.eu', // seabed substrate
   arcgisTiles: 'https://tiles.arcgis.com', // the World Bank's world vessel density
   vliz: 'https://geo.vliz.be', // Marine Regions' maritime zones

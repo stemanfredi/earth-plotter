@@ -441,8 +441,8 @@ const KINDS = {
     // the depth shading's legend: while the chart is under it, zoomed out (where the shading is)
     legend: () => (state.on.has('chart') && map.getZoom() < DEPTH_ZMAX ? { key: `${state.variant.depth}|${depthGrids()}`,
       paint: (el) => drawRamp(el, 'Depth shading', `m · ${depthGrids()}`, depthStops(), 'metres', { colour: NO_DEPTH, label: 'lakes: no depth · lagoons: shown as 0–5 m' }) } : null),
-    // the grids it draws: GEBCO's cells, and EMODnet's own (from EMODnet's store) where the view meets
-    // its area and its grid is the one read there; each left out on its own (a view too wide for EMODnet's)
+    // the grids it draws: GEBCO's cells, and the depths as drawn in European seas (the page's store of
+    // EMODnet's grid) where the view meets its area and its grid is the one read there; each left out on its own
     values: (it, box) => [gebcoValues(box), ...(it.at.grid !== 'gebco' && EMODNET_AREA.some((a) => meets(box, a)) ? [emodnetValues(box)] : [])],
   },
   // where GEBCO's depths come from (its type identifier grid, drawn by gebco.js): a classed layer,
@@ -882,7 +882,7 @@ function notDrawn(it, z = map.getZoom()) {
   if (onlyOver(it)) return `${byId[onlyOver(it)].label.toLowerCase()} only`;
   return it.europe && !meets(viewBox(), EUROPE);
 }
-// after a move (a zoom, a pan): each row's hint, there before the layer is switched on; a layer on
+// after a move (a zoom, a pan; the depth shading's legend says the grids in view): each row's hint, there before the layer is switched on; a layer on
 // that draws nothing greyed out; each group's count of the layers on that draw; the legends (the
 // depth shading's goes above zoom 12, a Europe-only layer's outside Europe)
 function renderZoom() {
@@ -1242,7 +1242,6 @@ function renderCredits() {
 }
 map.on('styledata', renderCredits);
 map.on('sourcedata', (e) => { if (!e.tile) renderCredits(); });
-map.on('moveend', renderLegends); // the depth shading's says the grids in view
 map.on('moveend', renderCredits); // a layer's zoom range entered or left, a country's imagery come into view or gone
 map.on('idle', renderCredits); // a country's coverage read (by its first tiles)
 // An export from button b: after before() (a library to load), the map's next frame, after pending

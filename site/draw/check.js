@@ -160,7 +160,7 @@ export function readView(v, known, c) {
   if (v.bearing !== undefined) view.bearing = angle(v.bearing, c, 'bearing');
   if (v.bearings !== undefined) view.bearings = flag(v.bearings, c, 'bearings');
   if (v.units !== undefined) view.units = oneOf(v.units, ['km', 'nm'], 'km', c, 'units');
-  if (v.grid !== undefined) view.grid = oneOf(v.grid, ['emodnet', 'gebco'], 'emodnet', c, 'grid'); // the grid the depths are read from in European seas (catalog.js GRIDS)
+  if (v.grid !== undefined) view.grid = oneOf(v.grid, known?.grids ?? [v.grid], known?.grids?.[0] ?? 'emodnet', c, 'grid'); // the grid the depths are read from in European seas, of those the app offers (not checked without them)
   if (Array.isArray(v.layers)) {
     view.layers = [];
     for (const l of v.layers) {

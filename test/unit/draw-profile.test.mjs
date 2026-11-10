@@ -40,7 +40,9 @@ test('a profile: a place that could not be read is a gap; none read, it fails', 
   const p = await profileOf(tr, async () => { if (n++ === 3) throw new Error('tile'); return -20; }, 12);
   assert.ok(Number.isNaN(p.pts[3].z) && p.pts.filter((x) => Number.isFinite(x.z)).length === p.pts.length - 1);
   assert.equal(p.lowest.z, -20);
+  assert.equal(p.unread, 1, 'how many could not be read: whoever keeps profiles does not keep this one');
   await assert.rejects(profileOf(tr, async () => { throw new Error('offline'); }, 12));
   const none = await profileOf(tr, async () => NaN, 12);
+  assert.equal(none.unread, 0, 'no data is not unread');
   assert.equal(none.lowest, null, 'no data anywhere: read, no elevation');
 });

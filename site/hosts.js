@@ -24,7 +24,7 @@ export const HOSTS = {
   // data the page reads but does not draw from
   photon: 'https://photon.komoot.io', // place search
   // Copernicus Marine's datasets as data, on a GIS export (zarr.js): the STAC catalogue that says
-  // where each dataset's Zarr store is, and the stores (EMODnet's depth model too)
+  // where each dataset's Zarr store is, and the stores
   copernicusStac: 'https://stac.marine.copernicus.eu',
   cloudferro: 'https://s3.waw3-1.cloudferro.com',
   geodata: 'https://geodata.earthplotter.org', // the depths (GEBCO's, and EMODnet's in European seas), the seagrass tiles, the national imagery's coverage (tools/gebco.mjs, emodnet.mjs, seagrass.mjs, coverage.mjs)

@@ -112,7 +112,8 @@ depth shading's legend names GEBCO alone, and so does a click.
 It is there so that the choice of grid can be checked by anyone, place by
 place, and for the places where EMODnet's estimate is the poorer one.
 The GIS export of a view in European seas holds both: GEBCO's cells, and
-with EMODnet chosen its own grid's too.
+with EMODnet chosen the depths as drawn there too, from the page's store of
+EMODnet's grid (a coarser level of it for a wide view).
 There is no third choice for EMODnet's grid alone: what is drawn in European
 seas is already that, but for the fallback and the fade to the shore, both
 of which a click names.

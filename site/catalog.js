@@ -82,9 +82,6 @@ const FOLK = { folk5: 'folk_5_substrate_class', folk7: 'folk_7_substrate_class' 
 // zoom its tiles stop at; 18 as WMS, any), credit (its attribution; EMODnet Human Activities' when
 // none), faint (a variant drawn lighter than the item's opacity), and for kind 'classes' legend(variant):
 // the URL of its service's legend, the URLs of several, or the classes themselves
-// EMODnet Bathymetry's model as data (the GIS export, with the depth shading's values): its Zarr store, as EDITO's catalogue lists it
-// (collection emodnet-elevation, DTM 2024): elevation in metres, 1/16 arc-minute, chunks of ~1°
-export const EMODNET_DTM = `${HOSTS.cloudferro}/emodnet/emodnet_bathymetry/14157/bathymetry_dtm_2024.zarr`;
 // EMODnet's DTM 2024 as a multiscale Zarr store built by tools/emodnet.mjs and published on the
 // project's data host: the sea's depths in European seas at every zoom (gebco.js), GEBCO's beyond; its
 // source grid beside it (each cell surveyed or interpolated: the depth on a click).

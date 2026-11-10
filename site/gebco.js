@@ -149,10 +149,10 @@ export const gebcoTile = (z, x, y) => gridTile(GEBCO, 'elevation', z, x, y, fals
 export async function seaTile(z, x, y) {
   const where = tileIn(z, x, y);
   if (!where) return gebcoTile(z, x, y);
-  // EMODnet's files not to be had at all (the network's own failure, not the host's answer) where GEBCO's
-  // are, on the same host: an offline area saved before EMODnet's grid was read, which keeps GEBCO's
-  // alone. Drawn from those, rather than nothing; a click there names no grid (app.js)
-  const [m, g] = await Promise.all([gridTile(EMODNET, 'elevation', z, x, y, false).catch((e) => { if (e instanceof TypeError) return null; throw e; }), gebcoTile(z, x, y)]);
+  // EMODnet's store not to be opened at all (the network's own failure, not the host's answer) where
+  // GEBCO's tile is read, from the same host: an offline area saved before EMODnet's grid was read,
+  // which keeps GEBCO's alone. (A chunk of a store that opened failing is a tile failed, asked again.) Drawn from those, rather than nothing; a click there names no grid (app.js)
+  const [m, g] = await Promise.all([gebcoStore(EMODNET).then(() => gridTile(EMODNET, 'elevation', z, x, y, false), (e) => { if (e instanceof TypeError) return null; throw e; }), gebcoTile(z, x, y)]);
   if (!m) return g;
   const t = where < 1 ? pixelIn(z, x, y) : null;
   for (let j = 0, p = 0; j < SIZE; j++) {

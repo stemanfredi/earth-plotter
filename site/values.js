@@ -1,7 +1,7 @@
 // Layers as data (the GIS export): the values a layer draws, read from its datasets' Zarr stores
 // (zarr.js) and written as GeoTIFF (geotiff.js), over the view's bounding box [west, south, east,
 // north]. Each returns [{ key, file, w, h, transform, names, units, title, description, data }].
-import { CMEMS, EMODNET_DTM, GEBCO, GEBCO_TID } from './catalog.js';
+import { CMEMS, EMODNET, GEBCO, GEBCO_TID } from './catalog.js';
 import { partTimes, partLevels, regionOf, cmemsStacUrl, storedVariables, partOf, partIn } from './cmems.js';
 import { openStore, timeScale, nearest, cellsOf, readCells } from './zarr.js';
 import { geotiff } from './geotiff.js';
@@ -19,7 +19,7 @@ function rasterOf(cells, key, { title, description, names, units, planes, bands 
 // or 404, as a public bucket answers 403, not 404, for a file it does not hold; either means a chunk
 // not stored (all land, or a time no longer kept), read as fill. A store that is not public fails at
 // its metadata (zarr.js openStore), not with empty rasters. (GEBCO's: gebco.js, none missing.)
-const stores = lru(Infinity); // part (or EMODNET_DTM) → promise of its store and coordinates
+const stores = lru(Infinity); // part → promise of its store and coordinates
 function storeOf(part) {
   return stores(part, async () => {
     const r = await fetchOk(cmemsStacUrl(part));
@@ -57,50 +57,42 @@ export async function cmemsValues(id, at, box) {
   }))).filter(Boolean);
 }
 
-// raster/emodnet-depth.tif: EMODnet Bathymetry's elevation over the view's bounding box, in its own
-// grid; a view needing more than 16 of its ~2 MB chunks (wider than about 4° × 4°) is left out:
-// zoom in to export it
 // how many of a store's chunks (meta m) the cells read
 const chunksOf = (cells, m) => new Set(cells.rows.map((r) => Math.floor(r / m.chunks[0]))).size * new Set(cells.cols.map((c) => Math.floor(c / m.chunks[1]))).size;
-const dtmStore = () => stores(EMODNET_DTM, async () => {
-  const store = await openStore(EMODNET_DTM, fetchBytes);
-  const [lat, lon] = await Promise.all([store.coord('latitude'), store.coord('longitude')]);
-  return { store, lat, lon };
-});
-export async function emodnetValues(box) {
-  const { store, lat, lon } = await dtmStore(), m = store.meta('elevation'), cells = cellsOf(lat, lon, box);
-  if (!cells.rows.length) return [];
-  const blocks = chunksOf(cells, m);
-  if (blocks > 16) throw new Error(`${blocks} chunks of about 2 MB for this view: zoom in to export them`);
-  const description = `EMODnet Bathymetry DTM 2024: elevation (m, negative below the sea surface; vertical reference lowest astronomical tide), its own grid (1/16 arc-minute), EPSG:4326${cells.step > 1 ? `, every ${cells.step}th cell` : ''}, over the view's bounding box. No data: NaN. Not for navigation`;
-  return [rasterOf(cells, 'raster/emodnet-depth', { title: 'EMODnet depth: values', description, names: ['elevation'], units: ['m'],
-    planes: [await readCells(store, 'elevation', 0, 0, cells)], bands: [{ description: 'elevation, EMODnet DTM 2024', unit: 'm' }] })];
-}
-
 // raster/gebco-depth.tif: GEBCO's elevation over the view's bounding box, in its own grid, at the
 // finest level that needs at most 16 of its chunks (level 0, GEBCO's 15″ cells, for views up to
 // several degrees across; a coarser one, means of 2^k × 2^k cells, for wider views: never left out).
 // raster/gebco-source.tif: its type identifier codes, the same way (a coarser level: the most
 // common code of the cells below). The coordinates follow from the grids' regular spacing, so none
 // are downloaded. The map's store (gebco.js): a chunk missing fails the export, not read as fill.
-const GEBCO_GRIDS = {
-  elevation: { url: GEBCO, key: 'raster/gebco-depth', title: 'GEBCO depth: values', unit: 'm', band: 'elevation, GEBCO 2026',
+// raster/emodnet-depth.tif: the depths as the page draws them in European seas, from its own store of
+// EMODnet's grid (tools/emodnet.mjs), the same way: its 1/16′ cells for a view a few degrees across, a
+// coarser level (the mean of the water among 2^k × 2^k cells) for a wider one. Land has no value.
+const DEPTH_GRIDS = {
+  elevation: { url: GEBCO, variable: 'elevation', key: 'raster/gebco-depth', title: 'GEBCO depth: values', unit: 'm', band: 'elevation, GEBCO 2026', cell: '15″', source: 'GEBCO 2026 Grid (GEBCO Compilation Group)',
     what: (grid) => `elevation (m, negative below mean sea level; in Europe's surveyed tidal waters below lowest astronomical tide, as GEBCO took EMODnet's surveys), ${grid}` },
-  tid: { url: GEBCO_TID, key: 'raster/gebco-source', title: 'GEBCO depth sources: type identifier codes', unit: '', band: 'type identifier, GEBCO 2026',
+  tid: { url: GEBCO_TID, variable: 'tid', key: 'raster/gebco-source', title: 'GEBCO depth sources: type identifier codes', unit: '', band: 'type identifier, GEBCO 2026', cell: '15″', source: 'GEBCO 2026 Grid (GEBCO Compilation Group)', codes: true,
     what: (grid) => `type identifier: how each cell's depth was obtained (0 land, 10–17 surveyed, 16 of them read from satellite images, 40–47 estimated, 70–72 other grids or unknown; the codes in GEBCO's documentation), ${grid}` },
+  emodnet: { url: EMODNET, variable: 'elevation', key: 'raster/emodnet-depth', title: 'EMODnet depth: values', unit: 'm', band: 'elevation, EMODnet DTM 2024', cell: '1/16′', source: 'EMODnet Bathymetry DTM 2024, as Earth Plotter draws it in European seas',
+    what: (grid) => `the sea's depth (m, negative; vertical reference lowest astronomical tide; to a quarter of a metre), EMODnet's cells surveyed and interpolated alike, GEBCO's water where EMODnet has none near; land has no value; ${grid}` },
 };
-export async function gebcoValues(box, variable = 'elevation') {
-  const g = GEBCO_GRIDS[variable], store = await gebcoStore(g.url);
+export const gebcoValues = (box, grid = 'elevation') => gridValues(DEPTH_GRIDS[grid], box);
+// a depth store's values over box, g as above (exported for the unit tests)
+export async function gridValues(g, box) {
+  const variable = g.variable, store = await gebcoStore(g.url);
   for (let k = 0; ; k++) {
     const name = `${k}/${variable}`, m = store.meta(name);
     if (!m) throw new Error('no level of the grid fits this view');
-    const [H, W] = m.shape, cs = 180 / H;
-    const cells = cellsOf(Float64Array.from({ length: H }, (_, i) => 90 - (i + 0.5) * cs), Float64Array.from({ length: W }, (_, i) => -180 + (i + 0.5) * cs), box);
+    // the level's cells: GEBCO's go round the world from 90° N, 180° W; a regional store says its own
+    const [H, W] = m.shape, cs = m.attrs.cell_size_degrees ?? 180 / H, north = m.attrs.north ?? 90, west = m.attrs.west ?? -180;
+    const cells = cellsOf(Float64Array.from({ length: H }, (_, i) => north - (i + 0.5) * cs), Float64Array.from({ length: W }, (_, i) => west + (i + 0.5) * cs), box);
     if (!cells.rows.length) return [];
     const blocks = chunksOf(cells, m);
     if (blocks > 16 || cells.step > 1) continue;
-    const grid = !k ? 'its own grid (15″ cells)' : variable === 'tid' ? `level ${k} of its grid (the most common code of ${2 ** k} × ${2 ** k} of its 15″ cells)` : `level ${k} of its grid (means of ${2 ** k} × ${2 ** k} of its 15″ cells)`;
-    const description = `GEBCO 2026 Grid (GEBCO Compilation Group): ${g.what(grid)}, EPSG:4326, over the view's bounding box. No data: NaN. Not for navigation`;
+    const level = !k ? `its own grid (${g.cell} cells)` : g.codes ? `level ${k} of its grid (the most common code of ${2 ** k} × ${2 ** k} of its ${g.cell} cells)` : `level ${k} of its grid (means of ${2 ** k} × ${2 ** k} of its ${g.cell} cells)`;
+    const description = `${g.source}: ${g.what(level)}, EPSG:4326, over the view's bounding box. No data: NaN. Not for navigation`;
     return [rasterOf(cells, g.key, { title: g.title, description, names: [variable], units: [g.unit], planes: [await readCells(store, name, 0, 0, cells)], bands: [{ description: g.band, unit: g.unit }] })];
   }
 }
+// the same, the depths as drawn in European seas
+export const emodnetValues = (box) => gebcoValues(box, 'emodnet');

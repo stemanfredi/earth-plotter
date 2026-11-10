@@ -354,7 +354,7 @@ function feature(kind, el) {
     Object.assign(mine, lean({ symbol: el.symbol, bearing: bearingOf(el.bearing) }, { symbol: 'none', bearing: 0 }));
   } else if (kind === 'circle') {
     geometry = { type: 'Point', coordinates: pos(el.position) };
-    Object.assign(mine, { radius: Math.max(0.001, Math.min(r3(el.radius), MAX_RADIUS - 0.001)) } /* never rounded to 0: no circle read back */, lean({ aperture: el.aperture && Math.min(r4(el.aperture), 359.9999), bearing: bearingOf(el.bearing) }, { aperture: null, bearing: 0 }));
+    Object.assign(mine, { radius: Math.max(0.001, Math.min(r3(el.radius), MAX_RADIUS - 0.001)) } /* never rounded to 0: no circle read back */, lean({ aperture: el.aperture && Math.max(0.0001, Math.min(r4(el.aperture), 359.9999)), bearing: bearingOf(el.bearing) }, { aperture: null, bearing: 0 }));
   } else if (kind === 'line') {
     // closed: a Polygon, counter-clockwise as RFC 7946 asks; a ring stored clockwise is written
     // reversed, and says so (its names stay in its own order)

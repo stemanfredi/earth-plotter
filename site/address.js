@@ -103,5 +103,6 @@ export const KNOWN = {
   layers: Object.fromEntries(ITEMS.filter((it) => it.group !== 'data').map((it) => [it.id, { variants: it.variants ? Object.keys(it.variants) : null, periods: DENSITY[it.id]?.periods || null }])),
   data: {},
   depths: CMEMS_DEPTHS,
+  grids: GRIDS.map(([g]) => g), // the first the usual one
 };
 for (const e of [...ENTRIES.colour, ...ENTRIES.arrows]) { const { id, variant: v } = entryOf(e.key); if (!(KNOWN.data[id] ||= []).includes(v)) KNOWN.data[id].push(v); }

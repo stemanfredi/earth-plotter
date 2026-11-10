@@ -104,7 +104,8 @@ test('the depths\' grid: in the address only where it is not the usual one, read
   assert.equal(state.grid, 'emodnet');
   // in a file: written only where not the usual one, an unknown one read as the usual with a warning
   const file = (grid) => JSON.stringify({ type: 'FeatureCollection', earthplotter: { format: 'earthplotter-drawing', version: 1, view: { grid } }, features: [] });
-  assert.equal(parse(file('gebco')).view.grid, 'gebco');
-  assert.equal(parse(file('etopo')).view.grid, 'emodnet');
-  assert.ok(parse(file('etopo')).report.warnings.length > 0);
+  assert.deepEqual(KNOWN.grids, ['emodnet', 'gebco']);
+  assert.equal(parse(file('gebco'), KNOWN).view.grid, 'gebco');
+  assert.equal(parse(file('etopo'), KNOWN).view.grid, 'emodnet');
+  assert.ok(parse(file('etopo'), KNOWN).report.warnings.length > 0);
 });

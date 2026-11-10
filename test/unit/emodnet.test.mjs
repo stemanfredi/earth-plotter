@@ -7,6 +7,7 @@ import { createServer } from 'node:http';
 import { near } from './helpers.mjs';
 import { mergeBlock, Q, SURVEYED, INTERPOLATED, FROM_GEBCO } from '../../tools/emodnet.mjs';
 import { gridTile, inside } from '../../site/gebco.js';
+import { gridValues } from '../../site/values.js';
 import { tileXY } from '../../site/geo.js';
 
 // One block of EMODnet's grid as the store holds it (tools/emodnet.mjs), from a made-up EMODnet chunk and GEBCO grid
@@ -70,4 +71,41 @@ test('inside: EMODnet\'s area is the Mediterranean and north, and the Canaries; 
   assert.ok(inside(-15, 30) >= 1, 'where the two boxes meet, in the Atlantic: well inside, no blend');
   near(inside(-15, 27.1), 0.1, 1e-9, 'near the southern edge off the Sahara');
   near(inside(10, 30.2), 0.2, 1e-9, 'the Gulf of Sirte\'s end, near the edge');
+});
+
+// the GIS export's values from a regional store of two levels: 40 × 40 cells of 0.25° from 10° N, 0° E
+// (64 chunks of 5 × 5), and 20 × 20 of 0.5° above it (16 chunks)
+test('gridValues: a regional store\'s own cells for a small view, a coarser level for a wide one, placed by what the store says', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'values-')), store = join(dir, 'v.zarr'), meta = {};
+  for (const [k, n, cell] of [[0, 40, 0.25], [1, 20, 0.5]]) {
+    mkdirSync(join(store, String(k), 'elevation'), { recursive: true });
+    meta[`${k}/elevation/.zarray`] = { zarr_format: 2, shape: [n, n], chunks: [5, 5], dtype: '<i2', compressor: null, fill_value: 400, order: 'C', filters: null };
+    meta[`${k}/elevation/.zattrs`] = { scale_factor: 0.25, cell_size_degrees: cell, north: 10, west: 0 };
+    for (let r = 0; r < n / 5; r++) for (let c = 0; c < n / 5; c++) writeFileSync(join(store, String(k), 'elevation', `${r}.${c}`), new Uint8Array(new Int16Array(25).fill(-40).buffer));
+  }
+  writeFileSync(join(store, '.zmetadata'), JSON.stringify({ zarr_consolidated_format: 1, metadata: meta }));
+  const asked = [];
+  const server = createServer((req, res) => { asked.push(req.url); try { res.end(readFileSync(join(dir, new URL(req.url, 'http://x').pathname))); } catch { res.statusCode = 404; res.end(); } });
+  await new Promise((ok) => server.listen(0, '127.0.0.1', ok));
+  try {
+    const g = { url: `http://127.0.0.1:${server.address().port}/v.zarr`, variable: 'elevation', key: 'raster/x', title: 'X', unit: 'm', band: 'elevation', cell: '15′', source: 'A store', what: (grid) => `depths, ${grid}` };
+    // 1°–2° E, 6°–7° N: its own cells, the 4 × 4 in the box and one more all round (the box covered to its
+    // edge), their corner at 0.75° E, 7.25° N
+    const [small] = await gridValues(g, [1, 6, 2, 7]);
+    assert.deepEqual([small.w, small.h, small.transform], [6, 6, [0.25, 0, 0.75, 0, -0.25, 7.25]]);
+    assert.match(small.description, /its own grid \(15′ cells\)/);
+    assert.ok(asked.every((u) => !u.includes('/1/elevation/')), 'the level above not read');
+    // the whole of it: 64 chunks at its own cells, more than an export reads: the level above, its 16
+    asked.length = 0;
+    const [wide] = await gridValues(g, [0, 0, 10, 10]);
+    assert.deepEqual([wide.w, wide.h, wide.transform], [20, 20, [0.5, 0, 0, 0, -0.5, 10]]);
+    assert.match(wide.description, /level 1 of its grid \(means of 2 × 2 of its 15′ cells\)/);
+    assert.equal(asked.filter((u) => u.includes('/1/elevation/')).length, 16);
+    assert.ok(asked.every((u) => !u.includes('/0/elevation/')), 'no chunk of its own cells read for the wide view');
+    // beyond the store: nothing
+    assert.deepEqual(await gridValues(g, [20, 0, 30, 10]), []);
+  } finally {
+    server.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
 });

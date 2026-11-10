@@ -85,7 +85,7 @@ export function createLineView(kit) {
       ctx.profile(tr).then((prof) => { mine.prof = prof; }, () => { mine.failed = true; })
         .then(() => { if (profiles.get(id) === mine && drawing.sel.size === 1 && drawing.sel.has(id)) renderInspector(); });
     }
-    if (p.failed) profiles.delete(id); // said once; read again the next time it is shown
+    if (p.failed || p.prof?.unread) profiles.delete(id); // said once (shown once with its gaps: places that could not be read); read again the next time it is shown
     if (!p.prof) return h('div', { class: 'fblock' }, head, h('p', { class: 'note' }, p.failed ? 'The elevation could not be read.' : 'Reading the elevation…'));
     const { pts, surface, length, lowest, highest } = p.prof;
     if (!lowest) return h('div', { class: 'fblock' }, head, h('p', { class: 'note' }, 'No elevation along this line (no data).'));

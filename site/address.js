@@ -2,7 +2,7 @@
 // (docs/drawing-format.md §4), one grammar read and written here, with no map and no page: the
 // catalogue's items and entries, the state as it starts, the hash read into it, a view written as a
 // hash. app.js keeps what needs the map (the view as it is now, applying it).
-import { ITEMS, isBase, GIBS, CMEMS, CMEMS_DEPTHS, DENSITY, drawsOf } from './catalog.js';
+import { ITEMS, isBase, GIBS, CMEMS, CMEMS_DEPTHS, DENSITY, GRIDS, drawsOf } from './catalog.js';
 import { norm180 } from './geo.js';
 
 export const byId = Object.assign(Object.create(null), Object.fromEntries(ITEMS.map((it) => [it.id, it]))); // no inherited names: the link names items
@@ -31,6 +31,7 @@ export const initialState = (now) => ({
   time: hour(now), // the map's time: the hour shown (ms), now by default
   depth: 0, // Copernicus layers with depth: metres below the surface (CMEMS_DEPTHS)
   period: Object.fromEntries(Object.keys(DENSITY).map((id) => [id, defaultsOf(byId[id]).period])), // density datasets
+  grid: GRIDS[0][0], // the grid the sea's depths are read from in European seas (catalog.js GRIDS)
   colour: '', arrows: '', // Ocean data: the entry drawing colours, the one drawing arrows ('item:variant', '' for none)
 });
 
@@ -57,6 +58,7 @@ export function readAddress(hash, state, display) {
   const t = /^\d{4}-\d{2}-\d{2}T\d{2}$/.test(q.get('t') || '') ? Date.parse(`${q.get('t')}:00:00Z`) : NaN; // a date that is no date (month 13) is NaN
   if (Number.isFinite(t)) state.time = t;
   if (CMEMS_DEPTHS.includes(+q.get('dz'))) state.depth = +q.get('dz');
+  if (GRIDS.some(([g]) => g === q.get('grid'))) state.grid = q.get('grid');
   for (const kv of (q.get('per') || '').split(',')) {
     const [k, val] = kv.split(':');
     if (Object.hasOwn(DENSITY, k) && DENSITY[k].periods.includes(val)) state.period[k] = val;

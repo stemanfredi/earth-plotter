@@ -298,7 +298,7 @@ const HEIGHTS = new Error('heights needed');
 const NEEDS_HEIGHTS = () => { throw HEIGHTS; };
 // remember false: each tile classifies its water bodies itself, none remembered (offline.js: an area
 // saved must hold what any tile asked first would read)
-// grid 'gebco': the sea's depths from GEBCO alone, everywhere (the Depth sources' other choice)
+// grid 'gebco': the sea's depths from GEBCO alone, everywhere (the other choice of grid: app.js seaGrid)
 export function clipper({ template, mode, omtTileJson, remember = true, grid = null }) {
   const omtTemplate = () => omtTemplateOf(omtTileJson);
   // 64 tiles each: a view and its surroundings (raw 256 kB, the sea's 512 kB: as read and as drawn; cut 320 kB: two clippers, two cuts of a sea tile)

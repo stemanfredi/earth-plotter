@@ -145,6 +145,7 @@ body.loading .spin { visibility: visible; animation: spin .8s linear infinite; }
 .info { margin: 0 8px 8px 0; padding: 6px 8px; background: var(--bg2); border-left: 2px solid var(--accent); font-size: 12px; color: var(--soft); }
 .info p { margin: 2px 0; }
 .info .opacity { margin: 0 0 4px; }
+.info .gridpick { display: grid; gap: 4px; margin: 0 0 6px; }
 .info b { color: var(--ink); font-weight: 600; }
 .info a { color: var(--accent); }
 

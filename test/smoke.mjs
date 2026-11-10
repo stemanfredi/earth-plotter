@@ -512,13 +512,16 @@ await section('the depth on a click', async () => {
   };
   const sea = await at(8.3, 43.9), land = await at(8.0, 44.2);
   check(/^\d+ m\d+°[\d.]+′[NS] \d+°[\d.]+′[EW]EMODnet 2024 · (surveyed|interpolated: no soundings here)$/.test(sea) && !land && !dp.errors.length, `a click on the sea gives its depth, the place and the source (${sea}); on land, nothing ${dp.errors.join(' | ')}`);
-  // Depth sources' other choice, GEBCO everywhere: set while its layer is off, the same click reads
-  // GEBCO's depth and says so, the isobaths' tiles asked anew from it, and the link keeps the choice
-  await dp.evaluate(() => { const s = [...document.querySelectorAll('select.variant')].find((el) => /Depth sources/.test(el.getAttribute('aria-label') || '')); if (s) { s.value = 'gebco'; s.dispatchEvent(new Event('change', { bubbles: true })); } });
-  const switched = await until(dp, () => map.getSource('isobaths').tiles[0].startsWith('isobath://gebco/') && /depthsource:gebco/.test(decodeURIComponent(location.hash)));
+  // the depths' grid, chosen in the ⓘ of the layers drawn from them (the same control in each): set
+  // to GEBCO in the isobaths', the same click reads GEBCO's depth and says so, the isobaths' tiles are
+  // asked anew from it, the other ⓘs' controls say GEBCO too, and the link keeps the choice
+  const pickGrid = (page, layer, g) => page.evaluate(([id, v]) => document.querySelector(`#i-${id}`).closest('li').querySelector(`.gridpick button[data-v=${v}]`).click(), [layer, g]);
+  await pickGrid(dp, 'isobaths', 'gebco');
+  const switched = await until(dp, () => map.getSource('isobaths').tiles[0].startsWith('isobath://gebco/') && /[#&]grid=gebco/.test(location.hash)
+    && ['depth', 'isobaths', 'depthsource'].every((id) => document.querySelector(`#i-${id}`).closest('li').querySelector('.gridpick button[aria-pressed=true]')?.dataset.v === 'gebco'));
   await settled(dp);
   const gebco = await at(8.3, 43.9);
-  check(switched && /GEBCO 2026 · (surveyed|optical \(satellite image\)|estimated|other grids, unknown)$/.test(gebco) && !dp.errors.length, `Depth sources set to GEBCO everywhere: the same click reads GEBCO's (${gebco}; switched ${switched}) ${dp.errors.join(' | ')}`);
+  check(switched && /GEBCO 2026 · (surveyed|optical \(satellite image\)|estimated|other grids, unknown)$/.test(gebco) && !dp.errors.length, `the depths' grid set to GEBCO in a layer's ⓘ: the same click reads GEBCO's (${gebco}; switched ${switched}) ${dp.errors.join(' | ')}`);
   // isobaths over the shading take its colours up to its last zoom, then the style's blue again
   const ink = await dp.evaluate(() => [map.getPaintProperty('isobaths', 'line-color'), map.getStyle().layers.find((l) => l.id === 'depth').maxzoom]);
   check(Array.isArray(ink[0]) && ink[0][0] === 'step' && ink[0][3] === ink[1] && ink[0][4] === '#335f97', `isobaths: the shading's colours up to zoom ${ink[1]}, its deepest blue above (${JSON.stringify(ink[0]).slice(0, 80)})`);
@@ -580,9 +583,9 @@ await section('the elevation profile', async () => {
   const prof = await dw.evaluate(() => [document.querySelectorAll('svg.profile polyline').length, document.querySelector('.dinspect .fblock .fvalue[title*="lower bound"]')?.textContent || '']);
   const deepLength = await dw.evaluate(async (id) => { const { lineTrace } = await import('./draw/lines.js'); return lineTrace(drawing.doc, drawing.doc.lines.find((x) => x.id === id)).length; }, deepLine);
   check(prof[0] > 0 && /along the surface/.test(prof[1]) && deepLength > 25000, `a line's elevation profile: the chart and the length along the surface (${prof[1]})`);
-  // the depths' grid changed (Depth sources' choice) while the profile is shown: read again, from the other grid
+  // the depths' grid changed (a depth layer's ⓘ) while the profile is shown: read again, from the other grid
   const rangeOf = () => dw.evaluate(() => document.querySelector('svg.profile')?.getAttribute('aria-label') || '');
-  const setGrid = (g) => dw.evaluate((v) => { const s = [...document.querySelectorAll('select.variant')].find((el) => /Depth sources/.test(el.getAttribute('aria-label') || '')); s.value = v; s.dispatchEvent(new Event('change', { bubbles: true })); }, g);
+  const setGrid = (g) => dw.evaluate((v) => document.querySelector(`#i-depth`).closest('li').querySelector(`.gridpick button[data-v=${v}]`).click(), g);
   const own = await rangeOf();
   await setGrid('gebco');
   const reread = await until(dw, (was) => { const now = document.querySelector('svg.profile')?.getAttribute('aria-label'); return !!now && now !== was; }, own, 60000);

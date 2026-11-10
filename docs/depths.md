@@ -101,11 +101,13 @@ depth of its own.
 
 ## Comparing the two grids
 
-*Depth sources* has a choice: *EMODnet in European seas*, as described
-here, or *GEBCO everywhere*, which draws European seas from GEBCO too, as
-the page did before. The shading, the isobaths, the depth on a click and the
-layer itself all follow it, and a link keeps it. The choice stays when the
-layer is switched off; its row then says *GEBCO everywhere*.
+Each layer drawn from the depths (*Depth shading*, *Isobaths*, *Depth
+sources*) says its source behind its ⓘ, and there, in each of them, is the
+one choice: *Depths in European seas* from *EMODnet*, as described here, or
+from *GEBCO*, as everywhere else and as the page drew them before. The
+shading, the isobaths, the depth on a click, a line's elevation profile and
+*Depth sources* all follow it, and a link keeps it. With GEBCO chosen the
+depth shading's legend names GEBCO alone, and so does a click.
 
 It is there so that the choice of grid can be checked by anyone, place by
 place, and for the places where EMODnet's estimate is the poorer one.

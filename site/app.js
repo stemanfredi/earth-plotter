@@ -1,6 +1,6 @@
 import * as maplibregl from './vendor/maplibre-gl.mjs';
 import mlcontour from './vendor/maplibre-contour.mjs';
-import { GROUPS, ITEMS, isBase, EOX_YEARS, eoxKey, GIBS, DEM_TILES, DEM_SEA_MAX, DEPTH_ZMAX, DEPTH_SOURCES, DEM_LAND_MAX, OMT_TILEJSON, DEPTH_SCHEMES, NO_DEPTH, DENSITY, gibsTiles, gibsDomainUrl, domainEnd, densityTiles, CMEMS, CMEMS_DEPTHS, CLASS_LABELS, EMODNET_DEPTH_STOPS, EMODNET_AREA, SEAGRASS } from './catalog.js';
+import { GROUPS, ITEMS, isBase, EOX_YEARS, eoxKey, GIBS, DEM_TILES, DEM_SEA_MAX, DEPTH_ZMAX, DEPTH_SOURCES, DEM_LAND_MAX, OMT_TILEJSON, DEPTH_SCHEMES, NO_DEPTH, DENSITY, gibsTiles, gibsDomainUrl, domainEnd, densityTiles, CMEMS, CMEMS_DEPTHS, CLASS_LABELS, EMODNET_DEPTH_STOPS, EMODNET_AREA, GRIDS, SEAGRASS } from './catalog.js';
 import { buildStyle, depthRamp, OPACITY_PROP, SEA_PICTURES, LOCATION_LAYERS, INK } from './style.js';
 import { cmemsTile, partTimes, partLevels, domainOf, cmemsLegend, partIn } from './cmems.js';
 import { workerClipper } from './clip.js';
@@ -21,7 +21,7 @@ import { $, h, typing, NARROW, COMPACT, store, animate } from './dom.js';
 import { keyEntry, openKey, keyList } from './keys.js';
 import { note } from './menu.js';
 import { createFrame } from './frame.js';
-import { select } from './fields.js';
+import { select, choice } from './fields.js';
 import { search } from './search.js';
 import { gisExport } from './gis.js';
 import { chartCanvas, chartPng } from './png.js';
@@ -55,8 +55,7 @@ function writeHashNow() {
   if (!ready) return;
   const q = new URLSearchParams();
   viewToAddress(viewOf(), q, here());
-  // Depth sources' choice, the depths' grid, holds with its layer off: the link keeps it then too
-  if (seaGrid() === 'gebco' && !state.on.has('depthsource')) q.set('var', [q.get('var'), 'depthsource:gebco'].filter(Boolean).join(','));
+  if (seaGrid() !== GRIDS[0][0]) q.set('grid', seaGrid()); // the depths' grid, where it is not the usual one
   drawing.saving.viewChanged(); // saved with the drawing, for a page opened without a view
   setHash(q);
 }
@@ -79,10 +78,11 @@ let gibsDay = dayOf(state.time); // NASA daily: the day its sources draw (gibs.s
 // their neighbours (a contour tile reads 3 × 3 DEM tiles), not hundreds (200 per source: 100 MB)
 const demOpts = { url: DEM_TILES, encoding: 'terrarium', worker: false, cacheSize: 64 };
 const landDem = new mlcontour.DemSource({ ...demOpts, id: 'land', maxzoom: DEM_LAND_MAX });
-// the sea from each grid the depths can be read from (Depth sources' choice): EMODnet's in European
-// seas, or GEBCO's everywhere. A tile's address names its grid, so a change of choice asks for new tiles
+// the sea from each grid the depths can be read from (catalog.js GRIDS, chosen in the depth layers' ⓘ):
+// EMODnet's in European seas, or GEBCO's everywhere. A tile's address names its grid, so a change of
+// choice asks for new tiles
 const seaClips = { emodnet: workerClipper({ mode: 'sea', omtTileJson: OMT_TILEJSON }), gebco: workerClipper({ mode: 'sea', grid: 'gebco', name: 'sea-gebco', omtTileJson: OMT_TILEJSON }) };
-const seaGrid = () => state.variant.depthsource;
+const seaGrid = () => state.grid;
 const seaOf = (url) => seaClips[/^[\w-]+:\/\/(\w+)\//.exec(url)[1]];
 const seaClip = { metres: (...zxy) => seaClips[seaGrid()].metres(...zxy) }; // the grid chosen now: a depth asked for, an export
 const seaUrls = () => ({ 'dem-sea': `clip-sea://${seaGrid()}/{z}/{x}/{y}`, isobaths: `isobath://${seaGrid()}/{z}/{x}/{y}`, 'gebco-tid': `gebco-tid://${seaGrid()}/{z}/{x}/{y}` });
@@ -448,14 +448,6 @@ const KINDS = {
   // its codes in the GIS export
   gebcotid: {
     legend: (id) => KINDS.classes.legend(id),
-    // its choice, the grid the depths are read from: every source drawn from them asks for its tiles anew
-    show(id) {
-      let changed = false;
-      for (const [source, url] of Object.entries(seaUrls())) if (map.getSource(source).tiles[0] !== url) { map.getSource(source).setTiles([url]); changed = true; }
-      if (changed) { depthPopup.remove(); drawPanel?.render('sel'); } // a depth shown, a line's profile shown (the inspector built again reads it anew): from the other grid
-      applyItem(id);
-      renderLegends();
-    },
     values: (it, box) => gebcoValues(box, 'tid'),
   },
   // EMODnet's depth, drawn by EMODnet (tiles); its values from its Zarr store
@@ -728,7 +720,7 @@ const esriBox = esri.keyBox({ fallback: `Sentinel-2 ${EOX_YEARS[0]}`, onChange: 
 } });
 function setVariant(id, v) {
   state.variant[id] = v;
-  id === 'depthsource' ? KINDS.gebcotid.show(id) : refresh(id); // the depths' grid changes whether its layer is shown or not
+  refresh(id);
   if (id === 'depth') depthColours();
   writeHash();
   renderMenu();
@@ -740,6 +732,28 @@ function setVariant(id, v) {
 // provenance (and the opacity slider) behind an item's ⓘ; one whose source follows its variant
 // (Satellite: EOX's year, or Esri's with a key) written again by renderMenu
 const variantInfos = [];
+// The grid the sea's depths are read from in European seas, chosen in the ⓘ of each layer drawn from
+// them (catalog.js grid: true), where the layer says its source: one choice, its control the same in
+// each. Every source drawn from the depths asks for its tiles anew; a depth shown, a line's profile
+// shown (the inspector built again reads it anew) are the other grid's
+const gridChoices = [];
+function setGrid(g) {
+  if (g === state.grid) return;
+  state.grid = g;
+  for (const [source, url] of Object.entries(seaUrls())) map.getSource(source).setTiles([url]);
+  depthPopup.remove();
+  drawPanel?.render('sel');
+  for (const fill of gridChoices) fill();
+  renderLegends();
+  writeHash();
+}
+function gridChoice() {
+  const box = h('div', { class: 'gridpick' });
+  const fill = () => box.replaceChildren(h('b', {}, 'Depths in European seas '), choice('Depths in European seas from', GRIDS, state.grid, setGrid));
+  fill();
+  gridChoices.push(fill);
+  return box;
+}
 function infoBlock(it) {
   const opacity = it.opacity != null ? h('label', { class: 'opacity' }, h('span', {}, it.id === 'relief' ? 'Strength' : 'Opacity'),
     h('input', { type: 'range', min: 0, max: 1, step: 0.05, value: state.opacity[it.id], oninput: (e) => { state.opacity[it.id] = +e.target.value; applyItem(it.id); writeHash(); } })) : null;
@@ -754,7 +768,7 @@ function infoBlock(it) {
   };
   fill();
   if (it.infoOf) variantInfos.push(fill);
-  return h('div', { class: 'info', hidden: true }, opacity, text);
+  return h('div', { class: 'info', hidden: true }, opacity, it.grid ? gridChoice() : null, text);
 }
 function moreButton(label, onclick) {
   return h('button', { class: 'more', type: 'button', title: 'Source, licence, resolution, opacity', 'aria-label': `About ${label}`, 'aria-expanded': 'false', onclick }, icon(...UI_ICON.info));
@@ -866,8 +880,7 @@ function renderZoom() {
     const on = state.on.has(it.id), low = it.minzoom && z < it.minzoom, high = it.maxzoom && z >= it.maxzoom + 1;
     r.row.classList.toggle('dim', !!(on && (low || high)));
     const hint = r.row.querySelector('.hint');
-    // Depth sources off with its other grid chosen: said on its row, since its choice holds all the same
-    if (hint) hint.textContent = !on ? (it.id === 'depthsource' && seaGrid() === 'gebco' ? 'GEBCO everywhere' : '') : low ? `zoom ${it.minzoom}+` : high ? `zoom ≤ ${it.maxzoom}` : '';
+    if (hint) hint.textContent = !on ? '' : low ? `zoom ${it.minzoom}+` : high ? `zoom ≤ ${it.maxzoom}` : '';
   }
   renderLegends();
 }

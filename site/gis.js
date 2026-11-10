@@ -48,7 +48,7 @@ export function gisExport({ map, layersOf, layerDrawn, kindOf, drawing, display,
   // (256 px DEM tiles at z show at map zoom z − 1, clip.js)
   const RASTERS = [
     { key: 'depth', items: ['depth'], clip: clips.sea, max: DEM_SEA_MAX, title: 'Depth',
-      description: 'Seabed elevation in metres, negative below sea level, as the depth shading draws it: the GEBCO 2026 Grid, and the EMODnet DTM 2024 in European seas unless Depth sources was set to GEBCO everywhere, sampled at the pixels (a cubic spline over the cells), cut to the OSM coastline; sea the grid calls dry is -1. No data on land, lakes and inland water at sea level' },
+      description: 'Seabed elevation in metres, negative below sea level, as the depth shading draws it: the GEBCO 2026 Grid, and the EMODnet DTM 2024 in European seas unless the depths there were set to GEBCO, sampled at the pixels (a cubic spline over the cells), cut to the OSM coastline; sea the grid calls dry is -1. No data on land, lakes and inland water at sea level' },
     { key: 'elevation', items: ['relief', 'contours'], clip: clips.land, max: DEM_LAND_MAX, title: 'Land elevation',
       description: 'Land elevation in metres, as the relief shading and land contours use it: Terrarium DEM (SRTM on land) cut to the OSM coastline. No data in the sea' },
   ];

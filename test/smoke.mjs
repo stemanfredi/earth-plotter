@@ -616,7 +616,7 @@ await section('the elevation profile', async () => {
   await dw.evaluate(() => map.jumpTo({ center: [12.15, 40.2], zoom: 9 }));
   await settled(dw);
   const onLine = await dw.evaluate(() => { const p = map.project([12.15, 40.2]), r = map.getCanvas().getBoundingClientRect(); return [r.left + p.x, r.top + p.y]; });
-  const marks = () => dw.evaluate(() => drawing.previewPts?.length || 0);
+  const marks = () => dw.evaluate(() => (drawing.cursorPt ? 1 : 0));
   await dw.mouse.move(onLine[0], onLine[1]);
   const markedOn = await marks();
   await dw.mouse.move(onLine[0], onLine[1] + 60);
@@ -877,13 +877,15 @@ await section('Offline areas: the view saved from the dialog, drawn without a co
   let wide = false; // the window wider than the area: a depth chunk (degrees wide) may be wanted only by tiles beyond it
   const inArea = (u) => {
     if (!area) return true;
-    // a GEBCO chunk (gebco.js): level k of 15″ × 2^k cells, 512 × 512 cells a chunk, from 90° N, 180° W
+    // a depth chunk (gebco.js): GEBCO's, level k of 15″ × 2^k cells, 512 × 512 cells a chunk, from 90° N, 180° W;
+    // EMODnet's (tools/emodnet.mjs), 1/16′ × 2^k cells, 500 × 500 a chunk, from 90° N, 36° W
     const c = /\.zarr\/(\d+)\/\w+\/(\d+)\.(\d+)$/.exec(u), m = /\/(\d+)\/(\d+)\/(\d+)\.(?:pbf|png)$/.exec(u);
-    const deg = c && (512 * 15 * 2 ** c[1]) / 3600;
+    const own = c && u.includes('/emodnet-2024/'), west = own ? -36 : -180;
+    const deg = c && (own ? (500 * 2 ** c[1]) / 960 : (512 * 15 * 2 ** c[1]) / 3600);
     if (!c && !m) return true;
     if (c && wide) return false;
     if (m && +m[1] < areaFrom) return false;
-    const [w, s, e, n] = c ? [-180 + c[3] * deg, 90 - (+c[2] + 1) * deg, -180 + (+c[3] + 1) * deg, 90 - c[2] * deg] : tileBounds(+m[1], +m[2], +m[3]);
+    const [w, s, e, n] = c ? [west + c[3] * deg, 90 - (+c[2] + 1) * deg, west + (+c[3] + 1) * deg, 90 - c[2] * deg] : tileBounds(+m[1], +m[2], +m[3]);
     return e > area[0] && w < area[2] && n > area[1] && s < area[3];
   };
   octx.on('requestfailed', (r) => { if (!r.serviceWorker() && savedHosts.some((x) => r.url().startsWith(x)) && inArea(r.url())) failed.push(r.url()); });
@@ -964,6 +966,22 @@ await section('Offline areas: the view saved from the dialog, drawn without a co
   await settled(op);
   const fromFile = await op.evaluate(() => map.queryRenderedFeatures().length), missed = failed.filter((u) => !u.includes('openseamap'));
   check(fromFile > 100 && !missed.length, `offline areas, file opened again: drawn offline (${fromFile} features), ${missed.length} requests failed but the seamarks'${missed.length ? `: ${missed.slice(0, 3).join(' ')}` : ''}`);
+  // an area saved before EMODnet's grid was read keeps GEBCO's files alone: its depths and isobaths drawn
+  // from those rather than not at all, and a click there gives the depth and names no grid
+  await op.evaluate(async () => { for (const id of (await caches.keys()).filter((k) => k.startsWith('pack-'))) { const c = await caches.open(id); for (const r of await c.keys()) if (r.url.includes('/emodnet-2024/')) await c.delete(r); } });
+  await op.reload();
+  await op.waitForFunction(() => window.map?.isStyleLoaded?.(), null, { timeout: 60000 });
+  await op.evaluate(() => map.jumpTo({ zoom: 12, center: [9.85, 44.08] }));
+  await until(op, () => map.loaded() && map.areTilesLoaded(), null, 60000);
+  await settled(op);
+  const older = await op.evaluate(() => [map.queryRenderedFeatures({ layers: map.getStyle().layers.filter((l) => l.source === 'isobaths').map((l) => l.id) }).length,
+    [...document.querySelectorAll('.item.error, .item.partial')].map((r) => r.querySelector('input')?.id).filter((id) => id !== 'i-maritime').join()]); // (maritime zones, on since above: not kept)
+  const spot = await op.evaluate(() => { const p = map.project([9.86, 44.07]), r = map.getCanvas().getBoundingClientRect(); return { x: r.left + p.x, y: r.top + p.y }; });
+  await op.mouse.click(spot.x, spot.y);
+  await op.waitForSelector('.depthpop', { timeout: 15000 }).catch(() => {});
+  await op.waitForFunction(() => !map.getContainer().hasAttribute('aria-busy'), null, { timeout: 15000 }).catch(() => {});
+  const olderSaid = await op.evaluate(() => document.querySelector('.depthpop .maplibregl-popup-content > div')?.textContent || '');
+  check(older[0] > 0 && !older[1] && /^\d+ m\d+°[\d.]+′[NS] \d+°[\d.]+′[EW]$/.test(olderSaid), `offline, an area without EMODnet's files: the depths drawn from GEBCO's (${older[0]} isobath features; marked: ${older[1] || 'none'}), a click names no grid (${olderSaid})`);
   await octx.setOffline(false);
   await op.reload();
   await exportItem(op, 'offline');

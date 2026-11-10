@@ -4,9 +4,10 @@
 // times, a Copernicus dataset or one of its variables no longer offered fail the run (a dataset
 // version retired, a layer renamed: the page would draw nothing there). So do the imagery's: a
 // country's coverage not on the data host, a national service or EOX's newest year not answering
-// with an image; EOX's next year offered is a notice.
+// with an image; EOX's next year offered is a notice. And the depths: each of their stores on the
+// data host answering with its description and a chunk (the page fails on one missing).
 //   node tools/data-check.mjs
-import { DENSITY, HA_WMS, ITEMS, CMEMS, ORTHO, EOX_YEARS, eoxTiles } from '../site/catalog.js';
+import { DENSITY, HA_WMS, ITEMS, CMEMS, ORTHO, EOX_YEARS, eoxTiles, GEBCO, GEBCO_TID, EMODNET, EMODNET_SOURCE } from '../site/catalog.js';
 import { HOSTS } from '../site/hosts.js';
 import { partOf } from '../site/cmems.js';
 import { COVERAGE } from '../site/ortho.js';
@@ -72,5 +73,16 @@ else console.log(`${'EOX'.padEnd(24)} ${newest} answers`);
 if (await image(tile(eoxTiles(newest + 1), 0, 0, 0))) {
   console.log(`${'EOX'.padEnd(24)} ${newest + 1} offered   ← newer mosaic: add it to EOX_YEARS`);
   if (process.env.GITHUB_ACTIONS) console.log(`::notice title=Newer EOX::EOX offers ${newest + 1}; catalog.js lists to ${newest}`);
+}
+// the depths' stores (GEBCO's and EMODnet's, each its elevation and its sources): the description, and
+// the first chunk of its coarsest level
+for (const url of [GEBCO, GEBCO_TID, EMODNET, EMODNET_SOURCE]) {
+  const name = url.split('/').slice(-2).join('/');
+  const md = await fetch(`${url}/.zmetadata`).then((t) => (t.ok ? t.json() : null), () => null);
+  const arrays = Object.keys(md?.metadata ?? {}).filter((k) => /^\d+\/(elevation|tid|source)\/\.zarray$/.test(k)).sort((a, b) => parseInt(b, 10) - parseInt(a, 10));
+  if (!arrays.length) { problem('depths', `${name}: no description at ${url}/.zmetadata`); continue; }
+  const chunk = `${url}/${arrays[0].replace('/.zarray', '')}/0.0`, got = await fetch(chunk).then((t) => t.ok && t.arrayBuffer(), () => null);
+  console.log(`${'depths'.padEnd(24)} ${name}: ${arrays.length} levels; ${got?.byteLength ? `a chunk of ${got.byteLength} bytes` : 'no chunk'}`);
+  if (!got?.byteLength) problem('depths', `${name}: no chunk at ${chunk}`);
 }
 if (problems.length) process.exit(1);

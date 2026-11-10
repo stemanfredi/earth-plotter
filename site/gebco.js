@@ -25,13 +25,13 @@ import { fetchBytes, lru } from './net.js';
 import { GEBCO, GEBCO_TID, DEPTH_SOURCES, EMODNET, EMODNET_SOURCE, EMODNET_AREA } from './catalog.js';
 import { rgbOf } from './format.js';
 
-const SIZE = TILE, CELL = 15 / 3600, KEEP = 96, WATER_FULL = 0.5; // KEEP: chunks kept (512 kB each at most): a zoomed-out view's, and its neighbours'
+const SIZE = TILE, CELL = 15 / 3600, KEEP = 96, WATER_FULL = 0.5; // KEEP: chunks kept of each store (512 kB each at most): a zoomed-out view's, and its neighbours'
 
 
 const stores = lru(Infinity);
 // a store, the map's and the GIS export's (values.js): every chunk of it is written (tools/gebco.mjs),
 // so one the host has not got is a failure (a broken upload), never the fill value read as the deepest sea
-export const gebcoStore = (url) => stores(url, () => openStore(url, async (u) => { const b = await fetchBytes(u); if (!b) throw new Error(`GEBCO: ${u.slice(u.lastIndexOf('/', u.lastIndexOf('/') - 1) + 1)} is missing`); return b; }));
+export const gebcoStore = (url) => stores(url, () => openStore(url, async (u) => { const b = await fetchBytes(u); if (!b) throw new Error(`Depths: ${new URL(u).pathname.slice(1)} is missing`); return b; })); // named with its store: GEBCO's or EMODnet's
 
 // a store's grid, as its level 0 says: cell size, its north-west corner, levels, whether it goes round
 // the world (GEBCO's store says none of it: 15″ cells from 90° N, 180° W)
@@ -64,7 +64,10 @@ function pixelIn(z, x, y) {
   const N = 2 ** z, lats = Float64Array.from({ length: SIZE }, (_, j) => latOf((y + (j + 0.5) / SIZE) / N));
   return (i, j) => inside(((x + (i + 0.5) / SIZE) / N) * 360 - 180, lats[j]) / EDGE;
 }
-const chunks = lru(KEEP); // `store level/row.col` → promise of the chunk's cells
+// `store level/row.col` → promise of the chunk's cells, kept store by store: a view in European seas
+// reads two grids, and one's chunks would push the other's out within the view
+const kept = new Map();
+const chunks = (key, make) => { const url = key.slice(0, key.indexOf(' ')); if (!kept.has(url)) kept.set(url, lru(KEEP)); return kept.get(url)(key, make); };
 
 // a grid's values at the pixel centres of 256 px Web Mercator tile z/x/y, row-major, north up:
 // each pixel its cell's own value (nearest: codes), or smoothly interpolated (a cubic B-spline), as
@@ -146,7 +149,11 @@ export const gebcoTile = (z, x, y) => gridTile(GEBCO, 'elevation', z, x, y, fals
 export async function seaTile(z, x, y) {
   const where = tileIn(z, x, y);
   if (!where) return gebcoTile(z, x, y);
-  const [m, g] = await Promise.all([gridTile(EMODNET, 'elevation', z, x, y, false), gebcoTile(z, x, y)]);
+  // EMODnet's files not to be had at all (the network's own failure, not the host's answer) where GEBCO's
+  // are, on the same host: an offline area saved before EMODnet's grid was read, which keeps GEBCO's
+  // alone. Drawn from those, rather than nothing; a click there names no grid (app.js)
+  const [m, g] = await Promise.all([gridTile(EMODNET, 'elevation', z, x, y, false).catch((e) => { if (e instanceof TypeError) return null; throw e; }), gebcoTile(z, x, y)]);
+  if (!m) return g;
   const t = where < 1 ? pixelIn(z, x, y) : null;
   for (let j = 0, p = 0; j < SIZE; j++) {
     for (let i = 0; i < SIZE; i++, p++) {

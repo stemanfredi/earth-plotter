@@ -4,7 +4,8 @@ const FETCH = { credentials: 'omit', referrerPolicy: 'no-referrer' };
 
 // Saving an offline area (offline.js): a file fetched into the area's cache, by whoever reads it (the
 // page, its clipping worker). The copy there first (the page's base tiles, read again by the cut),
-// else the network's, put there when it is a file (2xx with a body: a 204 is no tile), stored(bytes,
+// else the network's, put there when it is a file (2xx; one with no body too: OpenFreeMap's answer for a
+// tile with nothing in it, which the cut of the land over it reads; a 204 is no tile), stored(bytes,
 // url) said of it; the browser's storage full throws (a QuotaExceededError). area: { cache (a Cache,
 // or its promise), reload: the addresses asked of the providers themselves (cache 'reload', which
 // the service worker takes from no saved area: an area saved again), stored }
@@ -14,7 +15,8 @@ export async function fetchInto(area, url, init = {}) {
   const r = await fetch(url, { ...FETCH, ...init, ...(area.reload.some((h) => url.startsWith(h)) && { cache: 'reload' }) });
   if (!r.ok || r.status === 204) return r;
   const body = await r.blob();
-  if (body.size) { await cache.put(url, new Response(body, r)); area.stored(body.size, url); }
+  await cache.put(url, new Response(body, r));
+  area.stored(body.size, url);
   return new Response(body, r);
 }
 // the area every fetch below goes into: set in a clipping worker saving one (clip-worker.js)
@@ -25,7 +27,7 @@ export const fetchAllInto = (a) => { area = a; };
 // tile of its layer, the time line's range and an export until the browser gives up, minutes later.
 // A minute: a few MB (a Zarr chunk) on a slow connection still arrive. The caller's signal kept.
 export const TIMEOUT_MS = 60e3;
-const timed = (init) => (typeof AbortSignal.any === 'function' && typeof AbortSignal.timeout === 'function'
+export const timed = (init) => (typeof AbortSignal.any === 'function' && typeof AbortSignal.timeout === 'function'
   ? { ...init, signal: AbortSignal.any([init.signal, AbortSignal.timeout(TIMEOUT_MS)].filter(Boolean)) } : init); // an older browser: as before
 const get = (url, init = {}) => (area ? fetchInto(area, url, timed(init)) : fetch(url, { ...FETCH, ...timed(init) }));
 
@@ -62,7 +64,7 @@ export function lru(max, maxAge = Infinity) {
     }
     born.set(key, Date.now());
     // forgotten only while it is the one kept: dropped, its key may hold a newer one by the time it fails
-    const v = make().catch((e) => { if (m.get(key) === v) m.delete(key); throw e; });
+    const v = make().catch((e) => { if (m.get(key) === v) { m.delete(key); born.delete(key); } throw e; });
     m.set(key, v);
     if (m.size > max) { const old = m.keys().next().value; m.delete(old); born.delete(old); }
     return v;

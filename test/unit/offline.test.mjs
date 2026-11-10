@@ -1,16 +1,18 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { tilesIn, baseTiles, fromZoom, areaOf, isAreaHead, isKeptFile, areaFile, namesOwnTiles, BASE_TILES, TOP_MAX, PACK, MANIFEST_FILE } from '../../site/offline.js';
+import { tilesIn, baseTiles, termTiles, fromZoom, areaOf, isAreaHead, isKeptFile, areaFile, namesOwnTiles, BASE_TILES, TOP_MAX, PACK, MANIFEST_FILE } from '../../site/offline.js';
 import { unzip } from '../../site/zip.js';
 
 test('tilesIn: the tiles an area covers at a zoom, a margin of tiles more, clamped to the world', () => {
   assert.deepEqual(tilesIn([-180, -85, 180, 85], 0), [[0, 0, 0]]);
   assert.equal(tilesIn([-180, -85, 180, 85], 2).length, 16);
-  // a point-sized area: one tile; with a margin of one, its 3 × 3; at the world's corner, cut to 2 × 2
+  // a point-sized area: one tile; with a margin of one, its 3 × 3; at the world's corner, cut at the pole
+  // but not at 180°: the margin's column goes round (a contour tile there reads its neighbour beyond)
   assert.equal(tilesIn([9.5, 44, 9.5001, 44.0001], 10).length, 1);
   assert.equal(tilesIn([9.5, 44, 9.5001, 44.0001], 10, 1).length, 9);
-  assert.equal(tilesIn([-180, 85.04, -179.99, 85.05], 10, 1).length, 4);
+  assert.deepEqual(tilesIn([-180, 85.04, -179.99, 85.05], 10, 1).map(([, x, y]) => `${x}/${y}`), ['1023/0', '1023/1', '0/0', '0/1', '1/0', '1/1']);
+  assert.equal(tilesIn([-180, -85, 180, 85], 1, 1).length, 4); // the whole world: each tile once
   // an edge exactly on a tile's boundary does not take the next tile
   assert.equal(tilesIn([0, 0, 90, 66.51326], 2).length, 1);
 });
@@ -28,6 +30,8 @@ test('baseTiles: what OpenFreeMap\'s terms count, from a zoom to the top (at mos
   assert.equal(baseTiles(alps, 12, 12), tilesIn(alps, 12, 1).length);
   assert.equal(baseTiles(alps, 13, 14), tilesIn(alps, 13).length + tilesIn(alps, 14).length);
   assert.equal(baseTiles(alps, 8, 8), tilesIn(alps, 8).length);
+  // with the tiles below, which the cut may read for a shore: what the limit is held against
+  assert.equal(termTiles(alps, 8, 14) - baseTiles(alps, 8, 14), Array.from({ length: 8 }, (_, z) => tilesIn(alps, z).length).reduce((a, b) => a + b));
   // 320 km at sea to zoom 12 is about the limit; to zoom 14 far over it
   const sea = [8, 42.5, 12, 45.4];
   assert.ok(baseTiles(sea, 5, 12) < 4000 && baseTiles(sea, 5, 14) > 3 * BASE_TILES);

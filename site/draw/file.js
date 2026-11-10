@@ -11,7 +11,7 @@ import { FORMAT, VERSION, KINDS, KIND, SYMBOLS, LEADERS, LABEL_OFFSET, META_D, M
   emptyDoc, newId, columnsOf, find, targetOf, elements, canHold, holderOf, reading, bearingOf } from './document.js';
 import { ID, isObj, fin, oneOf, shown, Skip, time, text, properties, flag, position, angle, look, aperture, readView, VIEW_D, VIEW_DATA_D } from './check.js';
 import { targetPosition, refreshAttached, placeAt, lineTarget } from './attach.js';
-import { settings, connectSettings, DISTRIBUTE_D, CONNECT_D } from './generator.js';
+import { settings, connectSettings, pruneRules, DISTRIBUTE_D, CONNECT_D } from './generator.js';
 import { norm180, samePosition, lonLatArea2, clamp } from '../geo.js';
 
 const MAX_POSITIONS = 100000; // positions in one line: more would stall the page at every change
@@ -191,8 +191,9 @@ function read(raw, app, known, now, report) {
     if (moved) report.warnings.push(`${moved} place${moved > 1 ? 's' : ''} moved to what ${moved > 1 ? 'they are' : 'it is'} linked to (the file was edited elsewhere)`);
   });
 
-  // rules: what Distribute along and Connect keep linked, checked loosely (a reference gone is dropped at
-  // the next change)
+  // rules: what Distribute along and Connect keep linked, their references checked at the end: one that
+  // names what is not in the file (its line, all its points or roots) is dropped here, not at the next
+  // change, which the page may not reach (its inspector reads the rule as it is)
   const idList = (v) => (Array.isArray(v) ? v.filter((y) => typeof y === 'string' && ID.test(y)) : []);
   const ref = (v) => (typeof v === 'string' && ID.test(v) ? v : null);
   for (const x of Array.isArray(app?.rules) ? app.rules : []) {
@@ -211,6 +212,9 @@ function read(raw, app, known, now, report) {
     });
     if (r) doc.rules.push(r);
   }
+  const rules = doc.rules.length;
+  pruneRules(doc);
+  if (doc.rules.length < rules) report.warnings.push(`${rules - doc.rules.length} rule${rules - doc.rules.length > 1 ? 's' : ''} left out: what ${rules - doc.rules.length > 1 ? 'they were' : 'it was'} made along or between is not in the file`);
   return { doc, view };
 }
 
@@ -350,7 +354,7 @@ function feature(kind, el) {
     Object.assign(mine, lean({ symbol: el.symbol, bearing: bearingOf(el.bearing) }, { symbol: 'none', bearing: 0 }));
   } else if (kind === 'circle') {
     geometry = { type: 'Point', coordinates: pos(el.position) };
-    Object.assign(mine, { radius: Math.min(r3(el.radius), MAX_RADIUS - 0.001) }, lean({ aperture: el.aperture && Math.min(r4(el.aperture), 359.9999), bearing: bearingOf(el.bearing) }, { aperture: null, bearing: 0 }));
+    Object.assign(mine, { radius: Math.max(0.001, Math.min(r3(el.radius), MAX_RADIUS - 0.001)) } /* never rounded to 0: no circle read back */, lean({ aperture: el.aperture && Math.min(r4(el.aperture), 359.9999), bearing: bearingOf(el.bearing) }, { aperture: null, bearing: 0 }));
   } else if (kind === 'line') {
     // closed: a Polygon, counter-clockwise as RFC 7946 asks; a ring stored clockwise is written
     // reversed, and says so (its names stay in its own order)
@@ -374,7 +378,7 @@ export function toFile(doc, v = null) {
     view: v ? lean({ center: v.center && pos(v.center), zoom: v.zoom === null ? null : r2(v.zoom), bearing: r1(v.bearing), layers: v.layers && v.layers.map((l) => ({ ...l })), // zoom and bearing as the address keeps them, which applies a file's view
       // data always written ({} when nothing is chosen), so a reader gets an object and the app clears its data layers
       data: v.data ? lean({ colour: v.data.colour && { ...v.data.colour }, arrows: v.data.arrows && { ...v.data.arrows }, time: v.data.time, depth: v.data.depth }, VIEW_DATA_D) : {},
-      units: v.units, bearings: v.bearings === true }, VIEW_D) : null,
+      units: v.units, bearings: v.bearings === true, grid: v.grid }, VIEW_D) : null,
     look: lookOut(doc.look),
     groups: doc.groups.map((g) => lean({ id: g.id, groupId: g.groupId, name: g.name, properties: g.properties.map((p) => ({ ...p })), visible: g.visible },
       { groupId: null, name: '', properties: [], visible: true })),

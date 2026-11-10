@@ -509,6 +509,7 @@ export function drawView(root, ctx) {
     const xs = drawing.selected();
     const form = forms.current();
     if (form && selKey() !== form.sel) { closeForm(); note('The form closed: the selection changed'); }
+    else if (form && !forms.stands()) { closeForm(); note('The form closed: what it was for is gone'); }
     ctx.frame.has(!NARROW.matches || !!forms.current() || xs.length > 0 || ctx.frame.props); // Properties shown while it has something (a computer: the drawing, with nothing selected; a phone: the drawing too while the user turned it on), and is on
     // not seen (off, or nothing to show): not built; built anew when it is (render('tool'))
     if (ctx.props.hidden) { shows = null; return; }

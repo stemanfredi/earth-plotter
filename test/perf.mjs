@@ -1,5 +1,5 @@
 // npm run perf [-- RUNS]: how long the depth layers take to draw, from a fresh browser (empty cache)
-// until every tile is in, with what GEBCO's store sent; the median of RUNS (3). Not in CI: timings
+// until every tile is in, with what the depths' stores (GEBCO's, and EMODnet's in European seas) sent; the median of RUNS (3). Not in CI: timings
 // vary with the machine and the network
 import { chromium } from 'playwright-core';
 import { serve, chromeOptions } from './serve.mjs';
@@ -25,6 +25,6 @@ for (let r = 0; r < runs; r++) {
 }
 for (const [k, rs] of Object.entries(out)) {
   const ms = rs.map((x) => x.ms).sort((a, b) => a - b), med = ms[ms.length >> 1], n = rs.at(-1).net;
-  console.log(`${k.padEnd(20)} median ${(med / 1000).toFixed(1)} s  (runs ${ms.map((x) => (x / 1000).toFixed(1)).join(', ')})  GEBCO ${n[0]} requests, ${(n[1] / 1e6).toFixed(1)} MB`);
+  console.log(`${k.padEnd(20)} median ${(med / 1000).toFixed(1)} s  (runs ${ms.map((x) => (x / 1000).toFixed(1)).join(', ')})  depth stores ${n[0]} requests, ${(n[1] / 1e6).toFixed(1)} MB`);
 }
 await browser.close(); server.close();

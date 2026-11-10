@@ -10,7 +10,7 @@ import { icon, UI_ICON } from './icons.js';
 import { HOSTS, OFFLINE_PREFIXES } from './hosts.js';
 import { OMT_TILEJSON, DEM_TILES, DEM_LAND_MAX, DEM_SEA_MAX, OMT_MAX, SEAMARKS_MIN, CONTOURS_MIN, DEM_CREDITS, ISOBATH_MAX } from './catalog.js';
 import { FONTS, GLYPHS, SEAMARK_TILES } from './style.js';
-import { fetchInto, tileUrl } from './net.js';
+import { fetchInto, timed, tileUrl } from './net.js';
 import { tileXY, MAX_LAT } from './geo.js';
 import { ask } from './menu.js';
 import { zip, unzip } from './zip.js';
@@ -43,10 +43,12 @@ const MB = (n) => (n >= 1e9 ? `${(n / 1e9).toFixed(1)} GB` : `${(n / 1e6).toFixe
 export function tilesIn([w, s, e, n], z, margin = 0) {
   const k = 2 ** z, clamp = (v) => Math.max(0, Math.min(k - 1, v));
   const tx = (lng) => ((lng + 180) / 360) * k; // not wrapped: 180° is the east edge, not tile 0
-  const x0 = clamp(Math.floor(tx(w)) - margin), x1 = clamp(Math.floor(tx(e) - 1e-9) + margin);
+  const x0 = clamp(Math.floor(tx(w))) - margin, x1 = clamp(Math.floor(tx(e) - 1e-9)) + margin;
   const y0 = clamp(Math.floor(tileXY(0, n, z).y) - margin), y1 = clamp(Math.floor(tileXY(0, s, z).y - 1e-9) + margin);
+  // the margin's columns go round the world (a contour tile at 180° reads its neighbour beyond it), each once
+  const xs = [...new Set(Array.from({ length: Math.min(k, x1 - x0 + 1) }, (_, i) => (((x0 + i) % k) + k) % k))];
   const out = [];
-  for (let x = x0; x <= x1; x++) for (let y = y0; y <= y1; y++) out.push([z, x, y]);
+  for (const x of xs) for (let y = y0; y <= y1; y++) out.push([z, x, y]);
   return out;
 }
 // the base map's tiles an area from zoom from to top takes (the number OpenFreeMap's terms count): to
@@ -56,6 +58,9 @@ const ringed = (z) => z >= CONTOURS_MIN && z <= DEM_LAND_MAX;
 export const baseTiles = (bounds, from, top) => Array.from({ length: Math.max(0, Math.min(top, TOP_MAX) - from + 1) }, (_, i) => tilesIn(bounds, from + i, ringed(from + i) ? 1 : 0).length).reduce((a, b) => a + b, 0);
 // the lowest zoom an area keeps: a few below the view's (lower, the area is a speck, and the
 // world's tiles are the largest)
+// with the tiles below its first zoom, which the cut reads for a shore its own tile has too little of
+// (clip.js: any of the area's ancestors, a few a zoom): what a save may ask of OpenFreeMap in all
+export const termTiles = (bounds, from, top) => baseTiles(bounds, from, top) + Array.from({ length: from }, (_, z) => tilesIn(bounds, z).length).reduce((a, b) => a + b, 0);
 export const fromZoom = (viewZoom) => Math.max(0, Math.min(TOP_MAX, Math.floor(viewZoom)) - 3);
 // the map's view as an area: its bounds, cut to the map's world (a view across 180° is cut there; a
 // view whose centre is beyond ±180°, a link's, moved by whole turns into the world first)
@@ -92,35 +97,37 @@ const alone = (work) => navigator.locks.request('offline-areas', { ifAvailable: 
   if (!lock) throw new Error('another tab is saving an area');
   return work();
 });
-// saved again, only the base map and the seamarks change: taken anew from their providers; the
-// elevation and the depths (versioned paths) from the saved areas as before
+// what changes at its provider, the base map and the seamarks: taken anew from them at every save; the
+// elevation and the depths (versioned paths) from the saved areas where they have them
 const CHANGING = [OFFLINE_PREFIXES.openfreemap, OFFLINE_PREFIXES.openseamap];
 
-// Saves the area, zooms from to top, under a new pack-… cache; fresh: the base map and the seamarks
-// from the network, not from the saved areas (an area saved again). progress({ done, total, bytes }).
+// Saves the area, zooms from to top, under a new pack-… cache: the base map and the seamarks from the
+// network, never from the saved areas (theirs may be of an older build, which would be filed under
+// this one's name). progress({ done, total, bytes }).
 // Resolves to its manifest; throws (the cache deleted) when cancelled, a file could not be had,
 // the browser's storage is full, or the base map is over its terms.
 // Whoever fetches a file puts it in the area's cache (net.js fetchInto): the page its fonts, base
 // tiles and seamarks, then a clipping worker of its own the files the cut elevation reads (its
 // caches empty, so each is asked for; the base tiles found in the area). The service worker answers
 // from finished areas only, so another tab's map never lands in this one.
-async function saveArea({ bounds, from, top, name, fresh = false, signal, progress = () => {} }) {
+async function saveArea({ bounds, from, top, name, signal, progress = () => {} }) {
   if (!sw()) throw new Error('this browser keeps no files for this page');
-  if (baseTiles(bounds, from, top) > BASE_TILES) throw new Error(`more than ${BASE_TILES.toLocaleString('en')} tiles of the base map`);
+  if (termTiles(bounds, from, top) > BASE_TILES) throw new Error(`more than ${BASE_TILES.toLocaleString('en')} tiles of the base map`);
   const { id, cache } = await newPack();
   // what the area holds, counted as its files are put in it (net.js fetchInto, by the page and its
   // worker: each file once, the one the cache keeps, should two reads of it overlap): its bytes, the
   // base map's with its fonts (OpenFreeMap's terms: over them, it stops), and its tiles alone
   let bytes = 0, baseBytes = 0, tiles = 0, clip = null;
   const urls = new Set();
-  const area = { cache, reload: fresh ? CHANGING : [], stored: (n, url) => {
+  const area = { cache, reload: CHANGING, stored: (n, url) => {
     if (urls.has(url)) return;
     urls.add(url);
     bytes += n;
     if (url.startsWith(OFFLINE_PREFIXES.openfreemap)) baseBytes += n;
     if (isBaseTile(url)) tiles++;
   } };
-  const get = async (url) => { const r = await fetchInto(area, url, { signal }); if (!r.ok) throw new Error(`HTTP ${r.status}`); return r; };
+  // (a provider that hangs: given up after a minute, tried once more, then counted as failed)
+  const get = async (url) => { const r = await fetchInto(area, url, timed({ signal })); if (!r.ok) throw new Error(`HTTP ${r.status}`); return r; };
   const cancel = () => clip?.stop(); // what the worker was doing fails at once
   signal?.addEventListener('abort', cancel);
   try {
@@ -307,7 +314,7 @@ export function offlineDialog({ map, fit, download }) {
     const over = h('p', { class: 'note warn' }); // OpenFreeMap's terms: said only when this is beyond them
     const save = h('button', { type: 'button', class: 'small done', onclick: () => saveIt({ bounds, from, top: +zoom.value, name: centre(bounds) }) }, 'Save');
     const recount = () => {
-      const beyond = baseTiles(bounds, from, +zoom.value) > BASE_TILES;
+      const beyond = termTiles(bounds, from, +zoom.value) > BASE_TILES;
       over.textContent = beyond ? 'Too large: choose less detail or a smaller view' : '';
       over.hidden = !beyond;
       save.disabled = beyond || !sw() || !!saving;
@@ -379,7 +386,7 @@ export function offlineDialog({ map, fit, download }) {
   // replaces: the id of the area saved again, deleted once the new one is saved
   const saveIt = ({ bounds, from, top, name }, replaces = null) => busy('Saving…', true, async (signal, say) => {
     navigator.storage?.persist?.().catch(() => {}); // asked with the first: the drawings kept too (not waited for: a browser may ask the user)
-    await saveArea({ bounds, from, top, name, fresh: !!replaces, signal,
+    await saveArea({ bounds, from, top, name, signal,
       progress: ({ done, total, bytes }) => say(`Saving… ${Math.round((100 * done) / total)} %, ${MB(bytes)}`) });
     if (replaces) await deleteArea(replaces);
   }, 'Not saved');

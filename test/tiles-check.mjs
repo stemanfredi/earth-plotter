@@ -1,5 +1,5 @@
 // npm run tiles-check: the elevation tiles of known trouble spots, cut by clip.js in headless Chrome
-// as the page does, checked for what each defect broke. Live data (GEBCO, OpenFreeMap), so not
+// as the page does, checked for what each defect broke. Live data (GEBCO, EMODnet in European seas, OpenFreeMap), so not
 // a deploy gate: CI runs it weekly, with the live smoke test.
 //   seams     no bend in the depth slope at a tile edge (Canale di Corsica: each tile is splined
 //             from the same cells, so none by construction)
@@ -67,7 +67,7 @@ await section('zooms', async () => {
     const t = at(lon, lat, z);
     const [P, ...C] = await Promise.all([metres(z, t.x, t.y), ...[0, 1].flatMap((dy) => [0, 1].map((dx) => metres(z + 1, 2 * t.x + dx, 2 * t.y + dy)))]);
     // beyond the children's range by more than 20 m or half their depth: a dry block, a false pit
-    // (within it, the zooms differ a little: each reads the GEBCO level its pixels resolve)
+    // (within it, the zooms differ a little: each reads the level of its grid its pixels resolve)
     let bad = 0, n = 0, worst = '';
     for (let j = 0; j < 256; j++) {
       for (let i = 0; i < 256; i++) {

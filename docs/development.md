@@ -84,7 +84,9 @@ Two things are the project's own and need replacing in a copy:
     listing, no function, no key; content types are not needed: the page reads
     every file as bytes);
   - answer a file it does not have with 404 (or 403): the page reads that as
-    empty (a land-free chunk, a tile without seagrass);
+    empty where a file may be absent (a tile without seagrass), and as a
+    failure for the depths, whose stores hold every chunk (a missing one is a
+    broken upload: the tile fails, rather than being drawn as the deepest sea);
   - allow cross-origin reads from the page's origin, and from
     `http://127.0.0.1:8099` for the browser tests;
   - not keep `coverage-2026/` cached for long, here or in browsers: it is

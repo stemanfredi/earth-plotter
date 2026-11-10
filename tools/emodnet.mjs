@@ -4,11 +4,11 @@
 // geodata.earthplotter.org/emodnet-2024/, beside gebco-2026/ (tools/gebco.mjs).
 //
 //   node tools/emodnet.mjs download DIR                  EMODnet's DTM 2024 chunks into DIR/dtm (resumable)
-//   node tools/emodnet.mjs build DIR GEBCO_DIR           DIR/zarr/emodnet-2024/{elevation,source}.zarr,
-//          [--workers N]                                 and DIR/zarr/report.json (the check)
+//   node tools/emodnet.mjs build DIR GEBCO_DIR           DIR/zarr/emodnet-2024/{elevation,source}.zarr
+//          [--workers N]
 //   node tools/emodnet.mjs source-levels DIR GEBCO_DIR   the source grid's levels above 0 alone, from a build already made
-//   node tools/emodnet.mjs check DIR GEBCO_DIR           the check alone (no store written), and its
-//          [--n N]                                       report: the N blocks of 1° with most steps
+//   node tools/emodnet.mjs verify DIR GEBCO_DIR          the store against its sources: every chunk there, and
+//          [--rows N]                                    N rows of blocks (8) and chunks of each level made again, the same
 //
 // The grid is EMODnet's: 1/16′ cells (about 115 m), 36° W–43° E, 15°–90° N, north up. A cell is
 // EMODnet's depth wherever EMODnet has water, its surveys and its interpolations alike (its flag 1:
@@ -31,11 +31,8 @@
 // source.zarr     int8, the same levels: 1 where the cell is EMODnet's survey, 2 its interpolation,
 //                 3 GEBCO's water, 0 land (fill 0); level k+1 the most common among 2 × 2
 //                 (interpolated on a tie with surveyed). The depth on a click says which, and the Depth sources layer draws it
-//
-// The check (report.json): steps between neighbouring water cells, one EMODnet's and one GEBCO's,
-// more than 5 m and 30 % of the deeper apart.
 import { Worker, isMainThread, parentPort, workerData } from 'node:worker_threads';
-import { mkdirSync, writeFileSync, readFileSync, existsSync, renameSync, rmSync } from 'node:fs';
+import { mkdirSync, writeFileSync, readFileSync, existsSync, statSync, renameSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { cpus } from 'node:os';
 import { fileURLToPath } from 'node:url';
@@ -55,13 +52,15 @@ const ER = H / EC, ECOLS = Math.ceil(W / EC); // EMODnet's chunk rows and column
 // ---- download --------------------------------------------------------------------------------
 
 // every chunk of the two variables, into DIR/dtm/<var>/<row>.<col> as EMODnet names them, and its
-// metadata; a chunk already there is not asked again
+// metadata; a chunk already there is not asked again. One EMODnet does not store (its host answers 403
+// or 404: all no value) is kept as an empty file, and asked again at every run: an answer of a bad
+// moment would otherwise be read as land ever after
 export async function download(dir, { log = console.log, parallel = 16 } = {}) {
   const base = join(dir, 'dtm');
   for (const v of VARS) mkdirSync(join(base, v), { recursive: true });
   if (!existsSync(join(base, '.zmetadata'))) writeFileSync(join(base, '.zmetadata'), Buffer.from(await (await fetch(`${DTM}/.zmetadata`)).arrayBuffer()));
   const todo = [];
-  for (const v of VARS) for (let r = 0; r < ER; r++) for (let c = 0; c < ECOLS; c++) if (!existsSync(join(base, v, `${r}.${c}`))) todo.push([v, `${r}.${c}`]);
+  for (const v of VARS) for (let r = 0; r < ER; r++) for (let c = 0; c < ECOLS; c++) { const p = join(base, v, `${r}.${c}`); if (!existsSync(p) || !statSync(p).size) todo.push([v, `${r}.${c}`]); }
   log(`${todo.length} chunks to fetch`);
   let next = 0, done = 0, bytes = 0, failed = 0;
   const t0 = Date.now();
@@ -100,7 +99,7 @@ const bspline = (t) => { const t2 = t * t, t3 = t2 * t; return [(1 - t) ** 3 / 6
 export const HALO = 5, SURVEYED = 1, INTERPOLATED = 2, FROM_GEBCO = 3; // source's values (0: land, no depth of its own)
 export function mergeBlock(jr, jc, e, f, gebco, halo = 0) {
   const N = EC + 2 * halo, m = new Float32Array(N * N), src = new Int8Array(N * N);
-  const stats = { surveyed: 0, interpolated: 0, gebco: 0, land: 0, steps: 0, worst: { step: null } };
+  const stats = { surveyed: 0, interpolated: 0, gebco: 0, land: 0 };
   // GEBCO's cells around the block, once: rows and columns in its grid
   const R0 = jr * EC - halo, C0 = jc * EC - halo;
   const gRow = (r) => (r + 0.5) * (CELL / GEBCO_CELL) - 0.5, gCol = (c) => ((WEST + 180) + (c + 0.5) * CELL) / GEBCO_CELL - 0.5;
@@ -130,17 +129,11 @@ export function mergeBlock(jr, jc, e, f, gebco, halo = 0) {
       if (ws > 0) { m[k] = sea / Math.max(ws, 0.5); src[k] = FROM_GEBCO; } // faded to its own shore, as the page fades it (site/gebco.js WATER_FULL)
     }
   }
-  // the check: steps between EMODnet's water and GEBCO's (the worst in the block: [score, row, column])
+  // what the block's cells are, counted (the build's log)
   for (let i = halo; i < halo + EC; i++) {
     for (let j = halo; j < halo + EC; j++) {
-      const k = i * N + j, a = m[k];
+      const k = i * N + j;
       if (src[k] === SURVEYED) stats.surveyed++; else if (src[k] === INTERPOLATED) stats.interpolated++; else if (src[k]) stats.gebco++; else stats.land++;
-      if (!(a < 0)) continue;
-      for (const n of [j + 1 < N ? k + 1 : -1, i + 1 < N ? k + N : -1]) {
-        if (n < 0 || (src[n] === FROM_GEBCO) === (src[k] === FROM_GEBCO) || !(m[n] < 0)) continue;
-        const d = Math.abs(a - m[n]), deep = Math.max(-a, -m[n]);
-        if (d > 5 && d > 0.3 * deep) { stats.steps++; if (!stats.worst.step || d / deep > stats.worst.step[0]) stats.worst.step = [d / deep, R0 + i, C0 + j]; }
-      }
     }
   }
   // the block itself, without its margin
@@ -177,9 +170,11 @@ async function gebcoWindow(gdir) {
   return gebcoStore;
 }
 
+// a chunk made: written, or (verify) held against the one in the store: 1 if that is missing or not the same bytes
+const put = (path, d, verify) => { if (!verify) { writeFileSync(path, d); return 0; } return existsSync(path) && Buffer.from(d.buffer, d.byteOffset, d.length).equals(readFileSync(path)) ? 0 : 1; };
 // one row of blocks, west to east: each with a margin of HALO cells from the chunks around it (the
 // row's three chunk rows read once each, as the row goes east)
-async function rowJob({ dir, gdir, out, jr, write = true }) {
+async function rowJob({ dir, gdir, out, jr, verify = false }) {
   const N = EC + 2 * HALO, held = new Map(), results = [];
   const chunkAt = (cr, cc) => { // EMODnet's chunk (row from the south), or null beyond its grid
     if (cr < 0 || cr >= ER || cc < 0 || cc >= ECOLS) return null;
@@ -211,22 +206,20 @@ async function rowJob({ dir, gdir, out, jr, write = true }) {
     const gebco = (r, c) => { r = Math.max(0, r); return need.get(`${Math.floor(r / GEBCO_CHUNK)}.${Math.floor(c / GEBCO_CHUNK)}`)[(r % GEBCO_CHUNK) * GEBCO_CHUNK + (c % GEBCO_CHUNK)]; };
     const { values, source, stats } = mergeBlock(jr, jc, e, f, gebco, HALO);
     stats.block = [jr, jc];
-    let size = 0;
-    if (write) {
-      for (let a = 0; a < 2; a++) {
-        for (let b = 0; b < 2; b++) {
-          const R = 2 * jr + a, C = 2 * jc + b;
-          if (C * CHUNK >= W) continue;
-          const v = part(values, EC, a * CHUNK, b * CHUNK, FILL, Int16Array);
-          const d = bloscEncode(new Uint8Array(v.buffer), 2);
-          writeFileSync(join(out, 'elevation.zarr', '0', 'elevation', `${R}.${C}`), d);
-          const sc = bloscEncode(new Uint8Array(part(source, EC, a * CHUNK, b * CHUNK, 0, Int8Array).buffer), 1);
-          writeFileSync(join(out, 'source.zarr', '0', 'source', `${R}.${C}`), sc);
-          size += d.length + sc.length;
-        }
+    let size = 0, differ = 0;
+    for (let a = 0; a < 2; a++) {
+      for (let b = 0; b < 2; b++) {
+        const R = 2 * jr + a, C = 2 * jc + b;
+        if (C * CHUNK >= W) continue;
+        const v = part(values, EC, a * CHUNK, b * CHUNK, FILL, Int16Array);
+        const d = bloscEncode(new Uint8Array(v.buffer), 2);
+        differ += put(join(out, 'elevation.zarr', '0', 'elevation', `${R}.${C}`), d, verify);
+        const sc = bloscEncode(new Uint8Array(part(source, EC, a * CHUNK, b * CHUNK, 0, Int8Array).buffer), 1);
+        differ += put(join(out, 'source.zarr', '0', 'source', `${R}.${C}`), sc, verify);
+        size += d.length + sc.length;
       }
     }
-    results.push({ size, stats });
+    results.push({ size, stats, differ });
   }
   return results;
 }
@@ -236,7 +229,7 @@ async function rowJob({ dir, gdir, out, jr, write = true }) {
 // kinds (interpolated on a tie: the less certain); 0 where none has a depth
 const META_ELEV = { chunks: [CHUNK, CHUNK], dtype: '<i2', fill_value: FILL, compressor: { id: 'blosc' }, filters: null };
 const META_SRC = { chunks: [CHUNK, CHUNK], dtype: '|i1', fill_value: 0, compressor: { id: 'blosc' }, filters: null };
-async function levelJob({ out, k, R, C, source = false }) {
+async function levelJob({ out, k, R, C, source = false, verify = false }) {
   const [store, name, metaOf, T] = source ? ['source.zarr', 'source', META_SRC, Int8Array] : ['elevation.zarr', 'elevation', META_ELEV, Int16Array];
   const dirBelow = join(out, store, String(k - 1), name), below = new T(4 * CHUNK * CHUNK).fill(metaOf.fill_value);
   for (let a = 0; a < 2; a++) {
@@ -257,20 +250,15 @@ async function levelJob({ out, k, R, C, source = false }) {
     }
   }
   const d = bloscEncode(new Uint8Array(v.buffer), source ? 1 : 2);
-  writeFileSync(join(out, store, String(k), name, `${R}.${C}`), d);
-  return { size: d.length };
+  return { size: d.length, differ: put(join(out, store, String(k), name, `${R}.${C}`), d, verify) };
 }
 
 if (!isMainThread && workerData?.emodnet) parentPort.on('message', async (j) => parentPort.postMessage(await (j.k ? levelJob(j) : rowJob(j))));
 
 const zarray = (shape, chunks, dtype, fill, typesize) => ({ zarr_format: 2, shape, chunks, dtype, compressor: { id: 'blosc', cname: 'zlib', clevel: 9, shuffle: typesize > 1 ? 1 : 0, blocksize: 0 }, fill_value: fill, order: 'C', filters: null });
 
-// sourceOnly: the source grid's levels above 0 alone, from a level 0 already built
-export async function build(dir, gdir, { out = join(dir, 'zarr', RELEASE), workers = cpus().length, levels = LEVELS, rows = null, checkOnly = false, sourceOnly = false, log = console.log } = {}) {
-  const t0 = Date.now();
-  if (!checkOnly && !sourceOnly) rmSync(out, { recursive: true, force: true });
-  for (let k = 0; k < levels; k++) mkdirSync(join(out, 'elevation.zarr', String(k), 'elevation'), { recursive: true });
-  for (let k = 0; k < levels; k++) mkdirSync(join(out, 'source.zarr', String(k), 'source'), { recursive: true });
+// work(run) with a pool of workers: run(jobs, each) gives each job to a free one, each(result) as they end
+async function withPool(workers, work) {
   const pool = Array.from({ length: workers }, () => new Worker(fileURLToPath(import.meta.url), { workerData: { emodnet: true } }));
   const run = (jobs, each) => new Promise((resolve, reject) => {
     let next = 0, done = 0;
@@ -283,32 +271,38 @@ export async function build(dir, gdir, { out = join(dir, 'zarr', RELEASE), worke
       give(w);
     }
   });
+  try { return await work(run); } finally { await Promise.all(pool.map((p) => p.terminate())); }
+}
+// the chunks of level k of a store: [R, C] each
+const chunksOf = (k) => { const out = []; for (let R = 0; R < Math.ceil(H / 2 ** k / CHUNK); R++) for (let C = 0; C < Math.ceil(W / 2 ** k / CHUNK); C++) out.push([R, C]); return out; };
+
+// sourceOnly: the source grid's levels above 0 alone, from a level 0 already built
+export async function build(dir, gdir, { out = join(dir, 'zarr', RELEASE), workers = cpus().length, levels = LEVELS, rows = null, sourceOnly = false, log = console.log } = {}) {
+  const t0 = Date.now();
+  if (!sourceOnly) rmSync(out, { recursive: true, force: true });
+  for (let k = 0; k < levels; k++) mkdirSync(join(out, 'elevation.zarr', String(k), 'elevation'), { recursive: true });
+  for (let k = 0; k < levels; k++) mkdirSync(join(out, 'source.zarr', String(k), 'source'), { recursive: true });
   let size = 0;
-  const totals = { surveyed: 0, interpolated: 0, gebco: 0, land: 0, steps: 0 }, found = [];
-  try {
+  const totals = { surveyed: 0, interpolated: 0, gebco: 0, land: 0 };
+  await withPool(workers, async (run) => {
     const jobs = [];
-    for (let jr = 0; jr < (sourceOnly ? 0 : ER); jr++) if (!rows || rows.includes(jr)) jobs.push({ dir, gdir, out, jr, write: !checkOnly });
+    for (let jr = 0; jr < (sourceOnly ? 0 : ER); jr++) if (!rows || rows.includes(jr)) jobs.push({ dir, gdir, out, jr });
     let n = 0;
     await run(jobs, (row) => {
       for (const { size: sz, stats } of row) {
         size += sz;
         for (const key of Object.keys(totals)) totals[key] += stats[key];
-        if (stats.steps) found.push(stats);
       }
       if (++n % 8 === 0) log(`level 0: ${n} of ${jobs.length} block rows, ${(size / 1e9).toFixed(2)} GB, ${((Date.now() - t0) / 60e3).toFixed(1)} min`);
     });
     log(`level 0: ${(size / 1e9).toFixed(2)} GB, ${((Date.now() - t0) / 60e3).toFixed(1)} min`);
-    for (let k = 1; k < (checkOnly ? 0 : levels); k++) {
-      const h = H / 2 ** k, w = W / 2 ** k, lj = [];
-      for (let R = 0; R < Math.ceil(h / CHUNK); R++) for (let C = 0; C < Math.ceil(w / CHUNK); C++) { if (!sourceOnly) lj.push({ out, k, R, C }); lj.push({ out, k, R, C, source: true }); }
+    for (let k = 1; k < levels; k++) {
+      const lj = [];
+      for (const [R, C] of chunksOf(k)) { if (!sourceOnly) lj.push({ out, k, R, C }); lj.push({ out, k, R, C, source: true }); }
       await run(lj, ({ size: s }) => { size += s; });
       log(`level ${k}: ${(size / 1e9).toFixed(2)} GB in all, ${((Date.now() - t0) / 60e3).toFixed(1)} min`);
     }
-  } finally {
-    await Promise.all(pool.map((p) => p.terminate()));
-  }
-  const report = sourceOnly ? JSON.parse(readFileSync(join(dir, 'zarr', 'report.json'))) : writeReport(dir, totals, found);
-  if (checkOnly) return { report };
+  });
   // metadata (coordinates per level, as GEBCO's store has them)
   const meta = { '.zgroup': { zarr_format: 2 } }, smeta = { '.zgroup': { zarr_format: 2 } };
   for (let k = 0; k < levels; k++) {
@@ -338,34 +332,44 @@ export async function build(dir, gdir, { out = join(dir, 'zarr', RELEASE), worke
     writeFileSync(join(out, store, '.zmetadata'), JSON.stringify({ zarr_consolidated_format: 1, metadata: m }));
   }
   if (sourceOnly) log(`done: the source grid's levels, ${((Date.now() - t0) / 60e3).toFixed(1)} min`);
-  else log(`done: ${(size / 1e9).toFixed(2)} GB in ${((Date.now() - t0) / 60e3).toFixed(1)} min; water cells: EMODnet surveyed ${totals.surveyed}, interpolated ${totals.interpolated}, GEBCO ${totals.gebco}; steps ${totals.steps}`);
-  return { out, size, report };
+  else log(`done: ${(size / 1e9).toFixed(2)} GB in ${((Date.now() - t0) / 60e3).toFixed(1)} min; water cells: EMODnet surveyed ${totals.surveyed}, interpolated ${totals.interpolated}, GEBCO ${totals.gebco}`);
+  return { out, size, totals };
 }
 
-// the check's report (DIR/zarr/report.json): the totals, and each block of 1° where it found
-// anything: its counts, and the worst cell of each kind (a step: the jump over the deeper side's
-// depth; shallower: by how many metres)
-const place = (w) => w && { score: +w[0].toFixed(2), lat: +(NORTH - (w[1] + 0.5) * CELL).toFixed(5), lon: +(WEST + (w[2] + 0.5) * CELL).toFixed(5) };
-function writeReport(dir, totals, found) {
-  const blocks = found.map((b) => ({ lat: +(NORTH - (b.block[0] + 0.5) * EC * CELL).toFixed(2), lon: +(WEST + (b.block[1] + 0.5) * EC * CELL).toFixed(2), steps: b.steps, step: place(b.worst.step) }));
-  const report = { totals, blocks };
-  mkdirSync(join(dir, 'zarr'), { recursive: true });
-  writeFileSync(join(dir, 'zarr', 'report.json'), JSON.stringify(report, null, 1));
-  return report;
-}
-const link = (p) => `https://earthplotter.org/#v=13/${p.lat}/${p.lon}/0&on=chart,depth,isobaths`;
-export function printReport({ totals, blocks }, { n = 20, log = console.log } = {}) {
-  log(`water cells: EMODnet's surveyed ${totals.surveyed}, interpolated ${totals.interpolated}, GEBCO's ${totals.gebco}; steps between EMODnet's and GEBCO's ${totals.steps}`);
-  log(`\nthe ${n} blocks of 1° with most steps:`);
-  for (const b of [...blocks].sort((a, c) => c.steps - a.steps).slice(0, n)) if (b.step) log(`${String(b.steps).padStart(7)}  ${b.lat}, ${b.lon}  worst ${b.step.score}: ${link(b.step)}`);
+// ---- verify: the store against its sources -------------------------------------------------------
+// Every chunk of every level there (one missing is a broken build or upload: the page fails on it);
+// then `rows` rows of blocks, spread from north to south, made again from EMODnet's chunks and
+// GEBCO's store, and as many chunks of each level above made again from the level below: each the
+// same bytes as the store's. Nothing written. Resolves to whether all is as it should be.
+export async function verify(dir, gdir, { out = join(dir, 'zarr', RELEASE), workers = cpus().length, levels = LEVELS, rows = 8, log = console.log } = {}) {
+  const t0 = Date.now(), spread = (list, n) => Array.from({ length: Math.min(n, list.length) }, (_, i) => list[Math.floor(((i + 0.5) * list.length) / Math.min(n, list.length))]);
+  let missing = 0, differ = 0, made = 0;
+  for (const [store, name] of [['elevation.zarr', 'elevation'], ['source.zarr', 'source']]) {
+    if (!existsSync(join(out, store, '.zmetadata'))) { missing++; log(`MISSING ${store}/.zmetadata`); }
+    for (let k = 0; k < levels; k++) for (const [R, C] of chunksOf(k)) if (!existsSync(join(out, store, String(k), name, `${R}.${C}`))) { if (missing++ < 20) log(`MISSING ${store}/${k}/${name}/${R}.${C}`); }
+  }
+  log(missing ? `${missing} files missing` : 'every chunk is there');
+  await withPool(workers, async (run) => {
+    await run(spread(Array.from({ length: ER }, (_, jr) => jr), rows).map((jr) => ({ dir, gdir, out, jr, verify: true })), (row) => { for (const b of row) { made += 4; differ += b.differ; if (b.differ) log(`DIFFERS level 0, block ${b.stats.block.join('.')}`); } });
+    log(`level 0: ${rows} rows of blocks made again, ${differ} chunks differ, ${((Date.now() - t0) / 60e3).toFixed(1)} min`);
+    for (let k = 1; k < levels; k++) {
+      const jobs = spread(chunksOf(k), rows * 8).flatMap(([R, C]) => [{ out, k, R, C, verify: true }, { out, k, R, C, source: true, verify: true }]);
+      let d = 0;
+      await run(jobs, (r) => { made++; d += r.differ; });
+      differ += d;
+      log(`level ${k}: ${jobs.length} chunks made again, ${d} differ`);
+    }
+  });
+  log(`${missing || differ ? 'FAILED' : 'ok'}: ${made} chunks made again, ${differ} differ, ${missing} missing, ${((Date.now() - t0) / 60e3).toFixed(1)} min`);
+  return !missing && !differ;
 }
 
 if (isMainThread && process.argv[1] === fileURLToPath(import.meta.url)) {
   const [cmd, dir, gdir] = process.argv.slice(2), opt = (k) => { const i = process.argv.indexOf(`--${k}`); return i > 0 ? process.argv[i + 1] : undefined; };
-  if (!dir || (cmd !== 'download' && !gdir)) { console.error('usage: node tools/emodnet.mjs download DIR | build DIR GEBCO_DIR [--workers N] | source-levels DIR GEBCO_DIR | check DIR GEBCO_DIR [--n N]'); process.exit(2); }
+  if (!dir || (cmd !== 'download' && !gdir)) { console.error('usage: node tools/emodnet.mjs download DIR | build DIR GEBCO_DIR [--workers N] | source-levels DIR GEBCO_DIR | verify DIR GEBCO_DIR [--rows N]'); process.exit(2); }
   if (cmd === 'download') process.exit((await download(dir)) ? 0 : 1);
-  else if (cmd === 'build') printReport((await build(dir, gdir, { workers: Number(opt('workers')) || undefined })).report);
+  else if (cmd === 'build') await build(dir, gdir, { workers: Number(opt('workers')) || undefined });
   else if (cmd === 'source-levels') await build(dir, gdir, { workers: Number(opt('workers')) || undefined, sourceOnly: true });
-  else if (cmd === 'check') printReport((await build(dir, gdir, { workers: Number(opt('workers')) || undefined, checkOnly: true })).report, { n: Number(opt('n')) || 20 });
+  else if (cmd === 'verify') process.exit((await verify(dir, gdir, { workers: Number(opt('workers')) || undefined, rows: Number(opt('rows')) || undefined })) ? 0 : 1);
   else { console.error(`unknown command ${cmd}`); process.exit(2); }
 }

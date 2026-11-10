@@ -55,7 +55,6 @@ function writeHashNow() {
   if (!ready) return;
   const q = new URLSearchParams();
   viewToAddress(viewOf(), q, here());
-  if (seaGrid() !== GRIDS[0][0]) q.set('grid', seaGrid()); // the depths' grid, where it is not the usual one
   drawing.saving.viewChanged(); // saved with the drawing, for a page opened without a view
   setHash(q);
 }
@@ -242,7 +241,7 @@ function viewOf() {
       return l;
     }),
     data: { colour: dataEntry(state.colour), arrows: dataEntry(state.arrows), time: timeOn().length ? isoNow(state.time) : null, depth: depthOn().length ? state.depth : null },
-    units: display.units, bearings: display.bearings,
+    units: display.units, bearings: display.bearings, grid: state.grid,
   };
 }
 // Apply a file's view (null: left as it is): as the address the app writes, then a reload, so the
@@ -423,7 +422,8 @@ function classesOf(urls) {
 // the grids the depth shading draws in view: EMODnet's too where the view meets its area
 // two boxes [west, south, east, north] meet; the view's box
 const meets = ([w1, s1, e1, n1], [w, s, e, n]) => w1 < e && e1 > w && s1 < n && n1 > s;
-const viewBox = () => { const b = map.getBounds(); return [b.getWest(), b.getSouth(), b.getEast(), b.getNorth()]; };
+// (a view on another copy of the world, a link's or one panned round it: moved by whole turns into this one)
+const viewBox = () => { const b = map.getBounds(), turn = 360 * Math.round((b.getWest() + b.getEast()) / 720); return [b.getWest() - turn, b.getSouth(), b.getEast() - turn, b.getNorth()]; };
 function depthGrids() {
   return seaGrid() !== 'gebco' && EMODNET_AREA.some((a) => meets(viewBox(), a)) ? 'GEBCO 2026 · EMODnet 2024' : 'GEBCO 2026';
 }
@@ -739,6 +739,8 @@ const MORE_TITLE = 'Source, licence, resolution, opacity', GRID_TITLE = `${MORE_
 function setGrid(g) {
   if (g === state.grid) return;
   state.grid = g;
+  depthAsked++; // a click still being read was the other grid's: not shown
+  map.getContainer().removeAttribute('aria-busy');
   for (const [source, url] of Object.entries(seaUrls())) map.getSource(source).setTiles([url]);
   depthPopup.remove();
   drawPanel?.render('sel');
@@ -1117,7 +1119,12 @@ const depthPopup = new maplibregl.Popup({ className: 'depthpop', maxWidth: '240p
 // Each grid the sea's depths can be read from has its own (seaGrid): a profile read from one is not the other's
 const profiledOf = Object.fromEntries(Object.keys(seaClips).map((grid) => [grid, lru(64)])); // grid → JSON of the trace's coordinates → promise of its profile
 const profiled = { peek: (key) => profiledOf[seaGrid()].peek(key) }; // the chosen grid's, for the export
-const profileFor = (trace) => profiledOf[seaGrid()](JSON.stringify(trace.coords), () => profileOf(trace, elevationAt, Math.max(DEM_SEA_MAX, DEM_LAND_MAX)));
+// one with places that could not be read (tiles that failed) is shown, not kept: read again at the next ask, and not the export's
+const profileFor = (trace) => {
+  const kept = profiledOf[seaGrid()], key = JSON.stringify(trace.coords), p = kept(key, () => profileOf(trace, elevationAt, Math.max(DEM_SEA_MAX, DEM_LAND_MAX)));
+  p.then((prof) => { if (prof.unread && kept.peek(key) === p) kept.drop(key); }, () => {});
+  return p;
+};
 // What a clipper's tiles say at p ([lng, lat]), read at zoom z (at most its last, maxZoom): metres;
 // NaN where its shading shows nothing of its own. Many places of few tiles: each tile read once.
 function metresOf(clip, maxZoom) {
@@ -1150,17 +1157,25 @@ map.on('click', async (e) => {
   const { lng, lat } = e.lngLat, z = Math.min(DEM_SEA_MAX, Math.floor(map.getZoom()) + 1); // 256 px DEM tiles at z show at map zoom z − 1
   const asked = ++depthAsked, box = map.getContainer();
   box.setAttribute('aria-busy', 'true'); // the depth being looked up (said done before its popup, if any)
-  // the grid it comes from: EMODnet's where its cell here is its own (gebco.js), surveyed or interpolated; else GEBCO's with its source
-  const [v, code, emodnet] = await Promise.all([depthAt([lng, lat], z).catch(() => null), tidAt(lng, lat).catch(() => null), seaGrid() === 'gebco' ? 3 : emodnetAt(lng, lat).catch(() => 3)]);
-  if (asked === depthAsked) box.removeAttribute('aria-busy');
-  if (asked !== depthAsked || !depthClicks()) return; // another click since, or a tool or the layers switched meanwhile
+  // the grid it comes from: EMODnet's where its cell here is its own (gebco.js), surveyed or interpolated; else GEBCO's
+  // with its source. Asked with the depth, said after it: the depth shown as soon as it is read. What
+  // EMODnet's cell is, not to be read (an offline area keeps the depths alone): no grid named, rather than the wrong one
+  const lon = norm180(lng), still = () => asked === depthAsked && depthClicks(); // no other click since, no tool or layer switched meanwhile
+  const said = Promise.all([tidAt(lon, lat).catch(() => null), seaGrid() === 'gebco' ? 3 : emodnetAt(lon, lat).catch(() => null)]);
+  const v = await depthAt([lon, lat], z).catch(() => null);
+  const done = () => { if (asked === depthAsked) box.removeAttribute('aria-busy'); };
+  if (!still() || !Number.isFinite(v)) done();
+  if (!still()) return;
   if (v === null) { depthPopup.setLngLat(e.lngLat).setDOMContent(h('div', {}, h('b', {}, 'Depth not available'), h('small', {}, 'the depths could not be read'))).addTo(map); return; }
   if (!Number.isFinite(v)) { depthPopup.remove(); return; } // land, a lake, inland water: no depth here
-  const source = DEPTH_SOURCES.find(({ ranges }) => ranges.some(([a, b]) => code >= a && code <= b));
   // −1: shallower than 1 m, or sea the data calls dry (clip.js)
-  const depth = fmtDepth(v).replace(/^u/, 'U');
-  depthPopup.setLngLat(e.lngLat).setDOMContent(h('div', {}, h('b', {}, depth), h('span', { class: 'at' }, fmtPos(lat, lng)),
-    h('small', {}, emodnet === 3 ? ['GEBCO 2026', source?.label.toLowerCase()].filter(Boolean).join(' · ') : `EMODnet 2024 · ${['none here: from the water beside it', 'surveyed', 'interpolated: no soundings here'][emodnet]}`))).addTo(map);
+  const depth = fmtDepth(v).replace(/^u/, 'U'), from = h('small', {});
+  depthPopup.setLngLat(e.lngLat).setDOMContent(h('div', {}, h('b', {}, depth), h('span', { class: 'at' }, fmtPos(lat, lng)), from)).addTo(map);
+  const [code, emodnet] = await said;
+  done();
+  if (!still()) return;
+  const source = DEPTH_SOURCES.find(({ ranges }) => ranges.some(([a, b]) => code >= a && code <= b));
+  from.textContent = emodnet === null ? '' : emodnet === 3 ? ['GEBCO 2026', source?.label.toLowerCase()].filter(Boolean).join(' · ') : `EMODnet 2024 · ${['none here: from the water beside it', 'surveyed', 'interpolated: no soundings here'][emodnet]}`;
 });
 // cursor position readout
 map.on('mousemove', (e) => { posEl.textContent = fmtPos(e.lngLat.lat, e.lngLat.lng); });

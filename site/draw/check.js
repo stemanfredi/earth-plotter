@@ -148,7 +148,7 @@ export function look(l, c, kind, style = null) {
 }
 // The view a drawing was made in: the map's place, its layers and data, the units. known: what the app
 // offers (layers, data, depths), to check them; null: not checked.
-export const VIEW_D = { center: null, zoom: null, bearing: 0, layers: null, data: null, units: 'km', bearings: false };
+export const VIEW_D = { center: null, zoom: null, bearing: 0, layers: null, data: null, units: 'km', bearings: false, grid: 'emodnet' };
 export const VIEW_DATA_D = { colour: null, arrows: null, time: null, depth: null };
 export function readView(v, known, c) {
   if (!isObj(v)) { c.warn('not an object, ignored'); return null; }
@@ -160,6 +160,7 @@ export function readView(v, known, c) {
   if (v.bearing !== undefined) view.bearing = angle(v.bearing, c, 'bearing');
   if (v.bearings !== undefined) view.bearings = flag(v.bearings, c, 'bearings');
   if (v.units !== undefined) view.units = oneOf(v.units, ['km', 'nm'], 'km', c, 'units');
+  if (v.grid !== undefined) view.grid = oneOf(v.grid, ['emodnet', 'gebco'], 'emodnet', c, 'grid'); // the grid the depths are read from in European seas (catalog.js GRIDS)
   if (Array.isArray(v.layers)) {
     view.layers = [];
     for (const l of v.layers) {

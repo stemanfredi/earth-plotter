@@ -12,7 +12,7 @@ Copernicus Marine and NASA's daily imagery. Measure and draw on it, export the
 view as GIS data, and save areas to use without a connection.
 
 **Not for navigation.** Positions, coastlines and depths come from open
-datasets of varying accuracy. Depths are a global elevation model, not
+datasets of varying accuracy. Depths are elevation models (GEBCO's, and EMODnet's in European seas), not
 soundings.
 
 ## What you can do

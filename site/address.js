@@ -90,6 +90,7 @@ export function viewToAddress(v, q, here) {
     if (v.data.time) q.set('t', v.data.time.slice(0, 13)); else q.delete('t');
     if (v.data.depth) q.set('dz', v.data.depth); else q.delete('dz');
   }
+  if (v.grid && v.grid !== GRIDS[0][0]) q.set('grid', v.grid); else q.delete('grid'); // the depths' grid, where it is not the usual one
   if (v.units === 'nm') q.set('u', 'nm'); else q.delete('u');
   if (v.bearings) q.set('brg', '1'); else q.delete('brg');
 }

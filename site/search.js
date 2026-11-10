@@ -66,7 +66,10 @@ export function search(map, Marker, free) {
   const stale = (text) => document.activeElement !== q || q.value.trim() !== text;
   async function searchPlaces(text) {
     searchCtl?.abort();
-    if (noConnection()) { showResults([{ name: 'No connection', where: 'place search needs one; coordinates work' }]); return; }
+    // refused only when the browser itself has no connection: what the service worker last saw of the base
+    // map's provider (offline.js) is not asked again inside a saved area, and would refuse a connection come back
+    const none = () => showResults([{ name: 'No connection', where: 'place search needs one; coordinates work' }]);
+    if (navigator.onLine === false) { none(); return; }
     searchCtl = new AbortController();
     const c = map.getCenter(); // results near the view come first; rounded, the view is not sent exactly
     const url = `${PHOTON}?${new URLSearchParams({ q: text, limit: 12, lang: 'en', lat: c.lat.toFixed(1), lon: c.lng.toFixed(1) })}`;
@@ -86,7 +89,9 @@ export function search(map, Marker, free) {
           bounds: e ? [[e[0], e[3]], [e[2] + (e[2] < e[0] ? 360 : 0), e[1]]] : null, zoom: ZOOM_OF[p.osm_value] || 14 };
       }));
     } catch (err) {
-      if (err.name !== 'AbortError' && !stale(text)) showResults([{ name: 'Place search is not available right now', where: err.message }]);
+      if (err.name === 'AbortError' || stale(text)) return;
+      if (err instanceof TypeError && noConnection()) none(); // the request itself failed, and the base map's provider was not reached either
+      else showResults([{ name: 'Place search is not available right now', where: err.message }]);
     }
   }
   q.addEventListener('input', () => {

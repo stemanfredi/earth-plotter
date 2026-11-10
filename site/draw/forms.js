@@ -80,6 +80,14 @@ export function createForms(kit) {
     Object.assign(con, CON, c ? { pattern: c.pattern, groupSize: c.groupSize, minBranch: c.minBranch, roots: c.roots.map((r) => ({ ...r })) } : {}, { newRoots: [] });
     openForm({ kind: 'connect', pointIds: [...pointIds], connectionId: c?.id ?? null });
   }
+  // whether what the form is for is still there (an undo may have taken it: its line, its points); roots
+  // gone are no longer roots
+  function stands() {
+    if (!form) return true;
+    if (form.kind === 'distribute') return !!alongOf(drawing.doc, form.along.element);
+    con.roots = con.roots.filter((r) => find(drawing.doc, r.id));
+    return form.pointIds.every((id) => find(drawing.doc, id));
+  }
   function closeForm() {
     form = null;
     drawing.setPicking(null);
@@ -203,6 +211,6 @@ export function createForms(kit) {
 
   // nothing selected: the drawing itself
   return { ruleRow, connectBtn, openDistribution, closeForm, formPreview,
-    current: () => form, // the form open, or null
+    current: () => form, stands, // the form open, or null; whether what it is for still is
     view: () => (form.kind === 'distribute' ? distributionForm() : connectForm()) };
 }

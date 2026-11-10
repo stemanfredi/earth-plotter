@@ -89,3 +89,22 @@ test('the aerial photos are an overlay, not a base: a link keeps Satellite with 
   readAddress('#on=aerial', st, {});
   assert.ok(st.on.has('chart') && st.on.has('aerial'), 'no base listed: the first base, the photos kept');
 });
+
+test('the depths\' grid: in the address only where it is not the usual one, read back; a drawing\'s view keeps it', () => {
+  assert.ok(!/grid=/.test(roundTrip({ center: [12, 41], zoom: 5, grid: 'emodnet' }).hash));
+  const r = roundTrip({ center: [12, 41], zoom: 5, grid: 'gebco' });
+  assert.match(r.hash, /grid=gebco/);
+  assert.equal(r.state.grid, 'gebco');
+  // a view without one (an older file) over an address that has it: the usual grid again
+  const q = new URLSearchParams('grid=gebco');
+  viewToAddress({ center: [12, 41], zoom: 5 }, q, here);
+  assert.ok(!q.has('grid'));
+  const { state } = fresh();
+  readAddress('#grid=nonsense', state, {});
+  assert.equal(state.grid, 'emodnet');
+  // in a file: written only where not the usual one, an unknown one read as the usual with a warning
+  const file = (grid) => JSON.stringify({ type: 'FeatureCollection', earthplotter: { format: 'earthplotter-drawing', version: 1, view: { grid } }, features: [] });
+  assert.equal(parse(file('gebco')).view.grid, 'gebco');
+  assert.equal(parse(file('etopo')).view.grid, 'emodnet');
+  assert.ok(parse(file('etopo')).report.warnings.length > 0);
+});

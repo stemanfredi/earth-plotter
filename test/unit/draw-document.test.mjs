@@ -480,8 +480,9 @@ test('view: data is always written ({} when nothing is chosen), so that it is re
   assert.equal(read(collection([], { view: { zoom: 5 } })).view.data, null, 'a hand-written file without it: none (the map\'s)');
 });
 
-test('rules (distribute, connect) are kept as records; defaults left out; an unknown kind or a distribution along nothing skipped', () => {
-  const { doc, report } = read(collection([], { rules: [
+test('rules (distribute, connect) are kept as records; defaults left out; an unknown kind or a distribution along nothing skipped; one naming what the file lacks left out', () => {
+  const els = [F('s', 'LineString', [[12, 40], [12.1, 40]], { kind: 'line' }), ...['n1', 'n8', 'n9'].map((id, i) => F(id, 'Point', [12 + i / 100, 40], { kind: 'point' }))];
+  const { doc, report } = read(collection(els, { format: FORMAT, version: VERSION, groups: [{ id: 'g1' }, { id: 'g2' }, { id: 'g3' }], rules: [
     { id: 'a1', kind: 'distribute', groupId: 'g1', copiesId: 'g2', along: { element: 's', part: 2 }, spacing: 1000, side: 'alternate', radius: 250, item: 'library:mine', copy: { symbol: 'square' },
       pointIds: ['n1', 'bad id!', 7] },
     { id: 'a2', kind: 'distribute' }, { id: 'a3', kind: 'distribute', along: { element: 's' } }, { id: 'a4', kind: 'distribute', along: { element: 's', part: 1.5 } },
@@ -489,21 +490,20 @@ test('rules (distribute, connect) are kept as records; defaults left out; an unk
     { id: 'c1', kind: 'connect', groupId: 'g3', groupSize: 3, roots: [{ id: 'n9' }, { id: 'n8', weight: 2 }, 'x'], pointIds: ['n1'], created: ['gone'] }, { id: 'c1', kind: 'connect' },
     { id: 'x1', kind: 'spiral' }, { id: 'x2' }] }));
   const [a] = distributions(doc), [c] = connections(doc);
-  assert.deepEqual(doc.rules.map((x) => x.id), ['a1', 'a3', 'a4', 'c1']);
-  assert.deepEqual(distributions(doc).map((x) => x.id), ['a1', 'a3', 'a4']); // a2, a5 are along nothing
+  assert.deepEqual(doc.rules.map((x) => x.id), ['a1', 'c1']);
+  assert.deepEqual(distributions(doc).map((x) => x.id), ['a1']); // a2, a5 are along nothing; a3, a4 have no points in the file
+  assert.ok(report.warnings.some((w) => /^2 rules left out/.test(w)), report.warnings.join('; '));
   assert.deepEqual(report.skipped.filter((x) => x.kind === 'rule').map((x) => x.id), ['a2', 'a5', 'c1', 'x1', 'x2']);
   assert.ok(report.skipped.some((x) => x.id === 'x1' && /unknown kind "spiral"/.test(x.reason)));
   assert.deepEqual([a.kind, a.groupId, a.copiesId, a.along, a.spacing, a.side, a.offset, a.count, a.radius, a.aperture, a.item, a.pointIds],
     ['distribute', 'g1', 'g2', { element: 's' }, 1000, 'alternate', 0, null, 250, null, 'library:mine', ['n1']]); // what it is along: an element, nothing else
   assert.ok(!('copy' in a)); // its copies are in the drawing: no copy kept
-  assert.deepEqual(distributions(doc).slice(1).map((x) => [x.groupId, x.copiesId, x.item]), [[null, null, null], [null, null, null]]);
   assert.equal(connections(doc).length, 1); // the second c1: its ID used
-  assert.deepEqual([c.kind, c.groupId, c.pattern, c.groupSize, c.created, 'hubs' in c, c.roots], ['connect', 'g3', 'tree', 3, ['gone'], false, [{ id: 'n9', weight: 1 }, { id: 'n8', weight: 2 }]]); // deleted since: not an error; a weight of 1 unless given
+  assert.deepEqual([c.kind, c.groupId, c.pattern, c.groupSize, c.created, 'hubs' in c, c.roots], ['connect', 'g3', 'tree', 3, [], false, [{ id: 'n9', weight: 1 }, { id: 'n8', weight: 2 }]]); // what it made, deleted since: not an error, no longer listed; a weight of 1 unless given
   const f = toFile(doc).earthplotter;
-  assert.deepEqual(f.rules[3], { id: 'c1', kind: 'connect', groupId: 'g3', groupSize: 3, roots: [{ id: 'n9' }, { id: 'n8', weight: 2 }], pointIds: ['n1'], created: ['gone'] });
+  assert.deepEqual(f.rules[1], { id: 'c1', kind: 'connect', groupId: 'g3', groupSize: 3, roots: [{ id: 'n9' }, { id: 'n8', weight: 2 }], pointIds: ['n1'] });
   assert.deepEqual(f.rules[0], { id: 'a1', kind: 'distribute', groupId: 'g1', copiesId: 'g2', along: { element: 's' }, spacing: 1000, side: 'alternate', radius: 250,
     item: 'library:mine', pointIds: ['n1'] });
-  assert.deepEqual(f.rules[1], { id: 'a3', kind: 'distribute', along: { element: 's' } });
   assert.deepEqual(again(doc).doc, doc);
 });
 
@@ -907,7 +907,7 @@ test('hardening: a property key named like Object.prototype\'s is a column like 
 });
 
 test('a connection\'s settings: one rule for the file and Connect (a chain has no shortest branch); the view\'s zoom to 2 decimals, its bearing to 1; an edge\'s at left out when 0', () => {
-  const { doc } = read(collection([], { rules: [{ id: 'c', kind: 'connect', pattern: 'chain', minBranch: 200, roots: [{ id: 'a', weight: 'x' }] }],
+  const { doc } = read(collection([F('a', 'Point', [12, 41], { kind: 'point' }), F('b', 'Point', [12.1, 41], { kind: 'point' })], { format: FORMAT, version: VERSION, rules: [{ id: 'c', kind: 'connect', pattern: 'chain', minBranch: 200, roots: [{ id: 'a', weight: 'x' }], pointIds: ['b'] }],
     view: { zoom: 7.123456, bearing: 12.3456 } }));
   assert.deepEqual([doc.rules[0].minBranch, doc.rules[0].roots], [0, [{ id: 'a', weight: 1 }]]);
   const f = toFile(doc, { ...VIEW, zoom: 7.123456, bearing: 12.3456 });

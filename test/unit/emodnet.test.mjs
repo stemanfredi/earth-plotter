@@ -32,7 +32,6 @@ test('mergeBlock: EMODnet\'s water whole, surveyed or interpolated; land beside 
   assert.deepEqual(at(890, 710), [-100, FROM_GEBCO], 'a guess of 0 m far from its water: GEBCO\'s sea'); // its rows 100–119 from the south
   assert.deepEqual(at(500, 990), [100, 0], 'GEBCO\'s land: land, one value');
   assert.equal(stats.surveyed, 500 * EC); assert.equal(stats.interpolated, 100 * EC);
-  assert.equal(stats.steps, 0, 'EMODnet\'s water and GEBCO\'s never side by side: land between them');
 });
 
 // a regional store, as tools/emodnet.mjs writes it: 10 × 10 cells of 1° from 10° N, 0° E, in quarter

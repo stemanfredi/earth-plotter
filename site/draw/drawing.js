@@ -127,6 +127,7 @@ export class Drawing extends DrawStore {
       for (const l of this.previewLines || []) over.push({ type: 'Feature', properties: { kind: 'ghostline' }, geometry: { type: 'LineString', coordinates: l } });
       for (const q of this.previewPts || []) over.push({ type: 'Feature', properties: { kind: 'ghost' }, geometry: { type: 'Point', coordinates: q } });
       for (const q of this.picked || []) over.push({ type: 'Feature', properties: { kind: 'pick' }, geometry: { type: 'Point', coordinates: q } });
+      if (this.cursorPt) over.push({ type: 'Feature', properties: { kind: 'ghost' }, geometry: { type: 'Point', coordinates: this.cursorPt } });
       // where a click or a drag would snap: a ring on a vertex, a cross at a crossing, a dot on an edge
       if (this.snapMark) over.push({ type: 'Feature', properties: { kind: `snap${this.snapMark.kind}`, free: this.snapMark.free ? 1 : 0 }, geometry: { type: 'Point', coordinates: this.snapMark.position } });
       // the vertex current: ringed
@@ -142,6 +143,13 @@ export class Drawing extends DrawStore {
     const src = this.map.getSource('drawlabel');
     if (!src) return;
     src.setData({ type: 'FeatureCollection', features: labelFeatures(this.doc, this.view(), this.marksOn ? this.sel : new Set(), this.marksOn ? this.hover : null, this.units(), this.labelTexts ??= new Map()) });
+  }
+  // a place pointed at from outside the map (a profile's chart), marked on it: null, none. Not a form's
+  // preview: the selection's handles stay, to be pressed
+  setCursor(p) {
+    if (!p && !this.cursorPt) return;
+    this.cursorPt = p;
+    this.renderMarks();
   }
   // what a form would make, shown on the map, not in the drawing: nodes, roots (ringed), lines
   setPreview(pts, picked = [], lines = []) {

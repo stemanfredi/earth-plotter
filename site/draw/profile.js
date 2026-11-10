@@ -1,6 +1,6 @@
 // A line's elevation profile and its length along the surface (docs/drawing-ui.md §5): elevations
 // sampled along the line as drawn (curves included), from what the map's shadings draw: the sea's
-// depths (GEBCO, cut to the coastline) below sea level, the land's heights above it. Pure but for
+// depths (GEBCO's, EMODnet's in European seas: the grid chosen; cut to the coastline) below sea level, the land's heights above it. Pure but for
 // elevationAt, the app's reading of those.
 
 import { pointsAlong } from './lines.js';
@@ -28,7 +28,8 @@ export function samplesOf(trace) {
 // the lowest and the highest, and the length along the surface: each step's length counting the
 // change in elevation between two known, flat otherwise. A lower bound: relief finer than the data is
 // not in it. elevationAt(p, z): a promise of the elevation at p, read at zoom z. A place that could
-// not be read is a gap, as one without data is; only when none could, it fails.
+// not be read is a gap, as one without data is (unread: how many, for whoever keeps the profile: it is
+// not the line's yet); only when none could, it fails.
 export async function profileOf(trace, elevationAt, maxZoom) {
   const { step, samples } = samplesOf(trace);
   const z = zoomFor(step, samples[0]?.p[1] ?? 0, maxZoom);
@@ -43,7 +44,7 @@ export async function profileOf(trace, elevationAt, maxZoom) {
     const a = pts[i - 1], dd = x.d - a.d;
     surface += Number.isFinite(a.z) && Number.isFinite(x.z) ? Math.hypot(dd, x.z - a.z) : dd;
   });
-  return { pts, surface, length: trace.length, lowest, highest, zoom: z };
+  return { pts, surface, length: trace.length, lowest, highest, zoom: z, unread: failed };
 }
 
 // The profile as CSV: distance along (m), elevation (m, negative below sea level), latitude, longitude; none: empty

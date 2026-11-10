@@ -105,16 +105,13 @@ export function createLineView(kit) {
     chart.append(cursor);
     const at = fvalue('');
     const nearest = (d) => pts.reduce((a, b) => (Math.abs(b.d - d) < Math.abs(a.d - d) ? b : a));
-    // the chart's cursor at d (metres along), and the place on the map; null: none (the map's mark
-    // taken away only if it is this one's: a form's preview is not)
-    let marked = false;
+    // the chart's cursor at d (metres along), and the place on the map; null: none
     profileCursor = (d) => {
-      if (d == null) { cursor.setAttribute('visibility', 'hidden'); at.textContent = ''; if (marked) drawing.setPreview([]); marked = false; return; }
-      marked = true;
+      if (d == null) { cursor.setAttribute('visibility', 'hidden'); at.textContent = ''; drawing.setCursor(null); return; }
       const x = nearest(d);
       cursor.setAttribute('x1', X(x.d)); cursor.setAttribute('x2', X(x.d)); cursor.setAttribute('visibility', 'visible');
       at.textContent = `${fmtDist(x.d, u)} · ${Number.isFinite(x.z) ? fmtElevation(x.z) : 'no data'}`;
-      drawing.setPreview([x.p]);
+      drawing.setCursor(x.p);
     };
     chart.addEventListener('pointermove', (e) => { const r = chart.getBoundingClientRect(); profileCursor(((e.clientX - r.left) / r.width) * length); });
     chart.addEventListener('pointerleave', () => profileCursor(null));

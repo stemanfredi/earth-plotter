@@ -103,9 +103,13 @@ in the history, not here.
     first 115 m, where the fade drawn now reads 2–14 m too deep; a concave
     profile halves the error on steep coasts and worsens flat ones. The
     seabed drops at the waterline faster than any one rule says.
-  - Towards the edge of EMODnet's area little is its own: off West Africa
-    GEBCO 2026 marks survey tracks where EMODnet's grid is marked
-    interpolated. Not compared further.
+  - A grid is an authority only where it has data. South of 30° N (the
+    Red Sea, West Africa) none of EMODnet's shelf cells is its own survey,
+    and there the two grids disagree most; the page reads GEBCO there.
+    Measure a source's own share per region before taking it whole.
+  - Six places looked at are not an evaluation. Over the whole area
+    EMODnet has a fifth fewer steps than GEBCO: a gain, but not the
+    transformation the worst place suggested.
 
 - **Copernicus's records can be read as series in a page** (2026-11-06).
   Beside the store the GIS export reads (`timeChunked`: one time over a wide

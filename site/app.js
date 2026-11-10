@@ -1,6 +1,6 @@
 import * as maplibregl from './vendor/maplibre-gl.mjs';
 import mlcontour from './vendor/maplibre-contour.mjs';
-import { GROUPS, ITEMS, isBase, EOX_YEARS, eoxKey, GIBS, DEM_TILES, DEM_SEA_MAX, DEPTH_ZMAX, DEPTH_SOURCES, DEM_LAND_MAX, OMT_TILEJSON, DEPTH_SCHEMES, NO_DEPTH, DENSITY, gibsTiles, gibsDomainUrl, domainEnd, densityTiles, CMEMS, CMEMS_DEPTHS, CLASS_LABELS, EMODNET_DEPTH_STOPS, EMODNET_BOX, SEAGRASS } from './catalog.js';
+import { GROUPS, ITEMS, isBase, EOX_YEARS, eoxKey, GIBS, DEM_TILES, DEM_SEA_MAX, DEPTH_ZMAX, DEPTH_SOURCES, DEM_LAND_MAX, OMT_TILEJSON, DEPTH_SCHEMES, NO_DEPTH, DENSITY, gibsTiles, gibsDomainUrl, domainEnd, densityTiles, CMEMS, CMEMS_DEPTHS, CLASS_LABELS, EMODNET_DEPTH_STOPS, EMODNET_AREA, SEAGRASS } from './catalog.js';
 import { buildStyle, depthRamp, OPACITY_PROP, SEA_PICTURES, LOCATION_LAYERS, INK } from './style.js';
 import { cmemsTile, partTimes, partLevels, domainOf, cmemsLegend, partIn } from './cmems.js';
 import { workerClipper } from './clip.js';
@@ -416,8 +416,8 @@ function classesOf(urls) {
 
 // the grids the depth shading draws in view: EMODnet's too where the view meets its area
 function depthGrids() {
-  const b = map.getBounds(), [w, s, e, n] = EMODNET_BOX;
-  return b.getWest() < e && b.getEast() > w && b.getSouth() < n && b.getNorth() > s ? 'GEBCO 2026 · EMODnet 2024' : 'GEBCO 2026';
+  const b = map.getBounds();
+  return EMODNET_AREA.some(([w, s, e, n]) => b.getWest() < e && b.getEast() > w && b.getSouth() < n && b.getNorth() > s) ? 'GEBCO 2026 · EMODnet 2024' : 'GEBCO 2026';
 }
 
 const KINDS = {

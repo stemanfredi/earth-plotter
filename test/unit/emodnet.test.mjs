@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { createServer } from 'node:http';
 import { near } from './helpers.mjs';
 import { mergeBlock, Q, SURVEYED, INTERPOLATED, FROM_GEBCO } from '../../tools/emodnet.mjs';
-import { gridTile } from '../../site/gebco.js';
+import { gridTile, inside } from '../../site/gebco.js';
 import { tileXY } from '../../site/geo.js';
 
 // One block of EMODnet's grid as the store holds it (tools/emodnet.mjs), from a made-up EMODnet chunk and GEBCO grid
@@ -59,4 +59,16 @@ test('gridTile: a regional grid as its store describes it; NaN beyond it', async
     server.close();
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+// where the page reads EMODnet's grid (catalog.js EMODNET_AREA): European seas, not its grid's southern end
+test('inside: EMODnet\'s area is the Mediterranean and north, and the Canaries; no edge where its boxes meet', () => {
+  assert.ok(inside(23.38, 37.96) > 1, 'west of Salamis');
+  assert.ok(inside(-16.5, 28.2) > 1, 'Tenerife');
+  assert.ok(inside(-17, 20) < 0, 'the Banc d\'Arguin: GEBCO\'s');
+  assert.ok(inside(38, 22) < 0, 'the Red Sea: GEBCO\'s');
+  assert.ok(inside(34.9, 29.5) < 0, 'the Gulf of Aqaba: GEBCO\'s');
+  assert.ok(inside(-15, 30) >= 1, 'where the two boxes meet, in the Atlantic: well inside, no blend');
+  near(inside(-15, 27.1), 0.1, 1e-9, 'near the southern edge off the Sahara');
+  near(inside(10, 30.2), 0.2, 1e-9, 'the Gulf of Sirte\'s end, near the edge');
 });

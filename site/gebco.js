@@ -22,7 +22,7 @@
 import { openStore } from './zarr.js';
 import { latOf, tileBounds, TILE } from './geo.js';
 import { fetchBytes, lru } from './net.js';
-import { GEBCO, GEBCO_TID, DEPTH_SOURCES, EMODNET, EMODNET_SOURCE, EMODNET_BOX } from './catalog.js';
+import { GEBCO, GEBCO_TID, DEPTH_SOURCES, EMODNET, EMODNET_SOURCE, EMODNET_AREA } from './catalog.js';
 import { rgbOf } from './format.js';
 
 const SIZE = TILE, CELL = 15 / 3600, KEEP = 96, WATER_FULL = 0.5; // KEEP: chunks kept (512 kB each at most): a zoomed-out view's, and its neighbours'
@@ -48,7 +48,22 @@ function gridOf(s, url, variable) {
 // the level for tiles of zoom z: the coarsest whose cells are no larger than the tile's pixels
 const levelFor = (z, g) => Math.max(0, Math.min(g.levels - 1, Math.floor(Math.log2(360 / (SIZE * 2 ** z) / g.cell))));
 
-const [EW, ES, EE, EN] = EMODNET_BOX; // EMODnet's area
+// Where EMODnet's grid is read (catalog.js EMODNET_AREA). inside: how far inside the area a point is,
+// in degrees (the deepest it is in any one box; 0 or less outside). Within EDGE of the area's edge the
+// two grids are blended, from GEBCO's at the edge to EMODnet's, so that no line breaks there
+const EDGE = 0.25;
+export const inside = (lon, lat) => Math.max(...EMODNET_AREA.map(([w, s, e, n]) => Math.min(lon - w, e - lon, lat - s, n - lat)));
+// a tile against the area: 0 beyond it, 1 EDGE inside it or more all over, else 0.5 (to ask per pixel)
+function tileIn(z, x, y) {
+  const [w, s, e, n] = tileBounds(z, x, y);
+  if (EMODNET_AREA.some(([bw, bs, be, bn]) => w >= bw + EDGE && e <= be - EDGE && s >= bs + EDGE && n <= bn - EDGE)) return 1;
+  return EMODNET_AREA.some(([bw, bs, be, bn]) => w < be && e > bw && s < bn && n > bs) ? 0.5 : 0;
+}
+// each pixel of a tile on the area's edge: (i, j) → how far inside, in EDGEs (1 or more: EMODnet's alone)
+function pixelIn(z, x, y) {
+  const N = 2 ** z, lats = Float64Array.from({ length: SIZE }, (_, j) => latOf((y + (j + 0.5) / SIZE) / N));
+  return (i, j) => inside(((x + (i + 0.5) / SIZE) / N) * 360 - 180, lats[j]) / EDGE;
+}
 const chunks = lru(KEEP); // `store level/row.col` → promise of the chunk's cells
 
 // a grid's values at the pixel centres of 256 px Web Mercator tile z/x/y, row-major, north up:
@@ -126,23 +141,20 @@ export async function gridTile(url, variable, z, x, y, nearest) {
 // read (the tile fails, as any tile does: the map reports it)
 export const gebcoTile = (z, x, y) => gridTile(GEBCO, 'elevation', z, x, y, false);
 // the same, the sea's depths EMODnet's over its area (tools/emodnet.mjs: its grid whole, 1/16′ cells);
-// raw, the heights inland water is classified from, always GEBCO's. Within EDGE degrees of the
-// area's edge the two are blended, from GEBCO's at the edge to EMODnet's, so that no line breaks
-// there; a pixel whose cells reach beyond EMODnet's grid, or a tile beyond it, is GEBCO's
-const EDGE = 0.25;
+// raw, the heights inland water is classified from, always GEBCO's. On the area's edge the two are
+// blended (above); a pixel whose cells reach beyond EMODnet's grid is GEBCO's
 export async function seaTile(z, x, y) {
-  const [w, s, e, n] = tileBounds(z, x, y);
-  if (w >= EE || e <= EW || s >= EN || n <= ES) return gebcoTile(z, x, y);
+  const where = tileIn(z, x, y);
+  if (!where) return gebcoTile(z, x, y);
   const [m, g] = await Promise.all([gridTile(EMODNET, 'elevation', z, x, y, false), gebcoTile(z, x, y)]);
-  const inner = w >= EW + EDGE && e <= EE - EDGE && s >= ES + EDGE && n <= EN - EDGE, N = 2 ** z;
+  const t = where < 1 ? pixelIn(z, x, y) : null;
   for (let j = 0, p = 0; j < SIZE; j++) {
-    const lat = inner ? 0 : latOf((y + (j + 0.5) / SIZE) / N), dLat = Math.min(lat - ES, EN - lat);
     for (let i = 0; i < SIZE; i++, p++) {
       if (Number.isNaN(m.raw[p])) { m.sea[p] = g.sea[p]; continue; }
-      if (inner) continue;
-      const lon = ((x + (i + 0.5) / SIZE) / N) * 360 - 180, t = Math.min(dLat, lon - EW, EE - lon) / EDGE;
-      if (t < 1 && m.sea[p] < 0 && g.sea[p] < 0) m.sea[p] = Math.max(0, t) * m.sea[p] + (1 - Math.max(0, t)) * g.sea[p];
-      else if (t <= 0) m.sea[p] = g.sea[p];
+      if (!t) continue;
+      const k = Math.max(0, t(i, j));
+      if (k < 1 && m.sea[p] < 0 && g.sea[p] < 0) m.sea[p] = k * m.sea[p] + (1 - k) * g.sea[p];
+      else if (k === 0) m.sea[p] = g.sea[p];
     }
   }
   return { raw: g.raw, sea: m.sea };
@@ -157,11 +169,11 @@ for (const { ranges, colour } of DEPTH_SOURCES) for (const [lo, hi] of ranges) f
 const OWN_CODE = [0, DEPTH_SOURCES.find((g) => g.emodnet === 'surveyed').ranges[0][0], DEPTH_SOURCES.find((g) => g.emodnet === 'interpolated').ranges[0][0]]; // EMODnet's kind → a code of the group it is drawn as
 export async function tidTile({ url }) {
   const [z, x, y] = /^gebco-tid:\/\/(\d+)\/(\d+)\/(\d+)$/.exec(url).slice(1).map(Number);
-  const [w, s, e, n] = tileBounds(z, x, y), inBox = !(w >= EE || e <= EW || s >= EN || n <= ES);
-  const [codes, own] = await Promise.all([gridTile(GEBCO_TID, 'tid', z, x, y, true), inBox ? gridTile(EMODNET_SOURCE, 'source', z, x, y, true) : null]), img = new ImageData(SIZE, SIZE);
+  const where = tileIn(z, x, y), t = where && where < 1 ? pixelIn(z, x, y) : null; // on the area's edge: EMODnet's account where its depth weighs more
+  const [codes, own] = await Promise.all([gridTile(GEBCO_TID, 'tid', z, x, y, true), where ? gridTile(EMODNET_SOURCE, 'source', z, x, y, true) : null]), img = new ImageData(SIZE, SIZE);
   const d = img.data; // 65k cells a tile, on the page's thread: bytes written in place, nothing allocated per cell
   for (let p = 0, q = 0; p < codes.length; p++, q += 4) {
-    const o = own ? own[p] : 3, k = (o === 1 || o === 2 ? OWN_CODE[o] : o === 0 ? 0 : codes[p]) * 4; // own: NaN beyond EMODnet's grid, 3 GEBCO's depth there: GEBCO's code; 0 land to EMODnet, no depth of its own: not drawn
+    const o = own && (!t || t(p % SIZE, Math.floor(p / SIZE)) >= 0.5) ? own[p] : 3, k = (o === 1 || o === 2 ? OWN_CODE[o] : o === 0 ? 0 : codes[p]) * 4; // own: NaN beyond EMODnet's grid, 3 GEBCO's depth there: GEBCO's code; 0 land to EMODnet, no depth of its own: not drawn
     if (RGBA[k + 3]) { d[q] = RGBA[k]; d[q + 1] = RGBA[k + 1]; d[q + 2] = RGBA[k + 2]; d[q + 3] = 255; }
   }
   return { data: await createImageBitmap(img) };
@@ -171,7 +183,7 @@ export async function tidTile({ url }) {
 // neighbours (no soundings there), 0 land to EMODnet (sea to OSM: the water beside it, faded to the
 // shore); 3 GEBCO's depth: where EMODnet has no water near, and beyond its area
 export async function emodnetAt(lon, lat) {
-  if (lon < EW || lon >= EE || lat < ES || lat >= EN) return 3;
+  if (inside(lon, lat) < EDGE / 2) return 3; // beyond the area, or on its edge where GEBCO's depth weighs more
   const s = await gebcoStore(EMODNET_SOURCE), name = '0/source', meta = s.meta(name), [CH, CW] = meta.chunks, cs = meta.attrs.cell_size_degrees;
   const r = Math.floor((meta.attrs.north - lat) / cs), c = Math.floor((lon - meta.attrs.west) / cs), cr = Math.floor(r / CH), cc = Math.floor(c / CW);
   return (await chunks(`${EMODNET_SOURCE} 0/${cr}.${cc}`, () => s.chunk(name, [cr, cc])))[(r % CH) * CW + (c % CW)];

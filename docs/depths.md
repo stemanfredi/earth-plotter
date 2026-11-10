@@ -17,7 +17,7 @@ navigation.
 
 | | GEBCO 2026 | EMODnet DTM 2024 |
 |---|---|---|
-| Covers | the world | 36° W to 43° E, north of 15° N |
+| Covers | the world | 36° W to 43° E, north of 15° N; read here north of 30° N, and of 27° N in the Atlantic |
 | Cell | 15 arc-seconds, about 460 m | 1/16 arc-minute, about 115 m |
 | Made by | one global compilation of many sources | one compilation per European sea basin |
 | Says of each cell | how its depth was obtained (a code) | whether it was interpolated (a flag) |
@@ -41,7 +41,12 @@ come from the same kind of source, and in 8 to 14 % of pairs when they do
 not.
 
 EMODnet's grid is put together sea by sea, by people who know each sea's
-data, and it is finer. Compared with a nautical chart at six places from
+data, and it is finer. Measured the same way over all its area, it has
+about a fifth fewer such steps than GEBCO (0.65 % of neighbouring cells
+against 0.82 %; in the Aegean 2.8 % against 3.4 %), though not everywhere:
+on the south coast of Turkey and in the Levant it has slightly more. Fewer
+steps is smoother, not proven truer; and how much of its shelf holds its
+own soundings varies from over 40 % in the North Sea to 10 % in the Aegean. Compared with a nautical chart at six places from
 Liguria to the Dodecanese, it was better than GEBCO at four and equal at
 one; at the sixth, where neither has soundings, the two were wrong in
 different ways.
@@ -83,7 +88,9 @@ there is none. The depths stay EMODnet's, and the page says what they are.
 - **GEBCO 2026 · surveyed, optical, estimated, or another grid.** GEBCO's
   depth, with the kind of source GEBCO gives for it. Outside Europe always;
   inside it only where EMODnet has no water within about 600 m (some ports
-  and lagoons, and seas it leaves out: 0.6 % of the water in its area).
+  and lagoons, and coasts it leaves out). That is 0.6 % of all the water in
+  its area but 3 to 5 % of the water shallower than 200 m, and about a
+  fifth on the south coast of Turkey and in the Levant.
   GEBCO's "surveyed" is generous: in the Aegean more than half the cells it
   calls surveyed are cells EMODnet marks as interpolated.
 
@@ -109,9 +116,17 @@ to a steep shore are the least certain on the map.
 
 ## Where the two grids meet
 
-At the edge of EMODnet's area the two grids are blended over a quarter of a
-degree, so that no line breaks there. Towards that edge little of EMODnet's
-grid is its own.
+EMODnet's grid reaches south to 15° N, but the page reads it only north of
+30° N, and of 27° N in the Atlantic, to keep the Canaries. South of that, in
+the Red Sea and off West Africa, not one of its shelf cells holds a sounding
+of its own, and the two grids disagree more than anywhere else (over 39 % of
+the shelf on the Banc d'Arguin). Those are clear, shallow waters, where
+GEBCO's depths read from satellite images are at their best, so GEBCO is
+kept there. On the south shore of the Mediterranean EMODnet has no soundings
+either, but a sea is not cut in two.
+
+At the edge of that area the two grids are blended over a quarter of a
+degree, so that no line breaks there.
 
 ## What the lines cannot say
 

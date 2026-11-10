@@ -14,6 +14,19 @@ reference for what it does; what was learned on the way is in
   Interpolated areas of sparse data can show the pattern of the data's own
   grid; smoothing only there would remove it without touching real detail.
   None seen so far: only if one appears.
+- **The depths checked against charts, with numbers.** EMODnet was chosen
+  over GEBCO in Europe on a count of steps over the whole area and on six
+  places compared by eye with a chart viewer of unstated source
+  (docs/depths.md). Two checks would say more, both large:
+  - about 40 places taken by rule from where the two grids disagree most,
+    the chart's soundings read off and both grids scored against them
+    (Italy, Greece and Turkey have no open chart data, so by hand);
+  - where hydrographic offices publish their soundings or contours openly
+    (Norway, Finland and France are believed to: not verified), both grids
+    scored against those. It can only show that nothing got worse where
+    both grids already rest on surveys.
+  NOAA's archive of crowdsourced soundings is no help in the Mediterranean:
+  a day of it (1.1 million points) held none there.
 - **Better depths beyond Europe.** In European seas the depths are EMODnet's
   (docs/depths.md says why, and why its grid is read whole). Elsewhere GEBCO's
   cells read from satellite images still draw steps beside sounded cells

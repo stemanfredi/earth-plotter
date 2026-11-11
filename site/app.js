@@ -39,7 +39,7 @@ const shiftDay = (d, n) => dayOf(Date.parse(`${d}T00:00:00Z`) + n * 864e5); // d
 const state = initialState(Date.now());
 // the display's units and each leg's bearing beside its length (the switch beside the scale, the
 // drawing's inspector): the drawing's lengths and values, labels and exports follow them
-const display = { units: 'km', bearings: false };
+const display = { units: 'km', bearings: false, spread: false };
 
 let hashTimer = 0;
 let ready = false; // until map load, the URL still holds state not yet applied: leave it alone
@@ -241,7 +241,7 @@ function viewOf() {
       return l;
     }),
     data: { colour: dataEntry(state.colour), arrows: dataEntry(state.arrows), time: timeOn().length ? isoNow(state.time) : null, depth: depthOn().length ? state.depth : null },
-    units: display.units, bearings: display.bearings, grid: state.grid,
+    units: display.units, bearings: display.bearings, spread: display.spread, grid: state.grid,
   };
 }
 // Apply a file's view (null: left as it is): as the address the app writes, then a reload, so the
@@ -261,7 +261,7 @@ function applyView(v) {
   location.reload();
 }
 const drawing = new Drawing(map, {
-  known: KNOWN, getView: viewOf, units: () => display.units, bearings: () => display.bearings,
+  known: KNOWN, getView: viewOf, units: () => display.units, bearings: () => display.bearings, spread: () => display.spread,
   onChange: (what) => drawPanel.render(what),
 });
 

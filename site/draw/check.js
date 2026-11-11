@@ -148,7 +148,7 @@ export function look(l, c, kind, style = null) {
 }
 // The view a drawing was made in: the map's place, its layers and data, the units. known: what the app
 // offers (layers, data, depths), to check them; null: not checked.
-export const VIEW_D = { center: null, zoom: null, bearing: 0, layers: null, data: null, units: 'km', bearings: false, grid: 'emodnet' };
+export const VIEW_D = { center: null, zoom: null, bearing: 0, layers: null, data: null, units: 'km', bearings: false, spread: false, grid: 'emodnet' };
 export const VIEW_DATA_D = { colour: null, arrows: null, time: null, depth: null };
 export function readView(v, known, c) {
   if (!isObj(v)) { c.warn('not an object, ignored'); return null; }
@@ -159,6 +159,7 @@ export function readView(v, known, c) {
   if (v.zoom !== undefined) view.zoom = fin(v.zoom) ? Math.min(24, Math.max(0, v.zoom)) : (c.warn('zoom: not a number, ignored'), null);
   if (v.bearing !== undefined) view.bearing = angle(v.bearing, c, 'bearing');
   if (v.bearings !== undefined) view.bearings = flag(v.bearings, c, 'bearings');
+  if (v.spread !== undefined) view.spread = flag(v.spread, c, 'spread');
   if (v.units !== undefined) view.units = oneOf(v.units, ['km', 'nm'], 'km', c, 'units');
   if (v.grid !== undefined) view.grid = oneOf(v.grid, known?.grids ?? [v.grid], known?.grids?.[0] ?? 'emodnet', c, 'grid'); // the grid the depths are read from in European seas, of those the app offers (not checked without them)
   if (Array.isArray(v.layers)) {

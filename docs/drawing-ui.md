@@ -74,7 +74,7 @@ One layout at every width (`site/frame.js`).
   calendar), the depth shown when a layer has one (a chip: a click opens its list), the cursor's
   position, the scale (a click switches km and NM; in orange with "≈" before it where the scale
   varies across the view, the tooltip by how much).
-- **Copy link** carries the view, the layers and the display settings (`u=nm`, `brg=1`), never the
+- **Copy link** carries the view, the layers and the display settings (`u=nm`, `brg=1`, `spread=1`), never the
   drawing. The drawing goes out as a file (**Download** › **Drawing (GeoJSON)**, with the view) and
   comes in by **Open a file…** or a file dropped on the map, after a report (what it holds, what was skipped and
   why: the first 50 of each list, then how many more); a library's file adds its items (§9); an offline area's file (a zip) joins the offline areas.
@@ -207,7 +207,7 @@ drawing; Delete (or Undo) removes it; unticking Guide makes it part of the drawi
 It shows one element, several (its head counts them by kind; what they share, set on all at once;
 one Look for all; how far apart two points are, and the bearing from the first to the second;
 **Connect…**), a group (**Connect…** on the points in it), or the drawing (title, description, author, when it was created;
-**Display**, the drawing's look, the distance units and the leg bearings; **Totals**). A field applies on Enter
+**Display**, the drawing's look, the distance units, the leg bearings and Spread trees (§6); **Totals**). A field applies on Enter
 or when left, one undo step; a value that does not read stays marked and is not applied; Esc puts it
 back. ↑ ↓ nudge a number by its last digit (Shift: ten). Distances show by the one rule below (to
 the metre); what is typed is kept as typed. Properties is updated in place as the
@@ -335,6 +335,15 @@ Copies) opens its form (a click on the map picks a root):
   "Connection" (a distribution's beside its Copies, else in the points' group). Its lines follow the
   points they are attached to; a hub stays where it was made. **Update** plans it again from its
   points and roots as they are; **Edit…**: **Connect again**, its lines and hubs made anew.
+- **Spread trees** (the drawing's Display; off to start with) draws the trees as a diagram, by the
+  screen (`spread.js`): a hub nearer than 16 px to the row of its points (the line through the first
+  and the last) is shown 16 px to its side, at the same place along it, on the root's side, or the
+  row's left when the root is on the row too; its lines to its points run beside the row, between
+  it and the hub, the further the point the nearer the hub's distance, each then onto its point; a
+  line from a root that would then run through other
+  hubs of that root runs beside their row beyond them, the longer 5 px further out, then onto its
+  hub (another row's: past the last of them, and straight on). Display only: positions, lengths and
+  what is exported stay as they are.
 - **Deleting a root** leaves the lines to it with a free end; Update plans it with the roots left.
   The last one deleted ends the rule: its lines and hubs stay, plain.
 

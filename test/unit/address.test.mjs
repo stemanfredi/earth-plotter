@@ -22,7 +22,7 @@ test('address: the state as it starts, the hour of now', () => {
 
 test('address: a view written and read back, its camera, layers, data, time, depth, units', () => {
   const v = { center: [9.82488, 44.09044], zoom: 12.5, bearing: 350, layers: [{ id: 'chart' }, { id: 'depth', variant: 'atlas' }, { id: 'relief', opacity: 0.5 }],
-    data: { colour: { id: 'waves', variant: 'height' }, arrows: { id: 'currents', variant: 'surface' }, time: '2026-11-06T13:00:00Z', depth: 50 }, units: 'nm', bearings: true };
+    data: { colour: { id: 'waves', variant: 'height' }, arrows: { id: 'currents', variant: 'surface' }, time: '2026-11-06T13:00:00Z', depth: 50 }, units: 'nm', bearings: true, spread: true };
   const { hash, state, display, camera } = roundTrip(v);
   assert.deepEqual({ ...camera, center: camera.center.map((x) => +x.toFixed(5)) }, { zoom: 12.5, center: [9.82488, 44.09044], bearing: -10 });
   assert.deepEqual([...state.on].sort(), ['chart', 'depth', 'relief']);
@@ -32,7 +32,7 @@ test('address: a view written and read back, its camera, layers, data, time, dep
   assert.equal(state.arrows, 'currents:surface');
   assert.equal(state.time, Date.UTC(2026, 10, 6, 13));
   assert.equal(state.depth, 50);
-  assert.deepEqual(display, { units: 'nm', bearings: true });
+  assert.deepEqual(display, { units: 'nm', bearings: true, spread: true });
 });
 
 test('address: an Ocean data layer\'s opacity kept, once for an item in both menus; a default one not written', () => {

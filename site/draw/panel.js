@@ -436,7 +436,8 @@ export function drawView(root, ctx) {
       row('Created', fvalue(when(drawing.doc.created), { title: 'Last change: ' + when(drawing.doc.modified) })),
       lookBlock([{ kind: 'drawing', el: drawing.doc }], LOOK_FIELDS.drawing, 'Display', [
         offsetElsewhere.length ? h('p', { class: 'note' }, 'Offset also set on ', ...offsetElsewhere.map((x) => link(x.el.id))) : null,
-        row('Leg bearings', check(ctx.display.bearings, (v) => ctx.setDisplay({ bearings: v }), { 'aria-label': 'Leg bearings', title: 'Beside each length on the map' }))]),
+        row('Leg bearings', check(ctx.display.bearings, (v) => ctx.setDisplay({ bearings: v }), { 'aria-label': 'Leg bearings', title: 'Beside each length on the map' })),
+        row('Spread trees', check(ctx.display.spread, (v) => ctx.setDisplay({ spread: v }), { 'aria-label': 'Spread trees', title: 'A connection\'s hubs shown beside their points' }))]),
       n > 1 ? totalsBlock(keys.length ? by : null, groupName) : null,
       drawing.saving.failed ? h('p', { class: 'note warn' }, 'This browser does not let the drawing be saved (storage full or turned off): Download › Drawing (GeoJSON) keeps it as a file.') : null,
       drawing.saving.otherTab ? h('p', { class: 'note warn' }, 'The drawing was changed in another tab. Saving here replaces that version. ', h('button', { type: 'button', class: 'small', onclick: () => location.reload() }, 'Reload')) : null];

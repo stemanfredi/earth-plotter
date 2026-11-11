@@ -30,10 +30,10 @@ export class Drawing extends DrawStore {
   // 'placed' (a label placed: its text to type), 'storage' (saving failed or another tab saved).
   // known: what the app offers, for parse().
   // getView(): the map's view in the format's terms. units(): the display units ('km' | 'nm');
-  // bearings(): each leg's bearing shown beside its length.
-  constructor(map, { onChange, known, getView, units = () => 'km', bearings = () => false }) {
+  // bearings(): each leg's bearing shown beside its length. spread(): the trees as a diagram (spread.js).
+  constructor(map, { onChange, known, getView, units = () => 'km', bearings = () => false, spread = () => false }) {
     super();
-    Object.assign(this, { map, onChange, known, getView, units, bearings });
+    Object.assign(this, { map, onChange, known, getView, units, bearings, spread });
     this.saving = new Saving(this);
     this.last = null; // the last click: its point and what was under it, for clicking through
     this.zoomRaf = 0;
@@ -72,10 +72,12 @@ export class Drawing extends DrawStore {
     // the map turned: names under shapes go under them again, on screen (drawParts' down)
     map.on('rotateend', () => { if (this.doc.points.length || this.doc.circles.length) this.render({ base: true }); }); // names and radii placed by the screen (features.js)
     // once a frame while zooming, the marks of what is selected (handles are thinned at the zoom)
+    // (the trees spread are placed by the screen: all of it)
     map.on('zoom', () => {
-      if (!this.sel.size && !this.hover) return;
+      const all = this.spread() && this.doc.rules.some((r) => r.kind === 'connect');
+      if (!all && !this.sel.size && !this.hover) return;
       cancelAnimationFrame(this.zoomRaf);
-      this.zoomRaf = requestAnimationFrame(() => this.renderMarks());
+      this.zoomRaf = requestAnimationFrame(() => (all ? this.render() : this.renderMarks()));
     });
   }
   // the store's (store.js): a change to the document draws and saves it; the selection and the hover
@@ -110,7 +112,7 @@ export class Drawing extends DrawStore {
   // forms' previews (Distribute, Connect). A change to the document draws all three; the selection,
   // the pointer, the Line tool's cursor and zooming only the marks.
   render(parts = ALL_PARTS) {
-    const p = drawParts(this.doc, this.sel, this.hover, { zoom: this.map.getZoom(), bearing: this.map.getBearing(), midPx: MID_PX }, parts);
+    const p = drawParts(this.doc, this.sel, this.hover, { zoom: this.map.getZoom(), bearing: this.map.getBearing(), midPx: MID_PX, spread: this.spread() }, parts);
     const set = (id, features) => this.map.getSource(id)?.setData({ type: 'FeatureCollection', features });
     if (parts.base) { set('draw', p.base); this.values = null; this.labelTexts = null; }
     if (parts.zoom) set('drawzoom', p.zoom);

@@ -378,7 +378,7 @@ export function toFile(doc, v = null) {
     view: v ? lean({ center: v.center && pos(v.center), zoom: v.zoom === null ? null : r2(v.zoom), bearing: r1(v.bearing), layers: v.layers && v.layers.map((l) => ({ ...l })), // zoom and bearing as the address keeps them, which applies a file's view
       // data always written ({} when nothing is chosen), so a reader gets an object and the app clears its data layers
       data: v.data ? lean({ colour: v.data.colour && { ...v.data.colour }, arrows: v.data.arrows && { ...v.data.arrows }, time: v.data.time, depth: v.data.depth }, VIEW_DATA_D) : {},
-      units: v.units, bearings: v.bearings === true, grid: v.grid }, VIEW_D) : null,
+      units: v.units, bearings: v.bearings === true, spread: v.spread === true, grid: v.grid }, VIEW_D) : null,
     look: lookOut(doc.look),
     groups: doc.groups.map((g) => lean({ id: g.id, groupId: g.groupId, name: g.name, properties: g.properties.map((p) => ({ ...p })), visible: g.visible },
       { groupId: null, name: '', properties: [], visible: true })),

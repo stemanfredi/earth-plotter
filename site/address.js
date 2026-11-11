@@ -35,7 +35,7 @@ export const initialState = (now) => ({
   colour: '', arrows: '', // Ocean data: the entry drawing colours, the one drawing arrows ('item:variant', '' for none)
 });
 
-// The hash (location.hash) read into state and display ({ units, bearings }): what it says that is
+// The hash (location.hash) read into state and display ({ units, bearings, spread }): what it says that is
 // known and valid, the rest as it was. Returns the camera it gives ({ zoom, center, bearing }), or null.
 export function readAddress(hash, state, display) {
   const q = new URLSearchParams(hash.replace(/^#/, ''));
@@ -64,6 +64,7 @@ export function readAddress(hash, state, display) {
     if (Object.hasOwn(DENSITY, k) && DENSITY[k].periods.includes(val)) state.period[k] = val;
   }
   display.bearings = q.get('brg') === '1';
+  display.spread = q.get('spread') === '1';
   if (q.get('u') === 'nm') display.units = 'nm';
   return camera;
 }
@@ -93,6 +94,7 @@ export function viewToAddress(v, q, here) {
   if (v.grid && v.grid !== GRIDS[0][0]) q.set('grid', v.grid); else q.delete('grid'); // the depths' grid, where it is not the usual one
   if (v.units === 'nm') q.set('u', 'nm'); else q.delete('u');
   if (v.bearings) q.set('brg', '1'); else q.delete('brg');
+  if (v.spread) q.set('spread', '1'); else q.delete('spread');
 }
 // the address as the hash, its separators left readable
 export const hashOf = (q) => `#${q.toString().replace(/%2C/g, ',').replace(/%2F/g, '/').replace(/%3A/g, ':').replace(/%3B/g, ';').replace(/%7E/g, '~').replace(/%21/g, '!')}`;

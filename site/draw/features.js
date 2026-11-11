@@ -8,6 +8,7 @@ import { styleOf, lookOf, offsetOf, isShown, leavesOf, groupsOnlyOf, centroid, c
 import { mercator, unrollTo, metresPerPixel, D2R } from '../geo.js';
 import { lineTrace, anchorsOf, pointsAlong } from './lines.js';
 import { labelText } from './labels.js';
+import { spread } from './spread.js';
 import { resolve } from './attach.js';
 import { fmtArea, fmtBrg, fmtDist } from '../format.js';
 
@@ -57,7 +58,7 @@ const lineProps = (s) => ({ sc: s.color, so: s.opacity, sw: s.width, dash: s.das
 // (sw), a circle's ring counter-clockwise so that "outside" is one side; handles at the points a drag
 // grabs; a ring around a point's centre. A line with an Offset carries it (off, px): MapLibre draws it
 // beside its geometry (layers.js), display only. display: { zoom } (handles thinned at it, the stalks'
-// length), midPx. want: the parts to make (the others come back empty).
+// length), midPx, spread (a connection's trees as a diagram: spread.js). want: the parts to make (the others come back empty).
 export const drawParts = (doc, ...rest) => reading(doc, () => drawPartsIn(doc, ...rest)); // indexed while it reads
 function drawPartsIn(doc, sel = new Set(), hover = null, display = {}, want = { base: true, zoom: true, marks: true }) {
   const base = [], zoomed = [], marks = [];
@@ -82,6 +83,17 @@ function drawPartsIn(doc, sel = new Set(), hover = null, display = {}, want = { 
   // handles, thinned at the map's zoom: one at least HANDLE_GAP px from the last one kept, and the
   // last point always (a line of hundreds of points would be a chain of squares)
   const mpp = display.zoom == null ? 0 : metresPerPixel(display.zoom);
+  // the trees spread: a hub where it is shown, a line with its ends there and its way between them
+  const sp = display.spread && mpp ? spread(doc, mpp) : null;
+  const spreadOf = (sg, coords) => {
+    if (!sp) return null;
+    const [a, b] = [0, sg.points.length - 1].map((i) => sp.at.get(linkFrom(doc, sg.id, i)?.to.element)), way = sp.via.get(sg.id);
+    if (!a && !b) return null;
+    if (way) return [a ?? coords[0], ...way, b ?? coords.at(-1)];
+    // each end's move shared along the line, so that it keeps its shape
+    const last = coords.length - 1, d = [a, b].map((q, e) => (q ? [q[0] - coords[e * last][0], q[1] - coords[e * last][1]] : [0, 0]));
+    return coords.map((c, i) => { const f = i / last; return [c[0] + d[0][0] * (1 - f) + d[1][0] * f, c[1] + d[0][1] * (1 - f) + d[1][1] * f]; });
+  };
   const midPx = display.midPx ?? 40; // a + halfway only along a leg this long on screen (80 with a finger)
   const down = (display.bearing ?? 0) + 180; // the screen's downward azimuth: below, on screen, whatever the map's bearing
   // Each handle says what dragging it does: role and ref (an index, a sector's end, a point ID).
@@ -158,8 +170,8 @@ function drawPartsIn(doc, sel = new Set(), hover = null, display = {}, want = { 
     // its named vertices: at their real positions, whatever the zoom
     if (want.base && wants(sg)) sg.names.forEach((nm, i) => { if (nm.trim()) baseNames.push({ type: 'Feature', properties: { id: sg.id, kind: 'name', nm, c: st.color, vx: 1 }, geometry: { type: 'Point', coordinates: t.f(sg.points[i]) } }); });
     if (!want.zoom && !markOf(sg)) continue;
-    const line = traced(), off = offsetOf(doc, sg);
-    const g = { type: 'LineString', coordinates: line.coords };
+    const line = traced(), off = offsetOf(doc, sg), run = spreadOf(sg, line.coords);
+    const g = { type: 'LineString', coordinates: run ?? line.coords };
     if (want.zoom) {
       zoomed.push({ type: 'Feature', properties: { id: sg.id, kind: 'linehit', off }, geometry: g });
       if (named(sg)) name(zoomNames, sg, sg.closed ? { type: 'Point', coordinates: t.f(centroid(sg.points)) } : g, st.color, sg.closed ? { ctr: 1 } : {}); // a closed one's at its centre
@@ -167,6 +179,7 @@ function drawPartsIn(doc, sel = new Set(), hover = null, display = {}, want = { 
     }
     if (mark(sg, g, { sw: st.width, off }, () => sg.points.map(t.f)) && own.has(sg.id)) {
       const ps = sg.points.map(t.f); // its handles where it is drawn
+      if (run) { ps[0] = run[0]; ps[ps.length - 1] = run.at(-1); }
       // held by a point, it is rigid: each vertex resizes it, the farthest kept (no + either)
       if (holderOf(doc, sg)) { handles(sg.id, ps.map((p, i) => ({ p, role: 'scale', ref: i }))); continue; }
       // its vertices: one attached to a point moves the point; another (free, or on a point's shape) itself,
@@ -174,7 +187,7 @@ function drawPartsIn(doc, sel = new Set(), hover = null, display = {}, want = { 
       handles(sg.id, ps.map((p, i) => { const to = linkFrom(doc, sg.id, i)?.to; return { p, ...(to && to.vertex == null && to.edge == null ? { role: 'point', ref: to.element } : { role: 'vertex', ref: i }) }; }), true);
       // a + halfway along each leg long enough on screen, on the line as drawn (a smooth line's curve):
       // dragging it adds a point there
-      if (mpp) {
+      if (mpp && !run) {
         const legs = line.legs.map((_, i) => i).filter((i) => line.legs[i] / ground(ps[i][1]) > midPx); // a line no point holds: drawn at its size (line, as traced)
         const at = pointsAlong(line.coords, legs.map((i) => (line.at[i] + line.at[i + 1]) / 2)); // in one pass along it
         handles(sg.id, legs.map((i, k) => ({ p: at[k].position, role: 'mid', ref: i, kind: 'mid' })));
@@ -186,7 +199,7 @@ function drawPartsIn(doc, sel = new Set(), hover = null, display = {}, want = { 
   // front along its bearing turns it with them
   for (const n of doc.points) {
     if (!isShown(doc, n)) continue;
-    const p = { type: 'Point', coordinates: n.position }, holds = membersOf(doc, n.id).length > 0, bare = n.symbol === 'none' && holds;
+    const p = { type: 'Point', coordinates: sp?.at.get(n.id) ?? n.position }, holds = membersOf(doc, n.id).length > 0, bare = n.symbol === 'none' && holds;
     if (want.base) {
       const st = styleOf(doc, n);
       if (!bare) base.push({ type: 'Feature', properties: { id: n.id, kind: 'symbol', symbol: n.symbol === 'none' ? 'centre' : n.symbol, sc: st.stroke.color, so: st.stroke.opacity }, geometry: p });

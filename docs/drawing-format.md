@@ -82,7 +82,7 @@ Without `earthplotter` the file is plain GeoJSON, read as such.
 "view": { "center": [12.5, 41.9], "zoom": 7.25, "bearing": 0,
   "layers": [ { "id": "…", "variant": "…", "period": "…", "opacity": 0.8 } ],
   "data": { "colour": { "id": "…", "variant": "…" }, "arrows": null, "time": "2026-10-22T09:00:00Z", "depth": 0 },
-  "units": "km", "bearings": false, "grid": "emodnet" }
+  "units": "km", "bearings": false, "spread": false, "grid": "emodnet" }
 ```
 
 | Field | Notes |
@@ -92,6 +92,7 @@ Without `earthplotter` the file is plain GeoJSON, read as such.
 | `data` | the data layers chosen (colours, arrows: `{ id, variant }`, with `opacity` 0–1 where not the layer's default, or `null`), the hour and the depth (m), each only while a layer shown uses it. The app always writes it (`{}`: none), so opening the file clears the map's; missing, they stay. |
 | `units` | `"km"` or `"nm"` |
 | `bearings` | each leg's bearing shown with its length |
+| `spread` | a connection's trees drawn as a diagram (drawing-ui.md §6) |
 | `grid` | the grid the sea's depths are read from in European seas: `"emodnet"`, or `"gebco"` (GEBCO's there too, as everywhere else); depths, isobaths and a line's elevation profile follow it |
 
 An unknown layer, variant, period, data entry or depth is skipped with a warning.
@@ -453,7 +454,7 @@ What a value is when the file leaves it out; writing it with this value means th
 | collection | `view`; `look` | none (the map stays as it is); `{}` |
 | collection | `groups`, `rules`, `links` | `[]` |
 | view | `center`, `zoom`, `layers`, `data` | the map's (`data` left out only by hand) |
-| view | `bearing`; `units`; `bearings`; `grid` | `0`; `"km"`; `false`; `"emodnet"` |
+| view | `bearing`; `units`; `bearings`; `spread`; `grid` | `0`; `"km"`; `false`; `false`; `"emodnet"` |
 | view layer | `variant`, `opacity`, `period` | the layer's own |
 | view data | `colour`, `arrows`, `time`, `depth` | `null` |
 | feature | `id`; `name`; properties | a new one; `""`; none |

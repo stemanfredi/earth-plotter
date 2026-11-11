@@ -47,6 +47,7 @@ const SHELL = [
   'draw/rows.js',
   'draw/saving.js',
   'draw/snap.js',
+  'draw/spread.js',
   'draw/store.js',
   'draw/tools.js',
   'draw/tree.js',

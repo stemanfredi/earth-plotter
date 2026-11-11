@@ -339,7 +339,7 @@ Copies) opens its form (a click on the map picks a root):
   screen (`spread.js`): a hub nearer than 16 px to the row of its points (the line through the first
   and the last) is shown 16 px to its side, at the same place along it, on the root's side, or the
   row's left when the root is on the row too. A line along a row runs beside it at a distance of
-  its own and joins its two ends at 45°, so that the lines of one end lie on one another there and
+  its own and joins its two ends at 45°, its corners turned (6 px), so that the lines of one end lie on one another there and
   are apart where they are parallel: a hub's lines to its points, between the row and the hub (the
   further the point, the nearer the hub's distance); and the line of a root beside the row that would pass
   other hubs shown aside nearer than 16 px, beyond them (the longer line 5 px further out), as far

@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-const { spread, GAP, STEP } = await import('../../site/draw/spread.js');
+const { spread, GAP, STEP, ROUND } = await import('../../site/draw/spread.js');
 const { drawParts } = await import('../../site/draw/features.js');
 const { connect } = await import('../../site/draw/generator.js');
 const { emptyDoc, addPoint, linkFrom } = await import('../../site/draw/document.js');
@@ -31,7 +31,7 @@ test('spread: a hub on the row of its points is shown GAP px to the side of the 
 
 test('spread: a root on the row: each line past other hubs beside the row at its own distance, 45° from the root and onto its hub', () => {
   const { doc, o: root, hubs, trunkOf } = row(9, 3, [9.9, 40]); // the root west of the row, on its line
-  const { at, via } = spread(doc, mpp), [x0, y0] = px(root.position);
+  const { at, via } = spread(doc, mpp, 0), [x0, y0] = px(root.position); // its corners left as corners
   const byReach = [...hubs].sort((a, b) => a.position[0] - b.position[0]);
   byReach.forEach((h, k) => {
     const H = px(at.get(h.id)), way = (via.get(trunkOf(h).id) ?? []).map(px), o = GAP + k * STEP;
@@ -56,7 +56,7 @@ test('spread: drawn so only when asked; the document as it was', () => {
   const far = [...hubs].sort((a, b) => b.position[0] - a.position[0])[0], id = trunkOf(far).id;
   assert.equal(lineOf(drawParts(doc, new Set(), null, { zoom: ZOOM }), id).length, 2);
   const on = drawParts(doc, new Set(), null, { zoom: ZOOM, spread: true });
-  assert.equal(lineOf(on, id).length, 5); // out, as far as the last hub passed, in
+  assert.ok(lineOf(on, id).length > 5); // out, as far as the last hub passed, in: its corners turned
   assert.deepEqual(on.base.find((f) => f.properties.id === far.id).geometry.coordinates, spread(doc, mpp).at.get(far.id));
   assert.equal(JSON.stringify(doc), before);
 });
@@ -74,7 +74,7 @@ test('spread: a root\'s line to another row past the hubs on its way: beside the
   const more = [[10.3, 40.004], [10.32, 40.005], [10.34, 40.006]].map((p) => addPoint(doc, p)); // a row turned a little from the first, beyond its end
   const c = connect(doc, { pointIds: more.map((p) => p.id), roots: [{ id: o.id, weight: 1 }], pattern: 'tree', groupSize: 3, minBranch: 20 }).connection;
   const line = doc.lines.find((l) => c.created.includes(l.id) && linkFrom(doc, l.id, 0).to.element === o.id);
-  const { at, via } = spread(doc, mpp), way = via.get(line.id).map(px), y0 = px([10, 40])[1], far = GAP + hubs.length * STEP;
+  const { at, via } = spread(doc, mpp, 0), way = via.get(line.id).map(px), y0 = px([10, 40])[1], far = GAP + hubs.length * STEP;
   for (const p of way.slice(0, 2)) assert.ok(Math.abs(p[1] - y0 - far) < 0.5, 'a step beyond the row\'s own lines');
   assert.ok(Math.abs(way[1][0] - Math.max(...hubs.map((h) => px(at.get(h.id))[0]))) < 0.5, 'as far as the last hub of that row');
   const own = px(at.get(linkFrom(doc, line.id, 1).to.element));
@@ -88,11 +88,21 @@ test('spread: a root to the side, further from the row than its lines would run:
 
 test('spread: a hub\'s lines to its points beside the row, between it and the hub: the further the point, the further from the row', () => {
   const { doc, ps, hubs } = row(5, 5, [10.04, 40.3]); // one hub, at the middle point: two points each side
-  const { via } = spread(doc, mpp), y0 = px([10, 40])[1], h = hubs[0];
+  const { via } = spread(doc, mpp, 0), y0 = px([10, 40])[1], h = hubs[0];
   const lineTo = (p) => doc.lines.find((l) => [0, 1].map((i) => linkFrom(doc, l.id, i).to.element).join() === `${h.id},${p.id}`);
   const far = via.get(lineTo(ps[0]).id).map(px), nearer = via.get(lineTo(ps[1]).id).map(px);
   assert.deepEqual([far.length, nearer.length], [2, 2]);
   for (const p of nearer) assert.ok(Math.abs(p[1] - y0 - GAP / 3) < 0.5);
   for (const p of far) assert.ok(Math.abs(p[1] - y0 - (2 * GAP) / 3) < 0.5);
   assert.equal(via.has(lineTo(ps[2]).id), false, 'the point under the hub: straight');
+});
+
+test('spread: the corners turned: the way by the same places, never further from its corners\' sides than half the turn', () => {
+  const { doc, o, hubs, trunkOf } = row(9, 3, [9.9, 40]), far = [...hubs].sort((a, b) => b.position[0] - a.position[0])[0], id = trunkOf(far).id;
+  const ends = [px(o.position), px(spread(doc, mpp).at.get(far.id))];
+  const sharp = [ends[0], ...spread(doc, mpp, 0).via.get(id).map(px), ends[1]], turned = spread(doc, mpp).via.get(id).map(px);
+  assert.ok(turned.length > sharp.length);
+  const toSide = (p, a, b) => { const v = [b[0] - a[0], b[1] - a[1]], k = Math.max(0, Math.min(1, ((p[0] - a[0]) * v[0] + (p[1] - a[1]) * v[1]) / (v[0] ** 2 + v[1] ** 2))); return Math.hypot(p[0] - a[0] - k * v[0], p[1] - a[1] - k * v[1]); };
+  for (const p of turned) assert.ok(Math.min(...sharp.slice(1).map((b, i) => toSide(p, sharp[i], b))) < ROUND / 2);
+  assert.ok(Math.abs(Math.max(...turned.map((p) => p[1])) - Math.max(...sharp.map((p) => p[1]))) < 0.01, 'as far from the row where it is parallel');
 });

@@ -4,8 +4,8 @@
 //    them) is shown GAP px to its side, at the same place along it: the root's side, or the row's
 //    left when the root is on the row too.
 //  - A line along a row runs beside it at a distance of its own, and joins what it leaves and what it
-//    comes onto at 45°: the lines of one end lie on one another there, and are apart where they are
-//    parallel. Such are a hub's lines to its points, between the row and the hub (the further the
+//    comes onto at 45°, its corners turned: the lines of one end lie on one another there, and are
+//    apart where they are parallel. Such are a hub's lines to its points, between the row and the hub (the further the
 //    point, the nearer the hub's distance); and the line of a root beside the row that would pass
 //    other hubs shown aside nearer than GAP px, beyond them (the longer line a step further out), as
 //    far as the last of them, then on to its own. A root further from the row than its line would
@@ -13,13 +13,26 @@
 import { mercator, unmercator } from '../geo.js';
 import { linkFrom } from './document.js';
 
-export const GAP = 16, STEP = 5; // px
+export const GAP = 16, STEP = 5, ROUND = 6; // px
 // where 45° from p reaches o px beside a row ({ on(s, o), along(p), off(p) }, px), going d (±1) along it
+// A way with its corners turned: each cut back r px along both its sides (half a side at most) and
+// drawn as a curve between the cuts. a, b: what it leaves and comes onto, not given back
+function rounded(a, way, b, r) {
+  const ps = [a, ...way, b], out = [];
+  for (let i = 1; i < ps.length - 1; i++) {
+    const [p, v, n] = [ps[i - 1], ps[i], ps[i + 1]], lp = Math.hypot(v[0] - p[0], v[1] - p[1]), ln = Math.hypot(n[0] - v[0], n[1] - v[1]), c = Math.min(r, lp / 2, ln / 2);
+    if (c < 0.5) { out.push(v); continue; }
+    const s0 = [v[0] + ((p[0] - v[0]) / lp) * c, v[1] + ((p[1] - v[1]) / lp) * c], s1 = [v[0] + ((n[0] - v[0]) / ln) * c, v[1] + ((n[1] - v[1]) / ln) * c];
+    for (let k = 0; k <= 6; k++) { const t = k / 6, q = (1 - t) * (1 - t), w = 2 * t * (1 - t), e = t * t; out.push([q * s0[0] + w * v[0] + e * s1[0], q * s0[1] + w * v[1] + e * s1[1]]); }
+  }
+  return out;
+}
 const leg = (row, p, o, d) => row.on(row.along(p) + d * Math.abs(o - row.off(p)), o);
 
 // The trees of doc at mpp (Mercator metres a pixel): { at: Map(hub ID → the position it is shown at),
-// via: Map(line ID → the positions its way goes by, in the line's own direction) }
-export function spread(doc, mpp) {
+// via: Map(line ID → the positions its way goes by, in the line's own direction) }. round: the corners'
+// turn (px; 0: left as corners)
+export function spread(doc, mpp, round = ROUND) {
   const at = new Map(), via = new Map(), trunks = [], aside = new Map(); // aside: hub ID → { at (px), and by its row: on(s, o), along(p), off(p) }
   const points = new Map(doc.points.map((n) => [n.id, n])), px = (n) => mercator(n.position).map((v) => v / mpp);
   const place = ([x, y]) => unmercator([x * mpp, y * mpp]);
@@ -58,7 +71,7 @@ export function spread(doc, mpp) {
         const side = own.filter((p) => p.line.points.length === 2 && (along(px(points.get(p.id))) - along(H)) * d > GAP + 1)
           .sort((p, q) => (along(px(points.get(p.id))) - along(px(points.get(q.id)))) * d);
         side.forEach((p, j) => {
-          const o = (GAP * (j + 1)) / (side.length + 1), way = [leg(row, shown, o, d), leg(row, px(points.get(p.id)), o, -d)].map(place);
+          const o = (GAP * (j + 1)) / (side.length + 1), way = rounded(shown, [leg(row, shown, o, d), leg(row, px(points.get(p.id)), o, -d)], px(points.get(p.id)), round).map(place);
           via.set(p.line.id, p.turned ? way : way.reverse());
         });
       }
@@ -89,7 +102,8 @@ export function spread(doc, mpp) {
     // onto its own hub at 45°, by its row
     const own = aside.get(t.hub);
     if (own) { const prev = own.along(way.at(-1)), e = Math.sign(own.along(t.H) - prev) || 1, in45 = leg(own, t.H, o, -e); if ((own.along(in45) - prev) * e > 0) way.push(in45); }
-    via.set(t.line.id, (t.turned ? way.reverse() : way).map(place));
+    const smooth = rounded(t.R, way, t.H, round);
+    via.set(t.line.id, (t.turned ? smooth.reverse() : smooth).map(place));
   }
   return { at, via };
 }

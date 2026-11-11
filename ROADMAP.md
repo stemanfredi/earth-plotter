@@ -44,15 +44,11 @@ reference for what it does; what was learned on the way is in
 
 ## Offline areas
 
-Built 2026-10-30 (Download › Offline areas); what is still open:
+Built 2026-10-30 (Download › Offline areas); what is still open
+(OpenFreeMap answered that the page's Origin identifies it as a User-Agent
+would an app, and that saving within its limits, 3,000 tiles or 50 MB, 4
+requests at a time, is fine):
 
-- **OpenFreeMap's answer.** Its terms allow offline downloads of at most
-  3,000 tiles or 50 MB, with 4 parallel requests and an identifying
-  User-Agent, which a browser cannot set; every tile request already carries
-  the page's Origin. Asked whether that identifies it (if they read the
-  Referer instead, it can be sent as the origin alone, with the privacy text
-  changed). If they say no: their weekly planet file (same schema) hosted
-  beside GEBCO's depths, and areas cut from it in the page.
 - **OpenSeaMap's answer.** No tile policy published; its own offline page
   lists apps that cache its tiles. Asked; meanwhile the seamarks are saved
   two requests at a time, in the browser only: an area's file leaves them

@@ -29,15 +29,17 @@ test('spread: a hub on the row of its points is shown GAP px to the side of the 
   assert.ok(hubs.every((h) => !via.has(trunkOf(h).id)), 'a root off the row: its lines straight');
 });
 
-test('spread: a root on the row: its lines beside the row beyond the hubs, the longer the further out', () => {
-  const { doc, hubs, trunkOf } = row(9, 3, [9.9, 40]); // the root west of the row, on its line
-  const { at, via } = spread(doc, mpp), y0 = px([10, 40])[1];
+test('spread: a root on the row: each line past other hubs beside the row at its own distance, 45° from the root and onto its hub', () => {
+  const { doc, o: root, hubs, trunkOf } = row(9, 3, [9.9, 40]); // the root west of the row, on its line
+  const { at, via } = spread(doc, mpp), [x0, y0] = px(root.position);
   const byReach = [...hubs].sort((a, b) => a.position[0] - b.position[0]);
   byReach.forEach((h, k) => {
-    assert.ok(Math.abs(px(at.get(h.id))[1] - y0 - GAP) < 0.5, 'the hub to the left of the row');
-    const way = via.get(trunkOf(h).id).map(px);
-    assert.equal(way.length, k ? 2 : 1, 'the nearest goes straight on to its hub');
-    for (const p of way) assert.ok(Math.abs(p[1] - y0 - GAP - k * STEP) < 0.5, `step ${k}`);
+    const H = px(at.get(h.id)), way = (via.get(trunkOf(h).id) ?? []).map(px), o = GAP + k * STEP;
+    assert.ok(Math.abs(H[1] - y0 - GAP) < 0.5, 'the hub to the left of the row');
+    if (!k) { assert.equal(way.length, 0, 'the nearest passes none: straight'); return; }
+    for (const p of way) assert.ok(Math.abs(p[1] - y0 - o) < 0.5, `${k} steps beyond the hubs`);
+    assert.ok(Math.abs(way[0][0] - x0 - o) < 0.5, 'reached at 45° from the root: where the others reach theirs');
+    assert.ok(Math.abs(H[0] - way.at(-1)[0] - k * STEP) < 0.5, 'left at 45° for its hub');
   });
 });
 
@@ -54,7 +56,7 @@ test('spread: drawn so only when asked; the document as it was', () => {
   const far = [...hubs].sort((a, b) => b.position[0] - a.position[0])[0], id = trunkOf(far).id;
   assert.equal(lineOf(drawParts(doc, new Set(), null, { zoom: ZOOM }), id).length, 2);
   const on = drawParts(doc, new Set(), null, { zoom: ZOOM, spread: true });
-  assert.equal(lineOf(on, id).length, 4);
+  assert.equal(lineOf(on, id).length, 5); // out, as far as the last hub passed, in
   assert.deepEqual(on.base.find((f) => f.properties.id === far.id).geometry.coordinates, spread(doc, mpp).at.get(far.id));
   assert.equal(JSON.stringify(doc), before);
 });
@@ -67,15 +69,21 @@ test('spread: a line to a hub shown aside keeps its shape: no bend along it', ()
   assert.ok(Math.max(...c.map(off)) < 2, 'within 2 px of the straight way between its ends');
 });
 
-test('spread: a root\'s line to another row passing those hubs: beside their row beyond them all, to the last of them', () => {
+test('spread: a root\'s line to another row past the hubs on its way: beside their row beyond every line there, to the last of them', () => {
   const { doc, o, hubs } = row(9, 3, [9.9, 40]);
-  const more = [[10.3, 40.03], [10.32, 40.04], [10.34, 40.05]].map((p) => addPoint(doc, p)); // a row turned from the first, beyond its end
+  const more = [[10.3, 40.004], [10.32, 40.005], [10.34, 40.006]].map((p) => addPoint(doc, p)); // a row turned a little from the first, beyond its end
   const c = connect(doc, { pointIds: more.map((p) => p.id), roots: [{ id: o.id, weight: 1 }], pattern: 'tree', groupSize: 3, minBranch: 20 }).connection;
   const line = doc.lines.find((l) => c.created.includes(l.id) && linkFrom(doc, l.id, 0).to.element === o.id);
-  const way = spread(doc, mpp).via.get(line.id).map(px), y0 = px([10, 40])[1], last = Math.max(...hubs.map((h) => px(h.position)[0]));
-  assert.equal(way.length, 2);
-  for (const p of way) assert.ok(Math.abs(p[1] - y0 - GAP - hubs.length * STEP) < 0.5, 'a step beyond the row\'s own');
-  assert.ok(Math.abs(way[1][0] - last) < 0.5, 'as far as the last hub of that row');
+  const { at, via } = spread(doc, mpp), way = via.get(line.id).map(px), y0 = px([10, 40])[1], far = GAP + hubs.length * STEP;
+  for (const p of way.slice(0, 2)) assert.ok(Math.abs(p[1] - y0 - far) < 0.5, 'a step beyond the row\'s own lines');
+  assert.ok(Math.abs(way[1][0] - Math.max(...hubs.map((h) => px(at.get(h.id))[0]))) < 0.5, 'as far as the last hub of that row');
+  const own = px(at.get(linkFrom(doc, line.id, 1).to.element));
+  assert.ok(Math.abs(Math.hypot(way.at(-1)[0] - own[0], way.at(-1)[1] - own[1]) - (far - GAP) * Math.SQRT2) < 1, 'then onto its own hub at 45°, by its row');
+});
+
+test('spread: a root to the side, further from the row than its lines would run: they are straight, zoomed out too', () => {
+  const { doc, hubs, trunkOf } = row(9, 3, [10.08, 40.3]);
+  for (const z of [6, 7, 8, 10, 12, 13]) { const { via } = spread(doc, metresPerPixel(z)); assert.ok(hubs.every((h) => !via.has(trunkOf(h).id)), `zoom ${z}`); }
 });
 
 test('spread: a hub\'s lines to its points beside the row, between it and the hub: the further the point, the further from the row', () => {

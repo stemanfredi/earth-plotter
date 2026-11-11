@@ -338,12 +338,14 @@ Copies) opens its form (a click on the map picks a root):
 - **Spread trees** (the drawing's Display; off to start with) draws the trees as a diagram, by the
   screen (`spread.js`): a hub nearer than 16 px to the row of its points (the line through the first
   and the last) is shown 16 px to its side, at the same place along it, on the root's side, or the
-  row's left when the root is on the row too; its lines to its points run beside the row, between
-  it and the hub, the further the point the nearer the hub's distance, each then onto its point; a
-  line from a root that would then run through other
-  hubs of that root runs beside their row beyond them, the longer 5 px further out, then onto its
-  hub (another row's: past the last of them, and straight on). Display only: positions, lengths and
-  what is exported stay as they are.
+  row's left when the root is on the row too. A line along a row runs beside it at a distance of
+  its own and joins its two ends at 45°, so that the lines of one end lie on one another there and
+  are apart where they are parallel: a hub's lines to its points, between the row and the hub (the
+  further the point, the nearer the hub's distance); and the line of a root beside the row that would pass
+  other hubs shown aside nearer than 16 px, beyond them (the longer line 5 px further out), as far
+  as the last of them, then on to its own. A root further from the row than its line would run
+  comes from the side: its line is straight. Display only:
+  positions, lengths and what is exported stay as they are.
 - **Deleting a root** leaves the lines to it with a free end; Update plans it with the roots left.
   The last one deleted ends the rule: its lines and hubs stay, plain.
 

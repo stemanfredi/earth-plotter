@@ -12,9 +12,10 @@ export const rgbOf = (hex) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2),
 // language (locale []) or in English for files; a normal said in words: "the January normal"
 export const monthOf = (t, locale = []) => new Date(t).toLocaleDateString(locale, { month: 'long', timeZone: 'UTC' });
 export const normalWords = (t, locale = []) => `the ${monthOf(t, locale)} normal`;
+// a distance with the digits it has: to the metre (a thousandth of a NM, about 2 m), no zeros after them
 export function fmtDist(m, units) {
-  if (units === 'nm') return `${(m / NM).toFixed(3)} NM`; // to a thousandth (about 2 m)
-  return m < 1000 ? `${Math.round(m)} m` : `${(m / 1000).toFixed(3)} km`; // to the metre
+  if (units === 'nm') return `${+(m / NM).toFixed(3)} NM`;
+  return m < 1000 ? `${Math.round(m)} m` : `${+(m / 1000).toFixed(3)} km`;
 }
 export function fmtArea(a, units) {
   a = Math.abs(a);

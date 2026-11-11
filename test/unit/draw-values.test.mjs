@@ -10,11 +10,12 @@ const { fmtDist } = await import('../../site/format.js');
 
 const labels = (doc, units = 'km', bearings = false) => valueFeatures(doc, units, bearings).map((f) => f.properties.label);
 
-test('fmtDist: metres, km, NM, to the metre (NM: a thousandth)', () => {
+test('fmtDist: metres, km, NM, to the metre (NM: a thousandth), no zeros after its digits', () => {
   assert.equal(fmtDist(512, 'km'), '512 m');
+  assert.deepEqual([30000, 8500, 1000].map((m) => fmtDist(m, 'km')), ['30 km', '8.5 km', '1 km']);
   assert.equal(fmtDist(12345, 'km'), '12.345 km');
   assert.equal(fmtDist(1234567.4, 'km'), '1234.567 km');
-  assert.equal(fmtDist(1852 * 3, 'nm'), '3.000 NM');
+  assert.equal(fmtDist(1852 * 3, 'nm'), '3 NM');
 });
 
 test('a line: one degree of longitude on the equator is 111 319.49 m (WGS 84), heading east', () => {
@@ -48,7 +49,7 @@ test('a measurement: a guide showing its values, out of the totals; its values e
   assert.ok([r, a, c].every((x) => isMeasurement(x)));
   assert.deepEqual([totals(doc).all.lines, totals(doc).all.points, totals(doc).all.areas], [0, 0, 0]);
   const legs = [inverse(pts[0], pts[1]).s, inverse(pts[1], pts[2]).s];
-  assert.deepEqual(labels(doc), [...legs.map((s) => fmtDist(s, 'km')), `Σ ${fmtDist(legs[0] + legs[1], 'km')}`, 'r 15.000 km']); // the hidden area: none
+  assert.deepEqual(labels(doc), [...legs.map((s) => fmtDist(s, 'km')), `Σ ${fmtDist(legs[0] + legs[1], 'km')}`, 'r 15 km']); // the hidden area: none
 });
 
 test('values: bearings beside each straight leg once switched on; in the display units', () => {
@@ -58,5 +59,5 @@ test('values: bearings beside each straight leg once switched on; in the display
   assert.ok(labels(doc).every((t) => !t.includes('°T')));
   assert.match(labels(doc, 'km', true)[0], /km · \d{3}\.\d°T$/);
   assert.ok(labels(doc, 'nm').every((t) => t.includes('NM')), labels(doc, 'nm').join(' | '));
-  assert.equal(labels(doc, 'nm').at(-1), 'r 1.000 NM');
+  assert.equal(labels(doc, 'nm').at(-1), 'r 1 NM');
 });

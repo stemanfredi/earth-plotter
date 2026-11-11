@@ -226,7 +226,7 @@ Add to library…, Select members, Connect…), its **Look**, then its foot (a s
 group**, **Guide**, **Data**). Every number is 12 px, of one width; a unit stands beside its value in grey (a distance
 field shows its number, its unit next to it or in the column's head: typed with another unit, it is
 read in that one). One rule for every distance: metres below 1 km, else km; with NM, NM; shown to the
-metre (km to three decimals, NM to three: about 2 m). A column
+metre (km to three decimals at most, NM to three: about 2 m; no zeros after its digits: 30 km, 8.5 km). A column
 takes one unit by its largest value.
 
 - **Rows**: a label, one value or a pair (latitude · longitude, colour · opacity), and a last column

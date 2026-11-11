@@ -329,9 +329,9 @@ test('values shown: each leg\'s length and bearing, the total; a closed line\'s 
   lineFrom(doc, [12, 38], [], [12.1, 38], { ...m(), visible: false }); // hidden
   const v = valueFeatures(doc);
   assert.deepEqual(v.map((x) => [x.properties.id, x.properties.label, x.properties.anchor]), [
-    [ruler.id, '10.000 km', 'center'], [ruler.id, '10.000 km', 'center'], [ruler.id, 'Σ 20.000 km', 'top'],
+    [ruler.id, '10 km', 'center'], [ruler.id, '10 km', 'center'], [ruler.id, 'Σ 20 km', 'top'],
     [area.id, `${fmtArea(areaOf([...area.points, area.points[0]]), 'km')}\nperimeter ${fmtDist(perimeterOf(area.points), 'km')}`, 'center'],
-    [ring.id, 'r 2.000 km', 'bottom']]);
+    [ring.id, 'r 2 km', 'bottom']]);
   near(inverse([12, 40], v[0].geometry.coordinates).s, 5000, 0.01, 'the leg\'s middle');
   assert.deepEqual(v[2].geometry.coordinates, E); // the total at the end
   near(inverse([13, 40], v[4].geometry.coordinates).s, 2000, 1e-6, 'at the radius');

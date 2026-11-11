@@ -71,7 +71,7 @@ export function chartCanvas(src, s) {
   g.fillText(kmText, W - 20, sb - 34);
   g.fillText(nmText, W - 20, sb - 6);
   g.textAlign = 'left';
-  // every legend of the drawn layers, stacked above (as on screen, even with the switch off)
+  // the legends shown, stacked above (as on screen)
   let ly = top - 6;
   for (const el of [...s.legends].reverse()) {
     const lw = parseFloat(el.style.width), lh = parseFloat(el.style.height);

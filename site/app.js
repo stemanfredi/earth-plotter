@@ -1309,7 +1309,7 @@ function snapshot(src) {
     period: DENSITY[it.id] ? state.period[it.id] : undefined, date: it.kind === 'gibs' ? gibsDay : undefined, draws: it.kind === 'cmems' ? drawnAs(it.id) : undefined }));
   return {
     when, name: exportName(when, c.lat, c.lng), at: fmtPos(c.lat, c.lng), lat: c.lat,
-    zoom: map.getZoom(), bearing: map.getBearing(), link: location.href, credits: attributionText(), layers, legends: legendWant.map((id) => legendEls[id]),
+    zoom: map.getZoom(), bearing: map.getBearing(), link: location.href, credits: attributionText(), layers, legends: state.on.has('legend') ? legendWant.map((id) => legendEls[id]) : [], // as on screen: none with Legends off
     scaleVariation: scaleVariation(),
     corners: [[0, 0], [W, 0], [W, H], [0, H]].map((p) => { const ll = map.unproject(p); return [ll.lng, ll.lat]; }),
     time: timed && !mo ? (hr ? { at: t } : { day: dayOf(t) }) : null, depth, // normals alone: a month of no year, no time

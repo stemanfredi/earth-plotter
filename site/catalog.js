@@ -472,7 +472,7 @@ export const ITEMS = [
     info: { src: 'NASA EOSDIS GIBS (WMTS)', lic: 'NASA open data; attribution requested', res: 'True colour, 250 m, to zoom 9. A picture of the day as the satellite saw it: clouds and swath gaps are real. The time shown goes no later than its newest published day', url: 'https://www.earthdata.nasa.gov/engage/open-data-services-software/earthdata-developer-portal/gibs-api' } },
 
   { id: 'legend', group: 'labels', label: 'Legends', on: true,
-    info: { src: 'Drawn from the same colour stops as the map; Copernicus from the colour maps its service publishes; vessel and route density from the stops their WMS publishes; the other EMODnet layers from their services\' own legends (EMODnet depth from its legend picture), the World Bank\'s from its tile service\'s', lic: '—', res: 'Shown bottom left for every colour layer that is drawn; the PNG always includes them', url: '' } },
+    info: { src: 'Drawn from the same colour stops as the map; Copernicus from the colour maps its service publishes; vessel and route density from the stops their WMS publishes; the other EMODnet layers from their services\' own legends, the World Bank\'s from its tile service\'s', lic: '—', res: 'Shown bottom left for every colour layer that is drawn; the PNG has them as shown', url: '' } },
   { id: 'places', group: 'labels', label: 'Place names', on: true,
     info: { ...OSM, src: 'OpenStreetMap via OpenFreeMap', res: 'English name where tagged, else local name' } },
   { id: 'seanames', group: 'labels', label: 'Sea names', on: true,
